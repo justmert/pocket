@@ -5,7 +5,14 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "verbatimModuleSyntax": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src", "wxt.config.ts", ".wxt/wxt.d.ts"]
+  "include": [
+    "src",
+    "wxt.config.ts",
+    ".wxt/wxt.d.ts"
+  ]
 }

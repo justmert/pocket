@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src && prettier --check \"src/**/*.{ts,tsx,css}\" && tsc --noEmit",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css}\""
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "check": "tsc --noEmit && eslint src && vitest run"
   },
   "dependencies": {
     "@noble/curves": "2.2.0",
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/node": "^26.1.2",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.4",
     "@vitest/coverage-v8": "4.1.10",

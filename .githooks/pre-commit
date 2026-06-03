@@ -1,0 +1,5 @@
+#!/bin/sh
+# types, lint and tests must pass before anything lands.
+set -e
+cd "$(dirname "$0")/../extension"
+npm run --silent check
