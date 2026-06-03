@@ -1,0 +1,15 @@
+{
+  "name": "pocket",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Pocket - a self-custody Stellar wallet with a public and a private pocket",
+  "workspaces": ["extension"],
+  "scripts": {
+    "dev": "npm --prefix extension run dev",
+    "build": "npm --prefix extension run build",
+    "test": "npm --prefix extension run test",
+    "lint": "npm --prefix extension run lint"
+  }
+}
