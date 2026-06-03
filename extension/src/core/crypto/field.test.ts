@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { R, Q, addModR, addModQ, isCanonicalFr, toBytesBE, fromBytesBE, le4, maskTop2Bits } from "./field";
+import {
+  R,
+  Q,
+  addModR,
+  addModQ,
+  isCanonicalFr,
+  toBytesBE,
+  fromBytesBE,
+  le4,
+  maskTop2Bits,
+} from "./field";
 
 describe("the two moduli", () => {
   // Trap #1. These agree in their top 17 hex digits, so any test that only

@@ -14,19 +14,17 @@
 // (SDK.md 4.1, 4.6; DESIGN.md 2.1, 2.2, 2.3)
 
 /** BN254 scalar field. Noir's `Field`, the host's `Bn254Fr`. */
-export const R =
-  0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001n;
+export const R = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001n;
 
 /** Grumpkin group order. Blindings accumulate mod this, never mod R. */
-export const Q =
-  0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47n;
+export const Q = 0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47n;
 
 /** Every F_r element is already a valid Grumpkin scalar: r < q, so no reduction. */
 export const R_LT_Q = R < Q;
 
 /** Add two scalars in F_r. For sk/vk/sigma and anything Poseidon touches. */
 export function addModR(a: bigint, b: bigint): bigint {
-  return ((a + b) % R + R) % R;
+  return (((a + b) % R) + R) % R;
 }
 
 /**
@@ -36,7 +34,7 @@ export function addModR(a: bigint, b: bigint): bigint {
  * blindings the integer sum crosses q about half the time.
  */
 export function addModQ(a: bigint, b: bigint): bigint {
-  return ((a + b) % Q + Q) % Q;
+  return (((a + b) % Q) + Q) % Q;
 }
 
 /** True if `x` is a canonical F_r element. */
