@@ -13,6 +13,8 @@ export interface ProveRequest {
   acir: string;
   /** Solved witness, base64 (gzipped, as nargo emits). */
   witness: string;
+  /** Which circuit, so the public inputs can be split off correctly. */
+  circuit: CircuitName;
 }
 
 export interface StatusRequest {
@@ -33,9 +35,40 @@ export interface ProverStatus {
 }
 
 export type ProverResponse =
-  | { id: string; ok: true; kind: "prove"; proof: string; ms: number }
+  | {
+      id: string;
+      ok: true;
+      kind: "prove";
+      /** The 456-field proof alone, base64. */
+      proof: string;
+      /** The circuit's public inputs, base64, split off from the raw output. */
+      publicInputs: string;
+      ms: number;
+    }
   | { id: string; ok: true; kind: "status"; status: ProverStatus }
   | { id: string; ok: false; error: string };
 
-/** Non-ZK keccak UltraHonk at bb 0.87.0 is a constant 456 field elements. */
-export const EXPECTED_PROOF_BYTES = 14592;
+/**
+ * Non-ZK keccak UltraHonk at bb 0.87.0 is a constant 456 field elements, which
+ * is what the on-chain verifier hardcodes as PROOF_FIELDS.
+ *
+ * Note bb.js's acirProveUltraKeccakHonk returns publicInputs || proof, so its
+ * raw output is (numPublicInputs + 456) * 32 bytes. The two must be split
+ * before submission: the contract takes the public inputs separately and would
+ * reject a proof carrying them inline.
+ */
+export const PROOF_FIELDS = 456;
+export const FIELD_BYTES = 32;
+export const EXPECTED_PROOF_BYTES = PROOF_FIELDS * FIELD_BYTES; // 14592
+
+/** Public-input counts per circuit, read from the contract's assembly. */
+export const PUBLIC_INPUT_COUNT = {
+  register: 4,
+  withdraw: 15,
+  transfer: 24,
+  spender_transfer: 24,
+  set_spender: 24,
+  revoke_spender: 19,
+} as const;
+
+export type CircuitName = keyof typeof PUBLIC_INPUT_COUNT;

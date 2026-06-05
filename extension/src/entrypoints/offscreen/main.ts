@@ -9,6 +9,9 @@
 import {
   PROVER_CHANNEL,
   EXPECTED_PROOF_BYTES,
+  FIELD_BYTES,
+  PUBLIC_INPUT_COUNT,
+  type CircuitName,
   type ProverRequest,
   type ProverResponse,
   type ProverStatus,
@@ -101,27 +104,44 @@ async function loadBundledSrs(): Promise<{ g1: Uint8Array; g2: Uint8Array; numPo
   return { g1, g2, numPoints: g1.length / 64 };
 }
 
-async function prove(acirB64: string, witnessB64: string): Promise<{ proof: string; ms: number }> {
+async function prove(
+  acirB64: string,
+  witnessB64: string,
+  circuit: CircuitName,
+): Promise<{ proof: string; publicInputs: string; ms: number }> {
   const bb = await init();
   const started = performance.now();
-  const proof = await withTimeout(
+  const raw = await withTimeout(
     bb.acirProveUltraKeccakHonk(b64ToBytes(acirB64), b64ToBytes(witnessB64)),
     PROVE_TIMEOUT_MS,
     "proof generation",
   );
 
+  // bb.js returns publicInputs || proof concatenated. The contract takes the
+  // two separately, so split here rather than shipping a proof with its public
+  // inputs glued to the front.
+  const nPublic = PUBLIC_INPUT_COUNT[circuit];
+  const split = nPublic * FIELD_BYTES;
+  const publicInputs = raw.slice(0, split);
+  const proof = raw.slice(split);
+
   // A poseidon2-transcript proof is the SAME SIZE as a keccak one at 0.87.0, so
   // this does not prove the transcript is right. It does catch an accidental ZK
-  // proof (16224 bytes), which the on-chain verifier cannot parse. The VK hash
-  // is what pins the transcript, and that is checked at the release gate.
+  // proof (which is longer) and a public-input count that disagrees with the
+  // contract. The VK hash is what pins the transcript, at the release gate.
   if (proof.length !== EXPECTED_PROOF_BYTES) {
     throw new Error(
-      `proof is ${proof.length} bytes, expected ${EXPECTED_PROOF_BYTES}. ` +
-        `The prover produced a flavour the on-chain verifier cannot read.`,
+      `proof is ${proof.length} bytes after splitting ${nPublic} public inputs, ` +
+        `expected ${EXPECTED_PROOF_BYTES}. Raw output was ${raw.length} bytes. ` +
+        `The prover produced something the on-chain verifier cannot read.`,
     );
   }
 
-  return { proof: bytesToB64(proof), ms: Math.round(performance.now() - started) };
+  return {
+    proof: bytesToB64(proof),
+    publicInputs: bytesToB64(publicInputs),
+    ms: Math.round(performance.now() - started),
+  };
 }
 
 function status(): ProverStatus {
@@ -148,8 +168,8 @@ chrome.runtime.onMessage.addListener(
       .catch(() => undefined)
       .then(async () => {
         try {
-          const { proof, ms } = await prove(msg.acir, msg.witness);
-          sendResponse({ id: msg.id, ok: true, kind: "prove", proof, ms });
+          const { proof, publicInputs, ms } = await prove(msg.acir, msg.witness, msg.circuit);
+          sendResponse({ id: msg.id, ok: true, kind: "prove", proof, publicInputs, ms });
         } catch (e) {
           // A wedged prover is indistinguishable from a slow one, so tear the
           // instance down and let the next job rebuild it.

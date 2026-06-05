@@ -4,9 +4,19 @@
 // MV3 extension that means a network dependency for a core operation and an
 // argument with the remote-code policy we do not need to have, so we ship it.
 //
-// Size is driven by the largest circuit. Ours are 3,087 to 6,798 gates, so the
-// dyadic bound is 2^13 = 8192 points. At 64 bytes per uncompressed point that
-// is 512 KB. A 2^20 circuit would need 67 MB; we are nowhere near it.
+// Size is driven by the largest circuit's PROVING SUBGROUP, which is not the
+// number `bb gates` prints. Measured with acirGetCircuitSizes in a real browser:
+//
+//   register          gates=14412  subgroup=16384
+//   withdraw          gates=28868  subgroup=32768
+//   transfer          gates=28926  subgroup=32768
+//   spender_transfer  gates=28926  subgroup=32768
+//   set_spender       gates=28926  subgroup=32768
+//   revoke_spender    gates=28926  subgroup=32768
+//
+// bb needs subgroup+1 points, so 32769. We take 2^16 for headroom: a circuit
+// change that pushes past 32768 would otherwise trap inside the wasm with an
+// opaque "unreachable" rather than a useful error. 2^16 * 64 B = 4.2 MB.
 //
 // Integrity: the G2 point is compared against the value compiled into the
 // on-chain verifier, so a substituted SRS fails the build rather than silently
@@ -19,9 +29,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const dest = join(here, "../public/vendor/srs");
 
 const HOST = "https://crs.aztec.network";
-// 2^13, the dyadic size of our largest circuit, with headroom to 2^14 so a
-// circuit change does not silently break proving.
-const NUM_POINTS = 1 << 14;
+const NUM_POINTS = 1 << 16;
+/** The largest subgroup any of our six circuits needs. Asserted at build time. */
+const MAX_SUBGROUP = 32768;
 const G1_BYTES = NUM_POINTS * 64;
 
 // The Ignition [tau]_2 point. The on-chain verifier compiles the same four
@@ -82,6 +92,12 @@ async function main() {
   const sorted = (a) => [...a].sort().join(",");
   if (sorted(limbs) !== sorted(EXPECTED_G2_LIMBS)) {
     throw new Error("g2 limbs do not match the on-chain verifier's compiled constant");
+  }
+  if (NUM_POINTS <= MAX_SUBGROUP) {
+    throw new Error(
+      `SRS has ${NUM_POINTS} points but the largest circuit subgroup is ${MAX_SUBGROUP}; ` +
+        `bb needs subgroup+1 and traps with an opaque "unreachable" when short.`,
+    );
   }
   console.log(
     `vendored srs -> public/vendor/srs (${NUM_POINTS} points, ${(g1.length / 1e6).toFixed(2)} MB)`,

@@ -9,6 +9,7 @@
 // every time.
 import {
   PROVER_CHANNEL,
+  type CircuitName,
   type ProveRequest,
   type ProverResponse,
   type ProverStatus,
@@ -70,9 +71,10 @@ async function ask<T extends ProverResponse>(
 
 /** Generate a proof. Serial by construction: the document queues internally. */
 export async function prove(
+  circuit: CircuitName,
   acir: Uint8Array,
   witness: Uint8Array,
-): Promise<{ proof: Uint8Array; ms: number }> {
+): Promise<{ proof: Uint8Array; publicInputs: Uint8Array; ms: number }> {
   const b64 = (b: Uint8Array) => {
     let s = "";
     for (const x of b) s += String.fromCharCode(x);
@@ -82,13 +84,17 @@ export async function prove(
     channel: PROVER_CHANNEL,
     kind: "prove",
     id: newId(),
+    circuit,
     acir: b64(acir),
     witness: b64(witness),
   });
-  const raw = atob(res.proof);
-  const proof = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) proof[i] = raw.charCodeAt(i);
-  return { proof, ms: res.ms };
+  const bytes = (s: string) => {
+    const raw = atob(s);
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  };
+  return { proof: bytes(res.proof), publicInputs: bytes(res.publicInputs), ms: res.ms };
 }
 
 export async function proverStatus(): Promise<ProverStatus> {

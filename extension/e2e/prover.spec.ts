@@ -121,9 +121,79 @@ test("initialises the prover from the bundled SRS with no network", async () => 
   });
 
   expect(result.ok).toBe(true);
-  expect(result.srsPoints).toBe(16384);
+  // 2^16. Sized from the largest circuit's proving SUBGROUP (32768, measured
+  // with acirGetCircuitSizes), not from what `bb gates` prints. Undersizing
+  // traps inside the wasm with an opaque "unreachable".
+  expect(result.srsPoints).toBe(65536);
   // Cross-origin isolation held, so bb.js took the multi-threaded path.
   expect(result.threads).toBeGreaterThan(1);
   console.log(`prover threads=${result.threads}`);
+  await page.close();
+});
+
+test("generates and verifies a REAL proof of the transfer circuit", async () => {
+  test.setTimeout(180_000);
+  const page = await ctx.newPage();
+  await page.goto(`chrome-extension://${id}/offscreen.html`);
+
+  const result = await page.evaluate(async () => {
+    const mod = (await import("/vendor/bb/index.js")) as {
+      Barretenberg: {
+        new: (o: { threads: number }) => Promise<{
+          srsInitSrs(p: Uint8Array, n: number, g2: Uint8Array): Promise<void>;
+          acirProveUltraKeccakHonk(acir: Uint8Array, witness: Uint8Array): Promise<Uint8Array>;
+          acirVerifyUltraKeccakHonk(proof: Uint8Array, vk: Uint8Array): Promise<boolean>;
+          acirWriteVkUltraKeccakHonk(acir: Uint8Array): Promise<Uint8Array>;
+        }>;
+      };
+      RawBuffer: new (b: Uint8Array) => Uint8Array;
+    };
+
+    const gunzip = async (b: Uint8Array): Promise<Uint8Array> => {
+      const ds = new DecompressionStream("gzip");
+      const stream = new Blob([b as BlobPart]).stream().pipeThrough(ds);
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    };
+
+    // The Noir artifact's `bytecode` is base64 gzipped ACIR. bb.js's own
+    // acirToUint8Array does base64-decode then decompress, and the low-level
+    // API expects the result, not the compressed form.
+    const artifact = await (await fetch("/vendor/circuits/target/circuit_transfer.json")).json();
+    const acir = await gunzip(
+      Uint8Array.from(atob(artifact.bytecode as string), (c) => c.charCodeAt(0)),
+    );
+    // nargo writes the witness gzipped too.
+    const witness = await gunzip(
+      new Uint8Array(await (await fetch("/vendor/circuits/target/w_transfer.gz")).arrayBuffer()),
+    );
+
+    const bb = await mod.Barretenberg.new({ threads: 4 });
+    const g1 = new Uint8Array(await (await fetch("/vendor/srs/g1.dat")).arrayBuffer());
+    const g2 = new Uint8Array(await (await fetch("/vendor/srs/g2.dat")).arrayBuffer());
+    await bb.srsInitSrs(new mod.RawBuffer(g1), g1.length / 64, new mod.RawBuffer(g2));
+
+    const t0 = performance.now();
+    const proof = await bb.acirProveUltraKeccakHonk(acir, witness);
+    const proveMs = Math.round(performance.now() - t0);
+
+    const vk = await bb.acirWriteVkUltraKeccakHonk(acir);
+    const verified = await bb.acirVerifyUltraKeccakHonk(proof, new mod.RawBuffer(vk));
+
+    return { proofBytes: proof.length, vkBytes: vk.length, verified, proveMs };
+  });
+
+  console.log(
+    `transfer circuit: proof=${result.proofBytes}B vk=${result.vkBytes}B ` +
+      `verified=${result.verified} in ${result.proveMs}ms`,
+  );
+
+  // bb.js returns publicInputs || proof. Transfer has 24 public inputs, so the
+  // raw output is 24*32 + 456*32 = 15360 bytes, and the proof the contract
+  // wants is the 456-field tail.
+  expect(result.proofBytes).toBe(15360);
+  expect(result.proofBytes - 24 * 32).toBe(14592);
+  // 1760 bytes is the on-chain VK layout, matching the committed vks/*.vk.bin.
+  expect(result.vkBytes).toBe(1760);
+  expect(result.verified).toBe(true);
   await page.close();
 });
