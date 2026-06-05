@@ -1,0 +1,42 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Chrome sizes a popup to its content, so the frame sets the width. */
+#root {
+  display: flex;
+}
+
+button {
+  font-family: inherit;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+input:focus,
+textarea:focus {
+  border-color: currentColor;
+}
+
+@keyframes pocket-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Respect a user who has asked for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
