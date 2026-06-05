@@ -12,6 +12,9 @@ import { defineConfig } from "wxt";
 export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   srcDir: "src",
+  // Everything under public/ is copied verbatim to the output root, untouched by
+  // the bundler. That is what public/vendor/bb needs: see scripts/vendor-bb.mjs.
+  publicDir: "public",
   manifest: {
     name: "Pocket",
     description:
@@ -20,6 +23,8 @@ export default defineConfig({
       "storage",
       // idle auto-lock survives service-worker restarts only via alarms
       "alarms",
+      // Lets the service worker host the prover in an isolated document.
+      "offscreen",
       // the opening store grows with inbound events and must never be evicted
       // (SDK.md 10.1: discarding it loses receiving-side openings permanently)
       "unlimitedStorage",

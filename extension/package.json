@@ -5,8 +5,8 @@
   "type": "module",
   "license": "Apache-2.0",
   "scripts": {
-    "dev": "wxt",
-    "build": "wxt build",
+    "dev": "npm run vendor && wxt",
+    "build": "npm run vendor && wxt build",
     "zip": "wxt zip",
     "postinstall": "wxt prepare",
     "compile": "tsc --noEmit",
@@ -15,9 +15,11 @@
     "lint": "eslint src && prettier --check \"src/**/*.{ts,tsx,css}\" && tsc --noEmit",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "check": "tsc --noEmit && eslint src && vitest run",
-    "test:e2e": "wxt build && playwright test"
+    "test:e2e": "npm run vendor && wxt build && playwright test",
+    "vendor": "node scripts/vendor-bb.mjs && node scripts/vendor-srs.mjs"
   },
   "dependencies": {
+    "@aztec/bb.js": "^0.87.0",
     "@noble/curves": "2.2.0",
     "@noble/hashes": "2.2.0",
     "@scure/bip39": "2.2.0",
