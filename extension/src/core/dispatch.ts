@@ -5,8 +5,14 @@ import type { WalletRequest } from "./messages";
 import { WrongPasswordError } from "./vault/vault";
 import { InvalidAddressError } from "./chain/address";
 
-/** Operations permitted while locked. Everything else requires an unlocked vault. */
-const ALLOWED_WHILE_LOCKED = new Set(["status", "create", "import", "unlock", "lock"]);
+/**
+ * Operations permitted while locked.
+ *
+ * `import` is NOT here: it writes the vault, and allowing it without the
+ * current password means any stray message can replace a funded wallet's seed.
+ * `reset` is not here either, for the same reason.
+ */
+const ALLOWED_WHILE_LOCKED = new Set(["status", "create", "unlock", "lock"]);
 
 export async function dispatch(c: WalletController, msg: WalletRequest): Promise<unknown> {
   switch (msg.type) {
@@ -28,12 +34,37 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
     case "buildPayment":
       return c.buildPayment(msg);
     case "confirmPayment":
-      return c.confirmPayment(msg.xdr);
+      return c.confirmPayment(msg.handle);
+    case "reset":
+      return c.reset(msg.password);
+    default: {
+      // Without this, a message whose type is outside the union falls off the
+      // end, resolves to undefined, and the worker answers {ok: true}. Any
+      // unrelated runtime broadcast would then look like a successful
+      // operation and re-arm the idle lock.
+      const unknown = msg as { type?: string };
+      throw new Error(`unsupported operation: ${String(unknown.type)}`);
+    }
   }
 }
 
 export function isAllowedWhileLocked(type: string): boolean {
   return ALLOWED_WHILE_LOCKED.has(type);
+}
+
+/** Types that represent real user activity, and so should postpone the idle lock. */
+const ACTIVITY = new Set([
+  "unlock",
+  "balances",
+  "buildPayment",
+  "confirmPayment",
+  "setNetwork",
+  "create",
+  "import",
+]);
+
+export function isUserActivity(type: string): boolean {
+  return ACTIVITY.has(type);
 }
 
 /**

@@ -8,8 +8,14 @@ import { NETWORKS, DEFAULT_NETWORK, type NetworkId } from "./config";
 import { createVault, unlockVault, WrongPasswordError } from "./vault/vault";
 import type { VaultHeader, Bytes } from "./vault/envelope";
 import { setSession, clearSession, getSession, requireSession } from "./session";
-import { KEYS, readLocal, writeLocal } from "../lib/storage";
-import { readNative, readTrustline, formatAmount, parseAmount } from "./chain/balances";
+import { KEYS, readLocal, writeLocal, removeLocal } from "../lib/storage";
+import {
+  readNative,
+  readTrustline,
+  formatAmount,
+  parseAmount,
+  AccountNotFoundError,
+} from "./chain/balances";
 import { buildPayment } from "./chain/payment";
 import { submitAndConfirm } from "./chain/submit";
 import { parseAddress } from "./chain/address";
@@ -55,7 +61,7 @@ export class WalletController {
   /** Create a new wallet. Returns the mnemonic exactly once, for backup. */
   async create(password: string): Promise<{ mnemonic: string; address: string }> {
     if (await readLocal<VaultHeader>(KEYS.vaultHeader)) {
-      throw new Error("a wallet already exists; importing would overwrite it");
+      throw new Error("a wallet already exists on this device");
     }
     const mnemonic = generateMnemonic(wordlist, 256);
     const address = await this.installSeed(password, mnemonic);
@@ -63,6 +69,15 @@ export class WalletController {
   }
 
   async import(password: string, mnemonic: string): Promise<{ address: string }> {
+    // Same guard as create(). Without it, any path that sends {type:"import"}
+    // replaces a funded wallet's seed, and the previous mnemonic is the only
+    // recovery material. Deliberate replacement goes through reset(), which
+    // requires the current password.
+    if (await readLocal<VaultHeader>(KEYS.vaultHeader)) {
+      throw new Error(
+        "a wallet already exists on this device. Remove it first if you mean to replace it.",
+      );
+    }
     const phrase = mnemonic.trim().toLowerCase().replace(/\s+/g, " ");
     if (!validateMnemonic(phrase, wordlist)) {
       throw new Error("that is not a valid recovery phrase");
@@ -109,6 +124,20 @@ export class WalletController {
     clearSession();
   }
 
+  /**
+   * Destroy the wallet on this device. Requires the current password, so a
+   * stray message cannot do it. The seed is gone afterwards: only the user's
+   * written-down phrase recovers the funds.
+   */
+  async reset(password: string): Promise<void> {
+    const header = await readLocal<VaultHeader>(KEYS.vaultHeader);
+    if (!header) return;
+    await unlockVault(header, password); // throws WrongPasswordError
+    clearSession();
+    await removeLocal(KEYS.vaultHeader);
+    await removeLocal(KEYS.state);
+  }
+
   async setNetwork(network: NetworkId): Promise<WalletStatus> {
     this.network = network;
     await writeLocal(KEYS.settings, { network });
@@ -127,9 +156,12 @@ export class WalletController {
         amount: formatAmount(native.raw),
         authorized: true,
       });
-    } catch {
-      // Account not created yet. Report zero rather than an error so the UI can
-      // show a fund-me state instead of a failure.
+    } catch (e) {
+      // ONLY an account that does not exist yet may render as zero. Every other
+      // failure (RPC timeout, 5xx, decode error, denied host permission) must
+      // propagate, or a network hiccup shows a funded user a confident
+      // 0.0000000 with no spinner and no error.
+      if (!(e instanceof AccountNotFoundError)) throw e;
       out.push({ id: "native", code: "XLM", amount: "0.0000000", authorized: true });
     }
     return out;
@@ -163,8 +195,16 @@ export class WalletController {
       NETWORKS[this.network].passphrase,
     );
 
+    // Retain the exact envelope we built, keyed by hash. confirmPayment will
+    // only sign one of these. The popup is a UI, not a source of truth about
+    // what gets signed: without this, the worker would sign any XDR handed to
+    // it, including an accountMerge or a setOptions that replaces the signers.
+    const handle = tx.hash().toString("hex");
+    this.pending.set(handle, { xdr: tx.toXDR(), at: Date.now() });
+    this.prunePending();
+
     return {
-      xdr: tx.toXDR(),
+      xdr: handle,
       summary: {
         decoded: true,
         to: to.value,
@@ -186,12 +226,46 @@ export class WalletController {
     return new Asset(code, issuer);
   }
 
-  /** Sign and submit a previously built transaction. */
-  async confirmPayment(xdr: string): Promise<{ hash: string; ledger: number }> {
-    const { TransactionBuilder } = await import("@stellar/stellar-sdk/base");
-    const tx = TransactionBuilder.fromXDR(xdr, NETWORKS[this.network].passphrase);
-    if ("operations" in tx) tx.sign(this.keypair());
-    const outcome = await submitAndConfirm(this.server(), tx);
+  /** Envelopes this controller built, awaiting confirmation. Keyed by tx hash. */
+  private pending = new Map<string, { xdr: string; at: number }>();
+  private static readonly PENDING_TTL_MS = 10 * 60_000;
+
+  private prunePending(): void {
+    const cutoff = Date.now() - WalletController.PENDING_TTL_MS;
+    for (const [k, v] of this.pending) if (v.at < cutoff) this.pending.delete(k);
+  }
+
+  /**
+   * Sign and submit a transaction this controller built. Takes the handle
+   * buildPayment returned, never raw XDR, so the bytes signed are exactly the
+   * bytes summarised on the approval screen.
+   */
+  async confirmPayment(handle: string): Promise<{ hash: string; ledger: number }> {
+    this.prunePending();
+    const entry = this.pending.get(handle);
+    if (!entry) {
+      throw new Error(
+        "That transaction is no longer pending confirmation. Build it again and review it.",
+      );
+    }
+    this.pending.delete(handle);
+
+    const { TransactionBuilder, Transaction } = await import("@stellar/stellar-sdk/base");
+    const decoded = TransactionBuilder.fromXDR(entry.xdr, NETWORKS[this.network].passphrase);
+
+    // Defence in depth: re-assert the envelope is ours and shaped as reviewed.
+    if (!(decoded instanceof Transaction)) {
+      throw new Error("refusing to sign a fee-bump envelope here");
+    }
+    const inner = decoded;
+    if (inner.source !== requireSession().address) {
+      throw new Error("refusing to sign a transaction from a different source account");
+    }
+    if (inner.operations.length !== 1 || inner.operations[0]?.type !== "payment") {
+      throw new Error("refusing to sign: this is not the single payment that was reviewed");
+    }
+    inner.sign(this.keypair());
+    const outcome = await submitAndConfirm(this.server(), inner);
     if (outcome.kind === "succeeded") {
       return { hash: outcome.hash, ledger: outcome.ledger };
     }

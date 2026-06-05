@@ -3,7 +3,7 @@
 // which makes worker death an automatic lock rather than a bug.
 import "../lib/polyfill"; // must run before any stellar-sdk import
 import { WalletController } from "../core/controller";
-import { dispatch, describeError, isAllowedWhileLocked } from "../core/dispatch";
+import { dispatch, describeError, isAllowedWhileLocked, isUserActivity } from "../core/dispatch";
 import { isUnlocked, clearSession } from "../core/session";
 import type { WalletRequest, WalletResponse } from "../core/messages";
 
@@ -24,6 +24,11 @@ export default defineBackground(() => {
         return false;
       }
 
+      // The prover speaks on this same runtime channel with its own
+      // discriminator. Ignore anything that is not a wallet request outright,
+      // rather than answering it and re-arming the idle lock.
+      if (typeof msg?.type !== "string") return false;
+
       void (async () => {
         try {
           await ready;
@@ -32,8 +37,9 @@ export default defineBackground(() => {
             return;
           }
           const data = await dispatch(controller, msg);
-          // Any successful authenticated action pushes the idle lock out.
-          if (isUnlocked()) armAutoLock();
+          // Only real user activity postpones the lock. A status poll or an
+          // unrecognised message must not keep a funded wallet open forever.
+          if (isUnlocked() && isUserActivity(msg.type)) armAutoLock();
           sendResponse({ ok: true, data });
         } catch (e) {
           sendResponse({ ok: false, error: describeError(e) });

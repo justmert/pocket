@@ -33,7 +33,8 @@ export type WalletRequest =
   | { type: "lock" }
   | { type: "balances" }
   | { type: "buildPayment"; to: string; amount: string; assetId: string; memo?: string }
-  | { type: "confirmPayment"; xdr: string }
+  | { type: "confirmPayment"; handle: string }
+  | { type: "reset"; password: string }
   | { type: "setNetwork"; network: NetworkId };
 
 export type WalletResponse<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -46,8 +47,10 @@ export interface ResponseMap {
   unlock: WalletStatus;
   lock: WalletStatus;
   balances: PublicBalance[];
+  /** `xdr` is an opaque handle to the envelope the worker built and retained. */
   buildPayment: { xdr: string; summary: TransferSummary };
   confirmPayment: { hash: string; ledger: number };
+  reset: void;
   setNetwork: WalletStatus;
 }
 

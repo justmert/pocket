@@ -45,7 +45,9 @@ export function Send({ t, onBack }: { t: Theme; onBack: () => void }) {
     setStage("sending");
     setError(null);
     try {
-      setResult(await call({ type: "confirmPayment", xdr: built.xdr }));
+      // `built.xdr` is an opaque handle the worker issued, not raw XDR. The
+      // worker signs only envelopes it built and we reviewed.
+      setResult(await call({ type: "confirmPayment", handle: built.xdr }));
       setStage("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
