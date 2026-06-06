@@ -61,9 +61,17 @@ export const PROOF_FIELDS = 456;
 export const FIELD_BYTES = 32;
 export const EXPECTED_PROOF_BYTES = PROOF_FIELDS * FIELD_BYTES; // 14592
 
-/** Public-input counts per circuit, read from the contract's assembly. */
+/**
+ * Public-input counts per circuit, in FIELD SLOTS, counted from the `pub Field`
+ * parameters of each circuit's `main`.
+ *
+ * Slots, not logical values: a Grumpkin point occupies two slots. Register
+ * carries four logical inputs (Y, PVK, addr_f, acct_f) but SIX slots, because
+ * Y and PVK are points. Getting this wrong splits the prover's output in the
+ * wrong place and produces a proof the verifier cannot read.
+ */
 export const PUBLIC_INPUT_COUNT = {
-  register: 4,
+  register: 6,
   withdraw: 15,
   transfer: 24,
   spender_transfer: 24,
