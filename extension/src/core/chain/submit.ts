@@ -18,6 +18,8 @@ import type { Transaction, FeeBumpTransaction } from "@stellar/stellar-sdk/base"
 
 export type SubmitOutcome =
   | { kind: "rejected"; hash: string; reason: string }
+  /** The RPC did not queue it. Consumes no sequence and costs no fee: retry now. */
+  | { kind: "notAccepted"; hash: string }
   | { kind: "pending"; hash: string }
   | { kind: "succeeded"; hash: string; ledger: number; applicationOrder: number }
   | { kind: "failed"; hash: string; ledger: number; reason: string }
@@ -25,6 +27,12 @@ export type SubmitOutcome =
 
 /** Seconds a transaction stays valid. Short enough that expiry is decidable soon. */
 export const DEFAULT_TIMEOUT_SECONDS = 180;
+
+/** Notified before submission and on every terminal outcome, so a caller can persist. */
+export interface InFlightSink {
+  record(entry: { hash: string; maxTime: number }): Promise<void>;
+  clear(hash: string): Promise<void>;
+}
 
 /**
  * Submit, then poll to a terminal state.
@@ -35,21 +43,42 @@ export const DEFAULT_TIMEOUT_SECONDS = 180;
 export async function submitAndConfirm(
   server: rpc.Server,
   tx: Transaction | FeeBumpTransaction,
-  opts: { attempts?: number; sleepMs?: number } = {},
+  opts: { attempts?: number; sleepMs?: number; inFlight?: InFlightSink } = {},
 ): Promise<SubmitOutcome> {
   const hash = tx.hash().toString("hex");
+  const maxTime = "timeBounds" in tx ? Number(tx.timeBounds?.maxTime ?? 0) : 0;
+
+  // Recorded BEFORE submission. If the worker dies between here and the reply,
+  // the hash is still on disk and can be polled rather than blindly resent.
+  await opts.inFlight?.record({ hash, maxTime });
   const sent = await server.sendTransaction(tx);
 
   if (sent.status === "ERROR") {
+    await opts.inFlight?.clear(hash);
     return { kind: "rejected", hash, reason: describeSendError(sent) };
   }
-  // DUPLICATE means it is already in the mempool, which is a successful submit
-  // from our point of view: poll it rather than resubmitting.
   if (sent.status === "TRY_AGAIN_LATER") {
-    return { kind: "pending", hash };
+    await opts.inFlight?.clear(hash);
+    // The RPC declined to queue it at all. Nothing was consumed, so this is
+    // immediately and safely retryable. Reporting it as "pending" would strand
+    // the caller for the whole timeBounds window on a transaction that never
+    // entered the network.
+    return { kind: "notAccepted", hash };
   }
-
-  return pollToTerminal(server, hash, opts);
+  // PENDING and DUPLICATE both mean it is in the mempool. DUPLICATE is a
+  // successful submit from our point of view: poll it rather than resubmitting.
+  const outcome = await pollToTerminal(server, hash, opts);
+  if (outcome.kind !== "pending") {
+    await opts.inFlight?.clear(hash);
+    return outcome;
+  }
+  // Still not included. Once maxTime has passed the envelope can never apply,
+  // so it becomes safe to rebuild; until then the caller must not resend.
+  if (maxTime > 0 && Math.floor(Date.now() / 1000) > maxTime) {
+    await opts.inFlight?.clear(hash);
+    return { kind: "expired", hash };
+  }
+  return outcome;
 }
 
 /**

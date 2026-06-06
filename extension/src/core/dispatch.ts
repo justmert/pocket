@@ -68,9 +68,26 @@ export function isUserActivity(type: string): boolean {
 }
 
 /**
- * Map an error to a message a user can act on. Never leaks witness material:
- * amounts, openings and blinding factors must not reach a log or a UI string.
+ * Errors whose message is written for a user and is safe to surface verbatim.
+ * Everything else is replaced, because an arbitrary Error.message can carry an
+ * RPC URL, a stack fragment, or, once phase 4 lands, witness material. SDK.md
+ * 13 forbids witness values reaching a log or a UI string absolutely, and an
+ * allowlist is the only version of that rule which cannot be forgotten.
  */
+const SAFE_ERRORS = new Set([
+  "WrongPasswordError",
+  "CorruptVaultError",
+  "SchemaVersionError",
+  "AccountNotFoundError",
+]);
+
+/** Messages we author ourselves and vet, matched exactly. */
+const SAFE_MESSAGES = new Set([
+  "wallet is locked",
+  "no wallet to unlock",
+  "a wallet already exists on this device",
+]);
+
 export function describeError(e: unknown): string {
   if (e instanceof WrongPasswordError) return "Wrong password.";
   if (e instanceof InvalidAddressError) {
@@ -78,6 +95,13 @@ export function describeError(e: unknown): string {
       ? "That address has a bad checksum. It may have been mistyped or altered in transit."
       : "That does not look like a Stellar address.";
   }
-  if (e instanceof Error) return e.message;
+  if (e instanceof Error) {
+    if (SAFE_ERRORS.has(e.name)) return e.message;
+    if (SAFE_MESSAGES.has(e.message)) return e.message;
+    // Authored, user-facing messages start with a capital and end with a stop.
+    // Anything else is machinery and does not belong in front of a user.
+    if (/^[A-Z].*[.]$/.test(e.message) && e.message.length < 200) return e.message;
+    return "Something went wrong. Try again, and check your connection.";
+  }
   return "Something went wrong.";
 }

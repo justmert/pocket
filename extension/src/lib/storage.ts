@@ -8,6 +8,8 @@ export const KEYS = {
   vaultHeader: "pocket.vault",
   state: "pocket.state",
   settings: "pocket.settings",
+  /** A submitted transaction whose outcome we have not yet observed. */
+  inFlight: "pocket.inflight",
 } as const;
 
 export async function readLocal<T>(key: string): Promise<T | undefined> {

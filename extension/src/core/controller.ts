@@ -14,13 +14,17 @@ import {
   readTrustline,
   formatAmount,
   parseAmount,
+  minimumBalance,
   AccountNotFoundError,
 } from "./chain/balances";
 import { buildPayment } from "./chain/payment";
-import { submitAndConfirm } from "./chain/submit";
+import { submitAndConfirm, pollToTerminal, type SubmitOutcome } from "./chain/submit";
 import { parseAddress } from "./chain/address";
 import type { PublicBalance, WalletStatus, TransferSummary } from "./messages";
 import { deriveEd25519 } from "./keys/sep5";
+
+/** 0.5 XLM. A network parameter, currently identical on testnet and mainnet. */
+const BASE_RESERVE_STROOPS = 5_000_000n;
 
 interface PersistedSettings {
   network: NetworkId;
@@ -43,6 +47,26 @@ export class WalletController {
   async init(): Promise<void> {
     const settings = await readLocal<PersistedSettings>(KEYS.settings);
     if (settings?.network) this.network = settings.network;
+  }
+
+  /**
+   * A transaction that was submitted but whose outcome we never saw, because
+   * the worker died or the popup closed. Never resend it: poll by hash, and
+   * only rebuild once its timeBounds have passed.
+   */
+  async inFlight(): Promise<{ hash: string; maxTime: number; expired: boolean } | null> {
+    const e = await readLocal<{ hash: string; maxTime: number }>(KEYS.inFlight);
+    if (!e) return null;
+    return { ...e, expired: e.maxTime > 0 && Math.floor(Date.now() / 1000) > e.maxTime };
+  }
+
+  /** Resolve an in-flight transaction by polling its hash. */
+  async reconcileInFlight(): Promise<SubmitOutcome | null> {
+    const e = await readLocal<{ hash: string; maxTime: number }>(KEYS.inFlight);
+    if (!e) return null;
+    const outcome = await pollToTerminal(this.server(), e.hash, { attempts: 3 });
+    if (outcome.kind !== "pending") await removeLocal(KEYS.inFlight);
+    return outcome;
   }
 
   async status(): Promise<WalletStatus> {
@@ -150,10 +174,17 @@ export class WalletController {
     const out: PublicBalance[] = [];
     try {
       const native = await readNative(this.server(), address);
+      // The reserve is locked by the protocol and cannot be sent. Presenting
+      // the raw balance would let a user try to spend into it and get an
+      // opaque tx_insufficient_balance at submit time.
+      const reserve = minimumBalance(native, BASE_RESERVE_STROOPS);
+      const spendable = native.raw > reserve ? native.raw - reserve : 0n;
       out.push({
         id: "native",
         code: "XLM",
-        amount: formatAmount(native.raw),
+        amount: formatAmount(spendable),
+        total: formatAmount(native.raw),
+        reserved: formatAmount(reserve),
         authorized: true,
       });
     } catch (e) {
@@ -185,6 +216,15 @@ export class WalletController {
   }): Promise<{ xdr: string; summary: TransferSummary }> {
     const { address } = requireSession();
     const to = parseAddress(req.to); // throws on bad checksum
+    if (to.kind === "contract") {
+      // A classic PaymentOp cannot pay a C-address. Say so here rather than
+      // letting it fail opaquely inside the builder after the user has already
+      // entered an amount. Paying a contract needs a SAC transfer, which the
+      // public pocket does not do yet.
+      throw new Error(
+        "That is a contract address. Pocket can only send to an account address (G...) today.",
+      );
+    }
     const amount = parseAmount(req.amount);
     const asset = req.assetId === "native" ? Asset.native() : this.assetFromId(req.assetId);
 
@@ -265,16 +305,25 @@ export class WalletController {
       throw new Error("refusing to sign: this is not the single payment that was reviewed");
     }
     inner.sign(this.keypair());
-    const outcome = await submitAndConfirm(this.server(), inner);
+    const outcome = await submitAndConfirm(this.server(), inner, {
+      inFlight: {
+        record: (e) => writeLocal(KEYS.inFlight, e),
+        clear: () => removeLocal(KEYS.inFlight),
+      },
+    });
     if (outcome.kind === "succeeded") {
       return { hash: outcome.hash, ledger: outcome.ledger };
     }
     throw new Error(
       outcome.kind === "failed"
-        ? `transaction failed on chain: ${outcome.reason}`
+        ? `The transaction was included but failed on chain (${outcome.reason}). ` +
+          `A fee was charged and the sequence number was used.`
         : outcome.kind === "rejected"
-          ? `rejected: ${outcome.reason}`
-          : "transaction did not confirm in time; it may still land",
+          ? `The network rejected it (${outcome.reason}). Nothing was charged.`
+          : outcome.kind === "notAccepted"
+            ? "The RPC did not accept it. Nothing was charged; you can try again now."
+            : `It has not confirmed yet. It may still land, so do not resend: ` +
+              `check the hash ${outcome.hash} before trying again.`,
     );
   }
 }

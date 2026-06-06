@@ -13,6 +13,8 @@ import {
   VAULT_SCHEMA_VERSION,
   b64,
   bytes,
+  MIN_KDF,
+  type KdfParams,
   canonicalHeaderBytes,
   type Bytes,
   type VaultHeader,
@@ -23,6 +25,13 @@ export class WrongPasswordError extends Error {
   constructor() {
     super("wrong password");
     this.name = "WrongPasswordError";
+  }
+}
+
+export class CorruptVaultError extends Error {
+  constructor(detail: string) {
+    super(`the stored wallet is damaged: ${detail}`);
+    this.name = "CorruptVaultError";
   }
 }
 
@@ -38,14 +47,26 @@ export class SchemaVersionError extends Error {
 
 const random = (n: number): Bytes => crypto.getRandomValues(new Uint8Array(n)) as Bytes;
 
-/** scrypt is memory-hard; PBKDF2 is not, and SHA-256 is the most ASIC-accelerated function there is. */
-function deriveKek(password: string, salt: Uint8Array): Bytes {
+/**
+ * scrypt is memory-hard; PBKDF2 is not, and SHA-256 is the most
+ * ASIC-accelerated function in existence.
+ *
+ * Parameters come from the vault's own header, not the module constant, so
+ * raising the default for new vaults does not lock anyone out of an existing
+ * one. The header is inside the AAD, so a tampered value fails the tag; the
+ * floor is belt-and-braces against ever honouring weak parameters.
+ */
+function deriveKek(password: string, salt: Uint8Array, kdf: KdfParams): Bytes {
+  if (kdf.id !== "scrypt") throw new Error(`unsupported key derivation: ${kdf.id}`);
+  if (kdf.N < MIN_KDF.N || kdf.r < MIN_KDF.r || kdf.p < MIN_KDF.p || kdf.dkLen < MIN_KDF.dkLen) {
+    throw new Error("vault header requests weaker key derivation than this build accepts");
+  }
   return bytes(
     scrypt(new TextEncoder().encode(password.normalize("NFKC")), salt, {
-      N: KDF_PARAMS.N,
-      r: KDF_PARAMS.r,
-      p: KDF_PARAMS.p,
-      dkLen: KDF_PARAMS.dkLen,
+      N: kdf.N,
+      r: kdf.r,
+      p: kdf.p,
+      dkLen: kdf.dkLen,
     }),
   );
 }
@@ -77,7 +98,7 @@ async function open(key: CryptoKey, iv: Bytes, ct: Bytes, aad: Bytes): Promise<B
 export async function createVault(password: string): Promise<{ header: VaultHeader; dek: Bytes }> {
   const salt = random(SALT_BYTES);
   const dek = random(32);
-  const kek = await aesKey(deriveKek(password, salt), ["encrypt"]);
+  const kek = await aesKey(deriveKek(password, salt, KDF_PARAMS), ["encrypt"]);
 
   const header: VaultHeader = {
     v: VAULT_SCHEMA_VERSION,
@@ -106,17 +127,28 @@ export async function createVault(password: string): Promise<{ header: VaultHead
  */
 export async function unlockVault(header: VaultHeader, password: string): Promise<Bytes> {
   if (header.v > VAULT_SCHEMA_VERSION) throw new SchemaVersionError(header.v);
-  const kek = await aesKey(deriveKek(password, b64.decode(header.salt)), ["decrypt"]);
+  const kek = await aesKey(deriveKek(password, b64.decode(header.salt), header.kdf), ["decrypt"]);
+  // Structural problems are NOT password problems. Reporting "wrong password"
+  // for a corrupted vault sends a user with the right password to a reset flow
+  // that destroys their wallet, which is a social-engineering step away from
+  // data loss.
+  let iv: Bytes;
+  let ct: Bytes;
   try {
-    return await open(
-      kek,
-      b64.decode(header.wrap.iv),
-      b64.decode(header.wrap.ct),
-      canonicalHeaderBytes(header),
-    );
+    iv = b64.decode(header.wrap.iv);
+    ct = b64.decode(header.wrap.ct);
   } catch {
-    // Also fires on a tampered header, since the header is the AAD. We do not
-    // distinguish: telling an attacker which of the two failed helps them.
+    throw new CorruptVaultError("the vault header is not valid base64");
+  }
+  if (iv.length !== IV_BYTES) throw new CorruptVaultError("the vault header has a malformed IV");
+  if (ct.length < 33) throw new CorruptVaultError("the wrapped key is truncated");
+
+  try {
+    return await open(kek, iv, ct, canonicalHeaderBytes(header));
+  } catch {
+    // A tag failure past the structural checks is either a wrong password or a
+    // tampered header, and we deliberately do not distinguish those two:
+    // telling an attacker which one failed is a free oracle.
     throw new WrongPasswordError();
   }
 }
@@ -154,7 +186,7 @@ export async function changePassword(
     wrap: { iv: b64.encode(iv), ct: "" },
     aadAlg: "canonical-json-v1",
   };
-  const kek = await aesKey(deriveKek(newPassword, salt), ["encrypt"]);
+  const kek = await aesKey(deriveKek(newPassword, salt, KDF_PARAMS), ["encrypt"]);
   const ct = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv: iv, additionalData: canonicalHeaderBytes(next) },
     kek,

@@ -29,6 +29,13 @@ export interface KdfParams {
 /** OWASP's second-choice ladder, top rung. Measured at ~250 ms in V8. */
 export const KDF_PARAMS: KdfParams = { id: "scrypt", N: 131072, r: 8, p: 1, dkLen: 32 };
 
+/**
+ * The weakest parameters we will ever honour from a stored header. Existing
+ * vaults keep their own parameters so raising KDF_PARAMS does not lock anyone
+ * out, but nothing below this floor is accepted.
+ */
+export const MIN_KDF: KdfParams = { id: "scrypt", N: 1 << 15, r: 8, p: 1, dkLen: 32 };
+
 export const SALT_BYTES = 16;
 /** 12 bytes exactly: AES-GCM uses a 96-bit IV directly as the counter block. */
 export const IV_BYTES = 12;
@@ -81,11 +88,21 @@ export const b64 = {
  * Named and versioned via `aadAlg` so it can be migrated.
  */
 export function canonicalHeaderBytes(h: VaultHeader): Bytes {
+  // JSON.stringify on each field, not raw interpolation. Base64 and the fixed
+  // enum cannot contain a quote today, but a header is untrusted input and the
+  // AAD must be unambiguous by construction rather than by luck: two distinct
+  // headers must never serialise to the same bytes.
+  const str = (v: string) => JSON.stringify(v);
+  const num = (v: number) => {
+    if (!Number.isSafeInteger(v)) throw new Error("vault header contains a non-integer parameter");
+    return String(v);
+  };
   const canonical =
-    `{"v":${h.v},` +
-    `"kdf":{"id":"${h.kdf.id}","N":${h.kdf.N},"r":${h.kdf.r},"p":${h.kdf.p},"dkLen":${h.kdf.dkLen}},` +
-    `"salt":"${h.salt}",` +
-    `"wrapIv":"${h.wrap.iv}",` +
-    `"aadAlg":"${h.aadAlg}"}`;
+    `{"v":${num(h.v)},` +
+    `"kdf":{"id":${str(h.kdf.id)},"N":${num(h.kdf.N)},"r":${num(h.kdf.r)},` +
+    `"p":${num(h.kdf.p)},"dkLen":${num(h.kdf.dkLen)}},` +
+    `"salt":${str(h.salt)},` +
+    `"wrapIv":${str(h.wrap.iv)},` +
+    `"aadAlg":${str(h.aadAlg)}}`;
   return new TextEncoder().encode(canonical) as Bytes;
 }

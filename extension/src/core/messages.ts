@@ -9,8 +9,12 @@ export interface PublicBalance {
   id: string;
   code: string;
   issuer?: string;
-  /** Decimal string. Parsed to stroops on receipt. */
+  /** SPENDABLE amount, decimal string. For native XLM this excludes the reserve. */
   amount: string;
+  /** Full balance including anything locked. Present for native only. */
+  total?: string;
+  /** Protocol-locked reserve. Present for native only. */
+  reserved?: string;
   authorized: boolean;
 }
 

@@ -58,13 +58,28 @@ describe("the header is AAD, so tampering is an authentication failure", () => {
     await expect(unlockVault(tampered, PW)).rejects.toBeInstanceOf(SchemaVersionError);
   });
 
-  it("refuses weakened KDF parameters rather than silently accepting them", async () => {
+  it("refuses weakened KDF parameters by name, not as a wrong password", async () => {
+    // Reporting this as "wrong password" would send a user with the correct
+    // password toward a reset that destroys their wallet.
     const { header } = await createVault(PW);
-    const weakened: VaultHeader = {
-      ...header,
-      kdf: { ...KDF_PARAMS, N: 1024 },
-    };
-    await expect(unlockVault(weakened, PW)).rejects.toBeInstanceOf(WrongPasswordError);
+    const weakened: VaultHeader = { ...header, kdf: { ...KDF_PARAMS, N: 1024 } };
+    await expect(unlockVault(weakened, PW)).rejects.toThrow(/weaker key derivation/);
+  });
+
+  it("honours the header's own KDF parameters, so raising the default is not a lockout", async () => {
+    // A vault created under today's parameters must keep opening after
+    // KDF_PARAMS is raised, which is why deriveKek reads the header.
+    const { header, dek } = await createVault(PW);
+    const opened = await unlockVault(header, PW);
+    expect(Array.from(opened)).toEqual(Array.from(dek));
+    expect(header.kdf.N).toBe(KDF_PARAMS.N);
+  });
+
+  it("rejects a corrupted header as damage, not as a wrong password", async () => {
+    const { header } = await createVault(PW);
+    await expect(
+      unlockVault({ ...header, wrap: { ...header.wrap, iv: "!!!" } }, PW),
+    ).rejects.toThrow(/damaged|malformed|not valid base64/);
   });
 
   it("refuses a swapped salt", async () => {
@@ -159,5 +174,39 @@ describe("password normalisation", () => {
     // stranding a user whose keyboard emits the other form.
     const { header } = await createVault("café");
     await expect(unlockVault(header, "café")).resolves.toBeDefined();
+  });
+});
+
+describe("AAD canonicalisation is unambiguous (audit M6)", () => {
+  it("escapes field values rather than interpolating them raw", () => {
+    // Two headers that differ only in where a quote-like character sits must
+    // not serialise to the same AAD. Raw interpolation could let a crafted
+    // field close one JSON string and open another.
+    const base = {
+      v: 1,
+      kdf: KDF_PARAMS,
+      wrap: { iv: b64.encode(new Uint8Array(12)), ct: "" },
+      aadAlg: "canonical-json-v1" as const,
+    };
+    const a = canonicalHeaderBytes({ ...base, salt: 'x","wrapIv":"y' } as VaultHeader);
+    const b = canonicalHeaderBytes({
+      ...base,
+      salt: "x",
+      wrap: { iv: "y", ct: "" },
+    } as VaultHeader);
+    expect(a).not.toEqual(b);
+    // And the result is still parseable JSON, which raw interpolation would break.
+    expect(() => JSON.parse(new TextDecoder().decode(a))).not.toThrow();
+  });
+
+  it("rejects a non-integer numeric parameter instead of emitting invalid JSON", () => {
+    const bad = {
+      v: 1,
+      kdf: { ...KDF_PARAMS, N: 1.5 },
+      salt: b64.encode(new Uint8Array(16)),
+      wrap: { iv: b64.encode(new Uint8Array(12)), ct: "" },
+      aadAlg: "canonical-json-v1" as const,
+    };
+    expect(() => canonicalHeaderBytes(bad as VaultHeader)).toThrow(/non-integer/);
   });
 });
