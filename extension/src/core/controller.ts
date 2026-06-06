@@ -163,6 +163,12 @@ export class WalletController {
   }
 
   async setNetwork(network: NetworkId): Promise<WalletStatus> {
+    // Mainnet has no host permission in the manifest yet, so every RPC call
+    // would fail with an opaque network error. Refuse the switch instead of
+    // letting the wallet look broken.
+    if (network === "mainnet") {
+      throw new Error("Pocket is testnet-only in this build.");
+    }
     this.network = network;
     await writeLocal(KEYS.settings, { network });
     return this.status();

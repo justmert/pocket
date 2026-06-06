@@ -68,13 +68,20 @@ describe("SEP-0005 derivation, against the SEP's own vectors", () => {
     });
   }
 
-  it("hardens every level", () => {
-    // SLIP-0010 defines no non-hardened derivation for ed25519, so an
-    // implementation that forgot to harden would produce different keys.
-    // Deriving index 0 and index 0|HARDENED must therefore agree.
-    const a = deriveRawSeed(seed, 0);
-    const b = deriveRawSeed(seed, 0x80000000);
-    expect(Buffer.from(a).toString("hex")).toBe(Buffer.from(b).toString("hex"));
+  it("rejects an out-of-range index instead of aliasing it", () => {
+    // Hardening is applied unconditionally, so a caller passing an
+    // already-hardened index would silently get account 0's key. Reject rather
+    // than alias: deriving the wrong account is unrecoverable once registered.
+    expect(() => deriveRawSeed(seed, 0x80000000)).toThrow(/\[0, 2\^31\)/);
+    expect(() => deriveRawSeed(seed, -1)).toThrow();
+    expect(() => deriveRawSeed(seed, 1.5)).toThrow();
+  });
+
+  it("hardens every level, per SLIP-0010", () => {
+    // SLIP-0010 defines no non-hardened derivation for ed25519, so every level
+    // must be hardened. The published vectors below are the real proof of this:
+    // an unhardened implementation cannot reproduce them.
+    expect(deriveEd25519(seed, 0).publicKey()).toBe(T1.accounts[0]![0]);
   });
 
   it("gives each account index a distinct key", () => {

@@ -112,6 +112,9 @@ export function minimumBalance(
 
 /** Format stroops for display. Never used for arithmetic. */
 export function formatAmount(raw: bigint, decimals = 7): string {
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 7) {
+    throw new Error(`decimals must be an integer in [0, 7], got ${decimals}`);
+  }
   const neg = raw < 0n;
   const abs = neg ? -raw : raw;
   const whole = abs / STROOPS_PER_UNIT;

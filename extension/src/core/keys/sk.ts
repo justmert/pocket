@@ -63,6 +63,14 @@ export async function deriveSk(
   addrF: bigint,
   acctF: bigint,
 ): Promise<SkDerivation> {
+  // SDK.md 5.1 admits exactly two forms. A truncated, padded or empty root
+  // derives a usable but WRONG sk with no complaint, and `register` being
+  // single-use makes that unrepairable.
+  if (root.length !== 64 && root.length !== 32) {
+    throw new Error(
+      `root must be a 64-byte SEP-0053 signature or a 32-byte raw root, got ${root.length} bytes`,
+    );
+  }
   const salt = new TextEncoder().encode(SK_LABEL);
   const addrBytes = toBytesBE(addrF);
   const acctBytes = toBytesBE(acctF);

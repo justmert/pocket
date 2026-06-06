@@ -102,7 +102,7 @@ export async function createVault(password: string): Promise<{ header: VaultHead
 
   const header: VaultHeader = {
     v: VAULT_SCHEMA_VERSION,
-    kdf: KDF_PARAMS,
+    kdf: { ...KDF_PARAMS },
     salt: b64.encode(salt),
     wrap: { iv: "", ct: "" },
     aadAlg: "canonical-json-v1",
@@ -181,7 +181,7 @@ export async function changePassword(
   const iv = random(IV_BYTES);
   const next: VaultHeader = {
     v: VAULT_SCHEMA_VERSION,
-    kdf: KDF_PARAMS,
+    kdf: { ...KDF_PARAMS },
     salt: b64.encode(salt),
     wrap: { iv: b64.encode(iv), ct: "" },
     aadAlg: "canonical-json-v1",

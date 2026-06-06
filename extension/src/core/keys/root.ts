@@ -55,6 +55,12 @@ export function signerRoot(keypair: Keypair, contractId: string, accountId: stri
   const digest = sep53Digest(buildRootMessage(contractId, accountId));
   const sig = new Uint8Array(keypair.sign(Buffer.from(digest)));
   if (sig.length !== 64) throw new Error("expected a 64-byte ed25519 signature");
+  // SDK.md 5.2 makes verification mandatory. For a local deterministic keypair
+  // this is belt-and-braces, but it costs nothing and it catches a corrupted
+  // keypair before the wrong sk gets registered, which cannot be undone.
+  if (!keypair.verify(Buffer.from(digest), Buffer.from(sig))) {
+    throw new Error("the signer produced a signature that does not verify against its own key");
+  }
   return sig;
 }
 

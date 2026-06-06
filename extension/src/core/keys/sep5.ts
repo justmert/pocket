@@ -37,6 +37,11 @@ function derive(node: Node, index: number): Node {
 
 /** Raw 32-byte ed25519 seed for account `index` on m/44'/148'/index'. */
 export function deriveRawSeed(seed: Uint8Array, index: number): Uint8Array {
+  // Without this, index 0 and index 2^31 alias to the same key, and a negative
+  // or fractional index wraps silently to some other account.
+  if (!Number.isInteger(index) || index < 0 || index >= 0x80000000) {
+    throw new Error(`account index must be an integer in [0, 2^31), got ${index}`);
+  }
   let node = master(seed);
   for (const level of [44, 148, index]) node = derive(node, level);
   return node.key;
