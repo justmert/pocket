@@ -1,0 +1,34 @@
+[workspace]
+resolver = "2"
+members = ["token", "verifier", "auditor"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+# No experimental_spec_shaking_v2: it requires building through
+# `stellar contract build` with stellar-cli 25.2.0+, and we build with cargo so
+# the artifact is reproducible from the toolchain alone.
+soroban-sdk = { version = "27.0.2" }
+
+# The confidential token, access-control and macro crates are consumed as git
+# dependencies from OpenZeppelin's feature branch: they are not on crates.io.
+# Pinned to a rev rather than a branch so a force-push upstream cannot silently
+# change what we build. Bumping this rev is a protocol change and must be
+# accompanied by re-reproducing the verification keys.
+stellar-tokens = { git = "https://github.com/OpenZeppelin/stellar-contracts", rev = "219c560f7f5a44195457943d79485cc6a527dfca" }
+stellar-access = { git = "https://github.com/OpenZeppelin/stellar-contracts", rev = "219c560f7f5a44195457943d79485cc6a527dfca" }
+stellar-macros = { git = "https://github.com/OpenZeppelin/stellar-contracts", rev = "219c560f7f5a44195457943d79485cc6a527dfca" }
+stellar-contract-utils = { git = "https://github.com/OpenZeppelin/stellar-contracts", rev = "219c560f7f5a44195457943d79485cc6a527dfca" }
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
