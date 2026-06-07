@@ -52,6 +52,8 @@ pub enum RegistryError {
     NotKeyOwner = 1,
     /// No such auditor_id has been registered.
     UnknownAuditorId = 2,
+    /// The trait's caller-chosen-id form is closed. Use `register` or `rotate`.
+    UseAllocatingRegister = 3,
 }
 
 #[contract]
@@ -116,5 +118,18 @@ fn panic_with(e: &Env, err: RegistryError) -> ! {
 // `get_key` comes from the trait's default implementation. The token contract
 // calls it during verification and reverts if the id does not resolve to a
 // valid, canonical, on-curve, non-identity point.
+//
+// The trait's two mutation methods take a caller-CHOSEN auditor_id, which
+// collides with AuditorAlreadyRegistered and leaves the loser of a race with no
+// way to recover the id. Ours allocate instead, so the trait forms are closed
+// off and callers are pointed at `register` / `rotate` above.
 #[contractimpl(contracttrait)]
-impl ConfidentialAuditor for PocketAuditorRegistry {}
+impl ConfidentialAuditor for PocketAuditorRegistry {
+    fn register_key(e: &Env, _id: u32, _point: BytesN<64>, _op: Address) {
+        panic_with(e, RegistryError::UseAllocatingRegister)
+    }
+
+    fn rotate_key(e: &Env, _id: u32, _point: BytesN<64>, _op: Address) {
+        panic_with(e, RegistryError::UseAllocatingRegister)
+    }
+}

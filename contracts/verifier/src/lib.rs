@@ -22,10 +22,18 @@
 //! wrapper, which means every user re-registers. That is the correct cost.
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, Bytes, Env, Vec};
+use soroban_sdk::{contract, contracterror, contractimpl, panic_with_error, Address, Bytes, Env, Vec};
 use stellar_tokens::confidential::verifier::{
     storage as verifier, CircuitType, ConfidentialVerifier,
 };
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum PocketVerifierError {
+    /// Verification keys are set once at construction and can never change.
+    KeysAreImmutable = 1,
+}
 
 #[contract]
 pub struct PocketConfidentialVerifier;
@@ -57,8 +65,20 @@ impl PocketConfidentialVerifier {
 }
 
 // `verify_proof` and `get_verification_key` come from the trait's default
-// implementations, which run the UltraHonk backend. We override nothing: the
-// registration methods are deliberately absent, so the trait's defaults are the
-// entire surface.
+// implementations, which run the UltraHonk backend.
+//
+// The two mutation methods have no default, so the trait forces us to write
+// them. Both refuse unconditionally. That is the point: a verification key not
+// corresponding to the audited circuit verifies FORGED proofs, and nothing in
+// the contract can detect a wrong replacement, so there is no caller and no
+// role that should be able to reach these.
 #[contractimpl(contracttrait)]
-impl ConfidentialVerifier for PocketConfidentialVerifier {}
+impl ConfidentialVerifier for PocketConfidentialVerifier {
+    fn register_verification_key(e: &Env, _c: CircuitType, _k: Bytes, _op: Address) {
+        panic_with_error!(e, PocketVerifierError::KeysAreImmutable)
+    }
+
+    fn update_verification_key(e: &Env, _c: CircuitType, _k: Bytes, _op: Address) {
+        panic_with_error!(e, PocketVerifierError::KeysAreImmutable)
+    }
+}

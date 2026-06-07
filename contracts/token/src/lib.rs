@@ -26,8 +26,12 @@
 //! Testnet only.
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, Address, Env};
-use stellar_tokens::confidential::{storage as token_storage, ConfidentialToken};
+// The trait's generated impl references these in its signatures, so they must
+// be in scope even though this file names none of them directly.
+use soroban_sdk::{contract, contractimpl, Address, Bytes, Env};
+use stellar_tokens::confidential::{
+    storage as token_storage, ConfidentialAccount, ConfidentialToken, NoHooks, SpenderDelegation,
+};
 
 #[contract]
 pub struct PocketConfidentialToken;
@@ -60,5 +64,5 @@ impl ConfidentialToken for PocketConfidentialToken {
     // No hooks. A vanilla deployment pays zero overhead for the compliance
     // extension points, and adding one later means a new deployment, which
     // means every user re-registers. Deliberate.
-    type Hooks = ();
+    type Hooks = NoHooks;
 }
