@@ -40,11 +40,20 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
     horizonUrl: "https://horizon-testnet.stellar.org",
     friendbotUrl: "https://friendbot.stellar.org",
     nativeSac: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-    // Populated when we deploy our own wrappers in phase 5. The upstream demo's
-    // testnet deployment is deliberately not listed: it holds pre-audit
-    // verification keys, so building against it would mean implementing five
-    // known audit findings.
-    confidential: [],
+    // Our own deployment. The upstream demo's testnet instance is deliberately
+    // not used: it holds PRE-AUDIT verification keys, so building against it
+    // would mean implementing five known audit findings including a register
+    // replay. Ours carry the VKs from OpenZeppelin's post-audit branch, whose
+    // hashes are recorded in resources/deployment-testnet.json.
+    confidential: [
+      {
+        token: "CDMXZEFOM5DN2GSHQKNOOW242RJZGCEM5LOOAPGRQE35GGHB7ALDK2Y6",
+        verifier: "CBERRYPR34G2MB3EOUNO3JGWOAWFVBUPINJ42JP7XVVB3AHKIPVPPWYH",
+        auditor: "CDE5JETGXV7TOUUDQPUTGLJB6TCUUIIWJJTLWFX4RNH36XABKCEPNTEV",
+        underlying: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+        symbol: "XLM",
+      },
+    ],
   },
   mainnet: {
     id: "mainnet",
