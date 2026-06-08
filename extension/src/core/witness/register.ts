@@ -16,6 +16,7 @@
 import { vkFromSk, spendingPublicKey, publicViewingKey } from "../crypto/derive";
 import { R } from "../crypto/field";
 import { pointSlots, type HolderKeys, type Witness } from "./types";
+import { assertFr } from "./guards";
 
 export interface RegisterInputs {
   sk: bigint;
@@ -29,6 +30,8 @@ export function buildRegisterWitness(input: RegisterInputs): Witness & { keys: H
   const { sk, addrF, acctF } = input;
 
   if (sk <= 0n || sk >= R) throw new Error("sk must be a nonzero canonical F_r element (R4)");
+  assertFr(addrF, "addr_f");
+  assertFr(acctF, "acct_f");
   const vk = vkFromSk(sk, addrF);
   if (vk === 0n) throw new Error("vk is zero; this sk cannot be registered (R5)");
 

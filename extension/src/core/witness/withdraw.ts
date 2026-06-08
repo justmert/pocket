@@ -30,9 +30,9 @@ import {
 import { commit, scalarMul, H, equals, type Point } from "../crypto/grumpkin";
 import { R } from "../crypto/field";
 import { pointSlots, type Opening, type Witness } from "./types";
+import { MAX_AMOUNT, assertFr, assertAmount, assertPoint, assertSpendableBlinding } from "./guards";
 
-/** Amounts are constrained to the SEP-41 non-negative i128 range. */
-export const MAX_AMOUNT = 1n << 127n;
+export { MAX_AMOUNT };
 
 export interface WithdrawInputs {
   sk: bigint;
@@ -52,11 +52,15 @@ export interface WithdrawInputs {
 export function buildWithdrawWitness(input: WithdrawInputs): Witness {
   const { sk, addrF, spendable, amount, sigma, auditorKey, onChainSpendable } = input;
 
+  // Reject at our own boundary rather than deferring to the contract.
   if (sk <= 0n || sk >= R) throw new Error("sk must be a nonzero canonical F_r element");
-  if (amount < 0n || amount >= MAX_AMOUNT) throw new Error("amount is outside [0, 2^127) (W4)");
-  if (spendable.value < 0n || spendable.value >= MAX_AMOUNT) {
-    throw new Error("balance is outside [0, 2^127) (W4)");
-  }
+  assertFr(addrF, "addr_f");
+  assertFr(sigma, "sigma");
+  assertPoint(auditorKey, "auditor key");
+  assertPoint(onChainSpendable, "on-chain spendable commitment");
+  assertAmount(amount, "amount");
+  assertAmount(spendable.value, "spendable balance");
+  assertSpendableBlinding(spendable.randomness);
   if (amount > spendable.value) throw new Error("insufficient spendable balance (W4)");
 
   const vk = vkFromSk(sk, addrF);

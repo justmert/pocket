@@ -34,9 +34,9 @@ import {
 } from "../crypto/derive";
 import { spongeSqueeze2 } from "../crypto/poseidon";
 import { DOMAIN } from "../crypto/domain";
-import { commit, scalarMul, H, equals, type Point } from "../crypto/grumpkin";
+import { commit, scalarMul, H, equals, isOnCurve, type Point } from "../crypto/grumpkin";
 import { R } from "../crypto/field";
-import { MAX_AMOUNT } from "./withdraw";
+import { MAX_AMOUNT, assertFr, assertAmount, assertPoint, assertSpendableBlinding } from "./guards";
 import { pointSlots, type Opening, type Witness } from "./types";
 
 const addFr = (a: bigint, b: bigint): bigint => (a + b) % R;
@@ -70,7 +70,17 @@ export function buildTransferWitness(input: TransferInputs): Witness {
   } = input;
 
   if (sk <= 0n || sk >= R) throw new Error("sk must be a nonzero canonical F_r element");
-  if (amount < 0n || amount >= MAX_AMOUNT) throw new Error("amount is outside [0, 2^127) (T4)");
+  assertFr(addrF, "addr_f");
+  assertFr(sigma, "sigma");
+  assertPoint(recipientPvk, "recipient public viewing key");
+  assertPoint(recipientAuditorKey, "recipient auditor key");
+  assertPoint(senderAuditorKey, "sender auditor key");
+  assertPoint(onChainSpendable, "on-chain spendable commitment");
+  assertAmount(amount, "amount");
+  // T4 constrains v as well as v_transfer; withdraw already checked both and
+  // transfer must not be the odd one out.
+  assertAmount(spendable.value, "spendable balance");
+  assertSpendableBlinding(spendable.randomness);
   if (amount > spendable.value) throw new Error("insufficient spendable balance (T4)");
 
   const vk = vkFromSk(sk, addrF);
@@ -156,17 +166,49 @@ export function buildTransferWitness(input: TransferInputs): Witness {
 /**
  * What the recipient does with an inbound transfer: recompute the shared scalar
  * from their own vk and the published R_e, then unmask the amount and blinding.
- * The result is a full opening they can spend.
+ *
+ * Returns null when this transfer was not addressed to this viewing key.
+ *
+ * The null case is not an edge case, it is the common one: a wallet scans EVERY
+ * transfer event on the contract and cannot know in advance which are its own.
+ * Without the checks below, every event yields a plausible-looking opening, and
+ * crediting one that is not ours inflates the receiving accumulator by up to
+ * 2^253. That surfaces much later as a consistency-check divergence whose cause
+ * is hundreds of events in the past.
+ *
+ * `cTransfer` is the published commitment, and re-opening it is the ONLY signal
+ * that the decryption was real. Nothing on chain marks an event as ours.
  */
 export function decryptIncomingTransfer(
   vk: bigint,
   RE: Point,
   vTilde: bigint,
   sigma: bigint,
-): Opening {
-  const s = sharedScalar(vk, RE);
+  cTransfer: Point,
+): Opening | null {
+  // A hostile or corrupt R_e must not reach scalar multiplication: noble's
+  // fromAffine does not validate, and multiplying an off-curve point returns a
+  // point rather than throwing.
+  if (!isOnCurve(RE)) return null;
+  if (RE.x === 0n && RE.y === 0n) return null;
+
+  let s: bigint;
+  try {
+    s = sharedScalar(vk, RE);
+  } catch {
+    // ECDH refuses a degenerate shared secret.
+    return null;
+  }
+
   const mask = encryptAmount(0n, s, sigma);
   const value = (vTilde - mask + R) % R;
   const randomness = transferBlinding(s, sigma);
+
+  // Every legitimate amount is in [0, 2^127) by circuit constraint T4. A
+  // near-uniform field element means this was somebody else's transfer.
+  if (value >= MAX_AMOUNT) return null;
+  // And the opening must actually open the published commitment.
+  if (!equals(commit(value, randomness), cTransfer)) return null;
+
   return { value, randomness };
 }

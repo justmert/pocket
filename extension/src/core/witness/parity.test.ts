@@ -279,17 +279,49 @@ describe.skipIf(!available)("transfer circuit parity", () => {
     // The anti-poisoning constraint forces the blinding to be a function of the
     // ECDH secret, so the recipient can recompute it. Without T7 a malicious
     // sender could hand over a commitment nobody can open.
-    const opening = decryptIncomingTransfer(
-      recipientVk,
-      { x: w.publicInputs[15] as bigint, y: w.publicInputs[16] as bigint },
-      w.publicInputs[17] as bigint,
-      w.publicInputs[19] as bigint,
-    );
-    expect(opening.value).toBe(100n);
-    // And that opening actually opens the published transfer commitment.
-    expect(commit(opening.value, opening.randomness)).toEqual({
-      x: w.publicInputs[13] as bigint,
-      y: w.publicInputs[14] as bigint,
-    });
+    const RE = { x: w.publicInputs[15] as bigint, y: w.publicInputs[16] as bigint };
+    const cTransfer = { x: w.publicInputs[13] as bigint, y: w.publicInputs[14] as bigint };
+    const vTilde = w.publicInputs[17] as bigint;
+    const sigma = w.publicInputs[19] as bigint;
+
+    const opening = decryptIncomingTransfer(recipientVk, RE, vTilde, sigma, cTransfer);
+    expect(opening).not.toBeNull();
+    expect(opening!.value).toBe(100n);
+    expect(commit(opening!.value, opening!.randomness)).toEqual(cTransfer);
+  });
+
+  it("returns null for a transfer addressed to someone else", () => {
+    // The common case when scanning: a wallet sees every transfer on the
+    // contract and cannot know in advance which are its own. Crediting one that
+    // is not ours inflates the receiving accumulator by up to 2^253.
+    const RE = { x: w.publicInputs[15] as bigint, y: w.publicInputs[16] as bigint };
+    const cTransfer = { x: w.publicInputs[13] as bigint, y: w.publicInputs[14] as bigint };
+    expect(
+      decryptIncomingTransfer(
+        0xfacen, // not the recipient's vk
+        RE,
+        w.publicInputs[17] as bigint,
+        w.publicInputs[19] as bigint,
+        cTransfer,
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null for a malformed ephemeral point", () => {
+    const cTransfer = { x: w.publicInputs[13] as bigint, y: w.publicInputs[14] as bigint };
+    for (const bad of [
+      { x: 1n, y: 1n },
+      { x: 0n, y: 0n },
+    ]) {
+      expect(
+        decryptIncomingTransfer(
+          recipientVk,
+          bad,
+          w.publicInputs[17] as bigint,
+          w.publicInputs[19] as bigint,
+          cTransfer,
+        ),
+      ).toBeNull();
+    }
   });
 });
