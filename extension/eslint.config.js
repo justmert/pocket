@@ -11,9 +11,17 @@ export default tseslint.config(
     },
     rules: {
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
-      // amounts, openings and blinding factors must never reach a log.
-      // spec 18.8: diagnostics are built from public inputs only.
+      // Amounts, openings and blinding factors must never reach a log, a
+      // telemetry sink, or a crash report. Spec 18.8 and SDK.md 13: a proof
+      // failure is diagnosable from public inputs alone, so diagnostics are
+      // built from those and never from the witness.
       "no-console": ["error", { allow: ["warn", "error"] }],
     },
+  },
+  {
+    // Tests are not shipped, and reporting a measured value is the point of a
+    // live test. The rule above still governs everything that reaches a user.
+    files: ["**/*.test.ts", "e2e/**"],
+    rules: { "no-console": "off" },
   },
 );
