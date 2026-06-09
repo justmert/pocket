@@ -20,7 +20,11 @@ import {
 import { buildPayment } from "./chain/payment";
 import { submitAndConfirm, pollToTerminal, type SubmitOutcome } from "./chain/submit";
 import { parseAddress } from "./chain/address";
-import type { PublicBalance, WalletStatus, TransferSummary } from "./messages";
+import type { PublicBalance, WalletStatus, TransferSummary, PrivatePocket } from "./messages";
+import { readConfidentialAccount } from "./chain/confidential";
+import { readAccountTtl, type TtlStatus } from "./chain/ttl";
+import { balancesOf, verifyAgainstChain } from "./private";
+import type { Opening } from "./witness/types";
 import { deriveEd25519 } from "./keys/sep5";
 
 /** 0.5 XLM. A network parameter, currently identical on testnet and mainnet. */
@@ -77,8 +81,147 @@ export class WalletController {
       locked: session === null,
       network: this.network,
       address: session?.address,
-      // Set once a confidential account exists for this address. Phase 6.
-      privateEnabled: false,
+      privateEnabled: this.privateReady,
+      privateAvailable: NETWORKS[this.network].confidential.length > 0,
+    };
+  }
+
+  /** Cached across calls so `status` stays cheap; refreshed by privatePocket(). */
+  private privateReady = false;
+
+  /**
+   * The private pocket's state for this account.
+   *
+   * Every branch that is not "ready" is a state the user must be told about
+   * plainly. A diverged wallet in particular MUST NOT be spent from and MUST
+   * NOT silently resync: a silent resync would mask exactly the archive
+   * integrity failure the design relies on catching.
+   */
+  async privatePocket(): Promise<PrivatePocket> {
+    const { address } = requireSession();
+    const cfg = NETWORKS[this.network].confidential[0];
+    if (!cfg) {
+      return { state: "unavailable", message: "No private pocket is deployed on this network." };
+    }
+
+    // A brand-new wallet has no ledger entry at all. That is a normal state,
+    // not a failure: the private pocket is simply unregistered, and the user
+    // needs to fund the account before anything else can happen.
+    let source;
+    try {
+      source = await this.server().getAccount(address);
+    } catch {
+      this.privateReady = false;
+      return {
+        state: "unfunded",
+        message:
+          "This account does not exist on the network yet. Receive some XLM first, " +
+          "then you can set up a private pocket.",
+      };
+    }
+
+    const account = await readConfidentialAccount(
+      this.server(),
+      cfg.token,
+      address,
+      source,
+      NETWORKS[this.network].passphrase,
+    );
+
+    if (!account) {
+      this.privateReady = false;
+      const ttl = await readAccountTtl(this.server(), cfg.token, address, this.network);
+      // An archived account reads as absent, so distinguish by whether we have
+      // ever seen it registered.
+      if (ttl.kind === "archived") {
+        return {
+          state: "archived",
+          message:
+            "Your private pocket is dormant. Reactivating it costs a small fee and restores access.",
+        };
+      }
+      return {
+        state: "unregistered",
+        message:
+          "Setting up a private pocket is a one-time, publicly visible transaction. " +
+          "It permanently binds an auditor that can read your amounts.",
+      };
+    }
+
+    this.privateReady = true;
+    const ttl = await readAccountTtl(this.server(), cfg.token, address, this.network);
+
+    // Openings live in the encrypted vault; without them the commitments on
+    // chain are visible but unspendable, which is precisely why that store is
+    // not an evictable cache.
+    const stored = await this.readOpenings(address, cfg.token);
+    if (!stored) {
+      return {
+        state: "needsRecovery",
+        auditorId: account.auditorId,
+        ...ttlFields(ttl),
+        message:
+          "This account has a private pocket but this device has no record of its balances. " +
+          "Recovery replays them from the event history.",
+      };
+    }
+
+    const check = verifyAgainstChain(stored, account);
+    if (!check.ok) {
+      return {
+        state: "diverged",
+        auditorId: account.auditorId,
+        ...ttlFields(ttl),
+        message:
+          `Local records for the ${check.which} balance do not match the ledger. ` +
+          "Pocket will not spend from this state. A full replay can rebuild it.",
+      };
+    }
+
+    const b = balancesOf({
+      kind: "ready",
+      spendable: stored.spendable,
+      receiving: stored.receiving,
+      auditorId: account.auditorId,
+      syncedThrough: stored.syncedThrough,
+    })!;
+
+    return {
+      state: "ready",
+      spendable: formatAmount(b.spendable),
+      receiving: formatAmount(b.receiving),
+      mergeAvailable: b.mergeAvailable,
+      auditorId: account.auditorId,
+      ...ttlFields(ttl),
+    };
+  }
+
+  /** Openings for this (account, deployment). Encrypted at rest under the DEK. */
+  private async readOpenings(
+    address: string,
+    token: string,
+  ): Promise<{ spendable: Opening; receiving: Opening; syncedThrough: number } | null> {
+    const { dek } = requireSession();
+    const sealed = await readLocal<{ v: number; iv: string; ct: string }>(
+      `${KEYS.openings}.${token}.${address}`,
+    );
+    if (!sealed) return null;
+    const { openPayload } = await import("./vault/vault");
+    const raw = await openPayload<{
+      spendable: { value: string; randomness: string };
+      receiving: { value: string; randomness: string };
+      syncedThrough: number;
+    }>(dek, sealed);
+    return {
+      spendable: {
+        value: BigInt(raw.spendable.value),
+        randomness: BigInt(raw.spendable.randomness),
+      },
+      receiving: {
+        value: BigInt(raw.receiving.value),
+        randomness: BigInt(raw.receiving.randomness),
+      },
+      syncedThrough: raw.syncedThrough,
     };
   }
 
@@ -335,3 +478,11 @@ export class WalletController {
 }
 
 export { WrongPasswordError, readTrustline };
+
+/** TTL reported as a plain date, never a ledger number. */
+function ttlFields(t: TtlStatus): { expiresAt?: string; daysRemaining?: number } {
+  if (t.kind === "healthy" || t.kind === "expiring") {
+    return { expiresAt: t.expiresAt.toISOString(), daysRemaining: Math.round(t.daysRemaining) };
+  }
+  return {};
+}

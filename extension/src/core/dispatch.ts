@@ -37,6 +37,8 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
       return c.confirmPayment(msg.handle);
     case "reset":
       return c.reset(msg.password);
+    case "privatePocket":
+      return c.privatePocket();
     default: {
       // Without this, a message whose type is outside the union falls off the
       // end, resolves to undefined, and the worker answers {ok: true}. Any

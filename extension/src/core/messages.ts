@@ -18,6 +18,23 @@ export interface PublicBalance {
   authorized: boolean;
 }
 
+export interface PrivatePocket {
+  /** "unregistered" | "ready" | "diverged" | "unspendable" | "archived" */
+  state: string;
+  /** Sendable now. Decimal string. */
+  spendable?: string;
+  /** Received but not yet merged. One signature away from spendable. */
+  receiving?: string;
+  /** True when a merge would make more funds sendable. */
+  mergeAvailable?: boolean;
+  auditorId?: number;
+  /** Plain date, never a ledger number. */
+  expiresAt?: string;
+  daysRemaining?: number;
+  /** Set when the state is one the user must act on. */
+  message?: string;
+}
+
 export interface WalletStatus {
   /** No vault yet: onboarding. */
   initialised: boolean;
@@ -27,6 +44,8 @@ export interface WalletStatus {
   address?: string;
   /** True once a confidential account is registered for this address. */
   privateEnabled: boolean;
+  /** Present when this deployment has a confidential wrapper configured. */
+  privateAvailable: boolean;
 }
 
 export type WalletRequest =
@@ -39,6 +58,7 @@ export type WalletRequest =
   | { type: "buildPayment"; to: string; amount: string; assetId: string; memo?: string }
   | { type: "confirmPayment"; handle: string }
   | { type: "reset"; password: string }
+  | { type: "privatePocket" }
   | { type: "setNetwork"; network: NetworkId };
 
 export type WalletResponse<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -55,6 +75,7 @@ export interface ResponseMap {
   buildPayment: { xdr: string; summary: TransferSummary };
   confirmPayment: { hash: string; ledger: number };
   reset: void;
+  privatePocket: PrivatePocket;
   setNetwork: WalletStatus;
 }
 

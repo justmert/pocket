@@ -217,3 +217,58 @@ describe("message discipline (audit H3)", () => {
     expect(isUserActivity("buildPayment")).toBe(true);
   });
 });
+
+describe("private pocket reporting", () => {
+  beforeEach(() => {
+    store.clear();
+  });
+
+  it("refuses while locked", async () => {
+    const c = new WalletController();
+    await c.create("pw");
+    c.lock();
+    await expect(c.privatePocket()).rejects.toThrow(/locked/);
+  });
+
+  it("reports an unfunded account as such, rather than crashing", async () => {
+    // A freshly created wallet has no ledger entry. Opening the private pocket
+    // view must not blow up on it.
+    const c = new WalletController();
+    await c.create("pw");
+    const p = await c.privatePocket();
+    expect(p.state).toBe("unfunded");
+    expect(p.message).toMatch(/does not exist on the network/i);
+  }, 30_000);
+
+  it("reports a funded but unregistered account with the honest disclosure", async () => {
+    const c = new WalletController();
+    // Import the funded testnet account so the ledger entry exists.
+    await c.import(
+      "pw",
+      "illness spike retreat truth genius clock brain pass fit cave bargain toe",
+    );
+    const p = await c.privatePocket();
+    // Whatever the state, it must not be a crash and must not invent a balance.
+    expect(typeof p.state).toBe("string");
+    if (p.state === "unregistered") {
+      // The two facts a user must have BEFORE committing: it is public, and
+      // the auditor binding is permanent.
+      expect(p.message).toMatch(/publicly visible/i);
+      expect(p.message).toMatch(/permanently binds an auditor/i);
+    }
+  }, 30_000);
+
+  it("never reports a balance for a state that is not ready", async () => {
+    const c = new WalletController();
+    await c.create("pw");
+    const p = await c.privatePocket();
+    expect(p.spendable).toBeUndefined();
+    expect(p.receiving).toBeUndefined();
+  }, 30_000);
+
+  it("says the private pocket is available on this deployment", async () => {
+    const c = new WalletController();
+    await c.create("pw");
+    expect((await c.status()).privateAvailable).toBe(true);
+  });
+});

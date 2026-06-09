@@ -10,6 +10,12 @@ export const KEYS = {
   settings: "pocket.settings",
   /** A submitted transaction whose outcome we have not yet observed. */
   inFlight: "pocket.inflight",
+  /**
+   * Confidential balance openings, keyed per (deployment, account). NOT a
+   * cache: discarding these loses the receiving-side openings permanently, so
+   * they must never be evicted.
+   */
+  openings: "pocket.openings",
 } as const;
 
 export async function readLocal<T>(key: string): Promise<T | undefined> {
