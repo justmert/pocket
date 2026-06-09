@@ -1,0 +1,25 @@
+{
+  "name": "pocket-indexer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "description": "Durable archive of confidential token events. Conforms to INDEXER.md C1-C4.",
+  "scripts": {
+    "dev": "node --watch src/server.ts",
+    "start": "node src/server.ts",
+    "ingest": "node src/ingest.ts",
+    "test": "vitest run",
+    "compile": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "16.2.0",
+    "better-sqlite3": "13.0.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "24.10.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.10"
+  }
+}
