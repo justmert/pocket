@@ -11,11 +11,13 @@ export function Home({
   status,
   onLock,
   onSend,
+  onPrivate,
 }: {
   t: Theme;
   status: WalletStatus;
   onLock: () => void;
   onSend: () => void;
+  onPrivate: () => void;
 }) {
   const [balances, setBalances] = useState<PublicBalance[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -94,13 +96,19 @@ export function Home({
           </div>
         )}
 
-        <div style={{ marginTop: 26 }}>
-          <div style={{ ...text.caption, color: t.faint, marginBottom: 8 }}>PRIVATE POCKET</div>
-          <Notice t={t}>
-            Not set up yet. The private pocket hides amounts, never addresses, and needs a one-time
-            registration that is permanent and publicly visible.
-          </Notice>
-        </div>
+        {status.privateAvailable && (
+          <div style={{ marginTop: 26 }}>
+            <div style={{ ...text.caption, color: t.faint, marginBottom: 8 }}>PRIVATE POCKET</div>
+            {/* The honest framing, on the surface rather than buried in a
+                settings page: amounts are hidden, addresses never are. */}
+            <Notice t={t}>
+              Hides amounts, never addresses. Who you pay stays public on the ledger.
+            </Notice>
+            <Button t={t} variant="quiet" onClick={onPrivate}>
+              {status.privateEnabled ? "Open private pocket" : "Set up private pocket"}
+            </Button>
+          </div>
+        )}
       </div>
     </Frame>
   );

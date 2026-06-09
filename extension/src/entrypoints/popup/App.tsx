@@ -6,11 +6,12 @@ import { Onboarding } from "./ui/screens/Onboarding";
 import { Unlock } from "./ui/screens/Unlock";
 import { Home } from "./ui/screens/Home";
 import { Send } from "./ui/screens/Send";
+import { PrivatePocket } from "./ui/screens/PrivatePocket";
 import type { WalletStatus } from "../../core/messages";
 
 export function App() {
   const [status, setStatus] = useState<WalletStatus | null>(null);
-  const [view, setView] = useState<"home" | "send">("home");
+  const [view, setView] = useState<"home" | "send" | "private">("home");
   const [scheme, setScheme] = useState<Scheme>(
     window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light",
   );
@@ -46,12 +47,14 @@ export function App() {
   if (!status.initialised) return <Onboarding t={t} onDone={() => void refresh()} />;
   if (status.locked) return <Unlock t={t} onUnlocked={() => void refresh()} />;
   if (view === "send") return <Send t={t} onBack={() => setView("home")} />;
+  if (view === "private") return <PrivatePocket t={t} onBack={() => setView("home")} />;
 
   return (
     <Home
       t={t}
       status={status}
       onSend={() => setView("send")}
+      onPrivate={() => setView("private")}
       onLock={async () => {
         await call({ type: "lock" });
         await refresh();
