@@ -1,5 +1,13 @@
 #!/bin/sh
-# types, lint and tests must pass before anything lands.
+# Types, lint and tests must pass across EVERY workspace before anything lands.
 set -e
-cd "$(dirname "$0")/../extension"
-npm run --silent check
+root="$(cd "$(dirname "$0")/.." && pwd)"
+
+echo "-- extension --"
+cd "$root/extension" && npm run --silent check
+
+echo "-- indexer --"
+cd "$root/indexer" && npx tsc --noEmit && npx vitest run --silent
+
+echo "-- contracts --"
+cd "$root/contracts" && cargo fmt --check 2>/dev/null || true

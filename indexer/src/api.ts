@@ -135,7 +135,7 @@ export function latestCheckpoint(
   contractId: string,
   account: string,
   atLedger?: number,
-): { event: StoredEvent | null; complete: boolean } {
+): { event: StoredEvent | null; from_ledger: number; to_ledger: number; complete: boolean } {
   const to = atLedger ?? Number.MAX_SAFE_INTEGER;
   const row = db
     .prepare(
@@ -150,10 +150,16 @@ export function latestCheckpoint(
     .get(contractId, account, to, ...CHECKPOINT_TYPES) as StoredEvent | undefined;
 
   const bounds = coveredRange(db, contractId);
+  // Do NOT clamp the caller's bound before testing. If they ask about a ledger
+  // beyond our contiguous coverage, the honest answer is incomplete: events
+  // between our coverage and their bound could exist and we would not know.
+  const asked = atLedger ?? bounds.to;
   return {
     event: row ?? null,
+    from_ledger: bounds.from,
+    to_ledger: asked,
     // A checkpoint is only trustworthy if nothing since it could have been
     // missed, so completeness runs from the start of what we hold.
-    complete: isComplete(db, contractId, bounds.from, Math.min(to, bounds.to)),
+    complete: isComplete(db, contractId, bounds.from, asked),
   };
 }
