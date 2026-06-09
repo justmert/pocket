@@ -150,3 +150,40 @@ test("rejects a bad recipient before building anything", async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("surfaces the private pocket honestly on the home screen", async () => {
+  const { ctx, id, dir } = await launch();
+  try {
+    const page = await popup(ctx, id);
+    await onboard(page);
+
+    await expect(page.getByText("PRIVATE POCKET", { exact: true })).toBeVisible();
+    // The claim must be on the surface, not buried in a settings page.
+    await expect(page.getByText(/Hides amounts, never addresses/i)).toBeVisible();
+    await expect(page.getByText(/Who you pay stays public/i)).toBeVisible();
+    // And it must NOT claim to hide the recipient.
+    await expect(page.getByText(/recipient.*hidden|anonymous|incognito/i)).toHaveCount(0);
+  } finally {
+    await ctx.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("states what registration costs before offering the button", async () => {
+  const { ctx, id, dir } = await launch();
+  try {
+    const page = await popup(ctx, id);
+    await onboard(page);
+    await page.getByRole("button", { name: "Set up private pocket" }).click();
+
+    // A brand-new wallet is unfunded, which is a state and not a crash.
+    await expect(page.getByText(/Fund this account first|Not set up yet/)).toBeVisible({
+      timeout: 30_000,
+    });
+    // Whatever the state, no balance may be invented for it.
+    await expect(page.getByText(/^0\.0000000$/)).toHaveCount(0);
+  } finally {
+    await ctx.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
