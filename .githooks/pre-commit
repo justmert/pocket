@@ -10,4 +10,4 @@ echo "-- indexer --"
 cd "$root/indexer" && npx tsc --noEmit && npx vitest run --silent
 
 echo "-- contracts --"
-cd "$root/contracts" && cargo fmt --check 2>/dev/null || true
+cd "$root/contracts" && cargo fmt --check

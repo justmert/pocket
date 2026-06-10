@@ -22,7 +22,9 @@
 //! wrapper, which means every user re-registers. That is the correct cost.
 #![no_std]
 
-use soroban_sdk::{contract, contracterror, contractimpl, panic_with_error, Address, Bytes, Env, Vec};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, panic_with_error, Address, Bytes, Env, Vec,
+};
 use stellar_tokens::confidential::verifier::{
     storage as verifier, CircuitType, ConfidentialVerifier,
 };
