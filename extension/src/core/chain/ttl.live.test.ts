@@ -72,3 +72,32 @@ describe("keep-alive policy", () => {
     expect(SECONDS_PER_LEDGER.testnet).not.toBe(SECONDS_PER_LEDGER.mainnet);
   });
 });
+
+describe("infrastructure TTL, the systemic single point of failure", () => {
+  it("reads the verifier's instance TTL", async () => {
+    // The verifier holds every verification key in INSTANCE storage, and the
+    // library never extends it. If it archives, every confidential operation
+    // on every token pointing at it fails. We deployed it, so we watch it.
+    const { readInstanceTtl } = await import("./ttl");
+    const s = await readInstanceTtl(server, dep.verifier, "testnet");
+    expect(["healthy", "expiring"]).toContain(s.kind);
+    if (s.kind !== "archived" && s.kind !== "absent") {
+      console.log(`verifier instance TTL: ${s.daysRemaining.toFixed(1)} days`);
+    }
+  }, 30_000);
+
+  it("reads the token wrapper's instance TTL", async () => {
+    const { readInstanceTtl } = await import("./ttl");
+    const s = await readInstanceTtl(server, dep.token, "testnet");
+    expect(["healthy", "expiring"]).toContain(s.kind);
+    if (s.kind !== "archived" && s.kind !== "absent") {
+      console.log(`token instance TTL: ${s.daysRemaining.toFixed(1)} days`);
+    }
+  }, 30_000);
+
+  it("reads the auditor registry's instance TTL", async () => {
+    const { readInstanceTtl } = await import("./ttl");
+    const s = await readInstanceTtl(server, dep.auditor, "testnet");
+    expect(["healthy", "expiring"]).toContain(s.kind);
+  }, 30_000);
+});

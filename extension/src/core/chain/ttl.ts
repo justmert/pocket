@@ -102,3 +102,42 @@ export function jitteredDelayMs(baseDays: number): number {
   const jitter = Math.random() * 86_400_000;
   return Math.max(0, base - jitter);
 }
+
+/**
+ * The TTL of a CONTRACT's own instance entry.
+ *
+ * This is the systemic hazard and it is easy to overlook. The verifier holds
+ * all six verification keys in INSTANCE storage, and the module documentation
+ * states plainly that instance-TTL management is the contract developer's
+ * responsibility and that the module never calls extend_ttl on it.
+ *
+ * If the verifier's instance entry archives, EVERY confidential operation on
+ * EVERY token pointing at it fails. One expiry breaks the whole deployment.
+ * Since we deployed our own verifier, that is ours to watch.
+ */
+export async function readInstanceTtl(
+  server: rpc.Server,
+  contractId: string,
+  network: keyof typeof SECONDS_PER_LEDGER = "testnet",
+): Promise<TtlStatus> {
+  const key = xdr.LedgerKey.contractData(
+    new xdr.LedgerKeyContractData({
+      contract: Address.fromString(contractId).toScAddress(),
+      key: xdr.ScVal.scvLedgerKeyContractInstance(),
+      durability: xdr.ContractDataDurability.persistent(),
+    }),
+  );
+
+  const res = await server.getLedgerEntries(key);
+  const entry = res.entries[0];
+  if (!entry?.liveUntilLedgerSeq) return { kind: "absent" };
+  if (entry.liveUntilLedgerSeq <= res.latestLedger) return { kind: "archived" };
+
+  const secondsLeft = (entry.liveUntilLedgerSeq - res.latestLedger) * SECONDS_PER_LEDGER[network];
+  const daysRemaining = secondsLeft / 86_400;
+  const expiresAt = new Date(Date.now() + secondsLeft * 1000);
+
+  return daysRemaining <= KEEPALIVE_THRESHOLD_DAYS
+    ? { kind: "expiring", expiresAt, daysRemaining }
+    : { kind: "healthy", expiresAt, daysRemaining };
+}
