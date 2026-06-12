@@ -4,6 +4,7 @@
 // must be structured-cloneable, so amounts cross as decimal strings and are
 // parsed back to bigint stroops on arrival. Never floats.
 import type { NetworkId } from "./config";
+import type { SubmitOutcome } from "./chain/submit";
 
 export interface PublicBalance {
   id: string;
@@ -59,7 +60,36 @@ export type WalletRequest =
   | { type: "confirmPayment"; handle: string }
   | { type: "reset"; password: string }
   | { type: "privatePocket" }
+  | { type: "buildPrivateOp"; op: PrivateOpRequest }
+  | { type: "confirmPrivateOp"; handle: string }
+  | { type: "inFlight" }
+  | { type: "reconcileInFlight" }
+  | { type: "recoverFromMnemonic"; mnemonic: string; password: string }
   | { type: "setNetwork"; network: NetworkId };
+
+/** The five private-pocket operations, as the popup asks for them. */
+export type PrivateOpRequest =
+  | { kind: "register"; auditorId: number }
+  | { kind: "shield"; amount: string }
+  | { kind: "merge" }
+  | { kind: "transfer"; to: string; amount: string }
+  | { kind: "unshield"; amount: string };
+
+/**
+ * What the approval screen renders before a private operation is signed.
+ *
+ * `effects` is the whole point: every consequence stated in plain words,
+ * including which facts become public and which are permanent. §14.7 forbids
+ * blind signing, and an operation whose effects are not enumerable here should
+ * not be offered at all.
+ */
+export interface PrivateOpSummary {
+  kind: PrivateOpRequest["kind"];
+  to?: string;
+  amount?: string;
+  fee: string;
+  effects: string[];
+}
 
 export type WalletResponse<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -76,6 +106,12 @@ export interface ResponseMap {
   confirmPayment: { hash: string; ledger: number };
   reset: void;
   privatePocket: PrivatePocket;
+  /** `handle` is opaque, exactly as buildPayment's is. */
+  buildPrivateOp: { handle: string; summary: PrivateOpSummary };
+  confirmPrivateOp: { hash: string; ledger: number; followed?: string };
+  inFlight: { hash: string; maxTime: number; expired: boolean } | null;
+  reconcileInFlight: SubmitOutcome | null;
+  recoverFromMnemonic: string;
   setNetwork: WalletStatus;
 }
 

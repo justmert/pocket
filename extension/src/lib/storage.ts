@@ -16,7 +16,22 @@ export const KEYS = {
    * they must never be evicted.
    */
   openings: "pocket.openings",
+  /**
+   * This wallet's account address, in the clear.
+   *
+   * Public by nature: it is on the ledger the moment the account is funded, so
+   * storing it plainly reveals nothing. It exists so a user who has forgotten
+   * their password can still be checked against the wallet they are trying to
+   * erase, which is the only way to authorise that erase without the password.
+   */
+  publicAddress: "pocket.address",
 } as const;
+
+/** Every key holding openings, across all deployments and accounts. */
+export async function openingKeys(): Promise<string[]> {
+  const all = await chrome.storage.local.get(null);
+  return Object.keys(all).filter((k) => k.startsWith(`${KEYS.openings}.`));
+}
 
 export async function readLocal<T>(key: string): Promise<T | undefined> {
   const got = await chrome.storage.local.get(key);

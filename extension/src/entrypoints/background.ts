@@ -9,6 +9,7 @@ import type { WalletRequest, WalletResponse } from "../core/messages";
 
 const AUTO_LOCK_ALARM = "pocket.autolock";
 const AUTO_LOCK_MINUTES = 15;
+const KEEP_ALIVE_ALARM = "pocket.keepalive";
 
 export default defineBackground(() => {
   const controller = new WalletController();
@@ -54,9 +55,40 @@ export default defineBackground(() => {
   // relying on one would silently stay unlocked across a restart.
   chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === AUTO_LOCK_ALARM) clearSession();
+    if (alarm.name === KEEP_ALIVE_ALARM) void keepAlive();
   });
 
   function armAutoLock() {
     void chrome.alarms.create(AUTO_LOCK_ALARM, { delayInMinutes: AUTO_LOCK_MINUTES });
   }
+
+  /**
+   * Bump the confidential account's TTL before it archives.
+   *
+   * Signing needs the keys, so this can only do anything while unlocked. A
+   * locked or closed browser cannot keep an entry alive, which is why the
+   * screen says so rather than promising otherwise. The next check is
+   * jittered: a fixed cadence would make Pocket users identifiable by the
+   * timing of their keep-alive transactions alone.
+   */
+  async function keepAlive() {
+    await ready;
+    if (!isUnlocked()) {
+      void chrome.alarms.create(KEEP_ALIVE_ALARM, { delayInMinutes: 60 });
+      return;
+    }
+    try {
+      const plan = await controller.runKeepAlive();
+      void chrome.alarms.create(KEEP_ALIVE_ALARM, {
+        delayInMinutes: Math.max(1, Math.round(plan.nextCheckMs / 60_000)),
+      });
+    } catch {
+      // A failed check is not a failed wallet. Look again in an hour rather
+      // than dropping the schedule entirely, which would leave the entry to
+      // archive silently.
+      void chrome.alarms.create(KEEP_ALIVE_ALARM, { delayInMinutes: 60 });
+    }
+  }
+
+  void keepAlive();
 });

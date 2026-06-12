@@ -39,6 +39,16 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
       return c.reset(msg.password);
     case "privatePocket":
       return c.privatePocket();
+    case "buildPrivateOp":
+      return c.buildPrivateOp(msg.op);
+    case "confirmPrivateOp":
+      return c.confirmPrivateOp(msg.handle);
+    case "inFlight":
+      return c.inFlight();
+    case "reconcileInFlight":
+      return c.reconcileInFlight();
+    case "recoverFromMnemonic":
+      return c.recoverFromMnemonic(msg.mnemonic, msg.password);
     default: {
       // Without this, a message whose type is outside the union falls off the
       // end, resolves to undefined, and the worker answers {ok: true}. Any
@@ -81,6 +91,12 @@ const SAFE_ERRORS = new Set([
   "CorruptVaultError",
   "SchemaVersionError",
   "AccountNotFoundError",
+  "PrivatePocketError",
+  "RecoveryError",
+  "ArchiveUnavailableError",
+  "IncompleteHistoryError",
+  "UnspendableBlindingError",
+  "CctpParameterError",
 ]);
 
 /** Messages we author ourselves and vet, matched exactly. */
@@ -100,9 +116,10 @@ export function describeError(e: unknown): string {
   if (e instanceof Error) {
     if (SAFE_ERRORS.has(e.name)) return e.message;
     if (SAFE_MESSAGES.has(e.message)) return e.message;
-    // Authored, user-facing messages start with a capital and end with a stop.
-    // Anything else is machinery and does not belong in front of a user.
-    if (/^[A-Z].*[.]$/.test(e.message) && e.message.length < 200) return e.message;
+    // No shape heuristic here, deliberately. A rule like "starts with a capital
+    // and ends with a stop" is trivially satisfied by an RPC-authored or
+    // attacker-influenced string, which is precisely what the allowlist exists
+    // to keep out. An error that should reach a user gets a name on the list.
     return "Something went wrong. Try again, and check your connection.";
   }
   return "Something went wrong.";
