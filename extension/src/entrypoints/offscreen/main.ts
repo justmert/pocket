@@ -154,7 +154,12 @@ function status(): ProverStatus {
 }
 
 chrome.runtime.onMessage.addListener(
-  (msg: ProverRequest, _sender, sendResponse: (r: ProverResponse) => void) => {
+  (msg: ProverRequest, sender, sendResponse: (r: ProverResponse) => void) => {
+    // The most sensitive message in the system arrives here: a solved witness,
+    // which for withdraw and transfer contains sk, the amount and the blinding.
+    // The service worker checks its sender; so must this, rather than resting
+    // on the fact that nothing else currently listens.
+    if (sender.id !== chrome.runtime.id) return false;
     if (msg?.channel !== PROVER_CHANNEL) return false;
 
     if (msg.kind === "status") {

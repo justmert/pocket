@@ -108,6 +108,32 @@ export function Send({ t, onBack }: { t: Theme; onBack: () => void }) {
             <div style={{ margin: "18px 0 6px", ...text.label, color: t.sub }}>Amount</div>
             <Money amount={built.summary.amount} code={built.summary.assetCode} size={26} t={t} />
 
+            {/* The memo is signed, so it must be reviewed. Corrupting it is the
+                single most reliable way to lose funds at an exchange deposit
+                address, and its ABSENCE matters just as much: an exchange
+                deposit without one is usually unrecoverable. So both cases are
+                stated, and neither is left to be inferred from blank space. */}
+            <div style={{ margin: "18px 0 6px", ...text.label, color: t.sub }}>Memo</div>
+            {built.summary.memo ? (
+              <div
+                style={{
+                  ...text.body,
+                  fontFamily: "ui-monospace, monospace",
+                  color: t.text,
+                  wordBreak: "break-all",
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  background: t.field,
+                }}
+              >
+                {built.summary.memo}
+              </div>
+            ) : (
+              <div style={{ ...text.body, color: t.sub }}>
+                No memo. Exchanges usually require one; a deposit without it can be lost.
+              </div>
+            )}
+
             <div style={{ marginTop: 20, ...text.label, color: t.sub, marginBottom: 8 }}>
               What this does
             </div>

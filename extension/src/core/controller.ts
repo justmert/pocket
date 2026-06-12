@@ -528,6 +528,9 @@ export class WalletController {
         memo: req.memo,
         effects: [
           `Send ${formatAmount(amount)} ${asset.isNative() ? "XLM" : asset.getCode()} to this address`,
+          // The memo is signed, so it is an effect. Stating its absence too:
+          // a missing memo is the usual way an exchange deposit is lost.
+          req.memo ? `Attach the memo "${req.memo}"` : "Send with NO memo",
           `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
         ],
       },

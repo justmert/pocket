@@ -18,6 +18,11 @@ import { decodePoint, type Point } from "../crypto/grumpkin";
 import type { ConfidentialAccount } from "../witness/types";
 
 /** Contract error codes, mapped to what a user can actually do about them. */
+/** A read that failed for a reason we can state. Never carries an RPC string. */
+export class ConfidentialReadError extends Error {
+  override readonly name = "ConfidentialReadError";
+}
+
 export const CONTRACT_ERRORS: Record<number, string> = {
   3500: "This account already has a private pocket.",
   3501: "That account has no private pocket yet. Ask them to set one up first.",
@@ -71,10 +76,21 @@ export async function readConfidentialAccount(
     .build();
 
   const sim = await server.simulateTransaction(tx);
+  // An archived persistent entry comes back with a restore preamble rather
+  // than a value. That is a state the private-pocket screen knows how to
+  // render, so it must not be raised as an error: reading it as one shows a
+  // failure where the right answer is "dormant, reactivate it".
+  if ("restorePreamble" in sim && sim.restorePreamble) return null;
   if ("error" in sim) {
     // 3501 is "not registered", which is a normal state and not a failure.
     if (/#3501|AccountNotRegistered/i.test(sim.error)) return null;
-    throw new Error(sim.error);
+    // Map recognised contract errors to authored text. An RPC string is not
+    // ours and must never reach a user verbatim.
+    const code = /Error\(Contract, #(\d+)\)/.exec(sim.error)?.[1];
+    if (code) throw new ConfidentialReadError(describeContractError(Number(code)));
+    throw new ConfidentialReadError(
+      "Pocket could not read the private pocket from this deployment.",
+    );
   }
   const raw = (sim as { result?: { retval: xdr.ScVal } }).result?.retval;
   if (!raw) return null;

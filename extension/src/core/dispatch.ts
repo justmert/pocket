@@ -73,6 +73,12 @@ const ACTIVITY = new Set([
   "setNetwork",
   "create",
   "import",
+  // A private operation is user activity too: proving can take a moment and a
+  // transfer must not be interrupted by the idle lock mid-flight.
+  "buildPrivateOp",
+  "confirmPrivateOp",
+  "privatePocket",
+  "recoverFromMnemonic",
 ]);
 
 export function isUserActivity(type: string): boolean {
@@ -97,6 +103,8 @@ const SAFE_ERRORS = new Set([
   "IncompleteHistoryError",
   "UnspendableBlindingError",
   "CctpParameterError",
+  "ConfidentialReadError",
+  "VerificationKeyMismatchError",
 ]);
 
 /** Messages we author ourselves and vet, matched exactly. */

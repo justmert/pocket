@@ -65,10 +65,17 @@ export function accountEvents(
   // false completeness signal is worse than none: clients learn to ignore it.
   const bounds = coveredRange(db, contractId);
   const from = opts.fromLedger ?? bounds.from;
-  const to = Math.min(opts.toLedger ?? bounds.to, bounds.to);
+  // Report the window that was REQUESTED, not the one we happen to hold.
+  // Clamping to what we hold and then reporting `complete: true` about the
+  // narrowed range is a true statement about a question nobody asked, and a
+  // client reading `complete` alone inherits a silent gap. Answering the
+  // actual question lets isComplete say false, which is the honest reply.
+  const to = opts.toLedger ?? bounds.to;
+  // Rows still come only from what we hold; there is nothing else to serve.
+  const queryTo = Math.min(to, bounds.to);
   const limit = Math.min(opts.limit ?? 200, 1000);
 
-  const params: unknown[] = [contractId, account, from, to];
+  const params: unknown[] = [contractId, account, from, queryTo];
   let typeClause = "";
   if (opts.types?.length) {
     typeClause = ` AND e.event_type IN (${opts.types.map(() => "?").join(",")})`;

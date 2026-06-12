@@ -93,7 +93,10 @@ export interface BurnParams {
   destinationDomain: number;
   /** The real recipient, carried in hook data. */
   recipient: string;
+  /** Stellar USDC subunits, SEVEN decimals. Not the same scale as maxFee. */
   amount: bigint;
+  /** Canonical CCTP units, SIX decimals. Not the same scale as amount. */
+  maxFee: bigint;
   network: keyof typeof CCTP;
 }
 
@@ -104,7 +107,16 @@ export interface BurnParams {
  * and there is no flag to bypass it.
  */
 export function assertBurnParameters(p: BurnParams): void {
-  const forwarder = CCTP[p.network].forwarder;
+  const chain = CCTP[p.network];
+  // An unknown network must fail like every other branch here, with a typed
+  // error a caller can catch. Dereferencing undefined fails closed but throws
+  // a TypeError, which every `catch (e instanceof CctpParameterError)` misses.
+  if (!chain) {
+    throw new CctpParameterError(
+      `unknown network "${String(p.network)}": CCTP addresses are only known for mainnet and testnet.`,
+    );
+  }
+  const forwarder = chain.forwarder;
 
   if (p.mintRecipient !== forwarder) {
     throw new CctpParameterError(
@@ -131,6 +143,34 @@ export function assertBurnParameters(p: BurnParams): void {
     throw new CctpParameterError(`recipient is not a valid Stellar address: ${p.recipient}`);
   }
   if (p.amount <= 0n) throw new CctpParameterError("amount must be positive");
+
+  // THE decimal trap. `amount` is 7dp and `max_fee` is 6dp in the SAME call,
+  // which is Circle's own documented shape and the easiest expensive mistake
+  // in this flow. A caller who reaches for toCctpAmount to fill `amount`
+  // under-sends tenfold; a caller who passes a 7dp fee overpays tenfold.
+  //
+  // The gate: a fee at the wrong scale is essentially always larger than the
+  // amount it is a fee on, once both are expressed in the same units.
+  if (p.maxFee < 0n) throw new CctpParameterError("maxFee must not be negative");
+  const amountIn6dp = p.amount / 10n;
+  if (p.maxFee > amountIn6dp) {
+    throw new CctpParameterError(
+      `maxFee (${p.maxFee}) exceeds the amount being bridged (${amountIn6dp} in CCTP units). ` +
+        `amount is in Stellar subunits (7 decimals) and max_fee is in canonical CCTP units ` +
+        `(6 decimals); passing a 7-decimal fee here overpays by 10x.`,
+    );
+  }
+}
+
+/**
+ * Scale a fee to the SIX decimals `max_fee` takes.
+ *
+ * Named apart from toCctpAmount on purpose. Both divide by ten, and having one
+ * function for both would let the two scales be confused silently, which is
+ * exactly the failure this module exists to prevent.
+ */
+export function toCctpFee(stellarStroops: bigint): bigint {
+  return stellarStroops / 10n;
 }
 
 /**

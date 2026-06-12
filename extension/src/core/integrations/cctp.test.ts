@@ -6,6 +6,7 @@ import {
   buildForwarderHookData,
   parseForwarderHookData,
   toCctpAmount,
+  toCctpFee,
   fromCctpAmount,
   CctpParameterError,
   type BurnParams,
@@ -16,7 +17,9 @@ const good = (): BurnParams => ({
   destinationCaller: CCTP.testnet.forwarder,
   destinationDomain: STELLAR_DOMAIN,
   recipient: "GC6JCCFWYPYIHOR7SYXEBRJ5RD32ULVXCQS2P5TDDDCR3AYT6V56CDMN",
+  // 1_000_000 stroops = 0.1 USDC at 7dp; the fee is 6dp, so a sane one is small.
   amount: 1_000_000n,
+  maxFee: 1_000n,
   network: "testnet",
 });
 
@@ -127,5 +130,34 @@ describe("the decimal mismatch", () => {
   it("round-trips only when the amount was already representable", () => {
     expect(fromCctpAmount(toCctpAmount(1_234_560n).cctpAmount)).toBe(1_234_560n);
     expect(fromCctpAmount(toCctpAmount(1_234_567n).cctpAmount)).not.toBe(1_234_567n);
+  });
+});
+
+describe("the decimal trap on max_fee", () => {
+  it("accepts a fee correctly scaled to six decimals", () => {
+    expect(() => assertBurnParameters({ ...good(), maxFee: 1_000n })).not.toThrow();
+  });
+
+  it("rejects a fee passed at the amount's seven-decimal scale", () => {
+    // The exact mistake: reaching for the 7dp amount to fill a 6dp field.
+    expect(() => assertBurnParameters({ ...good(), maxFee: 1_000_000n })).toThrow(
+      CctpParameterError,
+    );
+  });
+
+  it("rejects a negative fee", () => {
+    expect(() => assertBurnParameters({ ...good(), maxFee: -1n })).toThrow(CctpParameterError);
+  });
+
+  it("scales a fee with a function named apart from the amount's", () => {
+    // Both divide by ten. Two names is the point: one function for both scales
+    // is how the two get confused in the first place.
+    expect(toCctpFee(1_000_000n)).toBe(100_000n);
+    expect(toCctpAmount(1_000_000n).cctpAmount).toBe(100_000n);
+  });
+
+  it("fails with a typed error on an unknown network, not a TypeError", () => {
+    const p = { ...good(), network: "futurenet" as unknown as BurnParams["network"] };
+    expect(() => assertBurnParameters(p)).toThrow(CctpParameterError);
   });
 });

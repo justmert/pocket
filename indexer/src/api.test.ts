@@ -213,3 +213,30 @@ describe("the completeness signal is honestly scoped", () => {
     expect(latestCheckpoint(db, C, ALICE, 700).complete).toBe(false);
   });
 });
+
+describe("completeness is about the range that was asked for", () => {
+  it("reports a requested window beyond what it holds as incomplete", () => {
+    // Hold 1000..2000, then ask for 1000..5000.
+    recordRange(db, C, 1000, 2000);
+    addEvent("e1", 1500, 1, "transfer", [ALICE]);
+
+    const page = accountEvents(db, C, ALICE, { fromLedger: 1000, toLedger: 5000 });
+
+    // The reply must be about the question asked. Narrowing to 2000 and then
+    // saying "complete" is true about a different question and misleads any
+    // client that reads the flag alone.
+    expect(page.to_ledger).toBe(5000);
+    expect(page.complete).toBe(false);
+    // The events it does hold are still served.
+    expect(page.events).toHaveLength(1);
+  });
+
+  it("still reports complete when the request fits inside what it holds", () => {
+    recordRange(db, C, 1000, 5000);
+    addEvent("e1", 1500, 1, "transfer", [ALICE]);
+
+    const page = accountEvents(db, C, ALICE, { fromLedger: 1000, toLedger: 2000 });
+    expect(page.to_ledger).toBe(2000);
+    expect(page.complete).toBe(true);
+  });
+});

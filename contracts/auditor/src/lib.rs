@@ -31,6 +31,8 @@
 //! that happened before it.
 #![no_std]
 
+mod test;
+
 use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, BytesN, Env};
 use stellar_tokens::confidential::auditor::{storage as auditor, ConfidentialAuditor};
 
@@ -76,7 +78,9 @@ impl PocketAuditorRegistry {
         auditor::register_key(e, id, &point);
 
         e.storage().persistent().set(&DataKey::Owner(id), &owner);
+        extend_owner_ttl(e, id);
         e.storage().instance().set(&DataKey::NextId, &(id + 1));
+        bump_instance(e);
         id
     }
 
@@ -98,17 +102,61 @@ impl PocketAuditorRegistry {
             panic_with(e, RegistryError::NotKeyOwner);
         }
         auditor::rotate_key(e, auditor_id, &new_point);
+        extend_owner_ttl(e, auditor_id);
+        bump_instance(e);
     }
 
     /// The address permitted to rotate an id, if it is registered.
     pub fn owner_of(e: &Env, auditor_id: u32) -> Option<Address> {
-        e.storage().persistent().get(&DataKey::Owner(auditor_id))
+        e.storage()
+            .persistent()
+            .get(&DataKey::Owner(auditor_id))
+            .inspect(|_| extend_owner_ttl(e, auditor_id))
     }
 
     /// The next id `register` will hand out. Also the count registered so far.
     pub fn next_id(e: &Env) -> u32 {
         e.storage().instance().get(&DataKey::NextId).unwrap_or(0)
     }
+}
+
+/// The library's own schedule, restated because its constants are private.
+///
+/// Values read from stellar-contracts@219c560,
+/// packages/tokens/src/confidential/auditor/mod.rs:159-161. Matching them
+/// deliberately: the ownership record and the key it governs should decay
+/// together rather than one silently outliving the other. A test pins these
+/// against the library's behaviour so a divergence upstream is caught here.
+const DAY_IN_LEDGERS: u32 = 17_280;
+const OWNER_EXTEND_AMOUNT: u32 = 30 * DAY_IN_LEDGERS;
+const OWNER_TTL_THRESHOLD: u32 = OWNER_EXTEND_AMOUNT - DAY_IN_LEDGERS;
+
+/// Keep an ownership record alive for as long as the key it governs.
+///
+/// Soroban does NOT auto-extend on read. Without this the record archives after
+/// min_persistent_ttl (about 7 days on testnet, 120 on mainnet) while the
+/// auditor key itself stays alive, because the library extends that one on
+/// every read. Rotation is the only remedy for a compromised auditor key, so
+/// letting the record that authorises it decay silently removes the single
+/// recovery lever the design offers.
+///
+/// Same constants as the library uses for the key, so the two decay together
+/// rather than one outliving the other.
+fn extend_owner_ttl(e: &Env, auditor_id: u32) {
+    e.storage().persistent().extend_ttl(
+        &DataKey::Owner(auditor_id),
+        OWNER_TTL_THRESHOLD,
+        OWNER_EXTEND_AMOUNT,
+    );
+}
+
+/// NextId lives in instance storage, so it shares the contract's own TTL.
+/// An archived instance would lose the counter and start reissuing ids that
+/// are already taken.
+fn bump_instance(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(OWNER_TTL_THRESHOLD, OWNER_EXTEND_AMOUNT);
 }
 
 fn panic_with(e: &Env, err: RegistryError) -> ! {
