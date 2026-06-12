@@ -196,6 +196,38 @@ export class WalletController {
     };
   }
 
+  /**
+   * Persist openings for this (account, deployment).
+   *
+   * Written BEFORE an operation is considered done. These are what make the
+   * on-chain commitments spendable, and nothing else holds them: losing them
+   * leaves funds visible on chain and permanently unspendable. Encrypted at
+   * rest under the DEK, alongside the seed, because an opening reveals an
+   * amount and is exactly as sensitive as a key.
+   */
+  private async writeOpenings(
+    address: string,
+    token: string,
+    state: { spendable: Opening; receiving: Opening; syncedThrough: number },
+  ): Promise<void> {
+    const { dek } = requireSession();
+    const { sealPayload } = await import("./vault/vault");
+    await writeLocal(
+      `${KEYS.openings}.${token}.${address}`,
+      await sealPayload(dek, {
+        spendable: {
+          value: state.spendable.value.toString(),
+          randomness: state.spendable.randomness.toString(),
+        },
+        receiving: {
+          value: state.receiving.value.toString(),
+          randomness: state.receiving.randomness.toString(),
+        },
+        syncedThrough: state.syncedThrough,
+      }),
+    );
+  }
+
   /** Openings for this (account, deployment). Encrypted at rest under the DEK. */
   private async readOpenings(
     address: string,

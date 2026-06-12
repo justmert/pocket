@@ -272,3 +272,80 @@ describe("private pocket reporting", () => {
     expect((await c.status()).privateAvailable).toBe(true);
   });
 });
+
+describe("opening persistence, which makes commitments spendable", () => {
+  beforeEach(() => {
+    store.clear();
+  });
+
+  it("round-trips openings through the encrypted vault", async () => {
+    const c = new WalletController();
+    await c.create("pw");
+    const inner = c as unknown as {
+      writeOpenings: (a: string, t: string, s: unknown) => Promise<void>;
+      readOpenings: (a: string, t: string) => Promise<unknown>;
+    };
+    const state = {
+      spendable: { value: 500n, randomness: 42n },
+      receiving: { value: 30n, randomness: 7n },
+      syncedThrough: 12345,
+    };
+    await inner.writeOpenings("GADDR", "CTOKEN", state);
+    expect(await inner.readOpenings("GADDR", "CTOKEN")).toEqual(state);
+  });
+
+  it("stores them ENCRYPTED, never in the clear", async () => {
+    // An opening reveals an amount. Storing it readable would defeat the point
+    // of the private pocket on a device someone else can read.
+    const c = new WalletController();
+    await c.create("pw");
+    await (
+      c as unknown as { writeOpenings: (a: string, t: string, s: unknown) => Promise<void> }
+    ).writeOpenings("GADDR", "CTOKEN", {
+      spendable: { value: 123456789n, randomness: 42n },
+      receiving: { value: 0n, randomness: 0n },
+      syncedThrough: 1,
+    });
+    const raw = JSON.stringify([...store.entries()]);
+    expect(raw).not.toContain("123456789");
+    expect(raw).not.toContain("spendable");
+  });
+
+  it("keeps openings per (deployment, account), since identities are per-contract", async () => {
+    // vk binds addr_f, so the same seed has a DIFFERENT confidential identity
+    // on every deployment. Sharing one opening store across them would corrupt
+    // both.
+    const c = new WalletController();
+    await c.create("pw");
+    const inner = c as unknown as {
+      writeOpenings: (a: string, t: string, s: unknown) => Promise<void>;
+      readOpenings: (a: string, t: string) => Promise<unknown>;
+    };
+    const one = {
+      spendable: { value: 1n, randomness: 1n },
+      receiving: { value: 0n, randomness: 0n },
+      syncedThrough: 1,
+    };
+    const two = {
+      spendable: { value: 2n, randomness: 2n },
+      receiving: { value: 0n, randomness: 0n },
+      syncedThrough: 1,
+    };
+    await inner.writeOpenings("GADDR", "CTOKEN_A", one);
+    await inner.writeOpenings("GADDR", "CTOKEN_B", two);
+    expect(await inner.readOpenings("GADDR", "CTOKEN_A")).toEqual(one);
+    expect(await inner.readOpenings("GADDR", "CTOKEN_B")).toEqual(two);
+  });
+
+  it("returns null when nothing is stored, rather than a zero balance", async () => {
+    // Absent openings mean "we cannot know your balance", which is a different
+    // and much more serious state than "your balance is zero".
+    const c = new WalletController();
+    await c.create("pw");
+    expect(
+      await (
+        c as unknown as { readOpenings: (a: string, t: string) => Promise<unknown> }
+      ).readOpenings("GADDR", "CTOKEN"),
+    ).toBeNull();
+  });
+});
