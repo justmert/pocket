@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
 import { rpc } from "@stellar/stellar-sdk";
 import { Keypair } from "@stellar/stellar-sdk/base";
 import "../../lib/polyfill";
@@ -12,9 +11,14 @@ import {
 } from "./ttl";
 import { NETWORKS } from "../config";
 
-const dep = JSON.parse(
-  readFileSync("/Users/mert/Projects/pocket/resources/deployment-testnet.json", "utf8"),
-);
+/** Addresses come from the tracked config, never from an untracked file. */
+function deployment() {
+  const c = NETWORKS.testnet.confidential[0];
+  if (!c) throw new Error("no confidential deployment configured for testnet");
+  return c;
+}
+
+const dep = deployment();
 const server = new rpc.Server(NETWORKS.testnet.rpcUrl);
 const REGISTERED = "GC6JCCFWYPYIHOR7SYXEBRJ5RD32ULVXCQS2P5TDDDCR3AYT6V56CDMN";
 

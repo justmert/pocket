@@ -22,6 +22,7 @@ import { submitAndConfirm, pollToTerminal, type SubmitOutcome } from "./chain/su
 import { parseAddress } from "./chain/address";
 import type { PublicBalance, WalletStatus, TransferSummary, PrivatePocket } from "./messages";
 import { readConfidentialAccount, readAuditorKey } from "./chain/confidential";
+import { assertVerificationKey, type CircuitName } from "./chain/verification-key";
 import { readAccountTtl, jitteredDelayMs, type TtlStatus } from "./chain/ttl";
 import { buildKeepAlive, planKeepAlive, type KeepAlivePlan } from "./chain/keepalive";
 import { balancesOf, verifyAgainstChain, applyMerge, credit, ZERO_OPENING } from "./private";
@@ -49,6 +50,18 @@ export class PrivatePocketError extends Error {
 export class RecoveryError extends Error {
   override readonly name = "RecoveryError";
 }
+
+/**
+ * Which circuit each operation proves against. Merge and shield have none:
+ * a deposit and a merge are authorised, not proved.
+ */
+const CIRCUIT_FOR: Record<PrivateOpRequest["kind"], CircuitName | null> = {
+  register: "register",
+  shield: null,
+  merge: null,
+  transfer: "transfer",
+  unshield: "withdraw",
+};
 
 /** The state that follows a staged private operation, once it lands. */
 interface StagedAfter {
@@ -559,6 +572,12 @@ export class WalletController {
   async buildPrivateOp(req: PrivateOpRequest): Promise<{ handle: string; summary: PrivateOpSummary }> {
     const { address } = requireSession();
     const cfg = this.confidentialConfig();
+    // Trap 14: refuse to prove against a deployment whose verification key is
+    // not the one this build proves against. A mismatch otherwise surfaces as
+    // an opaque contract error at submit time, after the user has waited
+    // through proving and signed.
+    const circuit = CIRCUIT_FOR[req.kind];
+    if (circuit) await this.assertVk(cfg, circuit);
     const ctx = await this.opContext();
     const ops = await import("./confidential-ops");
 
@@ -890,6 +909,25 @@ export class WalletController {
     const outcome = await this.signAndSubmit(tx);
     if (outcome.kind === "succeeded") this.lastKeepAlive = Date.now();
     return { ...plan, due: false, nextCheckMs: jitteredDelayMs(7) };
+  }
+
+  /** Verification keys already confirmed this session, per (deployment, circuit). */
+  private vkChecked = new Set<string>();
+
+  /** Confirm once per session; the keys are immutable, so once is enough. */
+  private async assertVk(cfg: { verifier: string }, circuit: CircuitName): Promise<void> {
+    const key = `${cfg.verifier}:${circuit}`;
+    if (this.vkChecked.has(key)) return;
+    const { address } = requireSession();
+    const source = await this.server().getAccount(address);
+    await assertVerificationKey(
+      this.server(),
+      cfg.verifier,
+      circuit,
+      source,
+      NETWORKS[this.network].passphrase,
+    );
+    this.vkChecked.add(key);
   }
 
   private lastKeepAlive = 0;

@@ -1,17 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
 import { rpc } from "@stellar/stellar-sdk";
 import { Keypair } from "@stellar/stellar-sdk/base";
 import "../../lib/polyfill";
 import { readConfidentialAccount, readAuditorKey, describeContractError } from "./confidential";
 import { NETWORKS } from "../config";
+
+/** Addresses come from the tracked config, never from an untracked file. */
+function deployment() {
+  const c = NETWORKS.testnet.confidential[0];
+  if (!c) throw new Error("no confidential deployment configured for testnet");
+  return c;
+}
 import { isOnCurve } from "../crypto/grumpkin";
 
 // Reads our REAL deployed contracts on testnet, using the account registered in
 // the phase 6 end-to-end run.
-const dep = JSON.parse(
-  readFileSync("/Users/mert/Projects/pocket/resources/deployment-testnet.json", "utf8"),
-);
+const dep = deployment();
 const net = NETWORKS.testnet;
 const server = new rpc.Server(net.rpcUrl);
 const REGISTERED = "GC6JCCFWYPYIHOR7SYXEBRJ5RD32ULVXCQS2P5TDDDCR3AYT6V56CDMN";

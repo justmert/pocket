@@ -16,7 +16,8 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "check": "tsc --noEmit && eslint src && vitest run",
     "test:e2e": "npm run vendor && wxt build && playwright test",
-    "vendor": "node scripts/vendor-bb.mjs && node scripts/vendor-srs.mjs && node scripts/vendor-circuits.mjs"
+    "vendor": "node scripts/vendor-bb.mjs && node scripts/vendor-srs.mjs && node scripts/vendor-circuits.mjs",
+    "test:live": "vitest run --config vitest.live.config.ts"
   },
   "dependencies": {
     "@aztec/bb.js": "^0.87.0",

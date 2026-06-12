@@ -13,7 +13,11 @@ describe("Buffer polyfill", () => {
   it("lets stellar-sdk build a keypair without a DOM", async () => {
     await import("./polyfill");
     const { Keypair } = await import("@stellar/stellar-sdk/base");
-    const kp = Keypair.fromSecret("SBUUZ6Q6EAVYEVQHPHL72FVAAKOJEGW7HVWAWTZGRXBGMN3DHHLTUQFW");
-    expect(kp.publicKey()).toBe("GB43MNLS6IL77FIZHOBLYILQIQP5MPQVF77O5JOAYCSWX3TUHAL6Z3F7");
+    // Generated here rather than pinned: what is under test is that the SDK's
+    // ed25519 works without a DOM, and a secret literal in a tracked file is a
+    // pattern that would carry a real key just as easily.
+    const kp = Keypair.random();
+    expect(Keypair.fromSecret(kp.secret()).publicKey()).toBe(kp.publicKey());
+    expect(kp.publicKey()).toMatch(/^G[A-Z2-7]{55}$/);
   });
 });

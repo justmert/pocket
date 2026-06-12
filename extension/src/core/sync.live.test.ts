@@ -1,16 +1,20 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
 import { rpc } from "@stellar/stellar-sdk";
 import { scValToNative, xdr } from "@stellar/stellar-sdk/base";
 import "../lib/polyfill";
 import { NETWORKS } from "./config";
 
+/** Addresses come from the tracked config, never from an untracked file. */
+function deployment() {
+  const c = NETWORKS.testnet.confidential[0];
+  if (!c) throw new Error("no confidential deployment configured for testnet");
+  return c;
+}
+
 // Reads the REAL events our testnet transactions emitted and checks the sync
 // engine's assumptions against them: are the fields we replay from actually
 // present, and in the shape we expect?
-const dep = JSON.parse(
-  readFileSync("/Users/mert/Projects/pocket/resources/deployment-testnet.json", "utf8"),
-);
+const dep = deployment();
 const server = new rpc.Server(NETWORKS.testnet.rpcUrl);
 
 describe("live events from our deployment", () => {
