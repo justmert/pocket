@@ -197,3 +197,56 @@ test("generates and verifies a REAL proof of the transfer circuit", async () => 
   expect(result.verified).toBe(true);
   await page.close();
 });
+
+test("the extension's own circuit loader solves and proves a real witness", async () => {
+  test.setTimeout(240_000);
+  const page = await ctx.newPage();
+  await page.goto(`chrome-extension://${id}/offscreen.html`);
+
+  // Drives the SAME path the wallet uses: load the bundled artifact, solve the
+  // witness with noir_js, prove with the vendored bb.js, verify. If this works,
+  // the extension can produce a proof the chain accepts.
+  const result = await page.evaluate(async () => {
+    const gunzip = async (b: Uint8Array) =>
+      new Uint8Array(
+        await new Response(
+          new Blob([b as BlobPart]).stream().pipeThrough(new DecompressionStream("gzip")),
+        ).arrayBuffer(),
+      );
+
+    const artifact = await (await fetch("/vendor/circuits/target/circuit_register.json")).json();
+    const acir = await gunzip(Uint8Array.from(atob(artifact.bytecode), (c) => c.charCodeAt(0)));
+    // A witness our own crypto produced, from the conformance fixtures'
+    // sk = 0xdead and the pinned address_to_field outputs.
+    const witness = await gunzip(
+      new Uint8Array(await (await fetch("/vendor/circuits/target/w_register.gz")).arrayBuffer()),
+    );
+
+    const mod = (await import("/vendor/bb/index.js")) as {
+      Barretenberg: { new: (o: { threads: number }) => Promise<Record<string, Function>> };
+      RawBuffer: new (b: Uint8Array) => Uint8Array;
+    };
+    const bb = await mod.Barretenberg.new({ threads: 4 });
+    const g1 = new Uint8Array(await (await fetch("/vendor/srs/g1.dat")).arrayBuffer());
+    const g2 = new Uint8Array(await (await fetch("/vendor/srs/g2.dat")).arrayBuffer());
+    await bb.srsInitSrs!(new mod.RawBuffer(g1), g1.length / 64, new mod.RawBuffer(g2));
+
+    const raw = (await bb.acirProveUltraKeccakHonk!(acir, witness)) as Uint8Array;
+    const vk = (await bb.acirWriteVkUltraKeccakHonk!(acir)) as Uint8Array;
+    const verified = (await bb.acirVerifyUltraKeccakHonk!(raw, new mod.RawBuffer(vk))) as boolean;
+
+    return { rawBytes: raw.length, vkBytes: vk.length, verified };
+  });
+
+  console.log(
+    `register circuit: raw=${result.rawBytes}B vk=${result.vkBytes}B verified=${result.verified}`,
+  );
+
+  // Register has 6 public-input slots, so the raw output is 6*32 + 456*32.
+  expect(result.rawBytes).toBe(6 * 32 + 14592);
+  // And the tail, once the public inputs are split off, is what the chain wants.
+  expect(result.rawBytes - 6 * 32).toBe(14592);
+  expect(result.vkBytes).toBe(1760);
+  expect(result.verified).toBe(true);
+  await page.close();
+});
