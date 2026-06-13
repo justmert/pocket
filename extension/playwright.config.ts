@@ -2,6 +2,10 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e",
+  // Live specs hit real testnet and submit real transactions, so they are
+  // opt-in for the same reason the live unit tests are: a testnet outage or an
+  // offline machine must not be reported as a code failure.
+  testIgnore: process.env.POCKET_LIVE_E2E ? [] : ["**/*.live.spec.ts"],
   // Extension tests share one browser context and build on each other's state,
   // so they must run in order in a single worker.
   workers: 1,

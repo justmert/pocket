@@ -54,6 +54,10 @@ export class BundledCircuits implements CircuitSource {
       hex[k] = "0x" + v.toString(16).padStart(64, "0");
     }
     const { witness } = await noir.execute(hex);
-    return witness;
+    // noir_js returns the witness GZIPPED, the same form nargo writes to
+    // w_<circuit>.gz. The low-level bb API takes it decompressed, and handing
+    // it the compressed bytes does not error: it traps inside the wasm with
+    // `RuntimeError: unreachable`, which says nothing about the cause.
+    return gunzip(witness);
   }
 }
