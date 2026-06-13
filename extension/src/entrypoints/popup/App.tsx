@@ -8,11 +8,13 @@ import { Home } from "./ui/screens/Home";
 import { Send } from "./ui/screens/Send";
 import { PrivatePocket } from "./ui/screens/PrivatePocket";
 import { InFlight } from "./ui/screens/InFlight";
+import { Recover } from "./ui/screens/Recover";
 import type { WalletStatus } from "../../core/messages";
 
 export function App() {
   const [status, setStatus] = useState<WalletStatus | null>(null);
   const [view, setView] = useState<"home" | "send" | "private">("home");
+  const [recovering, setRecovering] = useState(false);
   const [unresolved, setUnresolved] = useState<{
     hash: string;
     maxTime: number;
@@ -64,7 +66,20 @@ export function App() {
   }
 
   if (!status.initialised) return <Onboarding t={t} onDone={() => void refresh()} />;
-  if (status.locked) return <Unlock t={t} onUnlocked={() => void refresh()} />;
+  if (status.locked) {
+    return recovering ? (
+      <Recover
+        t={t}
+        onDone={() => {
+          setRecovering(false);
+          void refresh();
+        }}
+        onCancel={() => setRecovering(false)}
+      />
+    ) : (
+      <Unlock t={t} onUnlocked={() => void refresh()} onForgot={() => setRecovering(true)} />
+    );
+  }
   // A transaction whose outcome the worker never saw, because it died mid-poll
   // or the popup closed. Shown before anything else: without it a user builds a
   // second payment while the first may still land, and pays twice.

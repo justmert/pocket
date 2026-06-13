@@ -11,8 +11,22 @@ import { InvalidAddressError } from "./chain/address";
  * `import` is NOT here: it writes the vault, and allowing it without the
  * current password means any stray message can replace a funded wallet's seed.
  * `reset` is not here either, for the same reason.
+ *
+ * `recoverFromMnemonic` IS here, and the distinction is the whole point. It
+ * must work while locked, because a forgotten password is exactly when it is
+ * needed. What makes it safe is not the lock but its own authorisation: it
+ * requires the recovery phrase, AND checks that phrase derives the account
+ * this device already holds. A stray message carries no phrase. A phrase for
+ * a different wallet is refused. Anyone who can satisfy both already owns the
+ * funds, so there is nothing left for the lock to protect.
  */
-const ALLOWED_WHILE_LOCKED = new Set(["status", "create", "unlock", "lock"]);
+const ALLOWED_WHILE_LOCKED = new Set([
+  "status",
+  "create",
+  "unlock",
+  "lock",
+  "recoverFromMnemonic",
+]);
 
 export async function dispatch(c: WalletController, msg: WalletRequest): Promise<unknown> {
   switch (msg.type) {

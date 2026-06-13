@@ -412,26 +412,23 @@ function OpForm({
 }
 
 function titleFor(state: string): string {
-  switch (state) {
-    case "unregistered":
-      return "Not set up yet";
-    case "archived":
-      return "Dormant";
-    case "diverged":
-      return "Out of step with the ledger";
-    case "needsRecovery":
-      return "Balances not on this device";
-    case "unfunded":
-      return "Account not funded";
-    case "unavailable":
-      return "Not available here";
-    default:
-      return state;
-  }
+  return (
+    {
+      unregistered: "Not set up yet",
+      unfunded: "Fund this account first",
+      archived: "Dormant",
+      diverged: "Records do not match the ledger",
+      needsRecovery: "Balances need rebuilding",
+      unavailable: "Not available here",
+      unspendable: "Temporarily unspendable",
+    }[state] ?? state
+  );
 }
 
 function toneFor(state: string): "danger" | "exposed" | undefined {
   if (state === "diverged") return "danger";
-  if (state === "archived" || state === "needsRecovery") return "exposed";
+  if (state === "archived" || state === "unregistered" || state === "needsRecovery") {
+    return "exposed";
+  }
   return undefined;
 }
