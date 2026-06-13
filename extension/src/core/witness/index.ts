@@ -11,6 +11,12 @@
 //   role facades     stateful                          core/controller.ts
 //
 // Nothing below the prover may reach for the network or for storage.
+// Freshness is owned HERE, by the caller assembling a witness, not by the
+// builders: each takes sigma as an input and cannot know whether it is new.
+// Exporting the builders without the sampler would hand a consumer the
+// operations and withhold the safety-critical input they all need. A repeated
+// sigma repeats the ephemeral key and every derived channel mask.
+export { sampleSalt } from "./salt";
 export { buildRegisterWitness, type RegisterInputs } from "./register";
 export { buildWithdrawWitness, type WithdrawInputs, MAX_AMOUNT } from "./withdraw";
 export { buildTransferWitness, decryptIncomingTransfer, type TransferInputs } from "./transfer";

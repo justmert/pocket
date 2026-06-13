@@ -166,3 +166,23 @@ describe("wire encoding", () => {
     expect(() => decodePoint(new Uint8Array(63))).toThrow(/64 bytes/);
   });
 });
+
+describe("encodePoint refuses non-canonical coordinates", () => {
+  it("throws rather than truncating a coordinate at or above r", () => {
+    // The write path used to truncate silently while the scalar path threw, so
+    // the same bad value was caught on one route and mangled on the other.
+    expect(() => encodePoint({ x: R, y: 1n })).toThrow(/canonical/);
+    expect(() => encodePoint({ x: 1n, y: R })).toThrow(/canonical/);
+    expect(() => encodePoint({ x: R + 5n, y: 1n })).toThrow(/canonical/);
+  });
+
+  it("still encodes the identity as sixty-four zeros", () => {
+    // A freshly registered account's balance commitment IS the identity, so
+    // this must remain representable.
+    expect(encodePoint(IDENTITY)).toEqual(new Uint8Array(64));
+  });
+
+  it("round-trips the generator", () => {
+    expect(decodePoint(encodePoint(G))).toEqual(G);
+  });
+});

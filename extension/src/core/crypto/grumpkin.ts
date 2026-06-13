@@ -11,7 +11,7 @@
 // multi_scalar_mul unambiguously.
 import { weierstrass } from "@noble/curves/abstract/weierstrass.js";
 import { Field } from "@noble/curves/abstract/modular.js";
-import { R, Q } from "./field";
+import { R, Q, toBytesBE } from "./field";
 
 /** Grumpkin's BASE field is BN254's scalar field: point coordinates live here. */
 const Fr = Field(R);
@@ -103,18 +103,21 @@ export function commit(value: bigint, randomness: bigint): Point {
   return add(scalarMul(value, G), scalarMul(randomness, H));
 }
 
-/** 64-byte uncompressed affine encoding, x || y, big-endian. Identity is 64 zeros. */
+/**
+ * 64-byte uncompressed affine encoding, x || y, big-endian. Identity is 64
+ * zeros.
+ *
+ * Coordinates MUST be canonical. Truncating a coordinate at or above r used to
+ * be silent here while the scalar path threw, so the same class of bad value
+ * was caught on one route and quietly mangled on the other. The contract
+ * rejects it either way, so this is about where the failure surfaces: at the
+ * point of construction, where the caller can still see what produced it,
+ * rather than as an opaque contract error after a proof has been built.
+ */
 export function encodePoint(p: Point): Uint8Array {
   const out = new Uint8Array(64);
-  const put = (v: bigint, off: number) => {
-    let x = v;
-    for (let i = 31; i >= 0; i--) {
-      out[off + i] = Number(x & 0xffn);
-      x >>= 8n;
-    }
-  };
-  put(p.x, 0);
-  put(p.y, 32);
+  out.set(toBytesBE(p.x), 0);
+  out.set(toBytesBE(p.y), 32);
   return out;
 }
 

@@ -104,6 +104,7 @@ const SAFE_ERRORS = new Set([
   "UnspendableBlindingError",
   "CctpParameterError",
   "ConfidentialReadError",
+  "InsufficientBalanceError",
   "VerificationKeyMismatchError",
 ]);
 

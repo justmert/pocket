@@ -24,6 +24,10 @@ export function sampleSalt(): bigint {
     const candidate = fromBytesBE(maskTop2Bits(bytes));
     if (candidate !== 0n && candidate < R) return candidate;
   }
-  // Each attempt fails with probability under 2^-127, so this is unreachable.
+  // Each attempt fails with probability 1 - r/2^254, about 24.4%, because the
+  // top two bits are masked to 254 and r sits below 2^254. Sixty-four
+  // independent failures is about 2^-130, which is why this is unreachable.
+  // The per-attempt figure is the one that matters: it is what says the loop
+  // bound cannot safely be shrunk.
   throw new Error("salt sampling exceeded its rejection bound");
 }

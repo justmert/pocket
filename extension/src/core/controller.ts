@@ -46,6 +46,11 @@ export class PrivatePocketError extends Error {
   override readonly name = "PrivatePocketError";
 }
 
+/** More than the account can actually send, once the reserve is accounted for. */
+export class InsufficientBalanceError extends Error {
+  override readonly name = "InsufficientBalanceError";
+}
+
 /** A recovery attempt the user can correct: a bad phrase, or the wrong wallet. */
 export class RecoveryError extends Error {
   override readonly name = "RecoveryError";
@@ -501,6 +506,23 @@ export class WalletController {
     }
     const amount = parseAmount(req.amount);
     const asset = req.assetId === "native" ? Asset.native() : this.assetFromId(req.assetId);
+
+    // Refuse here, not in the popup. Presenting a reserve-adjusted balance is
+    // display only: entering more than it still builds, signs and submits, and
+    // the failure charges a fee and consumes the sequence number. The check
+    // has to sit where it cannot be bypassed by whatever calls the worker.
+    if (asset.isNative()) {
+      const native = await readNative(this.server(), address);
+      const reserve = minimumBalance(native, BASE_RESERVE_STROOPS);
+      const spendable = native.raw > reserve ? native.raw - reserve : 0n;
+      if (amount > spendable) {
+        throw new InsufficientBalanceError(
+          `That is more than you can send. Your balance is ${formatAmount(native.raw)} XLM, ` +
+            `of which ${formatAmount(reserve)} XLM is locked by the network as a reserve, ` +
+            `leaving ${formatAmount(spendable)} XLM.`,
+        );
+      }
+    }
 
     const seq = await this.server().getAccount(address);
     const tx = buildPayment(

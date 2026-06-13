@@ -80,6 +80,14 @@ export async function ingestRange(
 
     if (page.events.length === 0) break;
 
+    // Continuation pages carry only a cursor, so the endLedger bound is not
+    // re-sent and the RPC can return events past toLedger. Inserting them is
+    // harmless (INSERT OR IGNORE, and their true ledger_seq is recorded), but
+    // recordRange only claims up to toLedger, so stored data and claimed range
+    // would disagree. Stop at the bound instead: that disagreement is exactly
+    // what the completeness signal exists to prevent.
+    if (page.events[0]!.ledger > toLedger) break;
+
     const write = db.transaction(() => {
       for (const e of page.events) {
         let type: string;
