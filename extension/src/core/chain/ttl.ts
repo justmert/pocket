@@ -12,15 +12,32 @@
 // inbound transfers write to the receiving balance and bump the TTL.
 //
 // Never calibrate this on testnet. min_persistent_ttl is 120,960 ledgers on
-// testnet against 2,073,600 on mainnet, roughly 7 days against 120.
+// testnet against 2,073,600 on mainnet. Read live from getLedgerEntries on the
+// ConfigSettingStateArchival key on 2026-07-31: both figures confirmed, and
+// max_entry_ttl is 3,110,400 on both. Converted at the measured close times
+// below that is about 7.0 days on testnet against 133.6 on mainnet, so the
+// mainnet floor is an order of magnitude more forgiving and nothing calibrated
+// against the testnet number will be too aggressive there.
 import type { rpc } from "@stellar/stellar-sdk";
 import { Address, xdr } from "@stellar/stellar-sdk/base";
 
-/** Measured ledger close time. Testnet ~5.01s, mainnet ~5.57s. */
+/**
+ * Measured ledger close time.
+ *
+ * Not nominal 5s: measured over 199 consecutive ledgers from Horizon on
+ * 2026-07-31 as 5.0101s on testnet and 5.5678s on mainnet. The two differ by
+ * 11%, which is why this is a per-network table and not a single constant.
+ */
 export const SECONDS_PER_LEDGER = { testnet: 5.01, mainnet: 5.57 } as const;
+
+/** A network to read TTLs against. Never defaulted: see readAccountTtl. */
+export type TtlNetwork = keyof typeof SECONDS_PER_LEDGER;
 
 /** Bump when fewer than this many days remain, so a failure is never a surprise. */
 export const KEEPALIVE_THRESHOLD_DAYS = 7;
+
+const SECONDS_PER_DAY = 86_400;
+const MS_PER_DAY = SECONDS_PER_DAY * 1000;
 
 export type TtlStatus =
   | { kind: "healthy"; expiresAt: Date; daysRemaining: number }
@@ -36,12 +53,18 @@ export type TtlStatus =
  *
  * Reported as a DATE, not a ledger number: "expires 14 March" is actionable and
  * "liveUntilLedgerSeq 3900347" is not.
+ *
+ * `network` is REQUIRED and deliberately has no default. Defaulting it to
+ * testnet would silently price mainnet ledgers 11% short on the day the wallet
+ * is pointed at mainnet, and the resulting date would be wrong on a screen the
+ * user is told to act on. A missing argument must be a compile error, not a
+ * quietly wrong expiry.
  */
 export async function readAccountTtl(
   server: rpc.Server,
   tokenId: string,
   account: string,
-  network: keyof typeof SECONDS_PER_LEDGER = "testnet",
+  network: TtlNetwork,
 ): Promise<TtlStatus> {
   const key = xdr.LedgerKey.contractData(
     new xdr.LedgerKeyContractData({
@@ -64,9 +87,19 @@ export async function readAccountTtl(
   if (liveUntil === undefined) return { kind: "absent" };
   if (liveUntil <= res.latestLedger) return { kind: "archived" };
 
-  const ledgersLeft = liveUntil - res.latestLedger;
+  return classifyRemaining(liveUntil - res.latestLedger, network);
+}
+
+/**
+ * Ledgers remaining to a user-facing status.
+ *
+ * Shared by both readers so the close-time conversion exists once. Two copies
+ * drifting apart would mean an account and the verifier it depends on being
+ * judged by different clocks.
+ */
+function classifyRemaining(ledgersLeft: number, network: TtlNetwork): TtlStatus {
   const secondsLeft = ledgersLeft * SECONDS_PER_LEDGER[network];
-  const daysRemaining = secondsLeft / 86_400;
+  const daysRemaining = secondsLeft / SECONDS_PER_DAY;
   const expiresAt = new Date(Date.now() + secondsLeft * 1000);
 
   return daysRemaining <= KEEPALIVE_THRESHOLD_DAYS
@@ -98,8 +131,8 @@ export function needsKeepAlive(status: TtlStatus): boolean {
  * available.
  */
 export function jitteredDelayMs(baseDays: number): number {
-  const base = baseDays * 86_400_000;
-  const jitter = Math.random() * 86_400_000;
+  const base = baseDays * MS_PER_DAY;
+  const jitter = Math.random() * MS_PER_DAY;
   return Math.max(0, base - jitter);
 }
 
@@ -118,7 +151,7 @@ export function jitteredDelayMs(baseDays: number): number {
 export async function readInstanceTtl(
   server: rpc.Server,
   contractId: string,
-  network: keyof typeof SECONDS_PER_LEDGER = "testnet",
+  network: TtlNetwork,
 ): Promise<TtlStatus> {
   const key = xdr.LedgerKey.contractData(
     new xdr.LedgerKeyContractData({
@@ -133,11 +166,5 @@ export async function readInstanceTtl(
   if (!entry?.liveUntilLedgerSeq) return { kind: "absent" };
   if (entry.liveUntilLedgerSeq <= res.latestLedger) return { kind: "archived" };
 
-  const secondsLeft = (entry.liveUntilLedgerSeq - res.latestLedger) * SECONDS_PER_LEDGER[network];
-  const daysRemaining = secondsLeft / 86_400;
-  const expiresAt = new Date(Date.now() + secondsLeft * 1000);
-
-  return daysRemaining <= KEEPALIVE_THRESHOLD_DAYS
-    ? { kind: "expiring", expiresAt, daysRemaining }
-    : { kind: "healthy", expiresAt, daysRemaining };
+  return classifyRemaining(entry.liveUntilLedgerSeq - res.latestLedger, network);
 }

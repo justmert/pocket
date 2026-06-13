@@ -14,17 +14,41 @@ import { scValToNative, xdr } from "@stellar/stellar-sdk/base";
 import type Database from "better-sqlite3";
 import { recordRange, type StoredEvent } from "./schema.ts";
 
-/** Events that matter for balance recovery. INDEXER.md 3.2. */
-export const IN_SCOPE = new Set([
-  "register",
-  "deposit",
-  "merge",
-  "withdraw",
-  "transfer",
-  "spender_transfer",
-  "set_spender",
-  "revoke_spender",
-]);
+/**
+ * Events that matter for balance recovery, and how many address topics each
+ * one carries after the event name. INDEXER.md 3.2.
+ *
+ * Layouts read from stellar-contracts@219c560,
+ * packages/tokens/src/confidential/mod.rs:258-491:
+ *
+ *   register          ["register", account]
+ *   deposit           ["deposit", from, to]
+ *   merge             ["merge", account]
+ *   withdraw          ["withdraw", from, to]
+ *   transfer          ["transfer", from, to]
+ *   spender_transfer  ["spender_transfer", spender, from, to]
+ *   set_spender       ["set_spender", account, spender]
+ *   revoke_spender    ["revoke_spender", account, spender]
+ */
+export const ATTRIBUTED_TOPICS: Readonly<Record<string, number>> = {
+  register: 1,
+  deposit: 2,
+  merge: 1,
+  withdraw: 2,
+  transfer: 2,
+  spender_transfer: 3,
+  set_spender: 2,
+  revoke_spender: 2,
+};
+
+export const IN_SCOPE = new Set(Object.keys(ATTRIBUTED_TOPICS));
+
+/** An event whose topic layout is not the one this archive was written against. */
+export class EventShapeError extends Error {
+  override readonly name = "EventShapeError";
+}
+
+const ADDRESS = /^[GC][A-Z2-7]{55}$/;
 
 /**
  * Which accounts an event belongs to.
@@ -32,12 +56,32 @@ export const IN_SCOPE = new Set([
  * Attribution is a pure function of the TOPICS. Never the transaction source
  * account: a Transfer belongs to both parties, and the submitter may be neither
  * of them once fee abstraction is in play.
+ *
+ * The arity check is the point. Taking "every topic that looks like an address"
+ * matches on shape and not on type, which means an upstream event that one day
+ * carries a non-party address topic gets that stranger written into an account's
+ * history, and an upstream event that drops one silently loses a party from
+ * theirs. Both produce a wrong replayed balance and neither reports anything.
+ * Only this contract can emit these events, so a mismatch is never an attacker
+ * and always a library change: refuse it loudly at ingest rather than serve it
+ * quietly at read.
  */
 export function attributionOf(eventType: string, topics: unknown[]): string[] {
-  const addrs = topics
-    .slice(1)
-    .filter((t): t is string => typeof t === "string" && /^[GC][A-Z2-7]{55}$/.test(t));
-  return [...new Set(addrs)];
+  const expected = ATTRIBUTED_TOPICS[eventType];
+  if (expected === undefined) {
+    throw new EventShapeError(`${eventType} is not an in-scope event type`);
+  }
+  const parties = topics.slice(1);
+  if (parties.length !== expected) {
+    throw new EventShapeError(
+      `${eventType} should carry ${expected} address topic(s), got ${parties.length}`,
+    );
+  }
+  if (!parties.every((t): t is string => typeof t === "string" && ADDRESS.test(t))) {
+    throw new EventShapeError(`${eventType} carries a topic that is not an address`);
+  }
+  // A spender_transfer to yourself names the same account twice. One row.
+  return [...new Set(parties)];
 }
 
 export interface IngestResult {
@@ -128,9 +172,21 @@ export async function ingestRange(
           e.value.toXDR("base64"),
         );
 
-        for (const account of attributionOf(type, topics)) {
-          insertAttribution.run(id, account);
+        // Deliberately NOT caught. An event we cannot attribute is an event
+        // whose owner we would have to guess, and a guess here is a wrong
+        // replayed balance. The transaction rolls back and recordRange below is
+        // never reached, so the range stays unclaimed and the archive keeps
+        // reporting it incomplete until an operator has looked.
+        let accounts: string[];
+        try {
+          accounts = attributionOf(type, topics);
+        } catch (cause) {
+          throw new EventShapeError(
+            `${cause instanceof Error ? cause.message : String(cause)} ` +
+              `(event ${id} at ledger ${e.ledger})`,
+          );
         }
+        for (const account of accounts) insertAttribution.run(id, account);
         ingested++;
       }
     });

@@ -1,6 +1,14 @@
 // Network configuration. Contract addresses are config, never hardcoded
 // constants: testnet is wiped on resets, and confidential identities are
 // per-deployment, so a redeployment means every user re-registers.
+//
+// Every endpoint and passphrase below was checked against the live network on
+// 2026-07-31 rather than recalled:
+//   - testnet passphrase and friendbotUrl returned verbatim by getNetwork
+//   - both passphrases, both Horizon hosts and both RPC hosts answered
+//   - all three testnet contracts and both native SACs resolve on chain
+// Re-run scripts/check-infrastructure.sh to re-establish this; do not trust the
+// comment on its own once it is more than a release old.
 export type NetworkId = "testnet" | "mainnet";
 
 export interface ConfidentialDeployment {
@@ -58,9 +66,24 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
   mainnet: {
     id: "mainnet",
     passphrase: "Public Global Stellar Network ; September 2015",
+    // NOT an SDF endpoint. SDF publishes no public mainnet RPC at all: it runs
+    // one for testnet and futurenet only, and directs production traffic to
+    // commercial providers. sorobanrpc.com is one such third party, so on the
+    // day this network is enabled it sees every address the wallet queries and
+    // can lie about any read it answers. Shipping mainnet on a public endpoint
+    // is a trust decision that must be made deliberately, not inherited from
+    // this line. Verified against developers.stellar.org/docs/data/apis/rpc/providers
+    // on 2026-07-31.
     rpcUrl: "https://mainnet.sorobanrpc.com",
     horizonUrl: "https://horizon.stellar.org",
     nativeSac: "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
+    // No friendbot on mainnet, by design: the field is optional so that the
+    // absence is a type-level fact rather than a URL that would fail at runtime.
+    //
+    // Empty until a mainnet deployment exists. Every consumer guards on this
+    // being empty and reports the private pocket unavailable rather than
+    // reading confidential[0] off the end, so enabling mainnet cannot silently
+    // point the private pocket at a testnet contract.
     confidential: [],
   },
 };
