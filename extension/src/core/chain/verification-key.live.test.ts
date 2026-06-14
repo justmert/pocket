@@ -10,7 +10,9 @@ import "../../lib/polyfill";
 import { NETWORKS } from "../config";
 import {
   readVerificationKey,
+  readBoundVerifier,
   assertVerificationKey,
+  assertVerifierBinding,
   VerificationKeyMismatchError,
   PINNED_VK_HASHES,
   CIRCUITS,
@@ -74,5 +76,53 @@ describe.skipIf(!SECRET)("verification keys on the deployed verifier", () => {
     await expect(
       assertVerificationKey(server, dep.token, "transfer", src, net.passphrase),
     ).rejects.toBeInstanceOf(VerificationKeyMismatchError);
+  }, 60_000);
+});
+
+describe.skipIf(!SECRET)("the verifier the token is actually bound to", () => {
+  it("reads the binding from the token's instance storage", async () => {
+    // The token has no get_verifier entry point. The address is nonetheless
+    // public ledger state, which is what makes checking it possible at all.
+    expect(await readBoundVerifier(server, dep.token)).toBe(dep.verifier);
+  }, 60_000);
+
+  it("accepts the configured pair", async () => {
+    await expect(
+      assertVerifierBinding(server, dep.token, dep.verifier),
+    ).resolves.toBeUndefined();
+  }, 60_000);
+
+  it("refuses a verifier the token does not route to", async () => {
+    // The auditor registry is a real, live contract that is simply not this
+    // token's verifier. Checking a key it does not hold would otherwise be a
+    // pass on a config we chose, agreeing with a hash we chose.
+    await expect(
+      assertVerifierBinding(server, dep.token, dep.auditor),
+    ).rejects.toBeInstanceOf(VerificationKeyMismatchError);
+  }, 60_000);
+
+  it("refuses when the binding cannot be read at all", async () => {
+    // The verifier contract is not a confidential token, so it has no Verifier
+    // entry in its instance storage. Fail closed, never wave through.
+    await expect(
+      assertVerifierBinding(server, dep.verifier, dep.verifier),
+    ).rejects.toBeInstanceOf(VerificationKeyMismatchError);
+  }, 60_000);
+
+  it("rejects the whole assertion when the token is bound elsewhere", async () => {
+    const src = await source();
+    // Passing the token makes the assertion cover the binding as well as the
+    // key, so a verifier holding the right key but wired to nothing is refused
+    // before the key is even read.
+    await expect(
+      assertVerificationKey(server, dep.verifier, "transfer", src, net.passphrase, dep.auditor),
+    ).rejects.toBeInstanceOf(VerificationKeyMismatchError);
+  }, 60_000);
+
+  it("passes end to end with the real token and verifier", async () => {
+    const src = await source();
+    await expect(
+      assertVerificationKey(server, dep.verifier, "transfer", src, net.passphrase, dep.token),
+    ).resolves.toBeUndefined();
   }, 60_000);
 });
