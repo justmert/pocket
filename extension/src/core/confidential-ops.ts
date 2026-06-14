@@ -127,16 +127,25 @@ export async function buildRegister(
 }
 
 /**
- * Shield: deposit then merge, as TWO transactions.
+ * Shield: the DEPOSIT half. Needs no proof.
  *
- * A deposit credits the RECEIVING side, so shielding without the merge leaves
- * the user with a zero spendable balance and no idea why. Both are returned so
- * the caller chains them; neither needs a proof.
+ * A deposit credits the RECEIVING side, so shielding without a merge leaves the
+ * user with a zero spendable balance and no idea why. The merge is deliberately
+ * NOT built here. It is built by `buildMerge` at confirm time, against the
+ * sequence the deposit actually consumed.
+ *
+ * This used to return a pre-built merge alongside, sourced from
+ * `sequenceNumber() + 1`. That is off by one: TransactionBuilder.build() has
+ * already incremented the source account, so the envelope came out one ahead of
+ * the deposit and could only ever have been rejected with txBadSeq. It went
+ * unnoticed because the caller discarded it and rebuilt. Pre-building it is
+ * wrong in principle too: until the deposit lands, the sequence it consumed is
+ * not known to have been consumed.
  */
 export async function buildShield(
   ctx: OpContext,
   amount: bigint,
-): Promise<{ deposit: Transaction; merge: Transaction }> {
+): Promise<{ deposit: Transaction }> {
   const account = ctx.keypair.publicKey();
   const source = await ctx.server.getAccount(account);
   const deposit = invoke(ctx, source, "deposit", [
@@ -144,10 +153,7 @@ export async function buildShield(
     addr(account),
     nativeToScVal(amount, { type: "i128" }),
   ]);
-  // Sequence advances, so the merge builds on the next number.
-  const next = new Account(account, (BigInt(source.sequenceNumber()) + 1n).toString());
-  const merge = invoke(ctx, next, "merge", [addr(account)]);
-  return { deposit, merge };
+  return { deposit };
 }
 
 /** Fold the receiving side into spendable. Needs auth, needs no proof. */
