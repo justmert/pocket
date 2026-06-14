@@ -35,8 +35,15 @@ import {
 import { spongeSqueeze2 } from "../crypto/poseidon";
 import { DOMAIN } from "../crypto/domain";
 import { commit, scalarMul, H, equals, isOnCurve, type Point } from "../crypto/grumpkin";
-import { R } from "../crypto/field";
-import { MAX_AMOUNT, assertFr, assertAmount, assertPoint, assertSpendableBlinding } from "./guards";
+import { R, isCanonicalFr } from "../crypto/field";
+import {
+  MAX_AMOUNT,
+  assertFr,
+  assertSalt,
+  assertAmount,
+  assertPoint,
+  assertSpendableBlinding,
+} from "./guards";
 import { pointSlots, type Opening, type Witness } from "./types";
 
 const addFr = (a: bigint, b: bigint): bigint => (a + b) % R;
@@ -71,7 +78,7 @@ export function buildTransferWitness(input: TransferInputs): Witness {
 
   if (sk <= 0n || sk >= R) throw new Error("sk must be a nonzero canonical F_r element");
   assertFr(addrF, "addr_f");
-  assertFr(sigma, "sigma");
+  assertSalt(sigma);
   assertPoint(recipientPvk, "recipient public viewing key");
   assertPoint(recipientAuditorKey, "recipient auditor key");
   assertPoint(senderAuditorKey, "sender auditor key");
@@ -186,6 +193,17 @@ export function decryptIncomingTransfer(
   sigma: bigint,
   cTransfer: Point,
 ): Opening | null {
+  // The SCALAR fields need the same canonicality check the POINT fields already
+  // get from decodePoint, and for the same reason. The sponge reduces every
+  // absorbed input mod r, so sigma + r and sigma derive the identical mask:
+  // without this, one on-chain transfer has unboundedly many well-formed
+  // re-encodings that all decrypt to the same credit. The contract rejects
+  // non-canonical bytes outright, so any such event came from the archive, and
+  // the archive is the party the trust model already treats as hostile. A
+  // second copy under a different event id survives dedup, gets credited
+  // twice, and the receiving accumulator has no checkpoint to heal from.
+  if (!isCanonicalFr(vTilde)) return null;
+  if (!isCanonicalFr(sigma)) return null;
   // A hostile or corrupt R_e must not reach scalar multiplication: noble's
   // fromAffine does not validate, and multiplying an off-curve point returns a
   // point rather than throwing.

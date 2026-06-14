@@ -8,9 +8,21 @@
 // value lives under, and that the payload round-trips.
 import { describe, it, expect } from "vitest";
 import { buildWithdrawWitness, MAX_AMOUNT } from "./withdraw";
-import { buildTransferWitness } from "./transfer";
+import { buildTransferWitness, decryptIncomingTransfer } from "./transfer";
+import { circuitInputs, PUBLIC_INPUT_COUNT } from "./inputs";
+import { buildRegisterWitness } from "./register";
 import { sampleSalt } from "./salt";
-import { commit, add, negate, equals, G, H, scalarMul, isOnCurve } from "../crypto/grumpkin";
+import {
+  commit,
+  add,
+  negate,
+  equals,
+  G,
+  H,
+  scalarMul,
+  isOnCurve,
+  IDENTITY,
+} from "../crypto/grumpkin";
 import {
   spendRandomness,
   vkFromSk,
@@ -154,16 +166,32 @@ describe("transfer witness", () => {
     expect(equals(difference, commit(0n, rDelta))).toBe(true);
   });
 
-  it("puts every public point on the curve", () => {
+  it("puts every public point slot on the curve", () => {
+    // The point slots are known by position, so they are named rather than
+    // guessed at. The previous version of this test skipped anything that was
+    // not on the curve and then asserted it was, which can only ever pass.
     const w = buildTransferWitness(base());
-    // A public input that is not a curve point is a witness the circuit
-    // cannot satisfy, and the failure is opaque at proving time.
-    for (let i = 0; i + 1 < w.publicInputs.length; i += 2) {
+    const POINTS = [0, 2, 4, 7, 9, 11, 13, 15];
+    for (const i of POINTS) {
       const p = { x: w.publicInputs[i]!, y: w.publicInputs[i + 1]! };
-      if (p.x === 0n && p.y === 0n) continue;
-      if (!isOnCurve(p)) continue; // scalar slots are not point pairs
-      expect(isOnCurve(p)).toBe(true);
+      expect(isOnCurve(p), `slot ${i} is not a Grumpkin point`).toBe(true);
+      expect(p.x === 0n && p.y === 0n, `slot ${i} is the identity`).toBe(false);
     }
+    // And the remaining slots are scalars, which must NOT parse as points, or
+    // the position table above is wrong.
+    for (const i of [17, 19, 21]) {
+      expect(isOnCurve({ x: w.publicInputs[i]!, y: w.publicInputs[i + 1]! })).toBe(false);
+    }
+  });
+
+  it("spends the whole balance, leaving a non-identity commitment to zero", () => {
+    const b = { ...base(), amount: spendable.value };
+    const w = buildTransferWitness(b);
+    const cNew = { x: w.publicInputs[C_NEW]!, y: w.publicInputs[C_NEW + 1]! };
+    // v_new is 0 but r' is not, so C' is a real point. A wallet that assumed
+    // "empty balance means identity" would fail its own consistency check.
+    expect(equals(cNew, IDENTITY)).toBe(false);
+    expect(equals(cNew, commit(0n, spendRandomness(vk, b.sigma)))).toBe(true);
   });
 
   it("keeps every public input inside the scalar field", () => {
@@ -205,5 +233,159 @@ describe("transfer witness", () => {
     expect(equals(G, H)).toBe(false);
     expect(equals(commit(0n, 1n), H)).toBe(true);
     expect(equals(commit(1n, 0n), G)).toBe(true);
+  });
+});
+
+describe("decryptIncomingTransfer against untrusted event data", () => {
+  // A recipient whose PVK we can actually decrypt with: PVK = vk*H. The
+  // fixtures above use a G-multiple, which is a valid curve point and a
+  // perfectly acceptable PVK, but its discrete log against H is unknown, so
+  // nobody can play its recipient.
+  const RECIPIENT_VK = 77n;
+  const w = buildTransferWitness({
+    sk,
+    addrF,
+    spendable,
+    amount: 250n,
+    sigma: sampleSalt(),
+    recipientPvk: scalarMul(RECIPIENT_VK, H),
+    recipientAuditorKey: scalarMul(43n, G),
+    senderAuditorKey: auditorKey,
+    onChainSpendable,
+  });
+  const p = w.publicInputs;
+  const RE = { x: p[15]!, y: p[16]! };
+  const cT = { x: p[C_TRANSFER]!, y: p[C_TRANSFER + 1]! };
+  const vT = p[17]!;
+  const sg = p[19]!;
+
+  it("opens a transfer that really was addressed to this viewing key", () => {
+    const opening = decryptIncomingTransfer(RECIPIENT_VK, RE, vT, sg, cT);
+    expect(opening?.value).toBe(250n);
+    expect(equals(commit(opening!.value, opening!.randomness), cT)).toBe(true);
+  });
+
+  it("refuses a NON-CANONICAL sigma or v_tilde, which re-encode one transfer", () => {
+    // The sponge reduces every absorbed input mod r, so sigma + r derives the
+    // identical mask. Without a canonicality check, one on-chain transfer has
+    // unboundedly many well-formed re-encodings that all decrypt to the same
+    // credit. The contract rejects non-canonical bytes, so such an event can
+    // only have come from the archive, which the trust model already treats as
+    // hostile: a second copy under a fresh event id survives dedup, gets
+    // credited twice, and the receiving accumulator has no checkpoint to heal
+    // from. The wallet then reads as diverged and refuses to spend.
+    for (const [what, run] of [
+      ["sigma + r", () => decryptIncomingTransfer(RECIPIENT_VK, RE, vT, sg + R, cT)],
+      ["sigma + 2r", () => decryptIncomingTransfer(RECIPIENT_VK, RE, vT, sg + 2n * R, cT)],
+      ["v_tilde + r", () => decryptIncomingTransfer(RECIPIENT_VK, RE, vT + R, sg, cT)],
+      ["both + r", () => decryptIncomingTransfer(RECIPIENT_VK, RE, vT + R, sg + R, cT)],
+      ["negative sigma", () => decryptIncomingTransfer(RECIPIENT_VK, RE, vT, -sg, cT)],
+      ["negative v_tilde", () => decryptIncomingTransfer(RECIPIENT_VK, RE, -vT, sg, cT)],
+    ] as const) {
+      expect(run(), what).toBeNull();
+    }
+  });
+
+  it("returns null rather than throwing, for every malformed input", () => {
+    // The scanner calls this for every transfer on the contract, so a throw
+    // would abort a whole sync on one bad event.
+    const cases: [string, () => unknown][] = [
+      ["vk = 0", () => decryptIncomingTransfer(0n, RE, vT, sg, cT)],
+      ["vk negative", () => decryptIncomingTransfer(-1n, RE, vT, sg, cT)],
+      ["someone else's transfer", () => decryptIncomingTransfer(0xfacen, RE, vT, sg, cT)],
+      ["R_e identity", () => decryptIncomingTransfer(RECIPIENT_VK, IDENTITY, vT, sg, cT)],
+      ["R_e off curve", () => decryptIncomingTransfer(RECIPIENT_VK, { x: 1n, y: 1n }, vT, sg, cT)],
+      ["R_e x >= r", () => decryptIncomingTransfer(RECIPIENT_VK, { x: R, y: 1n }, vT, sg, cT)],
+      ["R_e negative", () => decryptIncomingTransfer(RECIPIENT_VK, { x: -1n, y: -1n }, vT, sg, cT)],
+      ["v_tilde tampered", () => decryptIncomingTransfer(RECIPIENT_VK, RE, vT + 1n, sg, cT)],
+      ["sigma tampered", () => decryptIncomingTransfer(RECIPIENT_VK, RE, vT, sg + 1n, cT)],
+      ["c_transfer identity", () => decryptIncomingTransfer(RECIPIENT_VK, RE, vT, sg, IDENTITY)],
+      [
+        "c_transfer off curve",
+        () => decryptIncomingTransfer(RECIPIENT_VK, RE, vT, sg, { x: 3n, y: 4n }),
+      ],
+      ["c_transfer = G", () => decryptIncomingTransfer(RECIPIENT_VK, RE, vT, sg, G)],
+    ];
+    for (const [what, run] of cases) {
+      let out: unknown;
+      expect(() => (out = run()), `${what} threw`).not.toThrow();
+      expect(out, what).toBeNull();
+    }
+  });
+
+  it("opens the whole balance when the whole balance was sent", () => {
+    const full = buildTransferWitness({
+      sk,
+      addrF,
+      spendable,
+      amount: spendable.value,
+      sigma: sampleSalt(),
+      recipientPvk: scalarMul(RECIPIENT_VK, H),
+      recipientAuditorKey: scalarMul(43n, G),
+      senderAuditorKey: auditorKey,
+      onChainSpendable,
+    });
+    const q = full.publicInputs;
+    const opening = decryptIncomingTransfer(
+      RECIPIENT_VK,
+      { x: q[15]!, y: q[16]! },
+      q[17]!,
+      q[19]!,
+      { x: q[C_TRANSFER]!, y: q[C_TRANSFER + 1]! },
+    );
+    expect(opening?.value).toBe(spendable.value);
+  });
+});
+
+describe("the slot-to-name table the wallet and the parity harness share", () => {
+  const wRegister = buildRegisterWitness({ sk, addrF, acctF: 0x99n });
+  const wWithdraw = buildWithdrawWitness({
+    sk,
+    addrF,
+    spendable,
+    amount: 1n,
+    sigma: sampleSalt(),
+    auditorKey,
+    onChainSpendable,
+  });
+  const wTransfer = buildTransferWitness({
+    sk,
+    addrF,
+    spendable,
+    amount: 1n,
+    sigma: sampleSalt(),
+    recipientPvk,
+    recipientAuditorKey: scalarMul(43n, G),
+    senderAuditorKey: auditorKey,
+    onChainSpendable,
+  });
+
+  it("declares the slot count each circuit's main signature declares", () => {
+    expect(PUBLIC_INPUT_COUNT).toEqual({ register: 6, withdraw: 15, transfer: 24 });
+  });
+
+  it("names every slot exactly once, losing none and duplicating none", () => {
+    for (const [w, privates] of [
+      [wRegister, 1],
+      [wWithdraw, 4],
+      [wTransfer, 5],
+    ] as const) {
+      const named = circuitInputs(w);
+      expect(Object.keys(named)).toHaveLength(w.publicInputs.length + privates);
+      expect(Object.keys(w.privateInputs)).toHaveLength(privates);
+      // Every public value must survive the mapping. Counting values rather
+      // than keys is what catches two slots colliding on one name.
+      for (const v of w.publicInputs) expect(Object.values(named)).toContain(v);
+    }
+  });
+
+  it("refuses a witness whose slot count disagrees with the circuit", () => {
+    // Trap 2's structural half: a builder that gains or loses a slot assembles
+    // a vector the contract will not reproduce, and the proof then fails at the
+    // verifier with nothing to point at.
+    expect(() =>
+      circuitInputs({ ...wTransfer, publicInputs: wTransfer.publicInputs.slice(0, 23) }),
+    ).toThrow(/23 public input slots, but the circuit declares 24/);
+    expect(() => circuitInputs({ ...wTransfer, circuit: "nope" })).toThrow(/no public input names/);
   });
 });
