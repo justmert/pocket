@@ -39,6 +39,23 @@ export class VerificationKeyMismatchError extends Error {
   override readonly name = "VerificationKeyMismatchError";
 }
 
+/**
+ * The verifier's own ledger entry has archived, so it cannot answer at all.
+ *
+ * A SUBCLASS rather than a sibling, and deliberately so: `describeError` passes
+ * errors through by NAME, and the inherited name keeps this on that allowlist.
+ * A fresh name would be replaced with "Something went wrong", which is strictly
+ * less useful than the mismatch message it is trying to improve on.
+ */
+export class VerifierDormantError extends VerificationKeyMismatchError {
+  constructor() {
+    super(
+      "The proof verifier this deployment uses is dormant and has to be reactivated before " +
+        "any private operation can be proved. Pocket will not build a proof until it is back.",
+    );
+  }
+}
+
 async function sha256Hex(b: Uint8Array): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", b as BufferSource);
   return [...new Uint8Array(d)].map((x) => x.toString(16).padStart(2, "0")).join("");
@@ -63,6 +80,11 @@ export async function readVerificationKey(
     .build();
 
   const sim = await server.simulateTransaction(tx);
+  // A dormant verifier simulates with a restore preamble rather than a value.
+  // Reported separately because "we could not read the key" sends someone
+  // hunting for a version mismatch when the entry has simply archived, which
+  // is a different problem with a different fix. Still a refusal either way.
+  if ("restorePreamble" in sim && sim.restorePreamble) throw new VerifierDormantError();
   if ("error" in sim) return null;
   const raw = (sim as { result?: { retval: xdr.ScVal } }).result?.retval;
   if (!raw || raw.switch().name !== "scvBytes") return null;
