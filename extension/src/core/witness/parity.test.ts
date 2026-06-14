@@ -1,10 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterAll } from "vitest";
 import { execFileSync } from "node:child_process";
-import { writeFileSync, existsSync } from "node:fs";
+import { writeFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { buildRegisterWitness } from "./register";
 import { buildWithdrawWitness } from "./withdraw";
 import { buildTransferWitness, decryptIncomingTransfer } from "./transfer";
+import { circuitInputs } from "./inputs";
 import { vkFromSk } from "../crypto/derive";
 import { commit, scalarMul, H } from "../crypto/grumpkin";
 
@@ -26,9 +27,15 @@ const ADDR_F = 0x1997b0390a25f684e91575771f4c3ca72ac8f20f45a462838ea918bbe8c4e19
 const ACCT_F = 0x1d3b0901201ea22ad61ed4600b49dee57bb73369bf07bdeab17cbf0e54debd4fn;
 const hx = (v: bigint) => `"0x${v.toString(16)}"`;
 
+// nargo writes each solved witness into the circuit package's target/, which
+// `npm run vendor` copies wholesale into the shipped extension. Naming them
+// here lets the suite take its own artifacts back out again.
+const written: string[] = [];
+
 /** Ask the real circuit to solve a witness. Returns true when it is satisfiable. */
 function solves(circuit: string, fields: Record<string, bigint>, name: string): boolean {
   const dir = join(CIRCUITS, circuit);
+  written.push(join(CIRCUITS, "target", `${name}.gz`));
   writeFileSync(
     join(dir, "Prover.toml"),
     Object.entries(fields)
@@ -43,15 +50,21 @@ function solves(circuit: string, fields: Record<string, bigint>, name: string): 
   }
 }
 
-const registerFields = (w: ReturnType<typeof buildRegisterWitness>) => ({
-  sk: w.privateInputs.sk as bigint,
-  y_x: w.publicInputs[0] as bigint,
-  y_y: w.publicInputs[1] as bigint,
-  pvk_x: w.publicInputs[2] as bigint,
-  pvk_y: w.publicInputs[3] as bigint,
-  addr_f: w.publicInputs[4] as bigint,
-  _acct_f: w.publicInputs[5] as bigint,
+afterAll(() => {
+  for (const f of written) rmSync(f, { force: true });
 });
+
+// The SAME mapping the wallet uses, not a second copy of it. A test that
+// re-derives the slot-to-name table proves only that the test agrees with the
+// circuit, which is exactly the gap the gzip trap lived in.
+const registerFields = (w: ReturnType<typeof buildRegisterWitness>) => circuitInputs(w);
+
+/** Tamper with one named input. The name is looked up, never re-derived. */
+const bump = (f: Record<string, bigint>, key: string): Record<string, bigint> => {
+  const v = f[key];
+  if (v === undefined) throw new Error(`${key} is not an input of this circuit`);
+  return { ...f, [key]: v + 1n };
+};
 
 describe.skipIf(!available)("register circuit parity", () => {
   const w = buildRegisterWitness({ sk: 0xdeadn, addrF: ADDR_F, acctF: ACCT_F });
@@ -62,12 +75,12 @@ describe.skipIf(!available)("register circuit parity", () => {
 
   it("rejects a tampered Y (constraint R1: Y = sk*H)", () => {
     const f = registerFields(w);
-    expect(solves("register", { ...f, y_x: f.y_x + 1n }, "parity_bad_y")).toBe(false);
+    expect(solves("register", bump(f, "y_x"), "parity_bad_y")).toBe(false);
   }, 60_000);
 
   it("rejects a tampered PVK (R3: PVK = vk*H)", () => {
     const f = registerFields(w);
-    expect(solves("register", { ...f, pvk_x: f.pvk_x + 1n }, "parity_bad_pvk")).toBe(false);
+    expect(solves("register", bump(f, "pvk_x"), "parity_bad_pvk")).toBe(false);
   }, 60_000);
 
   it("rejects a mismatched addr_f (R2 binds vk to the deployment)", () => {
@@ -91,27 +104,7 @@ describe.skipIf(!available)("register circuit parity", () => {
   }, 60_000);
 });
 
-const withdrawFields = (w: ReturnType<typeof buildWithdrawWitness>) => ({
-  sk: w.privateInputs.sk as bigint,
-  v: w.privateInputs.v as bigint,
-  r: w.privateInputs.r as bigint,
-  r_e: w.privateInputs.r_e as bigint,
-  c_spend_x: w.publicInputs[0] as bigint,
-  c_spend_y: w.publicInputs[1] as bigint,
-  y_x: w.publicInputs[2] as bigint,
-  y_y: w.publicInputs[3] as bigint,
-  addr_f: w.publicInputs[4] as bigint,
-  k_aud_s_x: w.publicInputs[5] as bigint,
-  k_aud_s_y: w.publicInputs[6] as bigint,
-  a: w.publicInputs[7] as bigint,
-  c_spend_new_x: w.publicInputs[8] as bigint,
-  c_spend_new_y: w.publicInputs[9] as bigint,
-  sigma: w.publicInputs[10] as bigint,
-  b_tilde: w.publicInputs[11] as bigint,
-  r_e_x: w.publicInputs[12] as bigint,
-  r_e_y: w.publicInputs[13] as bigint,
-  b_tilde_aud_s: w.publicInputs[14] as bigint,
-});
+const withdrawFields = (w: ReturnType<typeof buildWithdrawWitness>) => circuitInputs(w);
 
 describe.skipIf(!available)("withdraw circuit parity", () => {
   const sk = 0xdeadn;
@@ -138,21 +131,21 @@ describe.skipIf(!available)("withdraw circuit parity", () => {
 
   it("rejects a tampered new commitment (W6)", () => {
     const f = withdrawFields(w);
-    expect(solves("withdraw", { ...f, c_spend_new_x: f.c_spend_new_x + 1n }, "parity_wd_c")).toBe(
+    expect(solves("withdraw", bump(f, "c_spend_new_x"), "parity_wd_c")).toBe(
       false,
     );
   }, 60_000);
 
   it("rejects a tampered balance ciphertext (W7)", () => {
     const f = withdrawFields(w);
-    expect(solves("withdraw", { ...f, b_tilde: f.b_tilde + 1n }, "parity_wd_b")).toBe(false);
+    expect(solves("withdraw", bump(f, "b_tilde"), "parity_wd_b")).toBe(false);
   }, 60_000);
 
   it("rejects a tampered auditor checkpoint (W_a4)", () => {
     // This is the lane-0/lane-1 defect: an auditor ciphertext built from the
     // wrong squeeze is well-formed and unreadable by the auditor.
     const f = withdrawFields(w);
-    expect(solves("withdraw", { ...f, b_tilde_aud_s: f.b_tilde_aud_s + 1n }, "parity_wd_aud")).toBe(
+    expect(solves("withdraw", bump(f, "b_tilde_aud_s"), "parity_wd_aud")).toBe(
       false,
     );
   }, 60_000);
@@ -185,40 +178,7 @@ describe.skipIf(!available)("withdraw circuit parity", () => {
   });
 });
 
-const transferFields = (w: ReturnType<typeof buildTransferWitness>) => {
-  const p = w.publicInputs as bigint[];
-  return {
-    sk: w.privateInputs.sk as bigint,
-    v: w.privateInputs.v as bigint,
-    r: w.privateInputs.r as bigint,
-    v_transfer: w.privateInputs.v_transfer as bigint,
-    r_e: w.privateInputs.r_e as bigint,
-    c_spend_x: p[0]!,
-    c_spend_y: p[1]!,
-    y_x: p[2]!,
-    y_y: p[3]!,
-    pvk_b_x: p[4]!,
-    pvk_b_y: p[5]!,
-    addr_f: p[6]!,
-    k_aud_r_x: p[7]!,
-    k_aud_r_y: p[8]!,
-    k_aud_s_x: p[9]!,
-    k_aud_s_y: p[10]!,
-    c_spend_new_x: p[11]!,
-    c_spend_new_y: p[12]!,
-    c_transfer_x: p[13]!,
-    c_transfer_y: p[14]!,
-    r_e_x: p[15]!,
-    r_e_y: p[16]!,
-    v_tilde: p[17]!,
-    b_tilde: p[18]!,
-    sigma: p[19]!,
-    v_tilde_aud_r: p[20]!,
-    r_tilde_aud_r: p[21]!,
-    v_tilde_aud_s: p[22]!,
-    b_tilde_aud_s: p[23]!,
-  };
-};
+const transferFields = (w: ReturnType<typeof buildTransferWitness>) => circuitInputs(w);
 
 describe.skipIf(!available)("transfer circuit parity", () => {
   const sk = 0xdeadn;
@@ -246,26 +206,26 @@ describe.skipIf(!available)("transfer circuit parity", () => {
 
   it("rejects a tampered transfer commitment (T8)", () => {
     const f = transferFields(w);
-    expect(solves("transfer", { ...f, c_transfer_x: f.c_transfer_x + 1n }, "parity_tx_c")).toBe(
+    expect(solves("transfer", bump(f, "c_transfer_x"), "parity_tx_c")).toBe(
       false,
     );
   }, 60_000);
 
   it("rejects a tampered encrypted amount (T9)", () => {
     const f = transferFields(w);
-    expect(solves("transfer", { ...f, v_tilde: f.v_tilde + 1n }, "parity_tx_v")).toBe(false);
+    expect(solves("transfer", bump(f, "v_tilde"), "parity_tx_v")).toBe(false);
   }, 60_000);
 
   it("rejects a tampered recipient-auditor ciphertext (T_a3)", () => {
     const f = transferFields(w);
-    expect(solves("transfer", { ...f, v_tilde_aud_r: f.v_tilde_aud_r + 1n }, "parity_tx_ar")).toBe(
+    expect(solves("transfer", bump(f, "v_tilde_aud_r"), "parity_tx_ar")).toBe(
       false,
     );
   }, 60_000);
 
   it("rejects a tampered sender-auditor ciphertext (T_a7)", () => {
     const f = transferFields(w);
-    expect(solves("transfer", { ...f, v_tilde_aud_s: f.v_tilde_aud_s + 1n }, "parity_tx_as")).toBe(
+    expect(solves("transfer", bump(f, "v_tilde_aud_s"), "parity_tx_as")).toBe(
       false,
     );
   }, 60_000);

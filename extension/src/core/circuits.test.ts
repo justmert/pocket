@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildRegisterWitness } from "./witness/register";
+import { circuitInputs } from "./witness/inputs";
 import { deriveSk } from "./keys/sk";
 import { addressToField } from "./crypto/address";
 import type { Bytes } from "./vault/envelope";
@@ -35,16 +36,7 @@ async function registerInputs(): Promise<Record<string, bigint>> {
   const addrF = addressToField("CDMXZEFOM5DN2GSHQKNOOW242RJZGCEM5LOOAPGRQE35GGHB7ALDK2Y6");
   const acctF = addressToField("GB43MNLS6IL77FIZHOBLYILQIQP5MPQVF77O5JOAYCSWX3TUHAL6Z3F7");
   const { sk } = await deriveSk(new Uint8Array(64).fill(3) as Bytes, addrF, acctF);
-  const w = buildRegisterWitness({ sk, addrF, acctF });
-  return {
-    sk: w.privateInputs.sk as bigint,
-    y_x: w.publicInputs[0]!,
-    y_y: w.publicInputs[1]!,
-    pvk_x: w.publicInputs[2]!,
-    pvk_y: w.publicInputs[3]!,
-    addr_f: w.publicInputs[4]!,
-    _acct_f: w.publicInputs[5]!,
-  };
+  return circuitInputs(buildRegisterWitness({ sk, addrF, acctF }));
 }
 
 describe("the ACIR handed to the prover", () => {

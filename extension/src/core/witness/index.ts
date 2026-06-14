@@ -27,5 +27,6 @@ export {
   decodeEnvelope,
   structToScVal,
 } from "./payload";
+export { circuitInputs, PUBLIC_INPUT_COUNT } from "./inputs";
 export type { ConfidentialAccount, Opening, HolderKeys, Witness } from "./types";
 export { pointSlots } from "./types";

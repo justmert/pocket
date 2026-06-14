@@ -27,6 +27,7 @@ import { buildRegisterWitness } from "./witness/register";
 import { buildWithdrawWitness } from "./witness/withdraw";
 import { buildTransferWitness, decryptIncomingTransfer } from "./witness/transfer";
 import { encodeRegisterData, encodeWithdrawData, encodeTransferData } from "./witness/payload";
+import { circuitInputs } from "./witness/inputs";
 import { sampleSalt } from "./witness/salt";
 import { spendRandomness } from "./crypto/derive";
 import { commit, type Point } from "./crypto/grumpkin";
@@ -103,15 +104,7 @@ export async function buildRegister(
   const w = buildRegisterWitness({ sk, addrF, acctF });
 
   const acir = await ctx.circuits.acir("register");
-  const solved = await ctx.circuits.solve("register", {
-    sk: w.privateInputs.sk as bigint,
-    y_x: w.publicInputs[0]!,
-    y_y: w.publicInputs[1]!,
-    pvk_x: w.publicInputs[2]!,
-    pvk_y: w.publicInputs[3]!,
-    addr_f: w.publicInputs[4]!,
-    _acct_f: w.publicInputs[5]!,
-  });
+  const solved = await ctx.circuits.solve("register", circuitInputs(w));
 
   const { proof } = await prove("register", acir, solved);
   const data = encodeRegisterData(w.payload.Y as Point, w.payload.PVK as Point, proof);
@@ -200,39 +193,8 @@ export async function buildTransfer(
     onChainSpendable: input.onChainSpendable,
   });
 
-  const p = w.publicInputs;
   const acir = await ctx.circuits.acir("transfer");
-  const solved = await ctx.circuits.solve("transfer", {
-    sk: w.privateInputs.sk as bigint,
-    v: w.privateInputs.v as bigint,
-    r: w.privateInputs.r as bigint,
-    v_transfer: w.privateInputs.v_transfer as bigint,
-    r_e: w.privateInputs.r_e as bigint,
-    c_spend_x: p[0]!,
-    c_spend_y: p[1]!,
-    y_x: p[2]!,
-    y_y: p[3]!,
-    pvk_b_x: p[4]!,
-    pvk_b_y: p[5]!,
-    addr_f: p[6]!,
-    k_aud_r_x: p[7]!,
-    k_aud_r_y: p[8]!,
-    k_aud_s_x: p[9]!,
-    k_aud_s_y: p[10]!,
-    c_spend_new_x: p[11]!,
-    c_spend_new_y: p[12]!,
-    c_transfer_x: p[13]!,
-    c_transfer_y: p[14]!,
-    r_e_x: p[15]!,
-    r_e_y: p[16]!,
-    v_tilde: p[17]!,
-    b_tilde: p[18]!,
-    sigma: p[19]!,
-    v_tilde_aud_r: p[20]!,
-    r_tilde_aud_r: p[21]!,
-    v_tilde_aud_s: p[22]!,
-    b_tilde_aud_s: p[23]!,
-  });
+  const solved = await ctx.circuits.solve("transfer", circuitInputs(w));
 
   const { proof } = await prove("transfer", acir, solved);
   const data = encodeTransferData(w.payload as Parameters<typeof encodeTransferData>[0], proof);
@@ -281,29 +243,8 @@ export async function buildUnshield(
     onChainSpendable: input.onChainSpendable,
   });
 
-  const p = w.publicInputs;
   const acir = await ctx.circuits.acir("withdraw");
-  const solved = await ctx.circuits.solve("withdraw", {
-    sk: w.privateInputs.sk as bigint,
-    v: w.privateInputs.v as bigint,
-    r: w.privateInputs.r as bigint,
-    r_e: w.privateInputs.r_e as bigint,
-    c_spend_x: p[0]!,
-    c_spend_y: p[1]!,
-    y_x: p[2]!,
-    y_y: p[3]!,
-    addr_f: p[4]!,
-    k_aud_s_x: p[5]!,
-    k_aud_s_y: p[6]!,
-    a: p[7]!,
-    c_spend_new_x: p[8]!,
-    c_spend_new_y: p[9]!,
-    sigma: p[10]!,
-    b_tilde: p[11]!,
-    r_e_x: p[12]!,
-    r_e_y: p[13]!,
-    b_tilde_aud_s: p[14]!,
-  });
+  const solved = await ctx.circuits.solve("withdraw", circuitInputs(w));
 
   const { proof } = await prove("withdraw", acir, solved);
   const data = encodeWithdrawData(w.payload as Parameters<typeof encodeWithdrawData>[0], proof);
