@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   assertFr,
+  assertSalt,
   assertAmount,
   assertPoint,
   assertSpendableBlinding,
@@ -46,6 +47,46 @@ describe("the unspendable-blinding state (SDK.md 10.7)", () => {
     expect(() => assertSpendableBlinding(R - 1n)).not.toThrow();
   });
 
+  it("is NOT what a negative blinding reports, because that one is corruption", () => {
+    // A negative blinding is not recoverable by merging: it means local state
+    // is wrong. It also survived every other check, because commit() reduces
+    // mod q so the on-chain comparison still passed, and it reached the input
+    // encoder as "0x00..0-2a".
+    expect(() => assertSpendableBlinding(-1n)).toThrow(/corrupt/);
+    expect(() => assertSpendableBlinding(-1n)).not.toThrow(UnspendableBlindingError);
+    expect(() => assertSpendableBlinding(0n)).not.toThrow();
+  });
+
+  it("the builders reject a negative blinding before it reaches the encoder", () => {
+    const neg = -42n;
+    for (const build of [
+      () =>
+        buildWithdrawWitness({
+          sk: 0xdeadn,
+          addrF: 0x1234n,
+          spendable: { value: 100n, randomness: neg },
+          amount: 10n,
+          sigma: 1n,
+          auditorKey: scalarMul(7n, H),
+          onChainSpendable: commit(100n, neg),
+        }),
+      () =>
+        buildTransferWitness({
+          sk: 0xdeadn,
+          addrF: 0x1234n,
+          spendable: { value: 100n, randomness: neg },
+          amount: 10n,
+          sigma: 1n,
+          recipientPvk: scalarMul(3n, H),
+          recipientAuditorKey: scalarMul(7n, H),
+          senderAuditorKey: scalarMul(8n, H),
+          onChainSpendable: commit(100n, neg),
+        }),
+    ]) {
+      expect(build).toThrow(/corrupt/);
+    }
+  });
+
   it("tells the user it is temporary and how it resolves", () => {
     try {
       assertSpendableBlinding(R);
@@ -83,6 +124,37 @@ describe("the unspendable-blinding state (SDK.md 10.7)", () => {
         onChainSpendable: commit(100n, R + 1n),
       }),
     ).toThrow(UnspendableBlindingError);
+  });
+});
+
+describe("the salt guard", () => {
+  const base = {
+    sk: 0xdeadn,
+    addrF: 0x1234n,
+    spendable: { value: 100n, randomness: 5n },
+    amount: 10n,
+    auditorKey: scalarMul(7n, H),
+    onChainSpendable: commit(100n, 5n),
+  };
+
+  it("rejects zero, the canonical never-fresh salt", () => {
+    expect(() => assertSalt(0n)).toThrow(/sampled fresh/);
+    expect(() => assertSalt(R)).toThrow(/canonical/);
+    expect(() => assertSalt(-1n)).toThrow(/canonical/);
+    expect(() => assertSalt(1n)).not.toThrow();
+  });
+
+  it("is applied by both spend builders", () => {
+    expect(() => buildWithdrawWitness({ ...base, sigma: 0n })).toThrow(/sampled fresh/);
+    expect(() =>
+      buildTransferWitness({
+        ...base,
+        sigma: 0n,
+        recipientPvk: scalarMul(3n, H),
+        recipientAuditorKey: scalarMul(7n, H),
+        senderAuditorKey: scalarMul(8n, H),
+      }),
+    ).toThrow(/sampled fresh/);
   });
 });
 

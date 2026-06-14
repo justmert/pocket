@@ -30,7 +30,14 @@ import {
 import { commit, scalarMul, H, equals, type Point } from "../crypto/grumpkin";
 import { R } from "../crypto/field";
 import { pointSlots, type Opening, type Witness } from "./types";
-import { MAX_AMOUNT, assertFr, assertAmount, assertPoint, assertSpendableBlinding } from "./guards";
+import {
+  MAX_AMOUNT,
+  assertFr,
+  assertSalt,
+  assertAmount,
+  assertPoint,
+  assertSpendableBlinding,
+} from "./guards";
 
 export { MAX_AMOUNT };
 
@@ -55,7 +62,7 @@ export function buildWithdrawWitness(input: WithdrawInputs): Witness {
   // Reject at our own boundary rather than deferring to the contract.
   if (sk <= 0n || sk >= R) throw new Error("sk must be a nonzero canonical F_r element");
   assertFr(addrF, "addr_f");
-  assertFr(sigma, "sigma");
+  assertSalt(sigma);
   assertPoint(auditorKey, "auditor key");
   assertPoint(onChainSpendable, "on-chain spendable commitment");
   assertAmount(amount, "amount");

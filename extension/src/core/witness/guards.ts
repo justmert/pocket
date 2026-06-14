@@ -52,5 +52,23 @@ export function assertPoint(p: Point, what: string): void {
  * state every other check calls healthy.
  */
 export function assertSpendableBlinding(randomness: bigint): void {
+  // A negative blinding is a different fault from an over-range one and must
+  // not be reported as the recoverable "unspendable" state. `commit` normalises
+  // it mod q, so the on-chain check still passes and the value reaches the
+  // circuit input encoder, which renders it as "0x00..0-2a": a malformed hex
+  // string whose rejection names neither the value nor the caller.
+  if (randomness < 0n) throw new Error("blinding factor is negative; local state is corrupt");
   if (randomness >= R) throw new UnspendableBlindingError();
+}
+
+/**
+ * The salt must be a canonical NONZERO scalar.
+ *
+ * Zero is the canonical never-fresh value, and freshness is the one property
+ * the builders cannot check for themselves. `sampleSalt` rejects it, so this
+ * only fires for a caller that derived or hardcoded a salt instead.
+ */
+export function assertSalt(sigma: bigint): void {
+  assertFr(sigma, "sigma");
+  if (sigma === 0n) throw new Error("sigma is zero; a salt must be sampled fresh per attempt");
 }
