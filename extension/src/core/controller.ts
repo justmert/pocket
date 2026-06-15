@@ -57,6 +57,18 @@ export class RecoveryError extends Error {
 }
 
 /**
+ * A previous submission has not resolved, so building another one is refused.
+ *
+ * Two transactions in flight at once is how a user pays twice: the first may
+ * still land, and the second consumes the sequence number the first was built
+ * against. Refusing at build time is the only place that cannot be bypassed by
+ * a popup that never mounted the unfinished-transaction screen.
+ */
+export class UnresolvedTransactionError extends Error {
+  override readonly name = "UnresolvedTransactionError";
+}
+
+/**
  * Which circuit each operation proves against. Merge and shield have none:
  * a deposit and a merge are authorised, not proved.
  */
@@ -70,12 +82,43 @@ const CIRCUIT_FOR: Record<PrivateOpRequest["kind"], CircuitName | null> = {
 
 /** The state that follows a staged private operation, once it lands. */
 interface StagedAfter {
-  openings?: { spendable: Opening; receiving: Opening; syncedThrough: number };
-  /** A shield's second transaction: the merge that makes a deposit spendable. */
-  follow?: Transaction;
-  /** The deposit amount a shield credits to the receiving side. */
-  credit?: bigint;
+  resolve: StagedResolution;
+  /** True when this is a shield: a second transaction makes the deposit spendable. */
+  follow?: boolean;
 }
+
+/**
+ * What must be written locally once a submitted operation is known to have
+ * landed, expressed so it can survive to disk.
+ *
+ * Relative where it can be ("credit this much", "fold receiving in") rather
+ * than absolute, so it resolves against whatever is stored at resolution time
+ * instead of a snapshot taken before submission. Every form is idempotent under
+ * the chain check in `persistVerified`, which is what makes replaying one after
+ * a crash safe.
+ */
+type StagedResolution =
+  | { kind: "openings"; spendable: [string, string]; receiving: [string, string]; syncedThrough: number }
+  /** A deposit credits the receiving side by a public amount, blinding zero. */
+  | { kind: "credit"; amount: string }
+  /** A merge folds the whole receiving side into spendable. */
+  | { kind: "merge" };
+
+/** A submission whose local consequence has not been written yet. */
+interface StagedRecord {
+  hash: string;
+  token: string;
+  address: string;
+  resolve: StagedResolution;
+}
+
+/**
+ * Where the staged record lives.
+ *
+ * Belongs in `lib/storage`'s KEYS with every other key; declared here because
+ * this pass does not own that file. See the PATCH-REQUEST to A8.
+ */
+const STAGED_KEY = "pocket.staged";
 
 interface PersistedSettings {
   network: NetworkId;
@@ -101,6 +144,26 @@ export class WalletController {
   }
 
   /**
+   * Everything that builds against a sequence number, signs, submits, or writes
+   * openings runs one at a time.
+   *
+   * Nothing here is called from a single caller: the popup and the keep-alive
+   * alarm are independent, and two submissions overlapping share one account
+   * sequence and one in-flight record. Interleaved, one transaction fails with
+   * tx_bad_seq and the other's in-flight record is erased by its neighbour's
+   * terminal outcome, which is exactly the record the unfinished-transaction
+   * screen exists to find.
+   */
+  private queue: Promise<unknown> = Promise.resolve();
+
+  private exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    // Runs on both settle paths, so one failure does not wedge the queue.
+    const run = this.queue.then(fn, fn);
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
+
+  /**
    * A transaction that was submitted but whose outcome we never saw, because
    * the worker died or the popup closed. Never resend it: poll by hash, and
    * only rebuild once its timeBounds have passed.
@@ -111,13 +174,84 @@ export class WalletController {
     return { ...e, expired: e.maxTime > 0 && Math.floor(Date.now() / 1000) > e.maxTime };
   }
 
-  /** Resolve an in-flight transaction by polling its hash. */
+  /**
+   * Resolve an in-flight transaction by polling its hash.
+   *
+   * This is the other half of the crash story. A private operation that landed
+   * while the worker was dying left its consequence staged and unwritten, and
+   * the openings it produced exist nowhere else: without them the balance is
+   * visible on chain and permanently unspendable. So a `succeeded` verdict here
+   * finishes the write, against the commitment the contract now holds.
+   */
   async reconcileInFlight(): Promise<SubmitOutcome | null> {
-    const e = await readLocal<{ hash: string; maxTime: number }>(KEYS.inFlight);
-    if (!e) return null;
-    const outcome = await pollToTerminal(this.server(), e.hash, { attempts: 3 });
-    if (outcome.kind !== "pending") await removeLocal(KEYS.inFlight);
-    return outcome;
+    return this.exclusive(async () => {
+      const e = await readLocal<{ hash: string; maxTime: number }>(KEYS.inFlight);
+      if (!e) return null;
+      let outcome = await pollToTerminal(this.server(), e.hash, { attempts: 3 });
+
+      // Still not included, and it can never be included now. Left as "pending"
+      // the record is unclearable, and the screen that renders it sits in front
+      // of the whole wallet on every popup mount, forever.
+      if (outcome.kind === "pending" && e.maxTime > 0 && Math.floor(Date.now() / 1000) > e.maxTime) {
+        outcome = { kind: "expired", hash: e.hash };
+      }
+      if (outcome.kind === "pending") return outcome;
+
+      if (outcome.kind === "succeeded") {
+        // Throws on a mismatch, and must: a wrong opening is indistinguishable
+        // from a lost one later, and the in-flight record stays put so the user
+        // is brought back here rather than told everything is fine.
+        await this.applyStaged(e.hash);
+      } else {
+        await this.discardStaged(e.hash);
+      }
+      await removeLocal(KEYS.inFlight);
+      return outcome;
+    });
+  }
+
+  /** The consequence of a submitted operation, held until the ledger decides. */
+  private async writeStaged(record: StagedRecord): Promise<void> {
+    const { dek } = requireSession();
+    const { sealPayload } = await import("./vault/vault");
+    // Sealed: a resolution carries an amount, which is exactly as sensitive as
+    // the openings it turns into.
+    await writeLocal(STAGED_KEY, await sealPayload(dek, record));
+  }
+
+  private async readStaged(): Promise<StagedRecord | null> {
+    const { dek } = requireSession();
+    const sealed = await readLocal<{ v: number; iv: string; ct: string }>(STAGED_KEY);
+    if (!sealed) return null;
+    const { openPayload } = await import("./vault/vault");
+    return openPayload<StagedRecord>(dek, sealed);
+  }
+
+  /** Drop a staged record, but only the one belonging to this hash. */
+  private async discardStaged(hash: string): Promise<void> {
+    const rec = await this.readStaged();
+    if (rec?.hash === hash) await removeLocal(STAGED_KEY);
+  }
+
+  /**
+   * Write the consequence of a landed operation.
+   *
+   * Applied to whatever is stored NOW, not to a snapshot taken before
+   * submission, and verified against the chain before it is trusted. The staged
+   * record is only dropped once the write succeeded: a failed chain read must
+   * leave it recoverable rather than silently discard the one copy of an
+   * opening that exists.
+   */
+  private async applyStaged(hash: string): Promise<void> {
+    const rec = await this.readStaged();
+    if (!rec || rec.hash !== hash) return;
+    const stored = (await this.readOpenings(rec.address, rec.token)) ?? {
+      spendable: ZERO_OPENING,
+      receiving: ZERO_OPENING,
+      syncedThrough: 0,
+    };
+    await this.persistVerified(rec.address, { token: rec.token }, resolveStaged(stored, rec.resolve));
+    await removeLocal(STAGED_KEY);
   }
 
   async status(): Promise<WalletStatus> {
@@ -369,6 +503,10 @@ export class WalletController {
 
   lock(): void {
     clearSession();
+    // Cached from the last private-pocket read, and only true for the account
+    // that read it. Left set, a locked wallet still reports privateEnabled and
+    // the home screen offers to open a pocket it cannot reach.
+    this.privateReady = false;
   }
 
   /**
@@ -394,9 +532,13 @@ export class WalletController {
    */
   private async erase(): Promise<void> {
     clearSession();
+    this.privateReady = false;
     await removeLocal(KEYS.vaultHeader);
     await removeLocal(KEYS.state);
     await removeLocal(KEYS.inFlight);
+    // Sealed under the DEK that is about to be discarded, so leaving it behind
+    // leaves an undecryptable blob that the next wallet would trip over.
+    await removeLocal(STAGED_KEY);
     await removeLocal(KEYS.publicAddress);
     for (const key of await openingKeys()) await removeLocal(key);
   }
@@ -443,6 +585,9 @@ export class WalletController {
       throw new Error("Pocket is testnet-only in this build.");
     }
     this.network = network;
+    // Registration is per deployment, so what was true on the old network says
+    // nothing about the new one. Report unknown rather than the last answer.
+    this.privateReady = false;
     await writeLocal(KEYS.settings, { network });
     return this.status();
   }
@@ -493,7 +638,17 @@ export class WalletController {
     assetId: string;
     memo?: string;
   }): Promise<{ xdr: string; summary: TransferSummary }> {
+    return this.exclusive(() => this.doBuildPayment(req));
+  }
+
+  private async doBuildPayment(req: {
+    to: string;
+    amount: string;
+    assetId: string;
+    memo?: string;
+  }): Promise<{ xdr: string; summary: TransferSummary }> {
     const { address } = requireSession();
+    await this.assertNothingUnresolved();
     const to = parseAddress(req.to); // throws on bad checksum
     if (to.kind === "contract") {
       // A classic PaymentOp cannot pay a C-address. Say so here rather than
@@ -559,6 +714,24 @@ export class WalletController {
     };
   }
 
+  /**
+   * Refuse to build anything while an earlier submission is unresolved.
+   *
+   * The unfinished-transaction screen only appears when the popup mounts, so a
+   * popup left open after a timeout would otherwise walk straight back into
+   * composing a second payment against a sequence number the first may still
+   * consume. Once the first envelope's time bounds have passed it can never be
+   * included, and building again is safe.
+   */
+  private async assertNothingUnresolved(): Promise<void> {
+    const e = await this.inFlight();
+    if (!e || e.expired) return;
+    throw new UnresolvedTransactionError(
+      "A transaction submitted earlier has not resolved yet, and it may still land. " +
+        "Reopen Pocket and check it before sending anything else.",
+    );
+  }
+
   private assetFromId(id: string): Asset {
     const [code, issuer] = id.split(":");
     if (!code || !issuer) throw new Error(`unknown asset: ${id}`);
@@ -595,7 +768,14 @@ export class WalletController {
    * signed at confirm are the bytes summarised here.
    */
   async buildPrivateOp(req: PrivateOpRequest): Promise<{ handle: string; summary: PrivateOpSummary }> {
+    return this.exclusive(() => this.doBuildPrivateOp(req));
+  }
+
+  private async doBuildPrivateOp(
+    req: PrivateOpRequest,
+  ): Promise<{ handle: string; summary: PrivateOpSummary }> {
     const { address } = requireSession();
+    await this.assertNothingUnresolved();
     const cfg = this.confidentialConfig();
     // Trap 14: refuse to prove against a deployment whose verification key is
     // not the one this build proves against. A mismatch otherwise surfaces as
@@ -617,14 +797,17 @@ export class WalletController {
             "Publish that this address has a private pocket. This is not reversible",
             `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
           ],
-        }, { openings: { ...openings, syncedThrough: 0 } });
+        }, { resolve: openingsResolution({ ...openings, syncedThrough: 0 }) });
       }
 
       case "shield": {
         const amount = parseAmount(req.amount);
         // Two transactions: a deposit credits the RECEIVING side, so shielding
         // without the merge leaves a zero spendable balance and no explanation.
-        const { deposit, merge } = await ops.buildShield(ctx, amount);
+        // Only the deposit is retained here. The merge is rebuilt at confirm
+        // time against the sequence the deposit actually consumed, which is why
+        // the envelope built alongside it was never signed.
+        const { deposit } = await ops.buildShield(ctx, amount);
         return this.stagePrivate(deposit, {
           kind: "shield",
           amount: formatAmount(amount),
@@ -634,13 +817,15 @@ export class WalletController {
             "A second signature then makes it spendable",
             `Pay a network fee of ${formatAmount(BigInt(deposit.fee))} XLM`,
           ],
-        }, { follow: merge, credit: amount });
+        }, { resolve: { kind: "credit", amount: amount.toString() }, follow: true });
       }
 
       case "merge": {
         const tx = await ops.buildMerge(ctx);
-        const stored = await this.requireOpenings(address, cfg.token);
-        const after = applyMerge(stored);
+        // Read for its refusal, not its value. Merging with no local record of
+        // the receiving side would produce a post-state nothing can verify, and
+        // the resolution below is computed from storage when the merge lands.
+        await this.requireOpenings(address, cfg.token);
         return this.stagePrivate(tx, {
           kind: "merge",
           effects: [
@@ -648,7 +833,7 @@ export class WalletController {
             "Amounts stay hidden. This proves nothing and reveals nothing",
             `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
           ],
-        }, { openings: { ...after, syncedThrough: stored.syncedThrough } });
+        }, { resolve: { kind: "merge" } });
       }
 
       case "transfer": {
@@ -688,11 +873,11 @@ export class WalletController {
             `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
           ],
         }, {
-          openings: {
+          resolve: openingsResolution({
             spendable: newSpendable,
             receiving: stored.receiving,
             syncedThrough: stored.syncedThrough,
-          },
+          }),
         });
       }
 
@@ -721,11 +906,11 @@ export class WalletController {
             `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
           ],
         }, {
-          openings: {
+          resolve: openingsResolution({
             spendable: newSpendable,
             receiving: stored.receiving,
             syncedThrough: stored.syncedThrough,
-          },
+          }),
         });
       }
     }
@@ -816,6 +1001,12 @@ export class WalletController {
    * indistinguishable from a lost one later, and both make funds unspendable.
    */
   async confirmPrivateOp(handle: string): Promise<{ hash: string; ledger: number; followed?: string }> {
+    return this.exclusive(() => this.doConfirmPrivateOp(handle));
+  }
+
+  private async doConfirmPrivateOp(
+    handle: string,
+  ): Promise<{ hash: string; ledger: number; followed?: string }> {
     this.prunePending();
     const entry = this.pending.get(handle);
     if (!entry?.private) {
@@ -832,60 +1023,86 @@ export class WalletController {
       throw new Error("refusing to sign a transaction from a different source account");
     }
 
-    const cfg = this.confidentialConfig();
-    const { address } = requireSession();
-    const outcome = await this.signAndSubmit(decoded);
+    const outcome = await this.submitStaged(decoded, entry.private.resolve);
     if (outcome.kind !== "succeeded") throw new Error(describeOutcome(outcome));
 
-    // A shield is two transactions. The deposit has landed and the funds are
-    // in the receiving balance; the merge that makes them spendable is a
-    // separate signature, and saying so is better than leaving a user with a
-    // zero spendable balance and no explanation.
-    let followed: string | undefined;
-    if (entry.private.follow) {
-      const ops = await import("./confidential-ops");
-      const ctx = await this.opContext();
-      const mergeTx = await ops.buildMerge(ctx);
-      const second = await this.signAndSubmit(mergeTx);
-      if (second.kind !== "succeeded") {
-        throw new PrivatePocketError(
-          `The deposit succeeded (${outcome.hash}) but making it spendable did not. ` +
-            `Your funds are in the receiving balance. Press "Make spendable" to finish.`,
-        );
-      }
-      followed = second.hash;
-      const stored = (await this.readOpenings(address, cfg.token)) ?? {
-        spendable: ZERO_OPENING,
-        receiving: ZERO_OPENING,
-        syncedThrough: 0,
-      };
-      // A deposit credits the receiving side with randomness zero, and the
-      // merge then folds it into spendable.
-      const credited = credit(stored.receiving, {
-        value: entry.private.credit ?? 0n,
-        randomness: 0n,
-      });
-      const after = applyMerge({ spendable: stored.spendable, receiving: credited });
-      await this.persistVerified(address, cfg, { ...after, syncedThrough: stored.syncedThrough });
-      return { hash: outcome.hash, ledger: outcome.ledger, followed };
-    }
+    if (!entry.private.follow) return { hash: outcome.hash, ledger: outcome.ledger };
 
-    if (entry.private.openings) {
-      await this.persistVerified(address, cfg, entry.private.openings);
+    // A shield is two transactions, and the deposit has now landed. Its credit
+    // is already written, which is what makes the failure below survivable: the
+    // local record matches the ledger, so the receiving balance is real and one
+    // more signature spends it. Writing only after BOTH succeeded left the
+    // wallet diverged from the chain by exactly the deposit, unspendable, and
+    // pointing the user at a button the diverged screen does not offer.
+    const ops = await import("./confidential-ops");
+    const ctx = await this.opContext();
+    const mergeTx = await ops.buildMerge(ctx);
+    const second = await this.submitStaged(mergeTx, { kind: "merge" });
+    if (second.kind !== "succeeded") {
+      const deposited =
+        entry.private.resolve.kind === "credit" ? formatAmount(BigInt(entry.private.resolve.amount)) : null;
+      throw new PrivatePocketError(
+        `The deposit succeeded (${outcome.hash}) but making it spendable did not. ` +
+          (deposited ? `Your ${deposited} XLM is in the receiving balance` : "Your funds are in the receiving balance") +
+          `, and Pocket has recorded it. Press "Make spendable" to finish.`,
+      );
     }
-    return { hash: outcome.hash, ledger: outcome.ledger, followed };
+    return { hash: outcome.hash, ledger: outcome.ledger, followed: second.hash };
   }
 
-  private async signAndSubmit(tx: Transaction): Promise<SubmitOutcome> {
+  /**
+   * Submit, and write the consequence the moment the ledger confirms it.
+   *
+   * The resolution is staged to DISK before submission, not held in memory.
+   * Between `sendTransaction` and the write sit a confirmation poll of some
+   * seconds and a second chain read, and MV3 will evict the worker inside that
+   * window without warning. Held only in memory, a transfer's new opening dies
+   * there while the chain moves on, and no opening means a balance that is
+   * visible on chain and permanently unspendable. On disk, the in-flight record
+   * leads a later worker straight back to it.
+   */
+  private async submitStaged(
+    tx: Transaction,
+    resolve: StagedResolution | null,
+  ): Promise<SubmitOutcome> {
+    const outcome = await this.signAndSubmit(tx, resolve);
+    if (outcome.kind === "succeeded") await this.applyStaged(outcome.hash);
+    else if (outcome.kind !== "pending") await this.discardStaged(outcome.hash);
+    return outcome;
+  }
+
+  private async signAndSubmit(
+    tx: Transaction,
+    resolve: StagedResolution | null = null,
+  ): Promise<SubmitOutcome> {
     // A Soroban invocation needs its footprint and auth entries populated, and
     // simulation is the only thing that can do it. Signing before this would
     // produce an envelope the network rejects at once.
     const prepared = await this.server().prepareTransaction(tx);
     prepared.sign(this.keypair());
+
+    if (resolve) {
+      // Simulation rewrites the envelope, so the hash to stage against is the
+      // prepared one, not the hash the approval screen was keyed by.
+      const { address } = requireSession();
+      await this.writeStaged({
+        hash: prepared.hash().toString("hex"),
+        token: this.confidentialConfig().token,
+        address,
+        resolve,
+      });
+    }
+
     return submitAndConfirm(this.server(), prepared, {
       inFlight: {
         record: (e) => writeLocal(KEYS.inFlight, e),
-        clear: () => removeLocal(KEYS.inFlight),
+        // Only ever clear our own. Without the check, a keep-alive resolving
+        // beside a payment erases the payment's record, and the unfinished
+        // transaction screen never appears for the one that matters.
+        clear: async (hash) => {
+          const e = await readLocal<{ hash: string }>(KEYS.inFlight);
+          if (e?.hash === hash) await removeLocal(KEYS.inFlight);
+        },
       },
     });
   }
@@ -918,9 +1135,19 @@ export class WalletController {
    * month will archive regardless of what this schedules.
    */
   async runKeepAlive(): Promise<KeepAlivePlan> {
+    return this.exclusive(() => this.doRunKeepAlive());
+  }
+
+  private async doRunKeepAlive(): Promise<KeepAlivePlan> {
     const session = getSession();
     const cfg = NETWORKS[this.network].confidential[0];
     if (!session || !cfg) return { due: false, nextCheckMs: jitteredDelayMs(7) };
+
+    // An alarm fires whenever it likes, including on top of an unresolved user
+    // submission. Two envelopes against one sequence number means one of them
+    // fails; a keep-alive is never worth that.
+    const unresolved = await this.inFlight();
+    if (unresolved && !unresolved.expired) return { due: false, nextCheckMs: jitteredDelayMs(1) };
 
     const ttl = await readAccountTtl(this.server(), cfg.token, session.address, this.network);
     const plan = planKeepAlive(ttl, this.recentlyActive());
@@ -977,9 +1204,17 @@ export class WalletController {
    * bytes summarised on the approval screen.
    */
   async confirmPayment(handle: string): Promise<{ hash: string; ledger: number }> {
+    return this.exclusive(() => this.doConfirmPayment(handle));
+  }
+
+  private async doConfirmPayment(handle: string): Promise<{ hash: string; ledger: number }> {
     this.prunePending();
     const entry = this.pending.get(handle);
-    if (!entry) {
+    // Checked BEFORE the handle is consumed. A private handle sent here is a
+    // routing mistake, and refusing it after deleting the entry would destroy a
+    // proved operation the user waited on and cannot recover except by proving
+    // it again.
+    if (!entry || entry.private) {
       throw new Error(
         "That transaction is no longer pending confirmation. Build it again and review it.",
       );
@@ -1012,6 +1247,51 @@ export class WalletController {
     }
     throw new Error(describeOutcome(outcome));
   }
+}
+
+/** An absolute post-state, in the string form the staged record holds. */
+function openingsResolution(state: {
+  spendable: Opening;
+  receiving: Opening;
+  syncedThrough: number;
+}): StagedResolution {
+  return {
+    kind: "openings",
+    spendable: [state.spendable.value.toString(), state.spendable.randomness.toString()],
+    receiving: [state.receiving.value.toString(), state.receiving.randomness.toString()],
+    syncedThrough: state.syncedThrough,
+  };
+}
+
+/**
+ * Apply a staged resolution to what is stored now.
+ *
+ * Every form is idempotent against the chain check that follows it: a merge
+ * applied twice folds an already-empty receiving side and changes nothing, and
+ * a credit applied twice produces a commitment the contract does not hold and
+ * is refused rather than written.
+ */
+function resolveStaged(
+  stored: { spendable: Opening; receiving: Opening; syncedThrough: number },
+  resolve: StagedResolution,
+): { spendable: Opening; receiving: Opening; syncedThrough: number } {
+  if (resolve.kind === "openings") {
+    return {
+      spendable: { value: BigInt(resolve.spendable[0]), randomness: BigInt(resolve.spendable[1]) },
+      receiving: { value: BigInt(resolve.receiving[0]), randomness: BigInt(resolve.receiving[1]) },
+      syncedThrough: resolve.syncedThrough,
+    };
+  }
+  if (resolve.kind === "credit") {
+    // A deposit is public and unblinded, so the credit is exactly the amount
+    // with randomness zero.
+    return {
+      spendable: stored.spendable,
+      receiving: credit(stored.receiving, { value: BigInt(resolve.amount), randomness: 0n }),
+      syncedThrough: stored.syncedThrough,
+    };
+  }
+  return { ...applyMerge(stored), syncedThrough: stored.syncedThrough };
 }
 
 /** Every terminal outcome, said plainly, including what it cost. */
