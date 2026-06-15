@@ -15,6 +15,16 @@ export default defineBackground(() => {
   const controller = new WalletController();
   const ready = controller.init();
 
+  /**
+   * Operations running right now in this worker.
+   *
+   * The idle lock must not fire between a submission and the write that records
+   * its consequence. By that point the money has moved, and finishing the job
+   * needs the very keys the lock destroys: `clearSession` zeroes the seed in
+   * place, so an operation holding a reference to it is not spared either.
+   */
+  let running = 0;
+
   chrome.runtime.onMessage.addListener(
     (msg: WalletRequest, sender, sendResponse: (r: WalletResponse<unknown>) => void) => {
       // Only this extension's own pages. A web page cannot reach this listener
@@ -30,6 +40,9 @@ export default defineBackground(() => {
       // rather than answering it and re-arming the idle lock.
       if (typeof msg?.type !== "string") return false;
 
+      const activity = isUserActivity(msg.type);
+      if (activity) running++;
+
       void (async () => {
         try {
           await ready;
@@ -40,10 +53,12 @@ export default defineBackground(() => {
           const data = await dispatch(controller, msg);
           // Only real user activity postpones the lock. A status poll or an
           // unrecognised message must not keep a funded wallet open forever.
-          if (isUnlocked() && isUserActivity(msg.type)) armAutoLock();
+          if (isUnlocked() && activity) armAutoLock(AUTO_LOCK_MINUTES);
           sendResponse({ ok: true, data });
         } catch (e) {
           sendResponse({ ok: false, error: describeError(e) });
+        } finally {
+          if (activity) running--;
         }
       })();
 
@@ -54,12 +69,23 @@ export default defineBackground(() => {
   // An alarm, not a setTimeout: a setTimeout dies with the worker, so a wallet
   // relying on one would silently stay unlocked across a restart.
   chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === AUTO_LOCK_ALARM) clearSession();
+    if (alarm.name === AUTO_LOCK_ALARM) {
+      // Locking mid-operation strands a transaction that has already been
+      // submitted: the write that records what it did needs the keys. Wait for
+      // the operation instead, and look again shortly. This postpones the lock
+      // by at most the operation, which the platform caps at five minutes for a
+      // single request anyway.
+      if (running > 0) {
+        armAutoLock(1);
+        return;
+      }
+      clearSession();
+    }
     if (alarm.name === KEEP_ALIVE_ALARM) void keepAlive();
   });
 
-  function armAutoLock() {
-    void chrome.alarms.create(AUTO_LOCK_ALARM, { delayInMinutes: AUTO_LOCK_MINUTES });
+  function armAutoLock(minutes: number) {
+    void chrome.alarms.create(AUTO_LOCK_ALARM, { delayInMinutes: minutes });
   }
 
   /**
@@ -72,12 +98,12 @@ export default defineBackground(() => {
    * timing of their keep-alive transactions alone.
    */
   async function keepAlive() {
-    await ready;
-    if (!isUnlocked()) {
-      void chrome.alarms.create(KEEP_ALIVE_ALARM, { delayInMinutes: 60 });
-      return;
-    }
     try {
+      await ready;
+      if (!isUnlocked()) {
+        void chrome.alarms.create(KEEP_ALIVE_ALARM, { delayInMinutes: 60 });
+        return;
+      }
       const plan = await controller.runKeepAlive();
       void chrome.alarms.create(KEEP_ALIVE_ALARM, {
         delayInMinutes: Math.max(1, Math.round(plan.nextCheckMs / 60_000)),
@@ -85,10 +111,28 @@ export default defineBackground(() => {
     } catch {
       // A failed check is not a failed wallet. Look again in an hour rather
       // than dropping the schedule entirely, which would leave the entry to
-      // archive silently.
+      // archive silently. `await ready` is inside the try for the same reason:
+      // a storage failure at startup must not take the schedule with it.
       void chrome.alarms.create(KEEP_ALIVE_ALARM, { delayInMinutes: 60 });
     }
   }
 
-  void keepAlive();
+  /**
+   * Make sure a keep-alive check is scheduled, without moving one that already
+   * is.
+   *
+   * `alarms.create` REPLACES a same-named alarm rather than leaving it alone
+   * ("If there is another alarm with the same name ... it will be cancelled and
+   * replaced by this alarm", chrome.alarms reference). This runs on every worker
+   * start, and MV3 restarts the worker whenever the popup opens, so calling
+   * keepAlive() here pushed the next check an hour into the future each time.
+   * A user who opens their wallet more often than hourly would never have had
+   * one fire, and the confidential entry archives on a timer that does not care.
+   */
+  async function ensureKeepAliveScheduled() {
+    if (await chrome.alarms.get(KEEP_ALIVE_ALARM)) return;
+    await chrome.alarms.create(KEEP_ALIVE_ALARM, { delayInMinutes: 60 });
+  }
+
+  void ensureKeepAliveScheduled();
 });
