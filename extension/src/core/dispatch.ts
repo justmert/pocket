@@ -1,7 +1,7 @@
 // Request router. One place where a message becomes a controller call, so the
 // error taxonomy and the locked check live in exactly one spot.
 import type { WalletController } from "./controller";
-import type { WalletRequest } from "./messages";
+import type { PrivateOpRequest, WalletRequest } from "./messages";
 import { WrongPasswordError } from "./vault/vault";
 import { InvalidAddressError } from "./chain/address";
 
@@ -28,16 +28,53 @@ const ALLOWED_WHILE_LOCKED = new Set([
   "recoverFromMnemonic",
 ]);
 
+/**
+ * A field the sender must actually have sent, as a string.
+ *
+ * The type union describes what the popup is supposed to send, and erases at
+ * runtime. Nothing downstream re-checks: an absent password reaches the KDF, an
+ * absent mnemonic reaches the validator, an object reaches `parseAddress`. The
+ * sender is our own popup today, so this is defence in depth rather than a
+ * boundary against an attacker, but it is the boundary where a shape error
+ * should be named instead of surfacing three layers down.
+ */
+function str(v: unknown, field: string): string {
+  if (typeof v !== "string") throw new Error(`malformed request: ${field} must be a string`);
+  return v;
+}
+
+function optionalStr(v: unknown, field: string): string | undefined {
+  return v === undefined || v === null ? undefined : str(v, field);
+}
+
+const OP_KINDS = new Set(["register", "shield", "merge", "transfer", "unshield"]);
+
+/** The private-op request, checked before it reaches key material. */
+function opRequest(v: unknown): PrivateOpRequest {
+  const op = v as Partial<PrivateOpRequest> | undefined;
+  if (!op || typeof op !== "object" || typeof op.kind !== "string" || !OP_KINDS.has(op.kind)) {
+    throw new Error("malformed request: unknown private operation");
+  }
+  if (op.kind === "register" && !Number.isInteger((op as { auditorId?: unknown }).auditorId)) {
+    throw new Error("malformed request: auditorId must be an integer");
+  }
+  if (op.kind === "shield" || op.kind === "unshield" || op.kind === "transfer") {
+    str((op as { amount?: unknown }).amount, "amount");
+  }
+  if (op.kind === "transfer") str((op as { to?: unknown }).to, "to");
+  return op as PrivateOpRequest;
+}
+
 export async function dispatch(c: WalletController, msg: WalletRequest): Promise<unknown> {
   switch (msg.type) {
     case "status":
       return c.status();
     case "create":
-      return c.create(msg.password);
+      return c.create(str(msg.password, "password"));
     case "import":
-      return c.import(msg.password, msg.mnemonic);
+      return c.import(str(msg.password, "password"), str(msg.mnemonic, "mnemonic"));
     case "unlock":
-      return c.unlock(msg.password);
+      return c.unlock(str(msg.password, "password"));
     case "lock":
       c.lock();
       return c.status();
@@ -46,23 +83,28 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
     case "balances":
       return c.balances();
     case "buildPayment":
-      return c.buildPayment(msg);
+      return c.buildPayment({
+        to: str(msg.to, "to"),
+        amount: str(msg.amount, "amount"),
+        assetId: str(msg.assetId, "assetId"),
+        memo: optionalStr(msg.memo, "memo"),
+      });
     case "confirmPayment":
-      return c.confirmPayment(msg.handle);
+      return c.confirmPayment(str(msg.handle, "handle"));
     case "reset":
-      return c.reset(msg.password);
+      return c.reset(str(msg.password, "password"));
     case "privatePocket":
       return c.privatePocket();
     case "buildPrivateOp":
-      return c.buildPrivateOp(msg.op);
+      return c.buildPrivateOp(opRequest(msg.op));
     case "confirmPrivateOp":
-      return c.confirmPrivateOp(msg.handle);
+      return c.confirmPrivateOp(str(msg.handle, "handle"));
     case "inFlight":
       return c.inFlight();
     case "reconcileInFlight":
       return c.reconcileInFlight();
     case "recoverFromMnemonic":
-      return c.recoverFromMnemonic(msg.mnemonic, msg.password);
+      return c.recoverFromMnemonic(str(msg.mnemonic, "mnemonic"), str(msg.password, "password"));
     default: {
       // Without this, a message whose type is outside the union falls off the
       // end, resolves to undefined, and the worker answers {ok: true}. Any
@@ -120,6 +162,7 @@ const SAFE_ERRORS = new Set([
   "ConfidentialReadError",
   "InsufficientBalanceError",
   "VerificationKeyMismatchError",
+  "UnresolvedTransactionError",
 ]);
 
 /** Messages we author ourselves and vet, matched exactly. */
