@@ -40,8 +40,12 @@ export async function ensureProver(): Promise<void> {
       justification: "Generates UltraHonk proofs for confidential transfers locally.",
     })
     .catch((e: unknown) => {
-      // A concurrent creation elsewhere is not an error.
-      if (e instanceof Error && /already/i.test(e.message)) return;
+      // A concurrent creation elsewhere is not an error. Chrome's literal
+      // message is "Only a single offscreen document may be created."
+      // (extensions/browser/api/offscreen/offscreen_api.cc), which contains no
+      // "already": the previous pattern rethrew on precisely the case it was
+      // written to swallow.
+      if (e instanceof Error && /single offscreen document|already/i.test(e.message)) return;
       throw e;
     })
     .finally(() => {

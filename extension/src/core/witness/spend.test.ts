@@ -103,9 +103,7 @@ describe("withdraw witness", () => {
   it("refuses a spendable opening that does not match the chain", () => {
     // Building against a stale opening yields a proof the verifier rejects,
     // after the user has waited through proving. Catch it here instead.
-    expect(() =>
-      buildWithdrawWitness({ ...base(), onChainSpendable: commit(999n, 1n) }),
-    ).toThrow();
+    expect(() => buildWithdrawWitness({ ...base(), onChainSpendable: commit(999n, 1n) })).toThrow();
   });
 
   it("uses a fresh salt per call, so no two witnesses share an ephemeral", () => {
@@ -211,9 +209,7 @@ describe("transfer witness", () => {
   it("refuses the identity as a recipient viewing key", () => {
     // ECDH against the identity yields a shared secret of zero, so the
     // recipient could never decrypt, and the amount would be unrecoverable.
-    expect(() =>
-      buildTransferWitness({ ...base(), recipientPvk: { x: 0n, y: 0n } }),
-    ).toThrow();
+    expect(() => buildTransferWitness({ ...base(), recipientPvk: { x: 0n, y: 0n } })).toThrow();
   });
 
   it("publishes distinct commitments for the transfer and the remainder", () => {

@@ -31,6 +31,86 @@ describe("ScMap key ordering", () => {
   });
 });
 
+/** Keys in the order they were EMITTED, which is what Soroban validates. */
+function wireKeys(bytes: Uint8Array): string[] {
+  const top = xdr.ScVal.fromXDR(Buffer.from(bytes)).map()!;
+  const payload = top.find((e) => e.key().sym().toString() === "payload")!;
+  return payload
+    .val()
+    .map()!
+    .map((e) => e.key().sym().toString());
+}
+
+describe("the wire order of the real payloads", () => {
+  // Every other assertion in this file sorts the decoded keys before comparing,
+  // which throws away the one property Soroban actually enforces. These read
+  // the order off the encoded bytes instead.
+  const withdraw = encodeWithdrawData(
+    { cSpendNew: P(), bTilde: 0x11n, RE: scalarMul(5n, H), sigma: 0x22n, bTildeAudS: 0x33n },
+    proof,
+  );
+  const transfer = encodeTransferData(
+    {
+      cSpendNew: P(),
+      cTransfer: P(),
+      RE: scalarMul(5n, H),
+      vTilde: 1n,
+      bTilde: 2n,
+      sigma: 3n,
+      vTildeAudR: 4n,
+      rTildeAudR: 5n,
+      vTildeAudS: 6n,
+      bTildeAudS: 7n,
+    },
+    proof,
+  );
+
+  it("emits the transfer payload in ascending key order", () => {
+    // This exact ordering is the one a real testnet transfer was accepted
+    // under, so it is the reference the others are checked against. It also
+    // spans the cases that could plausibly differ: a key that is a prefix of
+    // another (b_tilde / b_tilde_aud_s) and keys either side of the nine-
+    // character boundary where a Soroban Symbol stops being packed inline.
+    expect(wireKeys(transfer)).toEqual([
+      "b_tilde",
+      "b_tilde_aud_s",
+      "c_spend_new",
+      "c_transfer",
+      "r_e_point",
+      "r_tilde_aud_r",
+      "sigma",
+      "v_tilde",
+      "v_tilde_aud_r",
+      "v_tilde_aud_s",
+    ]);
+  });
+
+  it("orders withdraw's keys consistently with the transfer that landed", () => {
+    // Unshield has not been accepted on chain yet, so its ordering cannot be
+    // cited as proven. What CAN be shown is that every pairwise ordering it
+    // relies on already appears in the transfer ordering above: its keys are a
+    // subsequence of them, so no untested comparison is involved.
+    const order = wireKeys(withdraw);
+    expect(order).toEqual(["b_tilde", "b_tilde_aud_s", "c_spend_new", "r_e_point", "sigma"]);
+    const reference = wireKeys(transfer);
+    expect(order.every((k) => reference.includes(k))).toBe(true);
+    expect(order.map((k) => reference.indexOf(k))).toEqual(
+      [...order.map((k) => reference.indexOf(k))].sort((a, b) => a - b),
+    );
+  });
+
+  it("emits the register payload in ascending key order", () => {
+    expect(wireKeys(encodeRegisterData(P(), scalarMul(3n, H), proof))).toEqual(["pvk", "y"]);
+  });
+
+  it("puts payload before proof at the top level", () => {
+    const top = xdr.ScVal.fromXDR(Buffer.from(transfer))
+      .map()!
+      .map((e) => e.key().sym().toString());
+    expect(top).toEqual(["payload", "proof"]);
+  });
+});
+
 describe("register envelope", () => {
   const bytes = encodeRegisterData(P(), scalarMul(3n, H), proof);
 

@@ -131,9 +131,7 @@ describe.skipIf(!available)("withdraw circuit parity", () => {
 
   it("rejects a tampered new commitment (W6)", () => {
     const f = withdrawFields(w);
-    expect(solves("withdraw", bump(f, "c_spend_new_x"), "parity_wd_c")).toBe(
-      false,
-    );
+    expect(solves("withdraw", bump(f, "c_spend_new_x"), "parity_wd_c")).toBe(false);
   }, 60_000);
 
   it("rejects a tampered balance ciphertext (W7)", () => {
@@ -145,9 +143,7 @@ describe.skipIf(!available)("withdraw circuit parity", () => {
     // This is the lane-0/lane-1 defect: an auditor ciphertext built from the
     // wrong squeeze is well-formed and unreadable by the auditor.
     const f = withdrawFields(w);
-    expect(solves("withdraw", bump(f, "b_tilde_aud_s"), "parity_wd_aud")).toBe(
-      false,
-    );
+    expect(solves("withdraw", bump(f, "b_tilde_aud_s"), "parity_wd_aud")).toBe(false);
   }, 60_000);
 
   it("rejects an amount larger than the balance (W4)", () => {
@@ -206,9 +202,7 @@ describe.skipIf(!available)("transfer circuit parity", () => {
 
   it("rejects a tampered transfer commitment (T8)", () => {
     const f = transferFields(w);
-    expect(solves("transfer", bump(f, "c_transfer_x"), "parity_tx_c")).toBe(
-      false,
-    );
+    expect(solves("transfer", bump(f, "c_transfer_x"), "parity_tx_c")).toBe(false);
   }, 60_000);
 
   it("rejects a tampered encrypted amount (T9)", () => {
@@ -218,16 +212,12 @@ describe.skipIf(!available)("transfer circuit parity", () => {
 
   it("rejects a tampered recipient-auditor ciphertext (T_a3)", () => {
     const f = transferFields(w);
-    expect(solves("transfer", bump(f, "v_tilde_aud_r"), "parity_tx_ar")).toBe(
-      false,
-    );
+    expect(solves("transfer", bump(f, "v_tilde_aud_r"), "parity_tx_ar")).toBe(false);
   }, 60_000);
 
   it("rejects a tampered sender-auditor ciphertext (T_a7)", () => {
     const f = transferFields(w);
-    expect(solves("transfer", bump(f, "v_tilde_aud_s"), "parity_tx_as")).toBe(
-      false,
-    );
+    expect(solves("transfer", bump(f, "v_tilde_aud_s"), "parity_tx_as")).toBe(false);
   }, 60_000);
 
   it("rejects spending more than the balance (T4)", () => {

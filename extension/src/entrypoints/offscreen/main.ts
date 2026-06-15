@@ -37,12 +37,16 @@ let chain: Promise<unknown> = Promise.resolve();
 let queued = 0;
 
 function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  // The timer is cleared on both paths. This document is created once and kept
+  // warm for the life of the extension, so a two-minute timer left armed per
+  // proof accumulates for as long as the user keeps the wallet open.
+  let timer: ReturnType<typeof setTimeout>;
   return Promise.race([
     p,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${what} timed out after ${ms}ms`)), ms),
-    ),
-  ]);
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms}ms`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
 }
 
 const b64ToBytes = (s: string): Uint8Array => {
@@ -167,6 +171,31 @@ chrome.runtime.onMessage.addListener(
       return false;
     }
 
+    // The channel tag says who it is for, not that it is well formed. A request
+    // missing its bytecode would otherwise reach atob() as undefined and fail
+    // as an opaque decode error from inside the queue.
+    if (
+      msg.kind !== "prove" ||
+      typeof msg.acir !== "string" ||
+      typeof msg.witness !== "string" ||
+      !(msg.circuit in PUBLIC_INPUT_COUNT)
+    ) {
+      sendResponse({ id: msg?.id ?? "?", ok: false, error: "malformed prover request" });
+      return false;
+    }
+
+    // The service worker that asked for this may be gone by the time the proof
+    // is ready: MV3 evicts it after 30 seconds of inactivity and proving can
+    // outlive that. Replying into a closed channel throws, and unhandled inside
+    // the queue it would surface as a bare rejection with no owner.
+    const reply = (r: ProverResponse) => {
+      try {
+        sendResponse(r);
+      } catch {
+        /* the asker is gone; the next request rebuilds the channel */
+      }
+    };
+
     queued++;
     // Serial queue. Each job waits for the previous one regardless of outcome.
     chain = chain
@@ -174,7 +203,7 @@ chrome.runtime.onMessage.addListener(
       .then(async () => {
         try {
           const { proof, publicInputs, ms } = await prove(msg.acir, msg.witness, msg.circuit);
-          sendResponse({ id: msg.id, ok: true, kind: "prove", proof, publicInputs, ms });
+          reply({ id: msg.id, ok: true, kind: "prove", proof, publicInputs, ms });
         } catch (e) {
           // A wedged prover is indistinguishable from a slow one, so tear the
           // instance down and let the next job rebuild it.
@@ -186,7 +215,7 @@ chrome.runtime.onMessage.addListener(
             }
             api = null;
           }
-          sendResponse({
+          reply({
             id: msg.id,
             ok: false,
             error: e instanceof Error ? e.message : String(e),
