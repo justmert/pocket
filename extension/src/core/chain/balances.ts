@@ -36,6 +36,17 @@ export class AccountNotFoundError extends Error {
   }
 }
 
+/**
+ * The ledger answered with an entry that is not the one we asked about.
+ *
+ * Not on `describeError`'s allowlist on purpose: the user gets the generic
+ * message, because the specific one would only tell them their RPC is lying,
+ * which they cannot act on. What matters is that no number is rendered.
+ */
+export class LedgerEntryMismatchError extends Error {
+  override readonly name = "LedgerEntryMismatchError";
+}
+
 const accountKey = (accountId: string): xdr.LedgerKey =>
   xdr.LedgerKey.account(
     new xdr.LedgerKeyAccount({
@@ -63,7 +74,23 @@ export async function readNative(
   const res = await server.getLedgerEntries(accountKey(accountId));
   const entry = res.entries[0];
   if (!entry) throw new AccountNotFoundError(accountId);
+  if (entry.val.switch().name !== "account") {
+    throw new LedgerEntryMismatchError(
+      `asked for an account entry, got ${entry.val.switch().name}`,
+    );
+  }
   const acc = entry.val.account();
+  // The response is not self-evidently about the account we asked for. Nothing
+  // in the SDK checks the returned entry against the requested key, so a broken
+  // proxy or a hostile RPC can answer with somebody else's AccountEntry and the
+  // wallet will present that balance as the user's own. Verified: before this
+  // check, readNative returned a stranger's 12345.6789 XLM without complaint.
+  const returnedId = StrKey.encodeEd25519PublicKey(acc.accountId().ed25519());
+  if (returnedId !== accountId) {
+    throw new LedgerEntryMismatchError(
+      `asked the ledger about ${accountId} and it answered about ${returnedId}`,
+    );
+  }
   const ext = acc.ext().v1();
   return {
     raw: BigInt(acc.balance().toString()),
@@ -82,7 +109,24 @@ export async function readTrustline(
   const res = await server.getLedgerEntries(trustlineKey(accountId, asset));
   const entry = res.entries[0];
   if (!entry) return null;
+  if (entry.val.switch().name !== "trustline") {
+    throw new LedgerEntryMismatchError(
+      `asked for a trustline entry, got ${entry.val.switch().name}`,
+    );
+  }
   const tl = entry.val.trustLine();
+  // Same reasoning as readNative: check the answer is about the question. A
+  // trustline is (account, asset), so both halves have to match or the balance
+  // shown belongs to a different holder or a different asset.
+  const holder = StrKey.encodeEd25519PublicKey(tl.accountId().ed25519());
+  if (holder !== accountId) {
+    throw new LedgerEntryMismatchError(
+      `asked the ledger about ${accountId} and it answered about ${holder}`,
+    );
+  }
+  if (tl.asset().toXDR("base64") !== asset.toTrustLineXDRObject().toXDR("base64")) {
+    throw new LedgerEntryMismatchError(`asked about ${asset.getCode()} and got another asset`);
+  }
   return {
     id: `${asset.getCode()}:${asset.getIssuer()}`,
     code: asset.getCode(),

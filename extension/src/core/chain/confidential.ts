@@ -97,7 +97,17 @@ export async function readConfidentialAccount(
   return decodeConfidentialAccount(raw);
 }
 
-/** Read an auditor's registered key by id. Returns null when unregistered. */
+/**
+ * Read an auditor's registered key by id. Returns null ONLY when the registry
+ * says that id is unregistered.
+ *
+ * The distinction matters because the caller turns null into "auditor #N has no
+ * registered key". Returning null for any failed simulation made an RPC outage
+ * or an archived registry say that too: a claim about the ledger's contents,
+ * asserted from a request that never reached the ledger. AuditorNotRegistered
+ * is 3301 (stellar-contracts packages/tokens/src/confidential/auditor/mod.rs),
+ * and get_key panics with it rather than returning an option.
+ */
 export async function readAuditorKey(
   server: rpc.Server,
   auditorId_: number,
@@ -113,9 +123,21 @@ export async function readAuditorKey(
     .build();
 
   const sim = await server.simulateTransaction(tx);
-  if ("error" in sim) return null;
+  if ("restorePreamble" in sim && sim.restorePreamble) {
+    throw new ConfidentialReadError(
+      "The auditor registry is dormant on this network and has to be reactivated before " +
+        "private transfers can be proved.",
+    );
+  }
+  if ("error" in sim) {
+    if (/#3301|AuditorNotRegistered/i.test(sim.error)) return null;
+    throw new ConfidentialReadError("Pocket could not read the auditor registry.");
+  }
   const raw = (sim as { result?: { retval: xdr.ScVal } }).result?.retval;
-  if (!raw || raw.switch().name !== "scvBytes") return null;
+  if (!raw) throw new ConfidentialReadError("The auditor registry returned nothing.");
+  if (raw.switch().name !== "scvBytes") {
+    throw new ConfidentialReadError("The auditor registry returned an unexpected value.");
+  }
   return decodePoint(new Uint8Array(raw.bytes()));
 }
 

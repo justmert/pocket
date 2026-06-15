@@ -106,6 +106,43 @@ describe("failure handling", () => {
     );
     await expect(new DefindexClient(cfg).vault("C")).rejects.toThrow(/502/);
   });
+
+  it("reports a body that is not JSON as this module's own error", async () => {
+    // A proxy error page arrives with a 200. Left unwrapped it escaped as a
+    // bare SyntaxError, which a caller cannot tell from a bug in our own code.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw new SyntaxError("Unexpected token '<'");
+        },
+      })) as unknown as typeof fetch,
+    );
+    await expect(new DefindexClient(cfg).vault("C")).rejects.toBeInstanceOf(DefindexError);
+  });
+
+  it("bounds the wait rather than hanging on a service that never answers", async () => {
+    // Real socket, real stall: the yield service accepts the connection and
+    // says nothing. Without a deadline this promise never settled.
+    const { createServer } = await import("node:http");
+    const s = createServer(() => {});
+    await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
+    const port = (s.address() as { port: number }).port;
+    vi.unstubAllGlobals();
+    try {
+      await expect(
+        new DefindexClient({
+          ...cfg,
+          baseUrl: `http://127.0.0.1:${port}`,
+          timeoutMs: 300,
+        }).vault("C"),
+      ).rejects.toThrow(/no answer within/i);
+    } finally {
+      s.close();
+    }
+  }, 10_000);
 });
 
 describe("APY presentation", () => {

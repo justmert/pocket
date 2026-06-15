@@ -15,7 +15,6 @@
 // `exposed` only works as a signal if it appears nowhere else. It is not a
 // decorative colour.
 export type Scheme = "light" | "dark";
-export type Pocket = "public" | "private";
 export type MoneyTreatment = "plain" | "sealed" | "exposed";
 
 export const accent = {
@@ -42,7 +41,11 @@ export interface Theme {
   exposed: string;
   exposedBg: string;
   danger: string;
+  /** Tint behind a refusal or a destructive warning. */
+  dangerBg: string;
   positive: string;
+  /** Tint behind a confirmed outcome. */
+  positiveBg: string;
 }
 
 export function theme(scheme: Scheme): Theme {
@@ -63,7 +66,9 @@ export function theme(scheme: Scheme): Theme {
     exposed: dark ? "#E8A33D" : "#A05E00",
     exposedBg: dark ? "rgba(232,163,61,0.14)" : "rgba(160,94,0,0.10)",
     danger: dark ? "#E8756B" : "#B3261E",
+    dangerBg: dark ? "rgba(232,117,107,0.14)" : "rgba(179,38,30,0.10)",
     positive: dark ? "#6FCF97" : "#1B7F3B",
+    positiveBg: dark ? "rgba(111,207,151,0.14)" : "rgba(27,127,59,0.10)",
   };
 }
 
@@ -75,6 +80,47 @@ export const fontSizes = {
   heading: 18,
   title: 24,
   display: 40,
+} as const;
+
+/**
+ * Spacing ladder. Roughly x1.3 per step, which is why 18 and not 16: the popup
+ * is 384px wide and an 18px gutter is what the screens were laid out on.
+ * Nothing outside this ladder; a one-off 13 or 26 is how a layout drifts.
+ */
+export const space = {
+  xs: 6,
+  sm: 8,
+  md: 10,
+  lg: 14,
+  gutter: 18,
+  xl: 26,
+} as const;
+
+/** Corner radii. Nested corners pick the next step down, never the same one. */
+export const radius = {
+  sm: 6,
+  md: 10,
+  lg: 12,
+  pill: 999,
+} as const;
+
+/** Line heights. Long-form copy gets `relaxed`, single lines get `tight`. */
+export const leading = {
+  tight: 1.3,
+  normal: 1.5,
+  relaxed: 1.7,
+} as const;
+
+/**
+ * Amount sizes, by what the amount IS rather than by which screen shows it.
+ * A pocket's balance is a `hero` wherever it appears, so the public and the
+ * private pocket cannot drift to different sizes.
+ */
+export const moneySizes = {
+  hero: 32,
+  section: 24,
+  row: 20,
+  inline: 16,
 } as const;
 
 /**
@@ -95,7 +141,21 @@ export const text = {
 } as const;
 
 /** Chrome caps a toolbar popup near 600px. */
-export const FRAME = { width: 384, height: 600, radius: 20 } as const;
+export const FRAME = { width: 384, height: 600 } as const;
+
+/**
+ * Motion. One easing and two durations, because this popup only moves for two
+ * reasons: to answer a press, and to show that it is still working. Anything
+ * that needs a third is decoration, and the press duration used to live inline
+ * in one component, so the buttons built any other way had none at all.
+ */
+export const motion = {
+  press: "90ms",
+  ease: "cubic-bezier(0.2, 0, 0, 1)",
+  /** The spinner is honest progress, not decoration, so it survives
+   *  prefers-reduced-motion. Slow enough not to strobe. */
+  spin: "0.7s",
+} as const;
 
 export const mono = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 export const sans = "'Inter', system-ui, -apple-system, sans-serif";

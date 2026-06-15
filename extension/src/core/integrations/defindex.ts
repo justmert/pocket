@@ -11,10 +11,14 @@
 //   - the submit endpoint is ROOT-level `POST /send`, not `/vault/{a}/send`
 //   - there is no `launchtube` flag; `SendXdrDto` accepts only `xdr`
 //   - `?network=` is REQUIRED on every vault endpoint and on /send
+import { deadlineSignal, SERVICE_HTTP_TIMEOUT_MS } from "../chain/http";
+
 export interface DefindexConfig {
   baseUrl: string;
   apiKey: string;
   network: "testnet" | "mainnet";
+  /** Request deadline. Defaults to SERVICE_HTTP_TIMEOUT_MS. */
+  timeoutMs?: number;
 }
 
 export interface VaultInfo {
@@ -94,6 +98,10 @@ export class DefindexClient {
     try {
       res = await fetch(this.url(path), {
         method,
+        // Without a deadline a yield endpoint that accepts the connection and
+        // then stalls holds this promise open forever, and the public pocket
+        // is behind the same worker.
+        signal: deadlineSignal(this.cfg.timeoutMs ?? SERVICE_HTTP_TIMEOUT_MS),
         headers: {
           authorization: `Bearer ${this.cfg.apiKey}`,
           ...(body ? { "content-type": "application/json" } : {}),
@@ -101,14 +109,25 @@ export class DefindexClient {
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
     } catch (e) {
-      throw new DefindexError(
-        `Could not reach the yield service (${e instanceof Error ? e.message : "network error"}).`,
-      );
+      const why =
+        e instanceof Error
+          ? e.name === "TimeoutError" || e.name === "AbortError"
+            ? `no answer within ${(this.cfg.timeoutMs ?? SERVICE_HTTP_TIMEOUT_MS) / 1000}s`
+            : e.message
+          : "network error";
+      throw new DefindexError(`Could not reach the yield service (${why}).`);
     }
     if (!res.ok) {
       throw new DefindexError(`The yield service returned ${res.status}.`, res.status);
     }
-    return (await res.json()) as T;
+    try {
+      return (await res.json()) as T;
+    } catch {
+      // A proxy error page served with a 200 would otherwise escape as a bare
+      // SyntaxError, which is neither this module's error type nor anything a
+      // caller can distinguish from a bug in our own code.
+      throw new DefindexError("The yield service sent a response Pocket could not read.");
+    }
   }
 }
 
