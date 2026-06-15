@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { call } from "../rpc";
-import { Button, Field, Frame, Header, Notice } from "../primitives";
-import { text, type Theme } from "../theme";
+import { Button, ButtonStack, Field, Frame, Header, Label, Notice } from "../primitives";
+import { leading, space, text, type Theme } from "../theme";
 
 /**
  * The route out of a forgotten password.
@@ -54,42 +54,55 @@ export function Recover({
     return (
       <Frame t={t}>
         <Header title="Erase and restore" t={t} />
-        <div style={{ padding: 18, flex: 1, overflowY: "auto" }}>
+        <div style={{ padding: space.gutter, flex: 1, overflowY: "auto" }}>
           <Notice tone="danger" t={t}>
             This erases the wallet on this device. Everything it holds goes with it.
           </Notice>
 
-          <div style={{ ...text.label, color: t.sub, margin: "18px 0 8px" }}>
-            What comes back, and what does not
+          <div style={{ marginTop: space.gutter }}>
+            <Label t={t}>What comes back, and what does not</Label>
           </div>
-          <ul style={{ ...text.body, color: t.text, paddingLeft: 18, lineHeight: 1.8 }}>
+          <ul
+            style={{
+              ...text.body,
+              color: t.text,
+              paddingLeft: space.gutter,
+              margin: 0,
+              lineHeight: leading.relaxed,
+            }}
+          >
             <li>
-              Your <strong>public pocket</strong> comes back in full. The phrase reproduces the
-              same address and its balance is on the ledger.
+              Your <strong>public pocket</strong> comes back in full. The phrase reproduces the same
+              address and its balance is on the ledger.
             </li>
             <li>
               Your <strong>private pocket balances do not</strong>. The chain stores commitments;
               only this device knew what opens them, and that is destroyed here.
             </li>
             <li>
-              Rebuilding them means replaying your event history from a durable archive. This
-              build has none configured, so <strong>they cannot be rebuilt yet</strong>.
+              Rebuilding them means replaying your event history from a durable archive. This build
+              has none configured, so <strong>they cannot be rebuilt yet</strong>.
             </li>
           </ul>
 
-          <Notice tone="exposed" t={t}>
-            If your private pocket holds funds, do not continue. Unlock normally if you can, and
-            move them out first.
-          </Notice>
+          <div style={{ marginTop: space.lg }}>
+            <Notice tone="exposed" t={t}>
+              If your private pocket holds funds, do not continue. Unlock normally if you can, and
+              move them out first.
+            </Notice>
+          </div>
 
-          <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
-            <Button t={t} variant="quiet" onClick={onCancel}>
+          {/* The way out comes first and carries the weight. The destructive
+              path is still one tap away, but it is not the loudest thing on a
+              screen whose entire job is to talk you out of it. */}
+          <ButtonStack>
+            <Button t={t} onClick={onCancel}>
               Go back
             </Button>
             <Button t={t} variant="danger" onClick={() => setAcknowledged(true)}>
               I understand, continue
             </Button>
-          </div>
+          </ButtonStack>
         </div>
       </Frame>
     );
@@ -98,8 +111,8 @@ export function Recover({
   return (
     <Frame t={t}>
       <Header title="Erase and restore" t={t} />
-      <div style={{ padding: 18, flex: 1, overflowY: "auto" }}>
-        <div style={{ ...text.body, color: t.sub, marginBottom: 16 }}>
+      <div style={{ padding: space.gutter, flex: 1, overflowY: "auto" }}>
+        <div style={{ ...text.body, color: t.sub, marginBottom: space.lg }}>
           Enter the recovery phrase for this wallet, then choose a new password.
         </div>
 
@@ -132,6 +145,12 @@ export function Recover({
             onChange={setConfirm}
           />
 
+          {/* Every rule that keeps the button disabled says so. A control that
+              refuses to work without explaining why is the same bug whether
+              the rule is the word count or the password. */}
+          {words > 0 && words !== 12 && words !== 24 && (
+            <Notice t={t}>A recovery phrase is 12 or 24 words. This one has {words}.</Notice>
+          )}
           {password.length > 0 && password.length < 8 && (
             <Notice t={t}>Use at least eight characters.</Notice>
           )}
@@ -144,13 +163,17 @@ export function Recover({
             </Notice>
           )}
 
-          <Button t={t} variant="danger" disabled={busy || !ready}>
-            {busy ? "Restoring…" : "Erase and restore"}
-          </Button>
-          <div style={{ height: 8 }} />
-          <Button t={t} variant="quiet" onClick={onCancel}>
-            Cancel
-          </Button>
+          {/* Cancel is explicitly type="button". A bare button inside a form
+              submits it, so this one used to fire the erase as well as the
+              cancel. */}
+          <ButtonStack>
+            <Button t={t} type="submit" variant="danger" disabled={busy || !ready}>
+              {busy ? "Restoring…" : "Erase and restore"}
+            </Button>
+            <Button t={t} variant="quiet" onClick={onCancel}>
+              Cancel
+            </Button>
+          </ButtonStack>
         </form>
       </div>
     </Frame>

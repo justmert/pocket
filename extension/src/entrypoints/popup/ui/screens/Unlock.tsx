@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { call } from "../rpc";
-import { Button, Field, Frame, Notice } from "../primitives";
-import { text, type Theme } from "../theme";
+import { Button, Field, Frame, Notice, TextButton } from "../primitives";
+import { space, text, type Theme } from "../theme";
 
 export function Unlock({
   t,
@@ -38,11 +38,11 @@ export function Unlock({
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
-          padding: 24,
+          padding: space.gutter,
         }}
       >
-        <div style={{ ...text.hero, marginBottom: 6 }}>Pocket</div>
-        <div style={{ ...text.body, color: t.sub, marginBottom: 26 }}>
+        <div style={{ ...text.hero, marginBottom: space.xs }}>Pocket</div>
+        <div style={{ ...text.body, color: t.sub, marginBottom: space.xl }}>
           Locked. Enter your password to continue.
         </div>
         <form
@@ -57,7 +57,7 @@ export function Unlock({
               {error}
             </Notice>
           )}
-          <Button t={t} disabled={busy || !password}>
+          <Button t={t} type="submit" disabled={busy || !password}>
             {busy ? "Unlocking…" : "Unlock"}
           </Button>
         </form>
@@ -65,21 +65,11 @@ export function Unlock({
             holding their recovery phrase: the only way out would be removing
             the extension by hand, which silently discards the confidential
             openings too. */}
-        <button
-          onClick={onForgot}
-          style={{
-            ...text.caption,
-            background: "none",
-            border: "none",
-            color: t.sub,
-            cursor: "pointer",
-            marginTop: 18,
-            padding: 0,
-            textAlign: "left",
-          }}
-        >
-          Forgot your password?
-        </button>
+        <div style={{ marginTop: space.gutter }}>
+          <TextButton t={t} onClick={onForgot}>
+            Forgot your password?
+          </TextButton>
+        </div>
       </div>
     </Frame>
   );
