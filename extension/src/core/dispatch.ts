@@ -149,7 +149,11 @@ export function isUserActivity(type: string): boolean {
  * allowlist is the only version of that rule which cannot be forgotten.
  */
 const SAFE_ERRORS = new Set([
-  "WrongPasswordError",
+  // WrongPasswordError is deliberately NOT here. It is handled by the
+  // instanceof branch below, which replaces the message outright rather than
+  // surfacing it. One mechanism per error: instanceof plus field mapping for
+  // errors carrying structured causes, the name allowlist for errors whose
+  // whole message is authored prose.
   "CorruptVaultError",
   "SchemaVersionError",
   "AccountNotFoundError",

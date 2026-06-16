@@ -8,7 +8,7 @@ import { NETWORKS, DEFAULT_NETWORK, type NetworkId } from "./config";
 import { createVault, unlockVault, WrongPasswordError } from "./vault/vault";
 import type { VaultHeader, Bytes } from "./vault/envelope";
 import { setSession, clearSession, getSession, requireSession } from "./session";
-import { KEYS, readLocal, writeLocal, removeLocal, openingKeys } from "../lib/storage";
+import { KEYS, readLocal, writeLocal, removeLocal, openingKey, openingKeys } from "../lib/storage";
 import {
   readNative,
   readTrustline,
@@ -245,12 +245,24 @@ export class WalletController {
   private async applyStaged(hash: string): Promise<void> {
     const rec = await this.readStaged();
     if (!rec || rec.hash !== hash) return;
-    const stored = (await this.readOpenings(rec.address, rec.token)) ?? {
-      spendable: ZERO_OPENING,
-      receiving: ZERO_OPENING,
-      syncedThrough: 0,
-    };
-    await this.persistVerified(rec.address, { token: rec.token }, resolveStaged(stored, rec.resolve));
+
+    // A relative resolution applied to a missing base assumes zero. That is
+    // deliberate and it is safe, because the chain check below is the real
+    // authority: if the account truly was at zero the write is correct and
+    // heals a register whose persist was lost, and if it was not, verification
+    // refuses. What it must not do is blame the user's records for a state this
+    // device never had, so the absence is passed down to phrase the failure.
+    const base = await this.readOpenings(rec.address, rec.token);
+    const stored = base ?? { spendable: ZERO_OPENING, receiving: ZERO_OPENING, syncedThrough: 0 };
+    await this.persistVerified(
+      rec.address,
+      { token: rec.token },
+      resolveStaged(stored, rec.resolve),
+      // Only a RELATIVE resolution is explained by a missing base. An absolute
+      // one carries the whole post-state, so if that disagrees with the chain
+      // the cause is a genuine divergence and saying otherwise misdirects.
+      base !== null || rec.resolve.kind === "openings",
+    );
     await removeLocal(STAGED_KEY);
   }
 
@@ -288,10 +300,17 @@ export class WalletController {
     // A brand-new wallet has no ledger entry at all. That is a normal state,
     // not a failure: the private pocket is simply unregistered, and the user
     // needs to fund the account before anything else can happen.
-    let source;
+    //
+    // Asked through `readNative`, not `getAccount`. `getAccount` rejects for
+    // ANY reason, so a bare catch turned an RPC outage, a timeout or a 5xx into
+    // a confident "this account does not exist on the network yet" for a funded
+    // user. `readNative` throws the typed AccountNotFoundError only when the
+    // entry is genuinely absent and lets transport errors through, which is the
+    // rule `balances()` already follows a hundred lines below.
     try {
-      source = await this.server().getAccount(address);
-    } catch {
+      await readNative(this.server(), address);
+    } catch (e) {
+      if (!(e instanceof AccountNotFoundError)) throw e;
       this.privateReady = false;
       return {
         state: "unfunded",
@@ -300,6 +319,7 @@ export class WalletController {
           "then you can set up a private pocket.",
       };
     }
+    const source = await this.server().getAccount(address);
 
     const account = await readConfidentialAccount(
       this.server(),
@@ -394,7 +414,7 @@ export class WalletController {
     const { dek } = requireSession();
     const { sealPayload } = await import("./vault/vault");
     await writeLocal(
-      `${KEYS.openings}.${token}.${address}`,
+      openingKey(token, address),
       await sealPayload(dek, {
         spendable: {
           value: state.spendable.value.toString(),
@@ -416,7 +436,7 @@ export class WalletController {
   ): Promise<{ spendable: Opening; receiving: Opening; syncedThrough: number } | null> {
     const { dek } = requireSession();
     const sealed = await readLocal<{ v: number; iv: string; ct: string }>(
-      `${KEYS.openings}.${token}.${address}`,
+      openingKey(token, address),
     );
     if (!sealed) return null;
     const { openPayload } = await import("./vault/vault");
@@ -1112,14 +1132,23 @@ export class WalletController {
     address: string,
     cfg: { token: string },
     state: { spendable: Opening; receiving: Opening; syncedThrough: number },
+    hadRecord = true,
   ): Promise<void> {
     const account = await this.readOwnAccount(address, cfg);
     const check = verifyAgainstChain(state, account);
     if (!check.ok) {
+      // Two different situations, and telling them apart is the difference
+      // between a user who should investigate and one who simply needs their
+      // balances rebuilt. Blaming a divergence when this device never held a
+      // record sends them looking for a problem that is not there.
       throw new PrivatePocketError(
-        `The transaction landed, but the ${check.which} balance this device computed does not ` +
-          `match what the contract now holds. Your funds are safe on chain. Rebuild from ` +
-          `history before spending again.`,
+        hadRecord
+          ? `The transaction landed, but the ${check.which} balance this device computed does not ` +
+            `match what the contract now holds. Your funds are safe on chain. Rebuild from ` +
+            `history before spending again.`
+          : `The transaction landed, but this device has no record of your private balances, so ` +
+            `it cannot work out what you now hold. Your funds are safe on chain. They need to be ` +
+            `rebuilt from history before you can spend them.`,
       );
     }
     await this.writeOpenings(address, cfg.token, state);
