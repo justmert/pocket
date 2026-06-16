@@ -18,13 +18,32 @@ button {
   font-family: inherit;
 }
 
+/* Press feedback on EVERY button, not only the ones built from the Button
+ * primitive. The header's Lock and Close used to jump between scales with no
+ * transition because the duration lived in one component's inline style. */
+button {
+  transition: transform 90ms cubic-bezier(0.2, 0, 0, 1);
+}
+
 button:active:not(:disabled) {
   transform: scale(0.98);
 }
 
+/* One focus ring, in the accent of whichever scheme is active. App.tsx sets
+ * the variable from the theme, so light gets the yellow and dark the lilac
+ * instead of Chrome's blue, which is the only blue in the product. */
+:focus-visible {
+  outline: 2px solid var(--pocket-accent, currentColor);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Text inputs get the ring on real focus, not only keyboard focus: a caret
+ * alone is a weak signal for which field of a payment form you are in. */
 input:focus,
 textarea:focus {
-  border-color: currentColor;
+  outline: 2px solid var(--pocket-accent, currentColor);
+  outline-offset: 1px;
 }
 
 @keyframes pocket-spin {
@@ -33,10 +52,19 @@ textarea:focus {
   }
 }
 
-/* Respect a user who has asked for less motion. */
+/* Respect a user who has asked for less motion. Transitions go; the spinner
+ * stays, because it is the only thing on screen telling them the wallet is
+ * still working, and a frozen spinner reads as a hung one. It is slowed
+ * instead, which is the reduced variant rather than no variant. */
 @media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.001ms !important;
+  *,
+  *::before,
+  *::after {
     transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
+  }
+
+  .pocket-spinner {
+    animation-duration: 1.6s !important;
   }
 }

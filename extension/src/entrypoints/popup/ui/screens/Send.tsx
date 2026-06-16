@@ -1,9 +1,19 @@
 import { useState } from "react";
 import { call } from "../rpc";
-import { Button, Field, Frame, Header, Notice, Spinner } from "../primitives";
-import { AddressBlock } from "../AddressBlock";
+import {
+  Button,
+  ButtonStack,
+  Field,
+  Frame,
+  Header,
+  Label,
+  Loading,
+  Notice,
+  TextButton,
+} from "../primitives";
+import { AddressBlock, MonoBlock } from "../AddressBlock";
 import { Money } from "../Money";
-import { text, type Theme } from "../theme";
+import { leading, space, text, type Theme } from "../theme";
 import type { TransferSummary } from "../../../../core/messages";
 
 type Stage = "compose" | "confirm" | "sending" | "done";
@@ -21,9 +31,11 @@ export function Send({ t, onBack }: { t: Theme; onBack: () => void }) {
   const [built, setBuilt] = useState<{ xdr: string; summary: TransferSummary } | null>(null);
   const [result, setResult] = useState<{ hash: string; ledger: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [building, setBuilding] = useState(false);
 
   const review = async () => {
     setError(null);
+    setBuilding(true);
     try {
       setBuilt(
         await call({
@@ -37,6 +49,8 @@ export function Send({ t, onBack }: { t: Theme; onBack: () => void }) {
       setStage("confirm");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBuilding(false);
     }
   };
 
@@ -61,21 +75,12 @@ export function Send({ t, onBack }: { t: Theme; onBack: () => void }) {
         title="Send"
         t={t}
         right={
-          <button
-            onClick={onBack}
-            style={{
-              ...text.caption,
-              background: "none",
-              border: "none",
-              color: t.sub,
-              cursor: "pointer",
-            }}
-          >
+          <TextButton t={t} onClick={onBack}>
             Close
-          </button>
+          </TextButton>
         }
       />
-      <div style={{ padding: 18, flex: 1 }}>
+      <div style={{ padding: space.gutter, flex: 1, overflowY: "auto" }}>
         {stage === "compose" && (
           <>
             <Field t={t} label="Recipient" value={to} onChange={setTo} placeholder="G..." />
@@ -92,53 +97,60 @@ export function Send({ t, onBack }: { t: Theme; onBack: () => void }) {
                 {error}
               </Notice>
             )}
-            <Button t={t} disabled={!to || !amount} onClick={() => void review()}>
-              Review
-            </Button>
+            {building ? (
+              <Loading label="Checking the recipient…" t={t} />
+            ) : (
+              <Button t={t} disabled={!to || !amount} onClick={() => void review()}>
+                Review
+              </Button>
+            )}
           </>
         )}
 
         {stage === "confirm" && built && (
           <>
-            <div style={{ ...text.label, color: t.sub, marginBottom: 6 }}>Sending to</div>
+            <Label t={t}>Sending to</Label>
             {/* Full address, never truncated: matching the first and last four
                 characters costs about an hour on a laptop. */}
             <AddressBlock address={built.summary.to} t={t} />
 
-            <div style={{ margin: "18px 0 6px", ...text.label, color: t.sub }}>Amount</div>
-            <Money amount={built.summary.amount} code={built.summary.assetCode} size={26} t={t} />
+            <div style={{ marginTop: space.gutter }}>
+              <Label t={t}>Amount</Label>
+            </div>
+            <Money
+              amount={built.summary.amount}
+              code={built.summary.assetCode}
+              size="section"
+              t={t}
+            />
 
             {/* The memo is signed, so it must be reviewed. Corrupting it is the
                 single most reliable way to lose funds at an exchange deposit
                 address, and its ABSENCE matters just as much: an exchange
                 deposit without one is usually unrecoverable. So both cases are
                 stated, and neither is left to be inferred from blank space. */}
-            <div style={{ margin: "18px 0 6px", ...text.label, color: t.sub }}>Memo</div>
+            <div style={{ marginTop: space.gutter }}>
+              <Label t={t}>Memo</Label>
+            </div>
             {built.summary.memo ? (
-              <div
-                style={{
-                  ...text.body,
-                  fontFamily: "ui-monospace, monospace",
-                  color: t.text,
-                  wordBreak: "break-all",
-                  padding: "8px 10px",
-                  borderRadius: 8,
-                  background: t.field,
-                }}
-              >
-                {built.summary.memo}
-              </div>
+              <MonoBlock t={t}>{built.summary.memo}</MonoBlock>
             ) : (
               <div style={{ ...text.body, color: t.sub }}>
                 No memo. Exchanges usually require one; a deposit without it can be lost.
               </div>
             )}
 
-            <div style={{ marginTop: 20, ...text.label, color: t.sub, marginBottom: 8 }}>
-              What this does
+            <div style={{ marginTop: space.gutter }}>
+              <Label t={t}>What this does</Label>
             </div>
             <ul
-              style={{ ...text.body, color: t.text, paddingLeft: 18, margin: 0, lineHeight: 1.7 }}
+              style={{
+                ...text.body,
+                color: t.text,
+                paddingLeft: space.gutter,
+                margin: 0,
+                lineHeight: leading.relaxed,
+              }}
             >
               {built.summary.effects.map((e, i) => (
                 <li key={i}>{e}</li>
@@ -146,49 +158,51 @@ export function Send({ t, onBack }: { t: Theme; onBack: () => void }) {
             </ul>
 
             {!built.summary.decoded && (
-              <Notice tone="danger" t={t}>
-                Pocket could not determine what this transaction does. Do not approve it.
-              </Notice>
+              <div style={{ marginTop: space.lg }}>
+                <Notice tone="danger" t={t}>
+                  Pocket could not determine what this transaction does. Do not approve it.
+                </Notice>
+              </div>
             )}
 
-            <div style={{ marginTop: 20 }}>
-              {error && (
+            {error && (
+              <div style={{ marginTop: space.lg }}>
                 <Notice tone="danger" t={t}>
                   {error}
                 </Notice>
-              )}
+              </div>
+            )}
+
+            <ButtonStack>
               <Button t={t} disabled={!built.summary.decoded} onClick={() => void send()}>
                 Confirm and send
               </Button>
-              <div style={{ height: 8 }} />
               <Button t={t} variant="quiet" onClick={() => setStage("compose")}>
                 Back
               </Button>
-            </div>
+            </ButtonStack>
           </>
         )}
 
         {stage === "sending" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 30 }}>
-            <Spinner t={t} />
-            <span style={{ ...text.body, color: t.sub }}>
-              Submitting and waiting for the ledger…
-            </span>
+          <div style={{ marginTop: space.xl }}>
+            <Loading label="Submitting and waiting for the ledger…" t={t} />
           </div>
         )}
 
         {stage === "done" && result && (
           <>
-            <div style={{ ...text.title, marginBottom: 10 }}>Sent</div>
-            <div style={{ ...text.body, color: t.sub, marginBottom: 14 }}>
+            <div style={{ ...text.title, color: t.positive, marginBottom: space.md }}>Sent</div>
+            <div style={{ ...text.body, color: t.sub, marginBottom: space.lg }}>
               Included in ledger {result.ledger}.
             </div>
-            <div style={{ ...text.label, color: t.sub, marginBottom: 6 }}>Transaction hash</div>
-            <AddressBlock address={result.hash} t={t} />
-            <div style={{ height: 16 }} />
-            <Button t={t} onClick={onBack}>
-              Done
-            </Button>
+            <Label t={t}>Transaction hash</Label>
+            <MonoBlock t={t}>{result.hash}</MonoBlock>
+            <ButtonStack>
+              <Button t={t} onClick={onBack}>
+                Done
+              </Button>
+            </ButtonStack>
           </>
         )}
       </div>

@@ -1,9 +1,18 @@
 import { useEffect, useState } from "react";
 import { call } from "../rpc";
-import { Button, Frame, Header, Notice, Spinner } from "../primitives";
+import {
+  Button,
+  Frame,
+  Header,
+  Label,
+  Loading,
+  Notice,
+  SectionLabel,
+  TextButton,
+} from "../primitives";
 import { AddressBlock } from "../AddressBlock";
 import { Money } from "../Money";
-import { text, type Theme } from "../theme";
+import { space, text, type Theme } from "../theme";
 import type { PublicBalance, WalletStatus } from "../../../../core/messages";
 
 export function Home({
@@ -39,6 +48,10 @@ export function Home({
   }, []);
 
   const native = balances?.find((b) => b.id === "native");
+  // The reserve is real money the account holds and cannot send. Showing only
+  // the spendable figure made a freshly funded 10,000 XLM account read 9999
+  // with nothing on screen to explain the missing one.
+  const reserved = native?.reserved && Number(native.reserved) > 0 ? native.reserved : null;
 
   return (
     <Frame t={t}>
@@ -46,41 +59,48 @@ export function Home({
         title="Pocket"
         t={t}
         right={
-          <button
-            onClick={onLock}
-            style={{
-              ...text.caption,
-              background: "none",
-              border: "none",
-              color: t.sub,
-              cursor: "pointer",
-            }}
-          >
+          <TextButton t={t} onClick={onLock}>
             Lock
-          </button>
+          </TextButton>
         }
       />
-      <div style={{ padding: 18, flex: 1 }}>
-        <div style={{ ...text.caption, color: t.faint, marginBottom: 6 }}>PUBLIC POCKET</div>
+      <div style={{ padding: space.gutter, flex: 1, overflowY: "auto" }}>
+        <SectionLabel t={t}>PUBLIC POCKET</SectionLabel>
 
         {/* Never fabricate a zero while loading: an empty state is honest, a
             made-up balance is not. */}
         {balances === null && !error ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, height: 48 }}>
-            <Spinner t={t} />
-            <span style={{ ...text.body, color: t.sub }}>Reading the ledger…</span>
+          <div style={{ height: 40, display: "flex", alignItems: "center" }}>
+            <Loading label="Reading the ledger…" t={t} />
           </div>
         ) : error ? (
           <Notice tone="danger" t={t}>
             {error}
           </Notice>
+        ) : native ? (
+          <div style={{ marginBottom: reserved ? space.xs : space.gutter }}>
+            <Money amount={native.amount} code="XLM" size="hero" t={t} />
+          </div>
         ) : (
-          <div style={{ marginBottom: 18 }}>
-            <Money amount={native?.amount ?? "0.0000000"} code="XLM" size={34} t={t} />
+          <Notice tone="danger" t={t}>
+            The ledger did not report a balance for this account. Reopen the wallet to try again.
+          </Notice>
+        )}
+
+        {reserved && (
+          <div style={{ ...text.caption, color: t.faint, marginBottom: space.gutter }}>
+            Plus {reserved} XLM locked by the network as a reserve.
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: space.md,
+            marginTop: space.sm,
+          }}
+        >
           <Button t={t} onClick={onSend}>
             Send
           </Button>
@@ -90,15 +110,15 @@ export function Home({
         </div>
 
         {showReceive && status.address && (
-          <div style={{ marginTop: 18 }}>
-            <div style={{ ...text.label, color: t.sub, marginBottom: 6 }}>Your address</div>
+          <div style={{ marginTop: space.gutter }}>
+            <Label t={t}>Your address</Label>
             <AddressBlock address={status.address} t={t} />
           </div>
         )}
 
         {status.privateAvailable && (
-          <div style={{ marginTop: 26 }}>
-            <div style={{ ...text.caption, color: t.faint, marginBottom: 8 }}>PRIVATE POCKET</div>
+          <div style={{ marginTop: space.xl }}>
+            <SectionLabel t={t}>PRIVATE POCKET</SectionLabel>
             {/* The honest framing, on the surface rather than buried in a
                 settings page: amounts are hidden, addresses never are. */}
             <Notice t={t}>

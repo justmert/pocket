@@ -1,9 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
 import { call } from "../rpc";
-import { Button, Field, Frame, Header, Notice, Spinner } from "../primitives";
-import { AddressBlock } from "../AddressBlock";
+import {
+  Button,
+  ButtonRow,
+  ButtonStack,
+  Field,
+  Frame,
+  Header,
+  Label,
+  Loading,
+  Notice,
+  SectionLabel,
+  TextButton,
+} from "../primitives";
+import { AddressBlock, MonoBlock } from "../AddressBlock";
 import { Money } from "../Money";
-import { text, type Theme } from "../theme";
+import { leading, space, text, type MoneyTreatment, type Theme } from "../theme";
 import type {
   PrivatePocket as PocketState,
   PrivateOpRequest,
@@ -33,9 +45,11 @@ export function PrivatePocket({ t, onBack }: { t: Theme; onBack: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [review, setReview] = useState<{ handle: string; summary: PrivateOpSummary } | null>(null);
   const [done, setDone] = useState<{ hash: string; followed?: string } | null>(null);
-  const [form, setForm] = useState<{ kind: PrivateOpRequest["kind"]; to: string; amount: string } | null>(
-    null,
-  );
+  const [form, setForm] = useState<{
+    kind: PrivateOpRequest["kind"];
+    to: string;
+    amount: string;
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -94,27 +108,20 @@ export function PrivatePocket({ t, onBack }: { t: Theme; onBack: () => void }) {
     );
   }
 
+  const ready = p?.state === "ready";
+
   return (
     <Frame t={t}>
       <Header
         title="Private pocket"
         t={t}
         right={
-          <button
-            onClick={onBack}
-            style={{
-              ...text.caption,
-              background: "none",
-              border: "none",
-              color: t.sub,
-              cursor: "pointer",
-            }}
-          >
+          <TextButton t={t} onClick={onBack}>
             Close
-          </button>
+          </TextButton>
         }
       />
-      <div style={{ padding: 18, flex: 1, overflowY: "auto" }}>
+      <div style={{ padding: space.gutter, flex: 1, overflowY: "auto" }}>
         {error && (
           <Notice tone="danger" t={t}>
             {error}
@@ -122,113 +129,131 @@ export function PrivatePocket({ t, onBack }: { t: Theme; onBack: () => void }) {
         )}
 
         {done && (
-          <Notice t={t}>
+          <Notice tone="success" t={t}>
             Confirmed on the ledger.
-            <div style={{ ...text.caption, fontFamily: "ui-monospace, monospace", marginTop: 6, wordBreak: "break-all" as const }}>
-              {done.hash}
+            <div style={{ marginTop: space.xs }}>
+              <MonoBlock t={t}>{done.hash}</MonoBlock>
             </div>
             {done.followed && (
-              <div style={{ marginTop: 6 }}>Made spendable in a second transaction.</div>
+              <div style={{ marginTop: space.xs }}>Made spendable in a second transaction.</div>
             )}
           </Notice>
         )}
 
-        {busy && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-            <Spinner t={t} />
-            <span style={{ ...text.body, color: t.sub }}>{busy}</span>
-          </div>
-        )}
+        {!p && !error && <Loading label="Reading the ledger…" t={t} />}
 
-        {!p && !error && !busy && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Spinner t={t} />
-            <span style={{ ...text.body, color: t.sub }}>Reading the ledger…</span>
-          </div>
-        )}
-
-        {p?.state === "ready" && !busy && (
+        {/* The balances stay on screen while an operation runs. Blanking them
+            for the length of a proof left the longest wait in the wallet
+            looking like a screen that had failed to load. */}
+        {ready && (
           <>
-            <div style={{ ...text.caption, color: t.faint, marginBottom: 6 }}>SPENDABLE</div>
-            <Money amount={p.spendable ?? "0"} code="XLM" treatment="sealed" size={30} t={t} />
-
-            <div style={{ ...text.caption, color: t.faint, margin: "20px 0 6px" }}>RECEIVING</div>
-            <Money amount={p.receiving ?? "0"} code="XLM" treatment="sealed" size={20} t={t} />
-            {p.mergeAvailable && (
-              <div style={{ marginTop: 12 }}>
-                <Notice t={t}>
-                  Received funds sit here until you make them spendable. One signature, no fee
-                  beyond the network's.
-                </Notice>
-                <Button t={t} onClick={() => void start({ kind: "merge" }, "Building…")}>
-                  Make spendable
-                </Button>
-              </div>
+            <SectionLabel t={t}>SPENDABLE</SectionLabel>
+            {/* A missing balance is reported as missing. Falling back to a zero
+                would put a number on screen that no ledger ever said. */}
+            {p.spendable ? (
+              <Money amount={p.spendable} code="XLM" treatment="sealed" size="hero" t={t} />
+            ) : (
+              <Unreported t={t} />
             )}
 
-            {form ? (
-              <OpForm
-                t={t}
-                kind={form.kind}
-                to={form.to}
-                amount={form.amount}
-                onChange={(f) => setForm({ ...form, ...f })}
-                onCancel={() => setForm(null)}
-                onSubmit={() =>
-                  void start(
-                    form.kind === "transfer"
-                      ? { kind: "transfer", to: form.to, amount: form.amount }
-                      : form.kind === "shield"
-                        ? { kind: "shield", amount: form.amount }
-                        : { kind: "unshield", amount: form.amount },
-                    form.kind === "shield" ? "Building…" : "Proving. This takes a moment…",
-                  )
-                }
-              />
+            <div style={{ marginTop: space.xl }}>
+              <SectionLabel t={t}>RECEIVING</SectionLabel>
+            </div>
+            {p.receiving ? (
+              <Money amount={p.receiving} code="XLM" treatment="sealed" size="row" t={t} />
             ) : (
-              <div style={{ display: "grid", gap: 10, marginTop: 22 }}>
-                <Button
-                  t={t}
-                  onClick={() => setForm({ kind: "transfer", to: "", amount: "" })}
-                >
-                  Send privately
-                </Button>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <Button
-                    t={t}
-                    variant="quiet"
-                    onClick={() => setForm({ kind: "shield", to: "", amount: "" })}
-                  >
-                    Move in
-                  </Button>
-                  <Button
-                    t={t}
-                    variant="quiet"
-                    onClick={() => setForm({ kind: "unshield", to: "", amount: "" })}
-                  >
-                    Move out
-                  </Button>
-                </div>
+              <Unreported t={t} />
+            )}
+
+            {busy ? (
+              <div style={{ marginTop: space.xl }}>
+                <Loading label={busy} t={t} />
               </div>
+            ) : (
+              <>
+                {p.mergeAvailable && (
+                  <div style={{ marginTop: space.lg }}>
+                    <Notice t={t}>
+                      Received funds sit here until you make them spendable. One signature, no fee
+                      beyond the network's.
+                    </Notice>
+                    <Button t={t} onClick={() => void start({ kind: "merge" }, "Building…")}>
+                      Make spendable
+                    </Button>
+                  </div>
+                )}
+
+                {form ? (
+                  <OpForm
+                    t={t}
+                    kind={form.kind}
+                    to={form.to}
+                    amount={form.amount}
+                    onChange={(f) => setForm({ ...form, ...f })}
+                    onCancel={() => setForm(null)}
+                    onSubmit={() =>
+                      void start(
+                        form.kind === "transfer"
+                          ? { kind: "transfer", to: form.to, amount: form.amount }
+                          : form.kind === "shield"
+                            ? { kind: "shield", amount: form.amount }
+                            : { kind: "unshield", amount: form.amount },
+                        form.kind === "shield" ? "Building…" : "Proving. This takes a moment…",
+                      )
+                    }
+                  />
+                ) : (
+                  <ButtonStack>
+                    <Button t={t} onClick={() => setForm({ kind: "transfer", to: "", amount: "" })}>
+                      Send privately
+                    </Button>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: space.md,
+                      }}
+                    >
+                      <Button
+                        t={t}
+                        variant="quiet"
+                        onClick={() => setForm({ kind: "shield", to: "", amount: "" })}
+                      >
+                        Move in
+                      </Button>
+                      <Button
+                        t={t}
+                        variant="quiet"
+                        onClick={() => setForm({ kind: "unshield", to: "", amount: "" })}
+                      >
+                        Move out
+                      </Button>
+                    </div>
+                  </ButtonStack>
+                )}
+              </>
             )}
 
             {typeof p.daysRemaining === "number" && p.daysRemaining < 8 && (
-              <Notice tone="exposed" t={t}>
-                This pocket goes dormant in {p.daysRemaining} days unless it is used. Pocket
-                schedules a keep-alive transaction while it is unlocked, but a browser that is
-                closed cannot send one. Opening the wallet before then is what guarantees it.
-              </Notice>
+              <div style={{ marginTop: space.xl }}>
+                <Notice tone="exposed" t={t}>
+                  This pocket goes dormant in {p.daysRemaining} days unless it is used. Pocket
+                  schedules a keep-alive transaction while it is unlocked, but a browser that is
+                  closed cannot send one. Opening the wallet before then is what guarantees it.
+                </Notice>
+              </div>
             )}
           </>
         )}
 
-        {p && p.state !== "ready" && !busy && (
+        {p && !ready && (
           <>
-            <div style={{ ...text.heading, marginBottom: 10 }}>{titleFor(p.state)}</div>
+            <div style={{ ...text.heading, marginBottom: space.md }}>{titleFor(p.state)}</div>
             <Notice tone={toneFor(p.state)} t={t}>
               {p.message}
             </Notice>
-            {p.state === "unregistered" && (
+            {busy && <Loading label={busy} t={t} />}
+            {!busy && p.state === "unregistered" && (
               <>
                 {/* The three facts that are permanent or public, stated before
                     the button, not after it. */}
@@ -236,9 +261,9 @@ export function PrivatePocket({ t, onBack }: { t: Theme; onBack: () => void }) {
                   style={{
                     ...text.body,
                     color: t.sub,
-                    paddingLeft: 18,
-                    lineHeight: 1.7,
-                    marginBottom: 16,
+                    paddingLeft: space.gutter,
+                    lineHeight: leading.relaxed,
+                    marginBottom: space.lg,
                   }}
                 >
                   <li>Setting up is a public transaction. Anyone can see this account has one.</li>
@@ -257,7 +282,7 @@ export function PrivatePocket({ t, onBack }: { t: Theme; onBack: () => void }) {
                 </Button>
               </>
             )}
-            {p.state === "archived" && (
+            {!busy && p.state === "archived" && (
               <Button t={t} onClick={() => void start({ kind: "merge" }, "Reactivating…")}>
                 Reactivate
               </Button>
@@ -279,6 +304,43 @@ export function PrivatePocket({ t, onBack }: { t: Theme; onBack: () => void }) {
   );
 }
 
+/** No number at all, rather than a zero nobody's ledger reported. */
+function Unreported({ t }: { t: Theme }) {
+  return (
+    <div style={{ ...text.body, color: t.sub }}>
+      Not reported. Close and reopen the wallet to read it again.
+    </div>
+  );
+}
+
+/**
+ * What each operation is called, in the words the user just tapped. The
+ * request `kind` is a protocol name: "SHIELD" and "UNSHIELD" appear nowhere
+ * else in the wallet, and a review screen is the worst place to introduce two
+ * new words for something the previous screen called "Move in".
+ */
+const OP_LABELS: Record<PrivateOpRequest["kind"], string> = {
+  register: "SETTING UP",
+  shield: "MOVING IN",
+  merge: "MAKING SPENDABLE",
+  transfer: "SENDING PRIVATELY",
+  unshield: "MOVING OUT",
+};
+
+/**
+ * How the amount is treated at the moment of signing. `exposed` is reserved
+ * for an amount that is or is becoming public, which is exactly what a deposit
+ * and a withdrawal are, and a private transfer is `sealed`. Rendering all
+ * three the same way threw away the one signal that distinguishes them.
+ */
+const OP_TREATMENTS: Record<PrivateOpRequest["kind"], MoneyTreatment> = {
+  register: "plain",
+  shield: "exposed",
+  merge: "sealed",
+  transfer: "sealed",
+  unshield: "exposed",
+};
+
 /** Approval. Every effect the worker stated, rendered before anything is signed. */
 function ReviewScreen({
   t,
@@ -296,49 +358,58 @@ function ReviewScreen({
   return (
     <Frame t={t}>
       <Header title="Review" t={t} />
-      <div style={{ padding: 18, flex: 1, overflowY: "auto" }}>
-        <div style={{ ...text.caption, color: t.faint, marginBottom: 8 }}>
-          {summary.kind.toUpperCase()}
-        </div>
+      <div style={{ padding: space.gutter, flex: 1, overflowY: "auto" }}>
+        <SectionLabel t={t}>{OP_LABELS[summary.kind] ?? summary.kind.toUpperCase()}</SectionLabel>
         {summary.amount && (
-          <div style={{ marginBottom: 14 }}>
-            <Money amount={summary.amount} code="XLM" size={28} t={t} />
+          <div style={{ marginBottom: space.lg }}>
+            <Money
+              amount={summary.amount}
+              code="XLM"
+              size="section"
+              treatment={OP_TREATMENTS[summary.kind] ?? "plain"}
+              t={t}
+            />
           </div>
         )}
         {summary.to && (
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ ...text.label, color: t.sub, marginBottom: 6 }}>To</div>
+          <div style={{ marginBottom: space.lg }}>
+            <Label t={t}>To</Label>
             {/* Full address, never truncated: a 4+4 lookalike costs about an
                 hour to grind, so an abbreviation is not a safe way to confirm. */}
             <AddressBlock address={summary.to} t={t} />
           </div>
         )}
 
-        <div style={{ ...text.label, color: t.sub, margin: "18px 0 8px" }}>What this does</div>
-        <ul style={{ ...text.body, color: t.text, paddingLeft: 18, lineHeight: 1.7 }}>
+        <Label t={t}>What this does</Label>
+        {/* The fee is one of these effects, stated by the worker. It used to be
+            repeated underneath as well, one line apart. */}
+        <ul
+          style={{
+            ...text.body,
+            color: t.text,
+            paddingLeft: space.gutter,
+            margin: 0,
+            lineHeight: leading.relaxed,
+          }}
+        >
           {summary.effects.map((e) => (
             <li key={e}>{e}</li>
           ))}
         </ul>
 
-        <div style={{ ...text.caption, color: t.faint, marginTop: 14 }}>
-          Network fee {summary.fee} XLM
-        </div>
-
         {busy ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 18 }}>
-            <Spinner t={t} />
-            <span style={{ ...text.body, color: t.sub }}>{busy}</span>
+          <div style={{ marginTop: space.gutter }}>
+            <Loading label={busy} t={t} />
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 18 }}>
+          <ButtonRow>
             <Button t={t} variant="quiet" onClick={onCancel}>
               Cancel
             </Button>
             <Button t={t} onClick={onApprove}>
               Approve
             </Button>
-          </div>
+          </ButtonRow>
         )}
       </div>
     </Frame>
@@ -364,8 +435,8 @@ function OpForm({
 }) {
   const ready = amount.trim() !== "" && (kind !== "transfer" || to.trim() !== "");
   return (
-    <div style={{ marginTop: 22 }}>
-      <div style={{ ...text.label, color: t.sub, marginBottom: 10 }}>
+    <div style={{ marginTop: space.xl }}>
+      <div style={{ ...text.heading, marginBottom: space.lg }}>
         {kind === "transfer"
           ? "Send privately"
           : kind === "shield"
@@ -383,15 +454,15 @@ function OpForm({
       )}
       <Field
         t={t}
-        label="Amount"
+        label="Amount (XLM)"
         value={amount}
         onChange={(v) => onChange({ amount: v })}
         placeholder="0.0000000"
       />
       {kind === "shield" && (
         <Notice tone="exposed" t={t}>
-          This amount is public. Shielding hides what you do next, not the fact that you moved
-          this much in.
+          This amount is public. Shielding hides what you do next, not the fact that you moved this
+          much in.
         </Notice>
       )}
       {kind === "unshield" && (
@@ -399,14 +470,14 @@ function OpForm({
           This amount becomes public when it lands in the public pocket.
         </Notice>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+      <ButtonRow>
         <Button t={t} variant="quiet" onClick={onCancel}>
           Cancel
         </Button>
         <Button t={t} disabled={!ready} onClick={onSubmit}>
           Review
         </Button>
-      </div>
+      </ButtonRow>
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { call } from "../rpc";
-import { Button, Frame, Header, Notice, Spinner } from "../primitives";
-import { text, type Theme } from "../theme";
+import { Button, ButtonStack, Frame, Header, Label, Loading, Notice } from "../primitives";
+import { MonoBlock } from "../AddressBlock";
+import { space, type Theme } from "../theme";
 
 /**
  * A transaction that was submitted but whose outcome we never saw.
@@ -25,7 +26,10 @@ export function InFlight({
   onResolved: () => void;
 }) {
   const [checking, setChecking] = useState(false);
-  const [outcome, setOutcome] = useState<string | null>(null);
+  // Only a thrown error is red. Neither "still pending" nor "it will not land"
+  // is a failure of the wallet, and colouring them as one would teach a user to
+  // ignore the colour that matters.
+  const [outcome, setOutcome] = useState<{ tone: "info" | "danger"; text: string } | null>(null);
 
   async function check() {
     setChecking(true);
@@ -36,13 +40,16 @@ export function InFlight({
       if (r.kind === "succeeded") return onResolved();
       setOutcome(
         r.kind === "pending"
-          ? "Still not confirmed. It may yet land, so it must not be resent."
-          : "Resolved: it will not land. You can carry on.",
+          ? {
+              tone: "info",
+              text: "Still not confirmed. It may yet land, so it must not be resent.",
+            }
+          : { tone: "info", text: "Resolved: it will not land. You can carry on." },
       );
       // Anything terminal clears the record in the worker, so leaving is safe.
       if (r.kind !== "pending") setTimeout(onResolved, 1500);
     } catch (e) {
-      setOutcome(e instanceof Error ? e.message : String(e));
+      setOutcome({ tone: "danger", text: e instanceof Error ? e.message : String(e) });
     } finally {
       setChecking(false);
     }
@@ -51,56 +58,62 @@ export function InFlight({
   return (
     <Frame t={t}>
       <Header title="Unfinished transaction" t={t} />
-      <div style={{ padding: 18, flex: 1 }}>
+      <div style={{ padding: space.gutter, flex: 1, overflowY: "auto" }}>
         <Notice tone="exposed" t={t}>
-          Pocket submitted a transaction and did not see whether it confirmed. It may still be
-          on its way. Do not send it again until this is resolved.
+          Pocket submitted a transaction and did not see whether it confirmed. It may still be on
+          its way. Do not send it again until this is resolved.
         </Notice>
 
-        <div style={{ ...text.label, color: t.sub, margin: "18px 0 6px" }}>Transaction hash</div>
-        <div
-          style={{
-            ...text.body,
-            fontFamily: "ui-monospace, monospace",
-            wordBreak: "break-all",
-            color: t.text,
-          }}
-        >
-          {record.hash}
-        </div>
+        <Label t={t}>Transaction hash</Label>
+        <MonoBlock t={t}>{record.hash}</MonoBlock>
 
-        {record.expired && (
-          <Notice t={t}>
-            Its time window has passed, so it can no longer be included. If it has not confirmed
-            by now, it never will.
-          </Notice>
-        )}
-
-        {outcome && <Notice t={t}>{outcome}</Notice>}
-
-        <div style={{ marginTop: 18 }}>
-          {checking ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Spinner t={t} />
-              <span style={{ ...text.body, color: t.sub }}>Checking the ledger…</span>
-            </div>
+        <div style={{ marginTop: space.lg }}>
+          {record.expired ? (
+            <Notice t={t}>
+              Its time window has passed, so it can no longer be included. If it has not confirmed
+              by now, it never will.
+            </Notice>
           ) : (
-            <>
+            <Notice t={t}>
+              It can still be included until {deadline(record.maxTime)}. After that it can only
+              fail.
+            </Notice>
+          )}
+
+          {outcome && (
+            <Notice tone={outcome.tone} t={t}>
+              {outcome.text}
+            </Notice>
+          )}
+
+          {checking ? (
+            <Loading label="Checking the ledger…" t={t} />
+          ) : (
+            <ButtonStack>
               <Button t={t} onClick={() => void check()}>
                 Check now
               </Button>
               {record.expired && (
-                <>
-                  <div style={{ height: 8 }} />
-                  <Button t={t} variant="quiet" onClick={onResolved}>
-                    Continue anyway
-                  </Button>
-                </>
+                <Button t={t} variant="quiet" onClick={onResolved}>
+                  Continue anyway
+                </Button>
               )}
-            </>
+            </ButtonStack>
           )}
         </div>
       </div>
     </Frame>
   );
+}
+
+/**
+ * The only clock the wallet shows. Local time, no date: the window is minutes
+ * wide, so a date would be noise and a relative "in 4 minutes" would go stale
+ * on a screen that sits open.
+ */
+function deadline(unixSeconds: number): string {
+  return new Date(unixSeconds * 1000).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }

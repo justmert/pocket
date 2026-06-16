@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { call } from "./ui/rpc";
-import { theme, type Scheme } from "./ui/theme";
-import { Frame, Spinner } from "./ui/primitives";
+import { space, text, theme, type Scheme } from "./ui/theme";
+import { Button, Frame, Loading, Notice } from "./ui/primitives";
 import { Onboarding } from "./ui/screens/Onboarding";
 import { Unlock } from "./ui/screens/Unlock";
 import { Home } from "./ui/screens/Home";
@@ -13,6 +13,7 @@ import type { WalletStatus } from "../../core/messages";
 
 export function App() {
   const [status, setStatus] = useState<WalletStatus | null>(null);
+  const [bootError, setBootError] = useState<string | null>(null);
   const [view, setView] = useState<"home" | "send" | "private">("home");
   const [recovering, setRecovering] = useState(false);
   const [unresolved, setUnresolved] = useState<{
@@ -25,8 +26,15 @@ export function App() {
   );
   const t = theme(scheme);
 
+  // A worker that never answers used to leave the popup spinning forever, with
+  // no way to tell a slow start from a dead one.
   const refresh = useCallback(async () => {
-    setStatus(await call({ type: "status" }));
+    try {
+      setStatus(await call({ type: "status" }));
+      setBootError(null);
+    } catch (e) {
+      setBootError(e instanceof Error ? e.message : String(e));
+    }
   }, []);
 
   useEffect(() => {
@@ -40,7 +48,13 @@ export function App() {
   useEffect(() => {
     document.body.style.margin = "0";
     document.body.style.background = t.bg;
-  }, [t.bg]);
+    // The stylesheet needs the accent for the focus ring, and the accent is
+    // chosen in TypeScript, so hand it over rather than duplicating the hex.
+    const root = document.documentElement;
+    root.style.setProperty("--pocket-accent", t.accent);
+    root.style.setProperty("--pocket-bg", t.bg);
+    root.style.colorScheme = t.scheme;
+  }, [t.bg, t.accent, t.scheme]);
 
   // Checked on every mount. MV3 kills the worker aggressively, so a poll
   // interrupted mid-flight is a normal event rather than an edge case.
@@ -58,8 +72,28 @@ export function App() {
   if (!status) {
     return (
       <Frame t={t}>
-        <div style={{ flex: 1, display: "grid", placeItems: "center" }}>
-          <Spinner t={t} />
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            padding: space.gutter,
+          }}
+        >
+          <div style={{ ...text.title, marginBottom: space.lg }}>Pocket</div>
+          {bootError ? (
+            <>
+              <Notice tone="danger" t={t}>
+                {bootError}
+              </Notice>
+              <Button t={t} onClick={() => void refresh()}>
+                Try again
+              </Button>
+            </>
+          ) : (
+            <Loading label="Starting…" t={t} />
+          )}
         </div>
       </Frame>
     );
