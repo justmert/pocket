@@ -30,6 +30,21 @@ export function publicViewingKey(vk: bigint): Point {
   return scalarMul(vk, H);
 }
 
+/**
+ * K_aud = aud_sk*H, the auditor's long-term ECDH key, as registered on chain.
+ *
+ * H, not G, and that is forced rather than preferred. DESIGN.md 2.4 defines
+ * every long-term ECDH key in this design as `A = a*H` against an ephemeral
+ * `R_e = r_e*H`, and DESIGN_cont.md 8.1 has the auditor decrypt with
+ * `S = k*R_e` while the sender computes the same point as `S = r_e*K_aud`.
+ * Those two agree only when K_aud = aud_sk*H. A key on G would be well-formed,
+ * on-curve, non-identity and accepted by the registry, and would decrypt
+ * nothing: `k*(r_e*H)` and `r_e*(k*G)` are unrelated points.
+ */
+export function auditorPublicKey(audSk: bigint): Point {
+  return scalarMul(audSk, H);
+}
+
 /** dvk_i = Poseidon2(DELEGATION_VIEWING_KEY, vk, op_i), per delegated spender. */
 export function delegationViewingKey(vk: bigint, opI: bigint): bigint {
   return poseidonWithDomain(DOMAIN.DELEGATION_VIEWING_KEY, [vk, opI]);

@@ -58,8 +58,29 @@ const random = (n: number): Bytes => crypto.getRandomValues(new Uint8Array(n)) a
  */
 function deriveKek(password: string, salt: Uint8Array, kdf: KdfParams): Bytes {
   if (kdf.id !== "scrypt") throw new Error(`unsupported key derivation: ${kdf.id}`);
+  // Structural damage, checked before the strength policy. A non-integer N is
+  // not a weak parameter, it is a broken header, and saying "weaker than we
+  // accept" about it sends the reader looking for the wrong problem.
+  for (const [name, value] of [
+    ["N", kdf.N],
+    ["r", kdf.r],
+    ["p", kdf.p],
+    ["dkLen", kdf.dkLen],
+  ] as const) {
+    if (!Number.isSafeInteger(value)) {
+      throw new CorruptVaultError(`key derivation parameter ${name} is not an integer`);
+    }
+  }
   if (kdf.N < MIN_KDF.N || kdf.r < MIN_KDF.r || kdf.p < MIN_KDF.p || kdf.dkLen < MIN_KDF.dkLen) {
     throw new Error("vault header requests weaker key derivation than this build accepts");
+  }
+  // The KEK wraps the DEK under AES-256-GCM, so 32 bytes is the only length
+  // that can work. Without this, a header claiming dkLen 64 reaches
+  // importKey and comes back as a bare WebCrypto DataError, which is outside
+  // the taxonomy dispatch knows how to phrase and reaches the user as a
+  // generic network-flavoured message.
+  if (kdf.dkLen !== 32) {
+    throw new CorruptVaultError(`key derivation asks for ${kdf.dkLen} bytes, but AES-256 needs 32`);
   }
   return bytes(
     scrypt(new TextEncoder().encode(password.normalize("NFKC")), salt, {
@@ -126,6 +147,14 @@ export async function createVault(password: string): Promise<{ header: VaultHead
  * to check, and adding one would only give an attacker a cheaper oracle.
  */
 export async function unlockVault(header: VaultHeader, password: string): Promise<Bytes> {
+  // Both ends of the range, not just the newer one. `v` is inside the AAD, so a
+  // version this build has never written would fail the tag anyway, but it
+  // would fail it as WrongPasswordError, which is the one diagnosis that must
+  // never be wrong here: it sends a user holding the correct password to the
+  // erase flow.
+  if (!Number.isSafeInteger(header.v) || header.v < 1) {
+    throw new CorruptVaultError(`the vault header records schema version ${String(header.v)}`);
+  }
   if (header.v > VAULT_SCHEMA_VERSION) throw new SchemaVersionError(header.v);
   const kek = await aesKey(deriveKek(password, b64.decode(header.salt), header.kdf), ["decrypt"]);
   // Structural problems are NOT password problems. Reporting "wrong password"
@@ -163,6 +192,11 @@ export async function sealPayload(dek: Bytes, value: unknown): Promise<SealedPay
 
 /** Decrypt a payload. Fails closed on an unrecognised schema version. */
 export async function openPayload<T>(dek: Bytes, sealed: SealedPayload): Promise<T> {
+  // Same reasoning as unlockVault: `v` picks the AAD, so a nonsense version
+  // silently becomes a tag failure that reads as a wrong password.
+  if (!Number.isSafeInteger(sealed.v) || sealed.v < 1) {
+    throw new CorruptVaultError(`a stored record records schema version ${String(sealed.v)}`);
+  }
   if (sealed.v > VAULT_SCHEMA_VERSION) throw new SchemaVersionError(sealed.v);
   const key = await aesKey(dek, ["decrypt"]);
   const aad = new TextEncoder().encode(`pocket.payload.v${sealed.v}`) as Bytes;

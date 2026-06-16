@@ -7,6 +7,7 @@ import {
   changePassword,
   WrongPasswordError,
   SchemaVersionError,
+  CorruptVaultError,
 } from "./vault";
 import { KDF_PARAMS, canonicalHeaderBytes, b64, type VaultHeader } from "./envelope";
 
@@ -150,6 +151,42 @@ describe("password change", () => {
   it("refuses to change on a wrong current password", async () => {
     const { header } = await createVault(PW);
     await expect(changePassword(header, "nope", "new")).rejects.toBeInstanceOf(WrongPasswordError);
+  });
+});
+
+describe("schema versions below this build are damage, not a wrong password", () => {
+  // The version gate used to be one-sided. A header carrying v:0 fell straight
+  // through to the AAD check and came back as WrongPasswordError, which is the
+  // single most expensive thing to get wrong: it routes a user who typed the
+  // RIGHT password to the erase-and-restore flow, and that destroys openings.
+  for (const v of [0, -1, 1.5, Number.NaN] as number[]) {
+    it(`refuses a header claiming schema v${String(v)}`, async () => {
+      const { header } = await createVault(PW);
+      await expect(unlockVault({ ...header, v }, PW)).rejects.toBeInstanceOf(CorruptVaultError);
+    });
+  }
+
+  it("refuses a sealed record claiming a schema below v1", async () => {
+    const { dek } = await createVault(PW);
+    const sealed = await sealPayload(dek, { x: 1 });
+    await expect(openPayload(dek, { ...sealed, v: 0 })).rejects.toBeInstanceOf(CorruptVaultError);
+  });
+
+  it("refuses a key length AES-256 cannot use, rather than a bare WebCrypto error", async () => {
+    // dkLen 64 clears the MIN_KDF floor and then dies inside importKey as
+    // `DataError: Invalid key length`, a class dispatch does not recognise, so
+    // the user is told to check their connection.
+    const { header } = await createVault(PW);
+    await expect(
+      unlockVault({ ...header, kdf: { ...KDF_PARAMS, dkLen: 64 } }, PW),
+    ).rejects.toBeInstanceOf(CorruptVaultError);
+  });
+
+  it("calls a non-integer KDF parameter damage, not weakness", async () => {
+    const { header } = await createVault(PW);
+    await expect(
+      unlockVault({ ...header, kdf: { ...KDF_PARAMS, N: 1.5 } }, PW),
+    ).rejects.toThrow(/not an integer/);
   });
 });
 

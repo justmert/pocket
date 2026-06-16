@@ -30,7 +30,12 @@ export interface SkDerivation {
   rejections: number;
 }
 
-async function hkdfSha512(
+/**
+ * Exported so the auditor derivation uses literally this HKDF rather than a
+ * second copy of it. What must differ between the two derivations is the SALT,
+ * and only the salt; sharing the primitive is what makes that checkable.
+ */
+export async function hkdfSha512(
   ikm: Uint8Array,
   salt: Uint8Array,
   info: Uint8Array,
