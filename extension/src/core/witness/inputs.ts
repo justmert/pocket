@@ -14,8 +14,15 @@
 // `withdraw` / `confidential_transfer`). All three agree slot for slot.
 import type { Witness } from "./types";
 
-/** Public parameters of each circuit's `main`, in declaration order. */
-const PUBLIC_INPUTS: Record<string, readonly string[]> = {
+/**
+ * Public parameters of each circuit's `main`, in declaration order.
+ *
+ * The witness layer owns the NAMES. `prover/protocol.ts` owns the slot COUNTS,
+ * because that is where a miscount splits the prover's output in the wrong
+ * place. Exporting a second count table from here would give that number two
+ * homes; spend.test.ts asserts the two agree instead.
+ */
+export const PUBLIC_INPUT_NAMES: Record<string, readonly string[]> = {
   register: ["y_x", "y_y", "pvk_x", "pvk_y", "addr_f", "_acct_f"],
   withdraw: [
     "c_spend_x",
@@ -62,11 +69,6 @@ const PUBLIC_INPUTS: Record<string, readonly string[]> = {
   ],
 };
 
-/** How many field slots each circuit publishes. Points take two. */
-export const PUBLIC_INPUT_COUNT: Record<string, number> = Object.fromEntries(
-  Object.entries(PUBLIC_INPUTS).map(([k, v]) => [k, v.length]),
-);
-
 /**
  * Name every input the solver needs: the private ones the builder already
  * names, plus the public ones addressed by slot.
@@ -77,7 +79,7 @@ export const PUBLIC_INPUT_COUNT: Record<string, number> = Object.fromEntries(
  * here names the circuit and both counts.
  */
 export function circuitInputs(w: Witness): Record<string, bigint> {
-  const names = PUBLIC_INPUTS[w.circuit];
+  const names = PUBLIC_INPUT_NAMES[w.circuit];
   if (!names) throw new Error(`no public input names are declared for circuit ${w.circuit}`);
   if (names.length !== w.publicInputs.length) {
     throw new Error(

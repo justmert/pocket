@@ -9,7 +9,8 @@
 import { describe, it, expect } from "vitest";
 import { buildWithdrawWitness, MAX_AMOUNT } from "./withdraw";
 import { buildTransferWitness, decryptIncomingTransfer } from "./transfer";
-import { circuitInputs, PUBLIC_INPUT_COUNT } from "./inputs";
+import { circuitInputs, PUBLIC_INPUT_NAMES } from "./inputs";
+import { PUBLIC_INPUT_COUNT } from "../prover/protocol";
 import { buildRegisterWitness } from "./register";
 import { sampleSalt } from "./salt";
 import {
@@ -356,8 +357,27 @@ describe("the slot-to-name table the wallet and the parity harness share", () =>
     onChainSpendable,
   });
 
-  it("declares the slot count each circuit's main signature declares", () => {
-    expect(PUBLIC_INPUT_COUNT).toEqual({ register: 6, withdraw: 15, transfer: 24 });
+  it("agrees with the prover's slot counts, which are the other half of the pair", () => {
+    // Two tables, one number. The witness layer names the slots, the prover
+    // counts them to split its output, and a disagreement between them is a
+    // proof the verifier cannot read. Neither is derived from the other, so
+    // this is the only thing holding them together.
+    for (const [circuit, names] of Object.entries(PUBLIC_INPUT_NAMES)) {
+      expect(names.length, circuit).toBe(
+        PUBLIC_INPUT_COUNT[circuit as keyof typeof PUBLIC_INPUT_COUNT],
+      );
+    }
+    // And what the builders actually emit matches both.
+    expect(wRegister.publicInputs).toHaveLength(PUBLIC_INPUT_COUNT.register);
+    expect(wWithdraw.publicInputs).toHaveLength(PUBLIC_INPUT_COUNT.withdraw);
+    expect(wTransfer.publicInputs).toHaveLength(PUBLIC_INPUT_COUNT.transfer);
+  });
+
+  it("names the delegated circuits' slots nowhere, because they are not built", () => {
+    // set_spender, spender_transfer and revoke_spender have counts in the
+    // prover table but no builder. Naming their slots here would imply an
+    // implementation that does not exist.
+    expect(Object.keys(PUBLIC_INPUT_NAMES).sort()).toEqual(["register", "transfer", "withdraw"]);
   });
 
   it("names every slot exactly once, losing none and duplicating none", () => {
