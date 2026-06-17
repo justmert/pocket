@@ -19,6 +19,35 @@
 // message, both of which live in a `pocket/` namespace that cannot collide with
 // an `openzeppelin/` one.
 //
+// # This DEVIATES from research/phase2/01-derivation.md D.3. Do not "restore" it.
+//
+// D.3 specifies `info = be32(addr_f) || le4(i) || le4(j)`, where `i` is the
+// auditor_id, and argues against binding acct_f. Both parts were superseded by
+// what phase 5 actually built, and the deviation below is APPROVED rather than
+// accidental. Restoring D.3's form would reintroduce the bug it now causes.
+//
+// It is unimplementable. `PocketAuditorRegistry::register(e, owner, point)
+// -> u32` (contracts/auditor/src/lib.rs) takes the point as an ARGUMENT and
+// returns the id as its RESULT, so the id cannot exist before the key does.
+// D.3 was written in phase 2, before the allocating registry existed. Reading
+// `next_id()` first is worse than useless: registration is open, so a race
+// binds the key to an id it was not derived under. The key still works, and it
+// is silently unregenerable from the seed forever. Caller-chosen ids are closed
+// on purpose (`register_key` refuses with UseAllocatingRegister) so that nobody
+// can take an id someone else wanted.
+//
+// And acct_f is the better fit on the merits. D.3's reason for binding the id
+// instead is "one auditor legitimately serves many accounts", which describes a
+// third-party compliance vendor. D8 is the case where the auditor serves
+// exactly one account, so acct_f expresses the real relationship. Two accounts
+// from one seed getting different auditor keys is correct behaviour, not a side
+// effect: sharing a key, or an id, would publish a linkage on chain that a
+// third-party auditor would never create.
+//
+// If the versioned registry DESIGN_cont.md 77 describes is ever adopted, the
+// clean extension is `... || le4(v) || le4(j)`, and AUDITOR_DERIVATION_VERSION
+// is what lets a migration tell which construction produced which key.
+//
 // # Upstream specifies nothing here
 //
 // SDK.md 11 specifies the auditor CLIENT and deliberately not auditor key
