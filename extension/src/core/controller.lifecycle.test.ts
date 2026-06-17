@@ -20,7 +20,11 @@ vi.stubGlobal("chrome", {
       set: async (o: Record<string, unknown>) => {
         for (const [k, v] of Object.entries(o)) store.set(k, v);
       },
-      remove: async (k: string) => void store.delete(k),
+      remove: async (k: string | string[]) => {
+        // chrome.storage.local.remove accepts one key OR an array. A mock that
+        // only handles the string form silently drops a multi-key erase.
+        for (const key of Array.isArray(k) ? k : [k]) store.delete(key);
+      },
     },
   },
 });

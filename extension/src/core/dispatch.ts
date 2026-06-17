@@ -167,6 +167,9 @@ const SAFE_ERRORS = new Set([
   "InsufficientBalanceError",
   "VerificationKeyMismatchError",
   "UnresolvedTransactionError",
+  // Authored by describeOutcome, which interpolates only XDR enum discriminant
+  // names and a hash we computed ourselves. Never an RPC-authored string.
+  "SubmitOutcomeError",
 ]);
 
 /** Messages we author ourselves and vet, matched exactly. */
