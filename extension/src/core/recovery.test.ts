@@ -18,7 +18,11 @@ vi.stubGlobal("chrome", {
       set: async (o: Record<string, unknown>) => {
         for (const [k, v] of Object.entries(o)) store.set(k, v);
       },
-      remove: async (k: string) => void store.delete(k),
+      remove: async (k: string | string[]) => {
+        // chrome.storage.local.remove accepts one key OR an array. A mock that
+        // only handles the string form silently drops a multi-key erase.
+        for (const key of Array.isArray(k) ? k : [k]) store.delete(key);
+      },
     },
   },
 });
@@ -105,5 +109,88 @@ describe("erase and restore", () => {
     const { c } = await freshWallet("correct horse battery staple");
     await expect(c.reset("wrong password")).rejects.toThrow();
     expect(await readLocal(KEYS.vaultHeader)).toBeDefined();
+  });
+});
+
+/**
+ * The authorisation on the erase path, which must fail CLOSED.
+ *
+ * `recoverFromMnemonic` is the one destructive operation reachable while
+ * locked, so the attacker to beat is someone holding the device without the
+ * password. It was guarded by `if (existing)`, which meant that when the stored
+ * address was absent there was no check at all and any valid BIP-39 phrase
+ * erased the vault and every confidential opening.
+ */
+describe("erase authorisation with no stored address", () => {
+  beforeEach(() => {
+    store.clear();
+  });
+
+  it("refuses a stranger's phrase rather than erasing the wallet", async () => {
+    const { c } = await freshWallet("correct horse battery staple");
+    const header = await readLocal(KEYS.vaultHeader);
+
+    // An install predating the address key, or one that crashed between the
+    // two writes in installSeed.
+    store.delete(KEYS.publicAddress);
+
+    // A phrase for an entirely different wallet, generated the same way.
+    const other = new WalletController();
+    await other.init();
+    const stray = (await (async () => {
+      const s = new Map(store);
+      store.clear();
+      const { mnemonic } = await other.create("someone else");
+      store.clear();
+      for (const [k, v] of s) store.set(k, v);
+      return mnemonic;
+    })()) as string;
+
+    await expect(c.recoverFromMnemonic(stray, "attacker password")).rejects.toBeInstanceOf(
+      RecoveryError,
+    );
+    // The vault and its openings are still here. Before the fix this erased
+    // both and re-keyed the device to the attacker's phrase.
+    expect(await readLocal(KEYS.vaultHeader)).toEqual(header);
+  });
+
+  it("refuses even the CORRECT phrase, because it cannot tell that it is correct", async () => {
+    const { c, mnemonic } = await freshWallet("correct horse battery staple");
+    store.delete(KEYS.publicAddress);
+    await expect(c.recoverFromMnemonic(mnemonic, "a new password")).rejects.toBeInstanceOf(
+      RecoveryError,
+    );
+    expect(await readLocal(KEYS.vaultHeader)).toBeDefined();
+  });
+
+  it("works again once an unlock has back-filled the address", async () => {
+    const { c, mnemonic, address } = await freshWallet("correct horse battery staple");
+    store.delete(KEYS.publicAddress);
+
+    // The owner proves the password. That is what authorises writing the
+    // address, since it is derived from the seed the vault just yielded.
+    c.lock();
+    await c.unlock("correct horse battery staple");
+    expect(await readLocal<string>(KEYS.publicAddress)).toBe(address);
+
+    // A permanent dead end has become a one-unlock migration.
+    expect(await c.recoverFromMnemonic(mnemonic, "a new password")).toBe(address);
+  });
+
+  it("writes the address before the vault, so no crash can produce the unguarded state", async () => {
+    // The dangerous half-written state is "a vault exists but its address does
+    // not", because that is the one the erase path cannot authorise against.
+    const order: string[] = [];
+    const realSet = chrome.storage.local.set;
+    chrome.storage.local.set = async (o: Record<string, unknown>) => {
+      order.push(...Object.keys(o));
+      return realSet(o);
+    };
+    try {
+      await freshWallet("correct horse battery staple");
+    } finally {
+      chrome.storage.local.set = realSet;
+    }
+    expect(order.indexOf(KEYS.publicAddress)).toBeLessThan(order.indexOf(KEYS.vaultHeader));
   });
 });

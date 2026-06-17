@@ -11,6 +11,8 @@ import {
   EXPECTED_PROOF_BYTES,
   FIELD_BYTES,
   PUBLIC_INPUT_COUNT,
+  PROVER_INIT_TIMEOUT_MS,
+  PROVER_PROVE_TIMEOUT_MS,
   type CircuitName,
   type ProverRequest,
   type ProverResponse,
@@ -18,9 +20,11 @@ import {
 } from "../../core/prover/protocol";
 
 const BB_PATH = "/vendor/bb/index.js";
-/** createMainWorker awaits readiness with no timeout and no reject path. */
-const INIT_TIMEOUT_MS = 30_000;
-const PROVE_TIMEOUT_MS = 120_000;
+/** Shared with the service-worker client so the two bounds cannot drift apart. */
+const INIT_TIMEOUT_MS = PROVER_INIT_TIMEOUT_MS;
+const PROVE_TIMEOUT_MS = PROVER_PROVE_TIMEOUT_MS;
+/** Tearing down a wedged instance can itself wedge, so even that is bounded. */
+const DESTROY_TIMEOUT_MS = 5_000;
 
 type RawBufferCtor = new (b: Uint8Array) => Uint8Array;
 
@@ -207,13 +211,27 @@ chrome.runtime.onMessage.addListener(
         } catch (e) {
           // A wedged prover is indistinguishable from a slow one, so tear the
           // instance down and let the next job rebuild it.
+          //
+          // The teardown is itself bounded, and that is the whole point: a
+          // wasm worker wedged badly enough to blow the prove timeout is
+          // exactly the one whose `destroy()` never resolves. Awaited
+          // unbounded, that hangs INSIDE the serial queue, so the chain never
+          // settles and every later proof queues behind it forever. The
+          // instance is dropped either way; a destroy still running is garbage
+          // we cannot collect, which is better than a prover that is
+          // permanently unusable.
           if (e instanceof Error && e.message.includes("timed out")) {
-            try {
-              await api?.destroy?.();
-            } catch {
-              /* already gone */
-            }
+            const dying = api;
             api = null;
+            try {
+              await withTimeout(
+                Promise.resolve(dying?.destroy?.()),
+                DESTROY_TIMEOUT_MS,
+                "prover teardown",
+              );
+            } catch {
+              /* already gone, or too wedged to say so */
+            }
           }
           reply({
             id: msg.id,

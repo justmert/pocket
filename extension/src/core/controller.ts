@@ -18,8 +18,15 @@ import {
   AccountNotFoundError,
 } from "./chain/balances";
 import { buildPayment } from "./chain/payment";
-import { submitAndConfirm, pollToTerminal, type SubmitOutcome } from "./chain/submit";
+import {
+  submitAndConfirm,
+  pollToTerminal,
+  describeOutcome,
+  SubmitOutcomeError,
+  type SubmitOutcome,
+} from "./chain/submit";
 import { parseAddress } from "./chain/address";
+import { withRequestDeadline } from "./chain/http";
 import type { PublicBalance, WalletStatus, TransferSummary, PrivatePocket } from "./messages";
 import { readConfidentialAccount, readAuditorKey } from "./chain/confidential";
 import { assertVerificationKey, type CircuitName } from "./chain/verification-key";
@@ -132,7 +139,10 @@ export class WalletController {
     const id = this.network;
     let s = this.servers.get(id);
     if (!s) {
-      s = new rpc.Server(NETWORKS[id].rpcUrl);
+      // Without a deadline a server that accepts the connection and never
+      // answers leaves the read unsettled forever, and the popup shows
+      // "Reading the ledger" with nothing scheduled to end it.
+      s = withRequestDeadline(new rpc.Server(NETWORKS[id].rpcUrl));
       this.servers.set(id, s);
     }
     return s;
@@ -361,9 +371,18 @@ export class WalletController {
         state: "needsRecovery",
         auditorId: account.auditorId,
         ...ttlFields(ttl),
+        // Says what is true, not what was planned. Rebuilding means replaying
+        // the event history from a durable archive, and no archive is
+        // configured in this build, so nothing here can do it. `core/sync.ts`
+        // implements the replay and is not reachable from any bundle. Naming a
+        // recovery the wallet cannot perform, in the one state where a user is
+        // deciding whether to panic, is the same defect as a fabricated
+        // balance.
         message:
           "This account has a private pocket but this device has no record of its balances. " +
-          "Recovery replays them from the event history.",
+          "Your funds are safe on chain. Rebuilding the record means replaying your event " +
+          "history from a durable archive, and this build has none configured, so they cannot " +
+          "be rebuilt yet.",
       };
     }
 
@@ -375,7 +394,8 @@ export class WalletController {
         ...ttlFields(ttl),
         message:
           `Local records for the ${check.which} balance do not match the ledger. ` +
-          "Pocket will not spend from this state. A full replay can rebuild it.",
+          "Pocket will not spend from this state. Your funds are safe on chain. Rebuilding the " +
+          "record needs a durable event archive, and this build has none configured.",
       };
     }
 
@@ -490,10 +510,17 @@ export class WalletController {
     const seed = new Uint8Array(await mnemonicToSeed(mnemonic)) as Bytes;
     const kp = deriveEd25519(seed, 0);
 
+    // Address FIRST, then the vault. The dangerous half-written state is "a
+    // vault exists but its address does not", because that is the one
+    // `recoverFromMnemonic` cannot authorise against. Writing the address
+    // before the header means a crash between these lines leaves a stray
+    // address and no vault, which the next create or import simply overwrites.
+    // The address is public the moment the account is funded, so writing it
+    // ahead of the vault reveals nothing.
+    await writeLocal(KEYS.publicAddress, kp.publicKey());
     await writeLocal(KEYS.vaultHeader, header);
     await writeLocal(KEYS.state, await this.sealState(dek, { mnemonic }));
 
-    await writeLocal(KEYS.publicAddress, kp.publicKey());
     setSession({ dek, seed, address: kp.publicKey(), unlockedAt: Date.now() });
     return kp.publicKey();
   }
@@ -512,6 +539,20 @@ export class WalletController {
     const { mnemonic } = await this.openState(dek, sealed);
     const seed = new Uint8Array(await mnemonicToSeed(mnemonic)) as Bytes;
     const kp = deriveEd25519(seed, 0);
+
+    // Back-fill the stored address if this install predates it, or lost it to a
+    // crash between the two writes in `installSeed`.
+    //
+    // The address is what authorises `recoverFromMnemonic`, which now refuses
+    // outright without it. Writing it here is safe precisely because getting
+    // this far required the password: the value is derived from the seed the
+    // vault just yielded, so it cannot be planted by anyone who could not have
+    // opened the vault anyway. This is what makes that refusal a one-unlock
+    // migration instead of a permanent dead end.
+    if ((await readLocal<string>(KEYS.publicAddress)) !== kp.publicKey()) {
+      await writeLocal(KEYS.publicAddress, kp.publicKey());
+    }
+
     setSession({ dek, seed, address: kp.publicKey(), unlockedAt: Date.now() });
     return this.status();
   }
@@ -553,14 +594,29 @@ export class WalletController {
   private async erase(): Promise<void> {
     clearSession();
     this.privateReady = false;
-    await removeLocal(KEYS.vaultHeader);
-    await removeLocal(KEYS.state);
-    await removeLocal(KEYS.inFlight);
-    // Sealed under the DEK that is about to be discarded, so leaving it behind
-    // leaves an undecryptable blob that the next wallet would trip over.
-    await removeLocal(STAGED_KEY);
-    await removeLocal(KEYS.publicAddress);
-    for (const key of await openingKeys()) await removeLocal(key);
+    // ONE call, not seven awaits in a row.
+    //
+    // Interrupted between separate removes this left a half-erased device, and
+    // WHICH half survived mattered enormously. The old order got it right by
+    // accident: vault first, openings last, so a kill left orphaned blobs and
+    // no vault. That is recoverable, because a fresh install sweeps them. The
+    // reverse would have been catastrophic: a working wallet whose openings
+    // were gone means funds visible on chain and permanently unspendable.
+    //
+    // Chrome documents the array signature but does not promise atomicity, so
+    // this is one window rather than seven, not a transaction. The ordering
+    // argument above is still load-bearing and must not be "simplified" into
+    // removing openings first.
+    await removeLocal([
+      KEYS.vaultHeader,
+      KEYS.state,
+      KEYS.inFlight,
+      // Sealed under the DEK about to be discarded, so leaving it behind
+      // leaves an undecryptable blob the next wallet would trip over.
+      STAGED_KEY,
+      KEYS.publicAddress,
+      ...(await openingKeys()),
+    ]);
   }
 
   /**
@@ -582,14 +638,34 @@ export class WalletController {
       throw new RecoveryError("That is not a valid recovery phrase. Check the words and the order.");
     }
 
+    // The authorisation, and it MUST fail closed.
+    //
+    // This is the one destructive path reachable while locked, so the attacker
+    // to beat is someone holding the device without the password. Guarding it
+    // with `if (existing)` meant that when the address was absent there was no
+    // check at all, and ANY valid BIP-39 phrase erased the vault and every
+    // confidential opening. Two ways to reach that: a vault created before the
+    // address key existed, and the window in `installSeed`, which writes the
+    // header, then the state, then the address.
+    //
+    // So: no stored address, no erase. A wallet whose owner can prove the
+    // password still recovers, because `unlock` back-fills the address, which
+    // turns this refusal into a one-unlock migration rather than a dead end.
     const existing = await readLocal<string>(KEYS.publicAddress);
-    if (existing) {
-      const seed = new Uint8Array(await mnemonicToSeed(phrase)) as Bytes;
-      if (deriveEd25519(seed, 0).publicKey() !== existing) {
-        throw new RecoveryError(
-          "That phrase belongs to a different wallet. Pocket will not erase this one with it.",
-        );
-      }
+    if (!existing) {
+      throw new RecoveryError(
+        "Pocket cannot check that this phrase belongs to the wallet on this device, so it will " +
+          "not erase it. Unlock the wallet once with its password and this will work afterwards. " +
+          "If the password is genuinely lost, removing and reinstalling the extension clears the " +
+          "device deliberately, and your phrase restores the account from there.",
+      );
+    }
+
+    const seed = new Uint8Array(await mnemonicToSeed(phrase)) as Bytes;
+    if (deriveEd25519(seed, 0).publicKey() !== existing) {
+      throw new RecoveryError(
+        "That phrase belongs to a different wallet. Pocket will not erase this one with it.",
+      );
     }
 
     await this.erase();
@@ -987,7 +1063,8 @@ export class WalletController {
     if (!stored) {
       throw new PrivatePocketError(
         "This device has no record of your private balances, so it cannot spend them. " +
-          "Rebuild from history first.",
+          "Your funds are safe on chain. Rebuilding the record needs a durable event archive, " +
+          "and this build has none configured.",
       );
     }
     return stored;
@@ -1044,7 +1121,7 @@ export class WalletController {
     }
 
     const outcome = await this.submitStaged(decoded, entry.private.resolve);
-    if (outcome.kind !== "succeeded") throw new Error(describeOutcome(outcome));
+    if (outcome.kind !== "succeeded") throw new SubmitOutcomeError(describeOutcome(outcome), outcome);
 
     if (!entry.private.follow) return { hash: outcome.hash, ledger: outcome.ledger };
 
@@ -1144,11 +1221,12 @@ export class WalletController {
       throw new PrivatePocketError(
         hadRecord
           ? `The transaction landed, but the ${check.which} balance this device computed does not ` +
-            `match what the contract now holds. Your funds are safe on chain. Rebuild from ` +
-            `history before spending again.`
+            `match what the contract now holds. Your funds are safe on chain. Pocket will not ` +
+            `spend from a state it cannot verify, and rebuilding the record needs a durable ` +
+            `event archive, which this build does not have configured.`
           : `The transaction landed, but this device has no record of your private balances, so ` +
-            `it cannot work out what you now hold. Your funds are safe on chain. They need to be ` +
-            `rebuilt from history before you can spend them.`,
+            `it cannot work out what you now hold. Your funds are safe on chain. Rebuilding the ` +
+            `record needs a durable event archive, and this build has none configured.`,
       );
     }
     await this.writeOpenings(address, cfg.token, state);
@@ -1196,17 +1274,26 @@ export class WalletController {
   private vkChecked = new Set<string>();
 
   /** Confirm once per session; the keys are immutable, so once is enough. */
-  private async assertVk(cfg: { verifier: string }, circuit: CircuitName): Promise<void> {
+  private async assertVk(
+    cfg: { verifier: string; token: string },
+    circuit: CircuitName,
+  ): Promise<void> {
     const key = `${cfg.verifier}:${circuit}`;
     if (this.vkChecked.has(key)) return;
     const { address } = requireSession();
     const source = await this.server().getAccount(address);
+    // The token is what makes this check mean anything. Without it we proved
+    // only that the verifier our own config names holds a hash our own build
+    // pins: two values we chose, agreeing with each other, while the token
+    // being invoked could route its proofs somewhere else entirely. Passing it
+    // reads the binding out of the token's own instance storage.
     await assertVerificationKey(
       this.server(),
       cfg.verifier,
       circuit,
       source,
       NETWORKS[this.network].passphrase,
+      cfg.token,
     );
     this.vkChecked.add(key);
   }
@@ -1274,7 +1361,7 @@ export class WalletController {
     if (outcome.kind === "succeeded") {
       return { hash: outcome.hash, ledger: outcome.ledger };
     }
-    throw new Error(describeOutcome(outcome));
+    throw new SubmitOutcomeError(describeOutcome(outcome), outcome);
   }
 }
 
@@ -1323,20 +1410,6 @@ function resolveStaged(
   return { ...applyMerge(stored), syncedThrough: stored.syncedThrough };
 }
 
-/** Every terminal outcome, said plainly, including what it cost. */
-function describeOutcome(outcome: SubmitOutcome): string {
-  return outcome.kind === "failed"
-    ? `The transaction was included but failed on chain (${outcome.reason}). ` +
-        `A fee was charged and the sequence number was used.`
-    : outcome.kind === "rejected"
-      ? `The network rejected it (${outcome.reason}). Nothing was charged.`
-      : outcome.kind === "notAccepted"
-        ? "The RPC did not accept it. Nothing was charged; you can try again now."
-        : outcome.kind === "pending"
-          ? `It has not confirmed yet. It may still land, so do not resend: ` +
-            `check the hash ${outcome.hash} before trying again.`
-          : "The transaction succeeded.";
-}
 
 export { WrongPasswordError, readTrustline };
 

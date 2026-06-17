@@ -5,6 +5,25 @@
 // proving cannot live in the worker regardless of cross-origin isolation.
 export const PROVER_CHANNEL = "pocket.prover";
 
+/**
+ * The three deadlines, shared so the two sides cannot disagree.
+ *
+ * `createMainWorker` awaits readiness with no timeout and no reject path, and
+ * a wedged wasm worker is indistinguishable from a slow one, so every step
+ * needs a bound.
+ *
+ * DEADLINE is the SERVICE WORKER's own bound on a whole request, and it must
+ * exceed init plus prove or it would fire on a proof that was merely slow.
+ * It exists because `chrome.runtime.sendMessage` has no timeout of its own: if
+ * the offscreen document's serial queue is wedged, a new request queues behind
+ * the wedge and the caller waits forever with a spinner and nothing scheduled
+ * to end it. It also stays under the platform's 5-minute cap on a single
+ * request, so our error arrives before Chrome's silent kill.
+ */
+export const PROVER_INIT_TIMEOUT_MS = 30_000;
+export const PROVER_PROVE_TIMEOUT_MS = 120_000;
+export const PROVER_DEADLINE_MS = 165_000;
+
 export interface ProveRequest {
   channel: typeof PROVER_CHANNEL;
   kind: "prove";

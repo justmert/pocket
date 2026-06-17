@@ -14,7 +14,11 @@ import {
   type ProverResponse,
   type ProverStatus,
   type StatusRequest,
+  PROVER_DEADLINE_MS,
 } from "./protocol";
+
+/** A status ping is answered synchronously, so it never waits on the queue. */
+const STATUS_DEADLINE_MS = 10_000;
 
 const OFFSCREEN_PATH = "offscreen.html";
 let creating: Promise<void> | null = null;
@@ -63,13 +67,50 @@ export async function closeProver(): Promise<void> {
 let nextId = 0;
 const newId = () => `p${++nextId}`;
 
+/**
+ * Ask the prover, with our own deadline and a way out.
+ *
+ * `chrome.runtime.sendMessage` never times out. The offscreen document bounds
+ * each JOB, but a job that wedges the serial queue is never dequeued, so a NEXT
+ * request queues behind it and its own bound never starts running. Without a
+ * deadline here that request hangs forever, and the private pocket shows
+ * "Proving. This takes a moment" with nothing scheduled to end it.
+ *
+ * Recovery is to destroy the document. Its state is entirely rebuildable: the
+ * wasm re-instantiates and the SRS is bundled, so the cost of being wrong is a
+ * few hundred milliseconds on the next proof, against a wallet that otherwise
+ * cannot prove anything again until the browser restarts.
+ */
 async function ask<T extends ProverResponse>(
   msg: ProveRequest | StatusRequest,
+  deadlineMs: number,
 ): Promise<Extract<T, { ok: true }>> {
   await ensureProver();
-  const res = (await chrome.runtime.sendMessage(msg)) as ProverResponse | undefined;
+
+  let timer: ReturnType<typeof setTimeout>;
+  const wedged = Symbol("wedged");
+  const res = (await Promise.race([
+    chrome.runtime.sendMessage(msg),
+    new Promise<typeof wedged>((resolve) => {
+      timer = setTimeout(() => resolve(wedged), deadlineMs);
+    }),
+  ]).finally(() => clearTimeout(timer))) as ProverResponse | typeof wedged | undefined;
+
+  if (res === wedged) {
+    await closeProver().catch(() => undefined);
+    throw new Error(
+      `the prover did not answer within ${Math.round(deadlineMs / 1000)}s and has been reset`,
+    );
+  }
   if (!res) throw new Error("the prover did not respond");
-  if (!res.ok) throw new Error(res.error);
+  if (!res.ok) {
+    // A job that blew its own timeout already dropped the bb instance inside
+    // the document. Take the document with it: the instance is gone either way,
+    // and a document whose queue may still be blocked by a teardown we could
+    // not wait for is not worth keeping warm.
+    if (/timed out/.test(res.error)) await closeProver().catch(() => undefined);
+    throw new Error(res.error);
+  }
   return res as Extract<T, { ok: true }>;
 }
 
@@ -84,14 +125,17 @@ export async function prove(
     for (const x of b) s += String.fromCharCode(x);
     return btoa(s);
   };
-  const res = await ask<Extract<ProverResponse, { kind: "prove"; ok: true }>>({
-    channel: PROVER_CHANNEL,
-    kind: "prove",
-    id: newId(),
-    circuit,
-    acir: b64(acir),
-    witness: b64(witness),
-  });
+  const res = await ask<Extract<ProverResponse, { kind: "prove"; ok: true }>>(
+    {
+      channel: PROVER_CHANNEL,
+      kind: "prove",
+      id: newId(),
+      circuit,
+      acir: b64(acir),
+      witness: b64(witness),
+    },
+    PROVER_DEADLINE_MS,
+  );
   const bytes = (s: string) => {
     const raw = atob(s);
     const out = new Uint8Array(raw.length);
@@ -102,10 +146,11 @@ export async function prove(
 }
 
 export async function proverStatus(): Promise<ProverStatus> {
-  const res = await ask<Extract<ProverResponse, { kind: "status"; ok: true }>>({
-    channel: PROVER_CHANNEL,
-    kind: "status",
-    id: newId(),
-  });
+  // A status ping answers synchronously in the document, so it does not wait
+  // behind the queue and needs nothing like the proving deadline.
+  const res = await ask<Extract<ProverResponse, { kind: "status"; ok: true }>>(
+    { channel: PROVER_CHANNEL, kind: "status", id: newId() },
+    STATUS_DEADLINE_MS,
+  );
   return res.status;
 }

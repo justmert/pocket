@@ -12,7 +12,11 @@ vi.stubGlobal("chrome", {
       set: async (o: Record<string, unknown>) => {
         for (const [k, v] of Object.entries(o)) store.set(k, v);
       },
-      remove: async (k: string) => void store.delete(k),
+      remove: async (k: string | string[]) => {
+        // chrome.storage.local.remove accepts one key OR an array. A mock that
+        // only handles the string form silently drops a multi-key erase.
+        for (const key of Array.isArray(k) ? k : [k]) store.delete(key);
+      },
     },
   },
 });
@@ -164,10 +168,14 @@ describe("balance honesty (audit H1)", () => {
     // balance vanish because the network hiccuped.
     (c as unknown as { servers: Map<string, unknown> }).servers.clear();
     (c as unknown as { network: string }).network = "broken";
-    (
-      c as unknown as { servers: Map<string, { getLedgerEntries: () => Promise<never> }> }
-    ).servers.set("broken", {
-      getLedgerEntries: () => Promise.reject(new Error("ECONNREFUSED")),
+    // Both spellings. `readNative` reaches the ledger through the SDK's private
+    // `_getLedgerEntries` so it can pass a raw key, and stubbing only the public
+    // name made this pass for the wrong reason: the failure it caught was
+    // "method missing", not the refused connection it is about.
+    const refuse = () => Promise.reject(new Error("ECONNREFUSED"));
+    (c as unknown as { servers: Map<string, unknown> }).servers.set("broken", {
+      getLedgerEntries: refuse,
+      _getLedgerEntries: refuse,
     });
     await expect(c.balances()).rejects.toThrow(/ECONNREFUSED/);
   });
