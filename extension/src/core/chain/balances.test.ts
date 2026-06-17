@@ -47,13 +47,66 @@ function trustlineEntry(owner: string, asset: Asset, balance: string) {
   );
 }
 
-const serverReturning = (...entries: xdr.LedgerEntryData[]): rpc.Server =>
+/**
+ * A server answering at the RAW layer, which is where the code now reads.
+ *
+ * `echoKey` defaults to the key that was requested, which is what a compliant
+ * RPC does and what live testnet was confirmed to do byte for byte.
+ */
+const serverReturning = (
+  data: xdr.LedgerEntryData | null,
+  opts: { echoKey?: xdr.LedgerKey; entries?: unknown } = {},
+): rpc.Server =>
   ({
-    getLedgerEntries: async () => ({
-      entries: entries.map((val) => ({ val })),
+    _getLedgerEntries: async (key: xdr.LedgerKey) => ({
       latestLedger: 1,
+      entries:
+        "entries" in opts
+          ? opts.entries
+          : data === null
+            ? []
+            : [{ key: (opts.echoKey ?? key).toXDR("base64"), xdr: data.toXDR("base64") }],
     }),
   }) as unknown as rpc.Server;
+
+const someOtherKey = xdr.LedgerKey.account(new xdr.LedgerKeyAccount({ accountId: pubkey(THEIRS) }));
+
+describe("absent must be said explicitly, never inferred", () => {
+  // The SDK's parsed getLedgerEntries does `(raw.entries ?? []).map(...)`, so a
+  // response with NO entries field arrives as an empty array, indistinguishable
+  // from "this account does not exist". controller.balances() renders zero for
+  // exactly that condition, so a malformed reply became a confident 0.0000000
+  // on a funded wallet. Found by inducing it, not by reading the code.
+  it("refuses a response carrying no entries field at all", async () => {
+    await expect(
+      readNative(serverReturning(null, { entries: undefined }), MINE),
+    ).rejects.toBeInstanceOf(LedgerEntryMismatchError);
+  });
+
+  it("refuses a response whose entries field is null", async () => {
+    await expect(readNative(serverReturning(null, { entries: null }), MINE)).rejects.toBeInstanceOf(
+      LedgerEntryMismatchError,
+    );
+  });
+
+  it("refuses a response whose entries field is not a list", async () => {
+    await expect(
+      readNative(serverReturning(null, { entries: { 0: "nope" } }), MINE),
+    ).rejects.toBeInstanceOf(LedgerEntryMismatchError);
+  });
+
+  it("accepts an explicit empty list as genuinely absent", async () => {
+    // Confirmed against live testnet: a never-funded account replies with
+    // exactly `entries: []`. This is the one path allowed to render zero.
+    await expect(readNative(serverReturning(null), MINE)).rejects.toBeInstanceOf(
+      AccountNotFoundError,
+    );
+  });
+
+  it("reports an absent trustline as null rather than as zero", async () => {
+    expect(await readTrustline(serverReturning(null), MINE, USDC)).toBeNull();
+  });
+});
 
 describe("the ledger's answer must be about the question", () => {
   // A wallet renders whatever this returns as the user's own money. Nothing in
@@ -61,7 +114,18 @@ describe("the ledger's answer must be about the question", () => {
   // hostile RPC, a caching proxy, or a mismatched batch response can put
   // somebody else's balance on the screen. Observed before this check: a
   // stranger's 12345.6789 XLM came back with no complaint at all.
-  it("refuses an AccountEntry belonging to a different account", async () => {
+  it("refuses an entry echoed under a different ledger key", async () => {
+    await expect(
+      readNative(
+        serverReturning(accountEntry(THEIRS, "123456789000"), { echoKey: someOtherKey }),
+        MINE,
+      ),
+    ).rejects.toBeInstanceOf(LedgerEntryMismatchError);
+  });
+
+  it("refuses an AccountEntry for a different account even when the key echo is right", async () => {
+    // Belt and braces: an RPC that echoes the requested key beside the wrong
+    // body still does not get a number on screen.
     await expect(
       readNative(serverReturning(accountEntry(THEIRS, "123456789000")), MINE),
     ).rejects.toBeInstanceOf(LedgerEntryMismatchError);
@@ -76,12 +140,6 @@ describe("the ledger's answer must be about the question", () => {
     await expect(
       readNative(serverReturning(trustlineEntry(MINE, USDC, "5")), MINE),
     ).rejects.toBeInstanceOf(LedgerEntryMismatchError);
-  });
-
-  it("still reports a genuinely absent account as absent, not as a mismatch", async () => {
-    // The one case allowed to render zero. Conflating it with a mismatch would
-    // turn an ordinary unfunded wallet into an error screen.
-    await expect(readNative(serverReturning(), MINE)).rejects.toBeInstanceOf(AccountNotFoundError);
   });
 
   it("refuses a trustline held by a different account", async () => {
@@ -106,7 +164,10 @@ describe("the ledger's answer must be about the question", () => {
     expect(got?.authorized).toBe(true);
   });
 
-  it("reports no trustline as null rather than as zero", async () => {
-    expect(await readTrustline(serverReturning(), MINE, USDC)).toBeNull();
+  it("refuses an entry whose xdr body is missing", async () => {
+    const key = xdr.LedgerKey.account(new xdr.LedgerKeyAccount({ accountId: pubkey(MINE) }));
+    await expect(
+      readNative(serverReturning(null, { entries: [{ key: key.toXDR("base64") }] }), MINE),
+    ).rejects.toBeInstanceOf(LedgerEntryMismatchError);
   });
 });

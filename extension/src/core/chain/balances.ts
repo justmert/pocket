@@ -63,6 +63,47 @@ const trustlineKey = (accountId: string, asset: Asset): xdr.LedgerKey =>
   );
 
 /**
+ * Look up one ledger entry, distinguishing "it is not there" from "you were not
+ * answered". Null means genuinely absent; anything else raises.
+ *
+ * This reads the RAW response rather than the SDK's parsed one, and that is the
+ * whole point. `parseRawLedgerEntries` does `(raw.entries ?? []).map(...)`, so a
+ * reply carrying NO `entries` field at all arrives as an empty array,
+ * byte-identical to "this account does not exist". Downstream that becomes a
+ * confident 0.0000000 on a funded wallet. The SDK's own type admits the shape:
+ * `RawGetLedgerEntriesResponse.entries` is optional while the parsed
+ * `GetLedgerEntriesResponse.entries` is not.
+ *
+ * Verified against live testnet: a genuinely absent account replies with an
+ * explicit `entries: []`, so the distinction is real and is only lost in the
+ * parser.
+ *
+ * The raw entry also echoes the key that was looked up, which is a stricter
+ * identity check than re-deriving the address from the decoded entry: XDR
+ * encoding is canonical, so a byte comparison covers the account, the asset and
+ * the entry type at once. Confirmed byte-exact against live testnet.
+ */
+async function readEntry(
+  server: rpc.Server,
+  key: xdr.LedgerKey,
+): Promise<xdr.LedgerEntryData | null> {
+  const res = await server._getLedgerEntries(key);
+  if (!Array.isArray(res.entries)) {
+    throw new LedgerEntryMismatchError(
+      "the ledger did not answer the question: the response carried no entries field",
+    );
+  }
+  const raw = res.entries[0];
+  if (!raw) return null;
+  if (typeof raw.xdr !== "string" || raw.key !== key.toXDR("base64")) {
+    throw new LedgerEntryMismatchError(
+      "the ledger answered about a different entry than the one asked about",
+    );
+  }
+  return xdr.LedgerEntryData.fromXDR(raw.xdr, "base64");
+}
+
+/**
  * Native XLM balance, minus nothing: the raw AccountEntry balance. Callers
  * needing spendable XLM must subtract the reserve themselves, since the reserve
  * depends on subentry count.
@@ -71,20 +112,17 @@ export async function readNative(
   server: rpc.Server,
   accountId: string,
 ): Promise<{ raw: bigint; subEntryCount: number; numSponsoring: number; numSponsored: number }> {
-  const res = await server.getLedgerEntries(accountKey(accountId));
-  const entry = res.entries[0];
-  if (!entry) throw new AccountNotFoundError(accountId);
-  if (entry.val.switch().name !== "account") {
-    throw new LedgerEntryMismatchError(
-      `asked for an account entry, got ${entry.val.switch().name}`,
-    );
+  const val = await readEntry(server, accountKey(accountId));
+  // Only an explicit empty entries array reaches here as null, and that is the
+  // one condition allowed to render a zero balance.
+  if (!val) throw new AccountNotFoundError(accountId);
+  if (val.switch().name !== "account") {
+    throw new LedgerEntryMismatchError(`asked for an account entry, got ${val.switch().name}`);
   }
-  const acc = entry.val.account();
-  // The response is not self-evidently about the account we asked for. Nothing
-  // in the SDK checks the returned entry against the requested key, so a broken
-  // proxy or a hostile RPC can answer with somebody else's AccountEntry and the
-  // wallet will present that balance as the user's own. Verified: before this
-  // check, readNative returned a stranger's 12345.6789 XLM without complaint.
+  const acc = val.account();
+  // Belt and braces on top of the key echo. Cheap, and it catches an RPC that
+  // echoes the right key beside the wrong body. Verified: before any of this,
+  // readNative returned a stranger's 12345.6789 XLM without complaint.
   const returnedId = StrKey.encodeEd25519PublicKey(acc.accountId().ed25519());
   if (returnedId !== accountId) {
     throw new LedgerEntryMismatchError(
@@ -106,15 +144,12 @@ export async function readTrustline(
   accountId: string,
   asset: Asset,
 ): Promise<AssetBalance | null> {
-  const res = await server.getLedgerEntries(trustlineKey(accountId, asset));
-  const entry = res.entries[0];
-  if (!entry) return null;
-  if (entry.val.switch().name !== "trustline") {
-    throw new LedgerEntryMismatchError(
-      `asked for a trustline entry, got ${entry.val.switch().name}`,
-    );
+  const val = await readEntry(server, trustlineKey(accountId, asset));
+  if (!val) return null;
+  if (val.switch().name !== "trustline") {
+    throw new LedgerEntryMismatchError(`asked for a trustline entry, got ${val.switch().name}`);
   }
-  const tl = entry.val.trustLine();
+  const tl = val.trustLine();
   // Same reasoning as readNative: check the answer is about the question. A
   // trustline is (account, asset), so both halves have to match or the balance
   // shown belongs to a different holder or a different asset.

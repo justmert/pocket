@@ -6,11 +6,21 @@
 // committed values without decrypting, but you cannot multiply, discover a
 // price, or hold the state a lending pool needs.
 //
-// API shape verified against the live OpenAPI spec, because three of the five
-// endpoints in our own specification were wrong:
+// API shape verified against the live OpenAPI spec at
+// https://api.defindex.io/api-json (NOT /openapi.json, which 404s), because
+// three of the five endpoints in our own specification were wrong:
 //   - the submit endpoint is ROOT-level `POST /send`, not `/vault/{a}/send`
 //   - there is no `launchtube` flag; `SendXdrDto` accepts only `xdr`
 //   - `?network=` is REQUIRED on every vault endpoint and on /send
+//
+// Two asymmetries in that spec that look like typos and are not. Both were got
+// wrong here once already, so they are written down rather than remembered:
+//
+//   1. The POST bodies name the user `caller`. The GET balance query names the
+//      same user `from`. DepositDto and WithdrawDto declare
+//      `required: ["amounts", "caller"]` and have no `from` property at all, so
+//      a body carrying `from` is missing a required field and 400s.
+//   2. `amounts` items are `type: "number"`, not strings, on both POSTs.
 import { deadlineSignal, SERVICE_HTTP_TIMEOUT_MS } from "../chain/http";
 
 export interface DefindexConfig {
@@ -36,6 +46,58 @@ export interface VaultPosition {
   underlying?: string;
 }
 
+/**
+ * A deposit or withdrawal, before it is shaped for the wire.
+ *
+ * `amounts` is bigint because every amount in this wallet is an integral
+ * subunit count and stays that way until it is formatted. The wire wants JSON
+ * numbers, and that conversion is the only place precision can be lost, so it
+ * happens once, in `moveBody`, where it can be checked.
+ */
+export interface MoveParams {
+  /** The user. Serialised as `caller`, which is what the DTO requires. */
+  caller: string;
+  amounts: bigint[];
+  /** Basis points, 0..10000. */
+  slippageBps?: number;
+}
+
+/**
+ * Shape a deposit or withdrawal for the wire, refusing to round.
+ *
+ * `amounts` items are declared `type: "number"` in the spec, so a bigint has to
+ * become a JSON number. Above 2^53-1 that conversion silently changes the
+ * value, and silently sending a different amount than the user approved is the
+ * worst thing this module could do. 2^53-1 subunits is about 900 million units
+ * at 7 decimals, so no honest amount reaches it and anything that does is a bug
+ * worth stopping.
+ */
+export function moveBody(
+  p: MoveParams,
+  what: "deposit" | "withdraw",
+): { caller: string; amounts: number[]; slippageBps?: number } {
+  const amounts = p.amounts.map((a) => {
+    if (a < 0n) throw new DefindexError(`cannot ${what} a negative amount`);
+    if (a > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new DefindexError(
+        `that ${what} amount is too large to send to the yield service without losing precision`,
+      );
+    }
+    return Number(a);
+  });
+  if (amounts.length === 0) throw new DefindexError(`a ${what} needs at least one amount`);
+  if (p.slippageBps !== undefined && (p.slippageBps < 0 || p.slippageBps > 10_000)) {
+    throw new DefindexError("slippageBps must be between 0 and 10000");
+  }
+  return {
+    // NOT `from`. The DTO has no such property, so a body carrying it is
+    // missing a required field and the request 400s.
+    caller: p.caller,
+    amounts,
+    ...(p.slippageBps !== undefined ? { slippageBps: p.slippageBps } : {}),
+  };
+}
+
 export class DefindexError extends Error {
   constructor(
     message: string,
@@ -53,7 +115,12 @@ export class DefindexClient {
     return this.request<VaultInfo>("GET", `/vault/${address}`);
   }
 
-  /** A user's position. `from` is required. */
+  /**
+   * A user's position.
+   *
+   * `from` here is correct and is NOT the same name the POST bodies use. This
+   * is the one endpoint whose user parameter is called `from`; see the header.
+   */
   async position(address: string, user: string): Promise<VaultPosition> {
     return this.request<VaultPosition>(
       "GET",
@@ -65,18 +132,20 @@ export class DefindexClient {
    * Build an unsigned deposit. The wallet signs; DeFindex never sees a key.
    * `slippageBps` is on deposit as well as withdraw.
    */
-  async buildDeposit(
-    address: string,
-    params: { from: string; amounts: string[]; slippageBps?: number },
-  ): Promise<{ xdr: string }> {
-    return this.request<{ xdr: string }>("POST", `/vault/${address}/deposit`, params);
+  async buildDeposit(address: string, params: MoveParams): Promise<{ xdr: string }> {
+    return this.request<{ xdr: string }>(
+      "POST",
+      `/vault/${address}/deposit`,
+      moveBody(params, "deposit"),
+    );
   }
 
-  async buildWithdraw(
-    address: string,
-    params: { from: string; amounts: string[]; slippageBps?: number },
-  ): Promise<{ xdr: string }> {
-    return this.request<{ xdr: string }>("POST", `/vault/${address}/withdraw`, params);
+  async buildWithdraw(address: string, params: MoveParams): Promise<{ xdr: string }> {
+    return this.request<{ xdr: string }>(
+      "POST",
+      `/vault/${address}/withdraw`,
+      moveBody(params, "withdraw"),
+    );
   }
 
   /**
@@ -134,12 +203,17 @@ export class DefindexClient {
 /**
  * How an APY must be presented.
  *
- * Their API reports `apy` over a 7-day window on one endpoint and 30 on
- * another, in different units. Showing a bare percentage would be a financial
- * representation we cannot substantiate, so the window and the variability are
- * always stated with it.
+ * `apy` arrives ALREADY IN PERCENT, not as a 0..1 fraction. Every apy field in
+ * the spec says so: "Current Last 7d APY (%)" with example 19.41, "24-hour
+ * Annual Percentage Yield (%)" with example 20.57381881828393, and so on.
+ * Multiplying by 100 here rendered a real 19.41% vault as "1941.00%".
+ *
+ * The window differs per endpoint (7d on the vault summary, 24h/7d/30d on
+ * account performance), so the caller states which one it read. Showing a bare
+ * percentage would be a financial representation we cannot substantiate, so the
+ * window and the variability are always stated with it.
  */
 export function describeApy(apy: number | undefined, windowDays: number): string {
-  if (apy === undefined) return "Yield not reported";
-  return `${(apy * 100).toFixed(2)}% over the last ${windowDays} days, variable and not guaranteed`;
+  if (apy === undefined || apy === null || !Number.isFinite(apy)) return "Yield not reported";
+  return `${apy.toFixed(2)}% over the last ${windowDays} days, variable and not guaranteed`;
 }
