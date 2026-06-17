@@ -1,4 +1,4 @@
-import { mono, moneySizes, radius, type MoneyTreatment, type Theme } from "./theme";
+import { mono, moneySizes, radius, space, type MoneyTreatment, type Theme } from "./theme";
 
 /**
  * An amount, rendered according to what is actually true about it.
@@ -46,11 +46,15 @@ export function Money({
         fontSize: moneySizes[size],
         fontWeight: 600,
         fontVariantNumeric: "tabular-nums",
+        // A run of digits has no break opportunity, and the frame clips its
+        // overflow, so a large enough balance would have been silently cut
+        // short. A wrapped balance is ugly; a truncated one is a lie.
+        overflowWrap: "anywhere",
         ...styles[treatment],
       }}
     >
       {amount}
-      {code ? <span style={{ opacity: 0.7, marginLeft: 5 }}>{code}</span> : null}
+      {code ? <span style={{ opacity: 0.7, marginLeft: space.xs }}>{code}</span> : null}
     </span>
   );
 }
