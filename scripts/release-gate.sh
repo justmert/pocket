@@ -151,10 +151,132 @@ else
   bad "circuits not found"
 fi
 
+note "Gate 6: the shipping package is the one we think we are shipping"
+# Gates 1 to 5 all inspect SOURCES. Nothing here looked at the .zip a user
+# actually installs, which is where a stale version, a leaked source map or a
+# dev endpoint would be. Build it and read it.
+OUT=extension/.output/chrome-mv3
+if (cd extension && npm run --silent build >/tmp/pocket-build.log 2>&1); then
+  ok "extension builds"
+else
+  bad "extension build failed; see /tmp/pocket-build.log"
+fi
+
+if [ -f "$OUT/manifest.json" ]; then
+  bad_pkg=0
+  pkg_v=$(python3 -c "import json;print(json.load(open('extension/package.json'))['version'])")
+  man_v=$(python3 -c "import json;print(json.load(open('$OUT/manifest.json'))['version'])")
+  [ "$pkg_v" = "$man_v" ] || { bad "package.json is $pkg_v but the built manifest says $man_v"; bad_pkg=1; }
+
+  # Chrome's rules, not ours: one to four dot-separated integers, each 0-65535,
+  # no leading zeros, not all zero.
+  # https://developer.chrome.com/docs/extensions/reference/manifest/version
+  if ! python3 - "$man_v" <<'PY'
+import re, sys
+v = sys.argv[1]
+parts = v.split(".")
+ok = 1 <= len(parts) <= 4 and all(
+    re.fullmatch(r"0|[1-9][0-9]*", p) and int(p) <= 65535 for p in parts
+) and any(int(p) for p in parts)
+sys.exit(0 if ok else 1)
+PY
+  then
+    bad "version '$man_v' is not a version Chrome will accept"; bad_pkg=1
+  fi
+
+  # An upload whose version did not increase is not an update: Chrome only
+  # replaces an installed extension when the published version string is NEWER.
+  # A fix that never reaches an existing install is the worst kind of release,
+  # because the release looks successful.
+  last=$(git tag --list 'v*' --sort=-v:refname | head -1)
+  if [ -n "$last" ]; then
+    if python3 - "$man_v" "${last#v}" <<'PY'
+import sys
+key = lambda v: tuple(int(x) for x in v.split("."))
+sys.exit(0 if key(sys.argv[1]) > key(sys.argv[2]) else 1)
+PY
+    then
+      ok "version $man_v is newer than the last released $last"
+    else
+      bad "version $man_v is not newer than the last released $last: existing installs would not update"
+      bad_pkg=1
+    fi
+  else
+    printf '  SKIP  no v* tag yet, so there is no previous release to outrank\n'
+  fi
+
+  # A source map ships the unminified sources, every comment in them, and the
+  # original file layout. Nothing in a wallet's bundle should be reconstructible
+  # that cheaply, and it is a one-line build-config regression away.
+  maps=$(find "$OUT" -name '*.map' | wc -l | tr -d ' ')
+  # grep exits 1 on no match, which is the PASSING case here, so it must not
+  # take the whole script down under `set -e`.
+  refs=$({ grep -rIl 'sourceMappingURL' "$OUT" 2>/dev/null || true; } | wc -l | tr -d ' ')
+  [ "$maps" = "0" ] && [ "$refs" = "0" ] || {
+    bad "the package carries $maps source maps and $refs sourceMappingURL references"; bad_pkg=1; }
+
+  # A dev endpoint that survives into a release points a wallet at a host the
+  # manifest never declared, so it fails opaquely rather than loudly.
+  if grep -rIl 'localhost\|127\.0\.0\.1\|0\.0\.0\.0' "$OUT" >/dev/null 2>&1; then
+    bad "the package references a loopback address"; bad_pkg=1
+  fi
+  if grep -rIoh 'http://[a-zA-Z0-9._:/-]*' "$OUT" 2>/dev/null \
+     | grep -v 'w3\.org\|json-schema\.org' | grep -q .; then
+    bad "the package contains a plaintext http:// endpoint"; bad_pkg=1
+  fi
+
+  # MV3 bans remotely hosted code, and this build vendors bb.js, the SRS and the
+  # circuits precisely so it can obey that. 'unsafe-eval' would undo it;
+  # 'wasm-unsafe-eval' is the narrow exception the prover needs.
+  csp=$(python3 -c "
+import json
+m = json.load(open('$OUT/manifest.json'))
+print(m.get('content_security_policy', {}).get('extension_pages', ''))")
+  [ -n "$csp" ] || { bad "the manifest declares no extension_pages CSP"; bad_pkg=1; }
+  case "$csp" in
+    *"'unsafe-eval'"*) bad "the CSP allows unsafe-eval"; bad_pkg=1 ;;
+  esac
+  case "$csp" in
+    *http*) bad "the CSP names a remote origin: $csp"; bad_pkg=1 ;;
+  esac
+
+  # A host permission nobody calls is a permission prompt paid for nothing, and
+  # a reviewer reads it as a capability the wallet has.
+  for host in $(python3 -c "
+import json,urllib.parse
+m=json.load(open('$OUT/manifest.json'))
+for h in m.get('host_permissions',[]): print(urllib.parse.urlparse(h).netloc)
+"); do
+    grep -rIq "$host" "$OUT"/*.js "$OUT"/chunks/*.js 2>/dev/null \
+      || { bad "host permission $host is declared but never used by the shipped code"; bad_pkg=1; }
+  done
+
+  # Confidential openings are stored under a key containing the TOKEN CONTRACT
+  # ADDRESS. If the build points at a different deployment than the one gate 3
+  # just resolved, every existing user's openings are silently orphaned, which
+  # loses them their private balance permanently.
+  if [ -f resources/deployment-testnet.json ]; then
+    for key in token verifier auditor; do
+      id=$(python3 -c "import json;print(json.load(open('resources/deployment-testnet.json'))['$key'])")
+      grep -q "$id" "$OUT/background.js" \
+        || { bad "$key $id is the recorded deployment but is not in the built bundle"; bad_pkg=1; }
+    done
+  fi
+
+  [ "$bad_pkg" = "0" ] && ok "version, source maps, endpoints, CSP, permissions and deployment ids"
+else
+  bad "no built package to inspect at $OUT"
+fi
+
 note "Build and test"
-(cd extension && npm run --silent check >/dev/null 2>&1) && ok "extension: types, lint, tests" || bad "extension checks"
-(cd indexer && npx tsc --noEmit >/dev/null 2>&1 && npx vitest run --silent >/dev/null 2>&1) && ok "indexer: types, tests" || bad "indexer checks"
-(cd contracts && cargo fmt --check >/dev/null 2>&1) && ok "contracts: formatting" || bad "contracts formatting"
+# Failures print. A gate that says only "FAIL" is a gate people learn to skip.
+(cd extension && npm run --silent check >/tmp/pocket-check.log 2>&1) && ok "extension: types, lint, tests" \
+  || { bad "extension checks"; sed -n '1,25p' /tmp/pocket-check.log | sed 's/^/        /'; }
+(cd indexer && npx tsc --noEmit >/tmp/pocket-indexer.log 2>&1 && npx vitest run --silent >>/tmp/pocket-indexer.log 2>&1) \
+  && ok "indexer: types, tests" \
+  || { bad "indexer checks"; sed -n '1,25p' /tmp/pocket-indexer.log | sed 's/^/        /'; }
+(cd contracts && cargo fmt --check >/tmp/pocket-fmt.log 2>&1) && ok "contracts: formatting" \
+  || { bad "contracts formatting"; sed -n '1,25p' /tmp/pocket-fmt.log | sed 's/^/        /'; }
 
 printf '\n'
 if [ "$fail" = "0" ]; then
