@@ -24,6 +24,28 @@ export function Frame({ t, children }: { t: Theme; children: ReactNode }) {
   );
 }
 
+/**
+ * The scrolling column under a header. One screen gutter, one scroll model.
+ *
+ * The extra room at the bottom is deliberate: measured at 360x600 with a
+ * receipt on screen and a form open, the private pocket's Review button landed
+ * exactly on the fold, which reads as the end of the screen when it is not.
+ */
+export function Content({ children }: { children: ReactNode }) {
+  return (
+    <div
+      style={{
+        padding: space.gutter,
+        paddingBottom: space.xl,
+        flex: 1,
+        overflowY: "auto",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function Button({
   children,
   onClick,

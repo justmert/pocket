@@ -3,6 +3,7 @@ import { call } from "../rpc";
 import {
   Button,
   ButtonStack,
+  Content,
   Field,
   Frame,
   Header,
@@ -80,7 +81,7 @@ export function Send({ t, onBack }: { t: Theme; onBack: () => void }) {
           </TextButton>
         }
       />
-      <div style={{ padding: space.gutter, flex: 1, overflowY: "auto" }}>
+      <Content>
         {stage === "compose" && (
           <>
             <Field t={t} label="Recipient" value={to} onChange={setTo} placeholder="G..." />
@@ -205,7 +206,7 @@ export function Send({ t, onBack }: { t: Theme; onBack: () => void }) {
             </ButtonStack>
           </>
         )}
-      </div>
+      </Content>
     </Frame>
   );
 }

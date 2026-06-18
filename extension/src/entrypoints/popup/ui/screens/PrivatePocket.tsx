@@ -4,6 +4,7 @@ import {
   Button,
   ButtonRow,
   ButtonStack,
+  Content,
   Field,
   Frame,
   Header,
@@ -121,7 +122,7 @@ export function PrivatePocket({ t, onBack }: { t: Theme; onBack: () => void }) {
           </TextButton>
         }
       />
-      <div style={{ padding: space.gutter, flex: 1, overflowY: "auto" }}>
+      <Content>
         {error && (
           <Notice tone="danger" t={t}>
             {error}
@@ -270,12 +271,15 @@ export function PrivatePocket({ t, onBack }: { t: Theme; onBack: () => void }) {
                   <li>
                     Your address stays public on every private payment. Only amounts are hidden.
                   </li>
-                  <li>The auditor you bind now cannot be changed later.</li>
+                  <li>
+                    Your auditor key is derived from your recovery phrase, so only you can read your
+                    amounts. It is bound permanently and cannot be changed later.
+                  </li>
                 </ul>
                 <Button
                   t={t}
                   onClick={() =>
-                    void start({ kind: "register", auditorId: 0 }, "Proving. This takes a moment…")
+                    void start({ kind: "register" }, "Setting up. This takes a moment…")
                   }
                 >
                   Set up the private pocket
@@ -299,7 +303,7 @@ export function PrivatePocket({ t, onBack }: { t: Theme; onBack: () => void }) {
             )}
           </>
         )}
-      </div>
+      </Content>
     </Frame>
   );
 }
@@ -358,7 +362,7 @@ function ReviewScreen({
   return (
     <Frame t={t}>
       <Header title="Review" t={t} />
-      <div style={{ padding: space.gutter, flex: 1, overflowY: "auto" }}>
+      <Content>
         <SectionLabel t={t}>{OP_LABELS[summary.kind] ?? summary.kind.toUpperCase()}</SectionLabel>
         {summary.amount && (
           <div style={{ marginBottom: space.lg }}>
@@ -411,7 +415,7 @@ function ReviewScreen({
             </Button>
           </ButtonRow>
         )}
-      </div>
+      </Content>
     </Frame>
   );
 }

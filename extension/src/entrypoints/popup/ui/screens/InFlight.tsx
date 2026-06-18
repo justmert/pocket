@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { call } from "../rpc";
-import { Button, ButtonStack, Frame, Header, Label, Loading, Notice } from "../primitives";
+import { Button, ButtonStack, Content, Frame, Header, Label, Loading, Notice } from "../primitives";
 import { MonoBlock } from "../AddressBlock";
 import { space, type Theme } from "../theme";
 
@@ -58,7 +58,7 @@ export function InFlight({
   return (
     <Frame t={t}>
       <Header title="Unfinished transaction" t={t} />
-      <div style={{ padding: space.gutter, flex: 1, overflowY: "auto" }}>
+      <Content>
         <Notice tone="exposed" t={t}>
           Pocket submitted a transaction and did not see whether it confirmed. It may still be on
           its way. Do not send it again until this is resolved.
@@ -101,7 +101,7 @@ export function InFlight({
             </ButtonStack>
           )}
         </div>
-      </div>
+      </Content>
     </Frame>
   );
 }

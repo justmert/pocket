@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { call } from "../rpc";
 import {
   Button,
+  Content,
   Frame,
   Header,
   Label,
@@ -64,7 +65,7 @@ export function Home({
           </TextButton>
         }
       />
-      <div style={{ padding: space.gutter, flex: 1, overflowY: "auto" }}>
+      <Content>
         <SectionLabel t={t}>PUBLIC POCKET</SectionLabel>
 
         {/* Never fabricate a zero while loading: an empty state is honest, a
@@ -129,7 +130,7 @@ export function Home({
             </Button>
           </div>
         )}
-      </div>
+      </Content>
     </Frame>
   );
 }

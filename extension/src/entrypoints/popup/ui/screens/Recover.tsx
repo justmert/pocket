@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { call } from "../rpc";
-import { Button, ButtonStack, Field, Frame, Header, Label, Notice } from "../primitives";
+import { Button, ButtonStack, Content, Field, Frame, Header, Label, Notice } from "../primitives";
 import { leading, space, text, type Theme } from "../theme";
 
 /**
@@ -54,7 +54,7 @@ export function Recover({
     return (
       <Frame t={t}>
         <Header title="Erase and restore" t={t} />
-        <div style={{ padding: space.gutter, flex: 1, overflowY: "auto" }}>
+        <Content>
           <Notice tone="danger" t={t}>
             This erases the wallet on this device. Everything it holds goes with it.
           </Notice>
@@ -103,7 +103,7 @@ export function Recover({
               I understand, continue
             </Button>
           </ButtonStack>
-        </div>
+        </Content>
       </Frame>
     );
   }
@@ -111,7 +111,7 @@ export function Recover({
   return (
     <Frame t={t}>
       <Header title="Erase and restore" t={t} />
-      <div style={{ padding: space.gutter, flex: 1, overflowY: "auto" }}>
+      <Content>
         <div style={{ ...text.body, color: t.sub, marginBottom: space.lg }}>
           Enter the recovery phrase for this wallet, then choose a new password.
         </div>
@@ -175,7 +175,7 @@ export function Recover({
             </Button>
           </ButtonStack>
         </form>
-      </div>
+      </Content>
     </Frame>
   );
 }
