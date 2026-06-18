@@ -8,26 +8,31 @@ import { InvalidAddressError } from "./chain/address";
 /**
  * Operations permitted while locked.
  *
- * `import` is NOT here: it writes the vault, and allowing it without the
- * current password means any stray message can replace a funded wallet's seed.
- * `reset` is not here either, for the same reason.
+ * `reset` is NOT here: it destroys a vault and its only authorisation is the
+ * current password, so the lock is the thing standing in front of it.
  *
- * `recoverFromMnemonic` IS here, and the distinction is the whole point. It
- * must work while locked, because a forgotten password is exactly when it is
- * needed. What makes it safe is not the lock but its own authorisation: it
- * requires the recovery phrase, AND checks that phrase derives the account
- * this device already holds. A stray message carries no phrase. A phrase for
- * a different wallet is refused. Anyone who can satisfy both already owns the
- * funds, so there is nothing left for the lock to protect.
+ * Everything that IS here carries its own authorisation, and that, not the
+ * lock, is what makes each one safe:
+ *
+ *   `import` refuses outright when a vault already exists, so it can never
+ *   replace a funded wallet's seed. Where there is no vault there is nothing
+ *   for the lock to protect, and a fresh install has no vault to unlock, so
+ *   gating it made "I have a recovery phrase" impossible rather than merely
+ *   awkward. Verified: with it removed, e2e "an imported phrase reproduces the
+ *   same address" fails at the fresh-profile restore.
+ *
+ *   `recoverFromMnemonic` requires the recovery phrase AND checks that phrase
+ *   derives the account this device already holds, refusing outright when it
+ *   cannot check. A stray message carries no phrase; a phrase for a different
+ *   wallet is refused. Anyone who satisfies both already owns the funds.
+ *
+ * The rule to apply when adding to this list: the lock is not the guard. An
+ * operation belongs here only when it would still be safe with the lock
+ * removed entirely.
  */
 const ALLOWED_WHILE_LOCKED = new Set([
   "status",
   "create",
-  // Onboarding by restoring a phrase. A locked wallet is the ONLY state this
-  // is ever reached from, since a fresh install has no vault to unlock, so
-  // omitting it makes "I have a recovery phrase" impossible rather than
-  // merely awkward. It is safe because `import` carries its own guard: it
-  // refuses outright when a vault already exists, so it cannot replace one.
   "import",
   "unlock",
   "lock",
