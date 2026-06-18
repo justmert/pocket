@@ -23,6 +23,12 @@ import { InvalidAddressError } from "./chain/address";
 const ALLOWED_WHILE_LOCKED = new Set([
   "status",
   "create",
+  // Onboarding by restoring a phrase. A locked wallet is the ONLY state this
+  // is ever reached from, since a fresh install has no vault to unlock, so
+  // omitting it makes "I have a recovery phrase" impossible rather than
+  // merely awkward. It is safe because `import` carries its own guard: it
+  // refuses outright when a vault already exists, so it cannot replace one.
+  "import",
   "unlock",
   "lock",
   "recoverFromMnemonic",
@@ -54,9 +60,6 @@ function opRequest(v: unknown): PrivateOpRequest {
   const op = v as Partial<PrivateOpRequest> | undefined;
   if (!op || typeof op !== "object" || typeof op.kind !== "string" || !OP_KINDS.has(op.kind)) {
     throw new Error("malformed request: unknown private operation");
-  }
-  if (op.kind === "register" && !Number.isInteger((op as { auditorId?: unknown }).auditorId)) {
-    throw new Error("malformed request: auditorId must be an integer");
   }
   if (op.kind === "shield" || op.kind === "unshield" || op.kind === "transfer") {
     str((op as { amount?: unknown }).amount, "amount");

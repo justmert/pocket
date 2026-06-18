@@ -14,6 +14,7 @@
 // only safe once timeBounds has expired, which is what makes timeBounds
 // mandatory rather than optional.
 import type { rpc } from "@stellar/stellar-sdk";
+import type { xdr } from "@stellar/stellar-sdk/base";
 import type { Transaction, FeeBumpTransaction } from "@stellar/stellar-sdk/base";
 
 export type SubmitOutcome =
@@ -21,7 +22,20 @@ export type SubmitOutcome =
   /** The RPC did not queue it. Consumes no sequence and costs no fee: retry now. */
   | { kind: "notAccepted"; hash: string }
   | { kind: "pending"; hash: string }
-  | { kind: "succeeded"; hash: string; ledger: number; applicationOrder: number }
+  | {
+      kind: "succeeded";
+      hash: string;
+      ledger: number;
+      applicationOrder: number;
+      /**
+       * What the invoked function returned, when there was one.
+       *
+       * Needed because the auditor registry ALLOCATES an id and returns it:
+       * the caller cannot know it in advance and must read it from the
+       * result, or it registers a key it can never name.
+       */
+      returnValue?: xdr.ScVal;
+    }
   | { kind: "failed"; hash: string; ledger: number; reason: string }
   | { kind: "expired"; hash: string };
 
@@ -181,6 +195,7 @@ export async function pollToTerminal(
           hash,
           ledger: res.ledger,
           applicationOrder: (res as { applicationOrder?: number }).applicationOrder ?? 0,
+          returnValue: (res as { returnValue?: xdr.ScVal }).returnValue,
         };
       }
       if (res.status === "FAILED") {

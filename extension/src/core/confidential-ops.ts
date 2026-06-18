@@ -22,6 +22,7 @@ import {
 import type { rpc } from "@stellar/stellar-sdk";
 import { addressToField } from "./crypto/address";
 import { signerRoot, verifyRoot } from "./keys/root";
+import { auditorSignerRoot, verifyAuditorRoot, deriveAuditorKey } from "./keys/auditor";
 import { deriveSk } from "./keys/sk";
 import { buildRegisterWitness } from "./witness/register";
 import { buildWithdrawWitness } from "./witness/withdraw";
@@ -30,7 +31,7 @@ import { encodeRegisterData, encodeWithdrawData, encodeTransferData } from "./wi
 import { circuitInputs } from "./witness/inputs";
 import { sampleSalt } from "./witness/salt";
 import { spendRandomness } from "./crypto/derive";
-import { commit, type Point } from "./crypto/grumpkin";
+import { commit, encodePoint, type Point } from "./crypto/grumpkin";
 import { prove } from "./prover/client";
 import { DEFAULT_TIMEOUT_SECONDS } from "./chain/submit";
 import type { Opening } from "./witness/types";
@@ -74,6 +75,63 @@ export async function deriveConfidentialKeys(ctx: OpContext): Promise<{
 
   const { sk, vk } = await deriveSk(root, addrF, acctF);
   return { sk, vk, addrF, acctF };
+}
+
+/**
+ * Derive this account's own auditor key, D8's "the user is their own auditor".
+ *
+ * Its own SEP-0053 root, not a second salt over the spending one, so a facade
+ * holding aud_sk would have to forge a signature over a different message to
+ * reach sk. The separation is structural rather than conventional.
+ */
+export async function deriveOwnAuditorKey(ctx: OpContext): Promise<{ audSk: bigint; publicKey: Point }> {
+  const account = ctx.keypair.publicKey();
+  const root = auditorSignerRoot(ctx.keypair, ctx.tokenId, account);
+  // Same guard as the spending root, for the same reason: a signature from a
+  // different account is well formed and yields a wrong but usable key, and
+  // the binding it feeds is immutable for the life of the account.
+  if (!verifyAuditorRoot(root, account, ctx.tokenId, account)) {
+    throw new Error("the signer produced an auditor root that does not verify against its own key");
+  }
+  const { audSk, publicKey } = await deriveAuditorKey(
+    root,
+    addressToField(ctx.tokenId),
+    addressToField(account),
+  );
+  return { audSk, publicKey };
+}
+
+/** Build an invocation of the auditor registry. */
+function invokeRegistry(
+  ctx: OpContext,
+  source: Account,
+  method: string,
+  args: xdr.ScVal[],
+): Transaction {
+  return new TransactionBuilder(source, {
+    fee: BASE_FEE,
+    networkPassphrase: ctx.networkPassphrase,
+  })
+    .addOperation(new Contract(ctx.auditorRegistryId).call(method, ...args))
+    .setTimeout(DEFAULT_TIMEOUT_SECONDS)
+    .build();
+}
+
+/**
+ * Register this account's own auditor key and return the transaction.
+ *
+ * The id is ALLOCATED by the registry and returned, never chosen, so the
+ * caller must read it out of the result and persist it. Deriving the key
+ * cannot depend on the id for exactly that reason.
+ */
+export async function buildRegisterAuditor(ctx: OpContext): Promise<Transaction> {
+  const { publicKey } = await deriveOwnAuditorKey(ctx);
+  const account = ctx.keypair.publicKey();
+  const source = await ctx.server.getAccount(account);
+  return invokeRegistry(ctx, source, "register", [
+    addr(account),
+    bytes(encodePoint(publicKey)),
+  ]);
 }
 
 /** Build an invocation of the confidential token. */

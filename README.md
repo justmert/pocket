@@ -14,15 +14,23 @@ tool and we would rather say so than let you find out later.
 | Holds | ordinary XLM and USDC | the same assets inside a confidential wrapper |
 | Who sees amounts | everyone | you, your bound auditor, and anyone you disclose to |
 | Who sees addresses | everyone | **everyone, unchanged** |
-| Earns yield | yes (DeFindex) | no, and this is structural |
-| Bridges | yes (Circle CCTP) | no, unshield first |
-| Connects to dApps | yes (SEP-43) | no, sessions are public-pocket only |
+| Earns yield | **not in this build** (DeFindex) | no, and this is structural |
+| Bridges | **not in this build** (Circle CCTP) | no, unshield first |
+| Connects to dApps | **not in this build** (SEP-43) | no, sessions are public-pocket only |
 
-The split is not a product preference. Confidential balances are Pedersen
+**On those three rows.** The client code for DeFindex, Circle CCTP and SEP-43
+exists, is typed and is unit-tested, but **nothing in the extension calls it**:
+there is no screen, no button and no message type behind any of them. You cannot
+earn yield, bridge, or connect a dapp with this build. The rows say where each
+one WILL live, because the reason is structural and worth stating, but shipping
+them as "yes" would describe a product that does not exist. See
+`resources/status.md` for the same distinction applied to everything else.
+
+The split itself is not a product preference. Confidential balances are Pedersen
 commitments, which are additively homomorphic and nothing more. You can add and
 subtract committed values without decrypting them, but you cannot multiply,
 discover a price, or hold the state a lending pool needs. Yield, bridging and
-dApp interaction live in the public pocket because they cannot live anywhere
+dApp interaction belong in the public pocket because they cannot live anywhere
 else.
 
 ## What leaks, stated plainly

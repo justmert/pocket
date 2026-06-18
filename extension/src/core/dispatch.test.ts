@@ -2,9 +2,19 @@ import { describe, it, expect } from "vitest";
 import { isAllowedWhileLocked, describeError, isUserActivity } from "./dispatch";
 
 describe("the locked-state allowlist", () => {
-  it("keeps import and reset out, which would destroy a wallet without a password", () => {
-    expect(isAllowedWhileLocked("import")).toBe(false);
+  it("keeps reset out, because it has no guard of its own", () => {
+    // reset() takes a password and erases. Nothing else stops it, so the lock
+    // is its only protection.
     expect(isAllowedWhileLocked("reset")).toBe(false);
+  });
+
+  it("lets import through, because its guard is stronger than the lock", () => {
+    // The phase-2 critical was "import replaces a funded wallet's seed". The
+    // fix for that is the existence guard INSIDE import(), which refuses
+    // outright when a vault is present. Excluding it from this set as well
+    // looked like defence in depth and was not: a fresh install is locked by
+    // definition, so it made restoring from a phrase impossible.
+    expect(isAllowedWhileLocked("import")).toBe(true);
   });
 
   it("lets recovery through, because it carries its own authorisation", () => {
@@ -49,5 +59,18 @@ describe("idle-lock activity", () => {
 
   it("does not count an unrecognised message as activity", () => {
     expect(isUserActivity("somethingElse")).toBe(false);
+  });
+});
+
+describe("onboarding by import must be reachable", () => {
+  it("allows import while locked, which is the only state it happens in", () => {
+    // A fresh install has no vault, so it is locked by definition. Dropping
+    // this from the set made "I have a recovery phrase" answer "Wallet is
+    // locked." on the first screen, for every returning user on a new machine.
+    expect(isAllowedWhileLocked("import")).toBe(true);
+  });
+
+  it("still keeps reset out, which import's own guard does not cover", () => {
+    expect(isAllowedWhileLocked("reset")).toBe(false);
   });
 });

@@ -74,16 +74,18 @@ test("registers a confidential account with a real proof", async () => {
   await expect(page.getByText(/Not set up yet/)).toBeVisible({ timeout: 60_000 });
   // Stated twice on purpose: once in the summary, once in the list above the
   // button. Assert the list item, which is the one adjacent to the commitment.
-  await expect(
-    page.getByText("The auditor you bind now cannot be changed later."),
-  ).toBeVisible();
+  // The D8 promise, stated where the user commits to it permanently.
+  await expect(page.getByText(/derived from your recovery phrase/)).toBeVisible();
+  await expect(page.getByText(/only you can\s+read your amounts/)).toBeVisible();
+  await expect(page.getByText(/cannot be changed later/)).toBeVisible();
   await expect(page.getByText(/Only amounts are hidden/)).toBeVisible();
 
   await page.getByRole("button", { name: "Set up the private pocket" }).click();
 
   // Proving, then the review screen listing every effect.
   await expect(page.getByText(/What this does/)).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByText(/Permanently bind auditor/)).toBeVisible();
+  await expect(page.getByText(/Bind your OWN auditor key/)).toBeVisible();
+  await expect(page.getByText(/Nobody else can read your amounts/)).toBeVisible();
   await expect(page.getByText(/not reversible/)).toBeVisible();
 
   await page.getByRole("button", { name: "Approve" }).click();
@@ -132,6 +134,35 @@ test("sends a confidential transfer to another account", async () => {
   await expect(page.getByText(/Confirmed on the ledger/)).toBeVisible({ timeout: 240_000 });
 });
 
+test("the account bound its OWN auditor key, not the operator's", async () => {
+  test.setTimeout(120_000);
+  // D8, end to end. Before this, registration passed a hardcoded auditorId 0,
+  // which on our deployment is the DEPLOYER's key: every user permanently
+  // granted the operator read access to every amount. The binding is immutable
+  // for the life of the account, so this is unrepairable if it is wrong.
+  const REGISTRY = "CDE5JETGXV7TOUUDQPUTGLJB6TCUUIIWJJTLWFX4RNH36XABKCEPNTEV";
+  const DEPLOYER = "GB43MNLS6IL77FIZHOBLYILQIQP5MPQVF77O5JOAYCSWX3TUHAL6Z3F7";
+
+  // Read the auditor id the account actually bound, from the token contract.
+  const bound = await page.evaluate(
+    () =>
+      new Promise<number | undefined>((res) => {
+        chrome.runtime.sendMessage({ type: "privatePocket" }, (r) =>
+          res(r?.ok ? r.data?.auditorId : undefined),
+        );
+      }),
+  );
+
+  expect(bound, "the pocket must report the auditor it bound").not.toBeUndefined();
+  expect(bound, "must NOT be the operator's id 0").not.toBe(0);
+
+  // And that id must be owned by this account, not by the deployer.
+  const owner = await rpcOwnerOf(REGISTRY, bound as number);
+  expect(owner, `auditor #${bound} must be owned by the account itself`).toBe(address);
+  expect(owner).not.toBe(DEPLOYER);
+  console.log(`  bound auditor #${bound}, owned by ${owner.slice(0, 8)}… (self)`);
+});
+
 test("the ledger agrees with what the UI claimed", async () => {
   test.setTimeout(120_000);
   // "Confirmed" on a screen is not evidence. This asks the public ledger,
@@ -164,3 +195,21 @@ test("the ledger agrees with what the UI claimed", async () => {
     `  ${records.length} successful transactions, ${moved.toFixed(4)} XLM shielded plus fees`,
   );
 });
+
+/** owner_of(id) on the registry, read straight from RPC. */
+async function rpcOwnerOf(registry: string, id: number): Promise<string> {
+  const { rpc, TransactionBuilder, Contract, Account, nativeToScVal, BASE_FEE, scValToNative } =
+    await import("@stellar/stellar-sdk");
+  const server = new rpc.Server("https://soroban-testnet.stellar.org");
+  const acc = await server.getAccount(address);
+  const tx = new TransactionBuilder(new Account(address, acc.sequenceNumber()), {
+    fee: BASE_FEE,
+    networkPassphrase: "Test SDF Network ; September 2015",
+  })
+    .addOperation(new Contract(registry).call("owner_of", nativeToScVal(id, { type: "u32" })))
+    .setTimeout(30)
+    .build();
+  const sim = await server.simulateTransaction(tx);
+  if ("error" in sim) throw new Error(String(sim.error));
+  return scValToNative((sim as { result: { retval: unknown } }).result.retval as never) as string;
+}

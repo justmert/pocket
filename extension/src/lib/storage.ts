@@ -25,7 +25,28 @@ export const KEYS = {
    * erase, which is the only way to authorise that erase without the password.
    */
   publicAddress: "pocket.address",
+  /**
+   * The auditor id this account registered its OWN key under, per deployment.
+   *
+   * Allocated by the registry and returned, never chosen, so it has to be
+   * recorded. Losing it does not lose funds, but it orphans a registered key
+   * and the next attempt allocates another, so a retry must reuse this.
+   */
+  auditorId: "pocket.auditorid",
 } as const;
+
+/**
+ * The key holding one account's openings in one deployment.
+ *
+ * The format lives here and nowhere else. A caller that builds this string
+ * itself can drift from `openingKeys` below, and the two failure modes are
+ * both silent: a read that misses returns "no record of your balances", and
+ * an erase that misses leaves a blob no future DEK can open. Openings are not
+ * a cache, so either one is unrecoverable.
+ */
+export function openingKey(token: string, address: string): string {
+  return `${KEYS.openings}.${token}.${address}`;
+}
 
 /** Every key holding openings, across all deployments and accounts. */
 export async function openingKeys(): Promise<string[]> {
@@ -42,6 +63,14 @@ export async function writeLocal(key: string, value: unknown): Promise<void> {
   await chrome.storage.local.set({ [key]: value });
 }
 
-export async function removeLocal(key: string): Promise<void> {
+/**
+ * Remove one key or many.
+ *
+ * The array form exists so a multi-key erase is ONE call rather than a
+ * sequence of them. Chrome documents the `string[]` signature; it does NOT
+ * document the operation as atomic, so treat this as "one window instead of
+ * seven", not as a transaction.
+ */
+export async function removeLocal(key: string | string[]): Promise<void> {
   await chrome.storage.local.remove(key);
 }

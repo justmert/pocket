@@ -65,7 +65,7 @@ test("onboarding creates a wallet and shows exactly 24 words", async () => {
     await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
     const words = await page
       .locator("span")
-      .filter({ hasText: /^\d+\.\s\w+$/ })
+      .filter({ hasText: /^\d+\.\s\w+\s*$/ })
       .count();
     expect(words).toBe(24);
     // The backup warning has to say the two things that actually matter.
@@ -185,5 +185,50 @@ test("states what registration costs before offering the button", async () => {
   } finally {
     await ctx.close();
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an imported phrase reproduces the same address", async () => {
+  const { ctx, id, dir } = await launch();
+  try {
+    const page = await popup(ctx, id);
+
+    // Derive the expected address from a phrase using the wallet's own SEP-5
+    // path, so the assertion is against the protocol and not against itself.
+    await page.getByRole("button", { name: "Create a new wallet" }).click();
+    await page.getByRole("textbox", { name: "Password", exact: true }).fill(PASSWORD);
+    await page.getByRole("textbox", { name: "Confirm password" }).fill(PASSWORD);
+    await page.getByRole("button", { name: "Create wallet" }).click();
+    await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
+    const words = await page.locator("span").filter({ hasText: /^\d+\.\s\w+\s*$/ }).allInnerTexts();
+    const phrase = words.map((w) => w.replace(/^\d+\.\s*/, "").trim()).join(" ");
+    await page.getByRole("button", { name: "I have written it down" }).click();
+    await page.getByRole("button", { name: "Receive" }).click();
+    const expected = (await page.locator("div[style*='break-all']").innerText()).replace(/\s/g, "");
+
+    await ctx.close();
+    rmSync(dir, { recursive: true, force: true });
+
+    // Fresh profile, fresh vault, restore by phrase.
+    const second = await launch();
+    try {
+      const p2 = await popup(second.ctx, second.id);
+      await p2.getByRole("button", { name: /recovery phrase/i }).click();
+      await p2.getByRole("textbox", { name: /Recovery phrase/i }).fill(phrase);
+      // The import step asks for one password, not a confirmation: the phrase
+      // is the recovery material, so a mistyped password is recoverable.
+      await p2.getByRole("textbox", { name: "New password", exact: true }).fill(PASSWORD);
+      await p2.getByRole("button", { name: "Import wallet" }).click();
+
+      await expect(p2.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 30_000 });
+      await p2.getByRole("button", { name: "Receive" }).click();
+      const restored = (await p2.locator("div[style*='break-all']").innerText()).replace(/\s/g, "");
+      expect(restored).toBe(expected);
+    } finally {
+      await second.ctx.close();
+      rmSync(second.dir, { recursive: true, force: true });
+    }
+  } finally {
+    /* contexts closed above */
   }
 });

@@ -884,12 +884,18 @@ export class WalletController {
 
     switch (req.kind) {
       case "register": {
-        const { tx, openings } = await ops.buildRegister(ctx, req.auditorId);
+        // D8: the user is their own auditor. The id is NOT chosen by the
+        // caller; it is allocated by the registry and read back out, so this
+        // ensures a key of ours is registered and returns the id it got.
+        const auditorId = await this.ownAuditorId(ctx, cfg);
+        const { tx, openings } = await ops.buildRegister(ctx, auditorId);
         return this.stagePrivate(tx, {
           kind: "register",
           effects: [
             "Create a confidential account for this address",
-            `Permanently bind auditor #${req.auditorId}, which can read your amounts`,
+            "Bind your OWN auditor key, derived from your recovery phrase. " +
+              "Nobody else can read your amounts",
+            "This binding is permanent and cannot be changed for this account",
             "Publish that this address has a private pocket. This is not reversible",
             `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
           ],
@@ -965,7 +971,13 @@ export class WalletController {
           effects: [
             `Send ${formatAmount(amount)} XLM privately to this address`,
             "The AMOUNT is hidden. Both addresses are PUBLIC on the ledger, permanently",
-            `Auditor #${recipient.auditorId} and auditor #${mine.auditorId} can both read this amount`,
+            // Under D8 each side's auditor is itself, so the honest statement
+            // is who can read this, not two opaque integers. A7 found this
+            // printing "Auditor #0 and auditor #0", which told the user
+            // nothing and hid that both were the operator's key.
+            recipient.auditorId === mine.auditorId
+              ? `You and the recipient share auditor #${mine.auditorId}, which can read this amount`
+              : "Your auditor key and the recipient's can each read this amount. Yours is your own",
             `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
           ],
         }, {
@@ -1273,6 +1285,68 @@ export class WalletController {
   /** Verification keys already confirmed this session, per (deployment, circuit). */
   private vkChecked = new Set<string>();
 
+  /**
+   * The auditor id holding THIS account's own key, registering it if needed.
+   *
+   * D8's whole point. Before this, registration passed a hardcoded 0, which on
+   * our deployment is the deployer's key, so every user permanently granted
+   * the operator read access to every amount they ever sent or received.
+   *
+   * The id is allocated by the registry and RETURNED, never chosen, so it must
+   * be persisted: a retry that re-registers would orphan the first key and
+   * allocate a second. And the key is read back and compared before the id is
+   * ever named in a confidential register, because that binding is immutable
+   * for the life of the account and there is no second chance at it.
+   */
+  private async ownAuditorId(ctx: OpContext, cfg: { auditor: string }): Promise<number> {
+    const { address } = requireSession();
+    const key = `${KEYS.auditorId}.${cfg.auditor}.${address}`;
+    const ops = await import("./confidential-ops");
+    const { publicKey } = await ops.deriveOwnAuditorKey(ctx);
+
+    const recorded = await readLocal<number>(key);
+    if (recorded !== undefined) {
+      await this.assertRegisteredKeyMatches(recorded, cfg, publicKey);
+      return recorded;
+    }
+
+    const tx = await ops.buildRegisterAuditor(ctx);
+    const outcome = await this.signAndSubmit(tx);
+    if (outcome.kind !== "succeeded") {
+      throw new PrivatePocketError(
+        `Registering your auditor key did not succeed, so Pocket will not set up the private ` +
+          `pocket. Nothing was bound. ${describeOutcome(outcome)}`,
+      );
+    }
+    const allocated = readAllocatedId(outcome);
+    if (allocated === null) {
+      throw new PrivatePocketError(
+        "Your auditor key was registered but Pocket could not read back the id it was given, " +
+          "so it will not bind one it cannot verify. Try again.",
+      );
+    }
+    await writeLocal(key, allocated);
+    await this.assertRegisteredKeyMatches(allocated, cfg, publicKey);
+    return allocated;
+  }
+
+  /** The registry must hold OUR key under this id, or we refuse to bind it. */
+  private async assertRegisteredKeyMatches(
+    auditorId: number,
+    cfg: { auditor: string },
+    expected: Point,
+  ): Promise<void> {
+    const onChain = await this.auditorKeyFor(auditorId, cfg);
+    const { equals } = await import("./crypto/grumpkin");
+    if (!equals(onChain, expected)) {
+      throw new PrivatePocketError(
+        `Auditor #${auditorId} does not hold this wallet's own key, so Pocket will not bind it. ` +
+          `Binding is permanent, and binding someone else's key would let them read every ` +
+          `amount you send or receive.`,
+      );
+    }
+  }
+
   /** Confirm once per session; the keys are immutable, so once is enough. */
   private async assertVk(
     cfg: { verifier: string; token: string },
@@ -1412,6 +1486,20 @@ function resolveStaged(
 
 
 export { WrongPasswordError, readTrustline };
+
+/**
+ * The u32 the auditor registry allocated, read out of the invocation result.
+ *
+ * Returns null rather than guessing. A wrong id here would bind the account to
+ * somebody else's auditor key, permanently, so "could not read it" must be a
+ * refusal and never a default.
+ */
+function readAllocatedId(outcome: SubmitOutcome): number | null {
+  if (outcome.kind !== "succeeded" || !outcome.returnValue) return null;
+  const v = outcome.returnValue;
+  if (v.switch().name !== "scvU32") return null;
+  return v.u32();
+}
 
 /** TTL reported as a plain date, never a ledger number. */
 function ttlFields(t: TtlStatus): { expiresAt?: string; daysRemaining?: number } {

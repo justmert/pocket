@@ -19,9 +19,26 @@ export interface PublicBalance {
   authorized: boolean;
 }
 
+/**
+ * Every state the private pocket can report, as one closed set.
+ *
+ * A union rather than `string`, because this vocabulary is written down in
+ * three places: here, the controller branch that produces it, and the popup
+ * map that titles it. As a bare `string` those three drifted, and a state the
+ * popup has no title for renders as its own raw identifier. Closing the set
+ * makes the compiler hold them together.
+ */
+export type PrivatePocketState =
+  | "unavailable"
+  | "unfunded"
+  | "unregistered"
+  | "archived"
+  | "needsRecovery"
+  | "diverged"
+  | "ready";
+
 export interface PrivatePocket {
-  /** "unregistered" | "ready" | "diverged" | "unspendable" | "archived" */
-  state: string;
+  state: PrivatePocketState;
   /** Sendable now. Decimal string. */
   spendable?: string;
   /** Received but not yet merged. One signature away from spendable. */
@@ -69,7 +86,10 @@ export type WalletRequest =
 
 /** The five private-pocket operations, as the popup asks for them. */
 export type PrivateOpRequest =
-  | { kind: "register"; auditorId: number }
+  // No auditorId. Under D8 the wallet registers the account's OWN auditor key
+  // and uses the id the registry allocates. Letting a caller name one is how a
+  // hardcoded 0 bound every user to the operator's key.
+  | { kind: "register" }
   | { kind: "shield"; amount: string }
   | { kind: "merge" }
   | { kind: "transfer"; to: string; amount: string }

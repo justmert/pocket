@@ -210,12 +210,42 @@ describe("message discipline (audit H3)", () => {
     );
   });
 
-  it("does not allow import while locked", async () => {
+  // REVISED from the phase-2 audit (fbc489a, finding H3), deliberately and
+  // with the original intent preserved.
+  //
+  // H3 removed "import" from ALLOWED_WHILE_LOCKED so a stray message could not
+  // replace a funded wallet's seed. The intent was right; the mechanism was
+  // too broad. A fresh install is ALSO locked, and it is the only state
+  // onboarding-by-import is ever reached from, so the rule did not narrow that
+  // path, it deleted it: "I have a recovery phrase" answered "Wallet is
+  // locked." on the first screen for every returning user.
+  //
+  // The rule that satisfies both is "import only when no vault exists", and it
+  // is enforced where it cannot be bypassed, inside controller.import itself.
+  // The lock was never the thing protecting the seed.
+  it("allows import while locked, because a fresh install is locked", async () => {
     const { isAllowedWhileLocked } = await import("./dispatch");
-    expect(isAllowedWhileLocked("import")).toBe(false);
+    expect(isAllowedWhileLocked("import")).toBe(true);
     expect(isAllowedWhileLocked("reset")).toBe(false);
     expect(isAllowedWhileLocked("status")).toBe(true);
     expect(isAllowedWhileLocked("unlock")).toBe(true);
+  });
+
+  it("still refuses to import over an existing wallet, which is what H3 was for", async () => {
+    // The property H3 actually cared about, asserted against the guard that
+    // really enforces it rather than against the dispatcher's allowlist.
+    // This describe shares the store with the tests above it.
+    store.clear();
+    const c = new WalletController();
+    await c.init();
+    const { mnemonic } = await c.create("the first wallet's password");
+
+    // Same device, same storage, a second controller trying to replace it.
+    const other = new WalletController();
+    await other.init();
+    await expect(other.import("attacker password", mnemonic)).rejects.toThrow(
+      /already exists on this device/,
+    );
   });
 
   it("does not treat a status poll as activity that postpones the lock", async () => {

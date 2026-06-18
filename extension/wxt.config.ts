@@ -14,6 +14,13 @@ export default defineConfig({
   srcDir: "src",
   // Everything under public/ is copied verbatim to the output root, untouched by
   // the bundler. That is what public/vendor/bb needs: see scripts/vendor-bb.mjs.
+  //
+  // It is also where the icons come from. WXT discovers public/icon/<size>.png
+  // and writes the manifest `icons` key itself, so there is no icons entry
+  // below; the mark is authored in scripts/icon.svg and rasterised from there.
+  // An extension with no icons is a Web Store submission blocker, so gate 6
+  // asserts the key exists and that every file it names is in the package,
+  // rather than leaving that to this comment.
   publicDir: "public",
   manifest: {
     name: "Pocket",
@@ -29,11 +36,14 @@ export default defineConfig({
       // (SDK.md 10.1: discarding it loses receiving-side openings permanently)
       "unlimitedStorage",
     ],
-    host_permissions: [
-      "https://soroban-testnet.stellar.org/*",
-      "https://horizon-testnet.stellar.org/*",
-      "https://friendbot.stellar.org/*",
-    ],
+    // Exactly the hosts the extension fetches, and no more. Balances and
+    // contract state are read through Soroban RPC getLedgerEntries rather than
+    // Horizon (see chain/balances.ts), and nothing in the wallet funds an
+    // account, so Horizon and friendbot were requested for calls that do not
+    // exist. A host permission the code never uses still shows up in the
+    // install prompt and still widens what a compromised page could reach
+    // through the worker, so it costs the user twice and buys nothing.
+    host_permissions: ["https://soroban-testnet.stellar.org/*"],
     // 'wasm-unsafe-eval' is required for the phase 3 prover: Chrome's default
     // extension CSP disables WebAssembly outright. img-src is pinned to our own
     // origin so a token logo can never become a per-holding tracking pixel.
