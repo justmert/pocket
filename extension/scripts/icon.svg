@@ -1,0 +1,25 @@
+<!-- Source for public/icon/*.png. Not shipped: only the rasterised PNGs are,
+     because WXT discovers icons by size from public/icon/<size>.png and Chrome
+     does not accept SVG icons.
+
+     Two pockets, front and back, in the two accents the popup already uses:
+     FED924 for the public one, B8ADE8 for the private one. The dark field is
+     the same #14151A the theme calls `onAccent`, so the mark sits on a light
+     and a dark browser toolbar equally well without a second variant.
+
+     Regenerate with:
+       for s in 16 32 48 128; do
+         rsvg-convert -w $s -h $s scripts/icon.svg -o public/icon/$s.png
+       done -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <rect width="128" height="128" rx="28" fill="#14151A"/>
+  <!-- back pocket, private -->
+  <rect x="34" y="26" width="60" height="52" rx="12" fill="#B8ADE8"/>
+  <!-- front pocket, public. Overlaps the back one so the two read as a stack
+       rather than as two unrelated shapes at 16px. -->
+  <path d="M22 62a14 14 0 0 1 14-14h56a14 14 0 0 1 14 14v26a14 14 0 0 1-14 14H36a14 14 0 0 1-14-14z" fill="#FED924"/>
+  <!-- the opening, cut INTO the front pocket rather than sitting above it, so
+       the mark reads as a pocket and not as a briefcase handle. Filled in the
+       field colour so it stays a hard edge at 16px. -->
+  <rect x="44" y="60" width="40" height="12" rx="6" fill="#14151A"/>
+</svg>

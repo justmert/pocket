@@ -240,6 +240,30 @@ print(m.get('content_security_policy', {}).get('extension_pages', ''))")
     *http*) bad "the CSP names a remote origin: $csp"; bad_pkg=1 ;;
   esac
 
+  # An extension with no icons cannot be submitted, and the icons key is
+  # auto-discovered from public/icon/<size>.png rather than written by hand, so
+  # a rename or a missing file breaks it silently at build time.
+  icons=$(python3 -c "
+import json
+m = json.load(open('$OUT/manifest.json'))
+for size, path in sorted(m.get('icons', {}).items(), key=lambda kv: int(kv[0])):
+    print(f'{size} {path}')")
+  if [ -z "$icons" ]; then
+    bad "the manifest declares no icons; the Web Store will not accept it"; bad_pkg=1
+  else
+    # A here-string, not a pipe: `bad` has to run in THIS shell or it sets
+    # `fail` in a subshell that exits a moment later, and the gate prints a
+    # failure and then reports success.
+    while read -r _size path; do
+      [ -f "$OUT/$path" ] \
+        || { bad "manifest icon $path is not in the package"; bad_pkg=1; }
+    done <<< "$icons"
+    for want in 16 48 128; do
+      cut -d' ' -f1 <<< "$icons" | grep -qx "$want" \
+        || { bad "no ${want}px icon; Chrome uses that size for the toolbar, management page and store"; bad_pkg=1; }
+    done
+  fi
+
   # A host permission nobody calls is a permission prompt paid for nothing, and
   # a reviewer reads it as a capability the wallet has.
   for host in $(python3 -c "
@@ -263,15 +287,70 @@ for h in m.get('host_permissions',[]): print(urllib.parse.urlparse(h).netloc)
     done
   fi
 
-  [ "$bad_pkg" = "0" ] && ok "version, source maps, endpoints, CSP, permissions and deployment ids"
+  [ "$bad_pkg" = "0" ] \
+    && ok "version, source maps, endpoints, CSP, icons, permissions and deployment ids"
 else
   bad "no built package to inspect at $OUT"
 fi
 
 note "Build and test"
 # Failures print. A gate that says only "FAIL" is a gate people learn to skip.
-(cd extension && npm run --silent check >/tmp/pocket-check.log 2>&1) && ok "extension: types, lint, tests" \
-  || { bad "extension checks"; sed -n '1,25p' /tmp/pocket-check.log | sed 's/^/        /'; }
+#
+# `npm run check` is tsc + eslint + vitest behind one exit code, and that exit
+# code cannot tell a real pass from a run that quietly disabled part of itself.
+# Run the three separately so the test step can be INSPECTED rather than
+# trusted.
+(cd extension && npx tsc --noEmit >/tmp/pocket-tsc.log 2>&1) && ok "extension: types" \
+  || { bad "extension types"; sed -n '1,25p' /tmp/pocket-tsc.log | sed 's/^/        /'; }
+(cd extension && npx eslint src >/tmp/pocket-lint.log 2>&1) && ok "extension: lint" \
+  || { bad "extension lint"; sed -n '1,25p' /tmp/pocket-lint.log | sed 's/^/        /'; }
+
+VITEST_JSON=/tmp/pocket-vitest.json
+rm -f "$VITEST_JSON"
+# vitest prints the run first and the failures last, so the excerpt has to come
+# off the TAIL. Printing the head shows forty green ticks and hides the reason.
+(cd extension && npx vitest run --reporter=default --reporter=json --outputFile="$VITEST_JSON" \
+   >/tmp/pocket-vitest.log 2>&1) && ok "extension: tests" \
+  || { bad "extension tests"; { sed -n '/Failed Tests/,$p' /tmp/pocket-vitest.log | head -40 \
+       || tail -40 /tmp/pocket-vitest.log; } | sed 's/^/        /'; }
+
+# A SKIPPED test is not a passing test, and vitest exits 0 with any number of
+# them. Measured on a clean checkout: `vitest run src/core/witness/parity.test.ts`
+# reports "24 skipped" and exits 0, because parity gates on a nargo binary in
+# /tmp and on circuit sources under resources/, which is gitignored in its
+# entirety and therefore cannot exist in a fresh clone. Six more in
+# prover/protocol.test.ts go the same way.
+#
+# That is not an ordinary skipped test. Gate 5 above checks public-input
+# COUNTS and says in its own comment that ORDERING is caught "not here" but by
+# parity.test.ts, and a permutation of two same-typed inputs is a well-formed
+# vector that proves a DIFFERENT statement. So on a machine without the
+# toolchain the gate asserts a property that nothing checked, and says PASS.
+if [ -f "$VITEST_JSON" ]; then
+  skipped=$(python3 - "$VITEST_JSON" <<'PY' || true
+import collections, json, sys
+by = collections.Counter()
+for r in json.load(open(sys.argv[1]))["testResults"]:
+    for a in r["assertionResults"]:
+        if a["status"] in ("pending", "skipped", "todo"):
+            by[r["name"].split("/extension/")[-1]] += 1
+for f, n in sorted(by.items()):
+    print(f"{n} {f}")
+PY
+)
+  if [ -n "$skipped" ]; then
+    bad "tests disabled themselves; a skip is not a pass"
+    printf '%s\n' "$skipped" | while read -r n f; do
+      printf '        %s skipped in %s\n' "$n" "$f"
+    done
+    [ -x "$NARGO" ] || printf '        cause: no nargo at %s\n' "$NARGO"
+    [ -d "$CIRCUITS" ] || printf '        cause: no circuit sources at %s\n' "$CIRCUITS"
+  else
+    ok "no test disabled itself"
+  fi
+else
+  bad "vitest produced no machine-readable report, so skips cannot be ruled out"
+fi
 (cd indexer && npx tsc --noEmit >/tmp/pocket-indexer.log 2>&1 && npx vitest run --silent >>/tmp/pocket-indexer.log 2>&1) \
   && ok "indexer: types, tests" \
   || { bad "indexer checks"; sed -n '1,25p' /tmp/pocket-indexer.log | sed 's/^/        /'; }
