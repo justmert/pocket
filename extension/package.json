@@ -18,7 +18,8 @@
     "test:e2e": "npm run vendor && wxt build && playwright test",
     "vendor": "node scripts/vendor-bb.mjs && node scripts/vendor-srs.mjs && node scripts/vendor-circuits.mjs",
     "test:live": "vitest run --config vitest.live.config.ts",
-    "test:e2e:live": "POCKET_LIVE_E2E=1 playwright test --reporter=line"
+    "test:e2e:live": "POCKET_LIVE_E2E=1 playwright test --reporter=line",
+    "test:pass": "npm run build && playwright test -c playwright.tests.config.ts"
   },
   "dependencies": {
     "@aztec/bb.js": "^0.87.0",

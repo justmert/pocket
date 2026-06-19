@@ -386,7 +386,12 @@ export class WalletController {
       };
     }
 
-    const check = verifyAgainstChain(stored, account);
+    // A received transfer moves the chain's receiving accumulator and this
+    // device knows nothing about it until we look. Doing that BEFORE the
+    // divergence check is the whole point: otherwise every inbound transfer
+    // reads as "records do not match the ledger" and the money is unreachable.
+    const credited = await this.creditInboundTransfers(stored, account, cfg);
+    const check = verifyAgainstChain(credited, account);
     if (!check.ok) {
       return {
         state: "diverged",
@@ -394,6 +399,7 @@ export class WalletController {
         ...ttlFields(ttl),
         message:
           `Local records for the ${check.which} balance do not match the ledger. ` +
+          (this.lastInboundFailure ? `${this.lastInboundFailure} ` : "") +
           "Pocket will not spend from this state. Your funds are safe on chain. Rebuilding the " +
           "record needs a durable event archive, and this build has none configured.",
       };
@@ -401,10 +407,10 @@ export class WalletController {
 
     const b = balancesOf({
       kind: "ready",
-      spendable: stored.spendable,
-      receiving: stored.receiving,
+      spendable: credited.spendable,
+      receiving: credited.receiving,
       auditorId: account.auditorId,
-      syncedThrough: stored.syncedThrough,
+      syncedThrough: credited.syncedThrough,
     })!;
 
     return {
@@ -1371,6 +1377,53 @@ export class WalletController {
     );
     this.vkChecked.add(key);
   }
+
+  /**
+   * Credit any transfer addressed to this account that this device has not
+   * seen, and persist the result.
+   *
+   * Returns the stored state unchanged when there is nothing to do or when the
+   * credit cannot be verified, so an unreadable inbound leaves the pocket in
+   * the state it was already in and the divergence check reports it honestly.
+   */
+  private async creditInboundTransfers(
+    stored: { spendable: Opening; receiving: Opening; syncedThrough: number },
+    account: ConfidentialAccount,
+    cfg: { token: string },
+  ): Promise<{ spendable: Opening; receiving: Opening; syncedThrough: number }> {
+    const { address } = requireSession();
+    // Already agrees with the chain, so nothing is outstanding.
+    if (verifyAgainstChain(stored, account).ok) return stored;
+
+    try {
+      const ctx = await this.opContext();
+      const { deriveConfidentialKeys } = await import("./confidential-ops");
+      const { vk } = await deriveConfidentialKeys(ctx);
+      const { findInbound, creditInbound } = await import("./inbound");
+      const latest = await this.server().getLatestLedger();
+      // RPC retains 120,960 ledgers. Ask for the whole window: a narrower one
+      // silently misses a transfer, and the all-or-nothing check then refuses
+      // the lot for a reason that looks like corruption.
+      const from = Math.max(1, latest.sequence - 120_000);
+      const found = await findInbound(this.server(), cfg.token, address, vk, from);
+      if (found.length === 0) return stored;
+
+      const receiving = creditInbound(stored.receiving, found, account.receivingCommitment);
+      const next = { ...stored, receiving, syncedThrough: latest.sequence };
+      await this.writeOpenings(address, cfg.token, next);
+      this.lastInboundFailure = null;
+      return next;
+    } catch (e) {
+      // Swallowing this hid two bugs of mine during development and leaves a
+      // user staring at "records do not match" with no idea the wallet tried.
+      // The message is authored by us, so it is safe to surface.
+      this.lastInboundFailure = e instanceof Error ? e.message : String(e);
+      return stored;
+    }
+  }
+
+  /** Why the last inbound-credit attempt did not complete, if it did not. */
+  private lastInboundFailure: string | null = null;
 
   private lastKeepAlive = 0;
 
