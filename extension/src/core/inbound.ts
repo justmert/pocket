@@ -168,7 +168,10 @@ export async function findInbound(
           ],
         }));
 
-    if (page.events.length === 0) break;
+    // An empty page is NOT the end. Scanning a wide range, the RPC returns
+    // empty pages carrying a cursor and expects you to keep asking; stopping
+    // here gave up before reaching any event and made a working search look
+    // like "you have received nothing". Only the absence of a cursor ends it.
     for (const e of page.events) {
       const body = decodeTransferBody(e.value);
       if (!body) continue;
@@ -182,7 +185,7 @@ export async function findInbound(
       if (!opening) continue;
       found.push({ id: `${e.ledger}:${e.id}`, ledger: e.ledger, opening });
     }
-    if (!page.cursor) break;
+    if (!page.cursor || page.cursor === cursor) break;
     cursor = page.cursor;
   }
   return found;

@@ -102,6 +102,32 @@ export async function launchWallet(): Promise<Harness> {
 }
 
 /**
+ * The older `e2e/` shape, for agents porting a local harness over.
+ *
+ * `launch()` returns `{ctx, id, dir, close}` and `popup(ctx, id)` returns a
+ * Page, matching what `e2e/extension.spec.ts` grew and what T4 wrote
+ * independently. Same launcher underneath, so the launch timeout and the
+ * per-test profile isolation come with it; a caller can swap `launch` for
+ * `launchWallet` later without changing behaviour.
+ */
+export async function launch(): Promise<{
+  ctx: BrowserContext;
+  id: string;
+  dir: string;
+  close: () => Promise<void>;
+}> {
+  const h = await launchWallet();
+  return { ctx: h.context, id: h.extensionId, dir: h.profileDir, close: h.close };
+}
+
+/** A popup page on an already-launched context. */
+export async function popup(ctx: BrowserContext, id: string): Promise<Page> {
+  const page = await ctx.newPage();
+  await page.goto(`chrome-extension://${id}/popup.html`);
+  return page;
+}
+
+/**
  * Ask the service worker something directly, over the same runtime channel the
  * popup uses.
  *
