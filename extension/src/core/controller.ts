@@ -1316,12 +1316,19 @@ export class WalletController {
       return recorded;
     }
 
-    const tx = await ops.buildRegisterAuditor(ctx);
-    const outcome = await this.signAndSubmit(tx);
+    // Registration contends. The id comes from a monotonic counter in the
+    // registry's INSTANCE storage, so two accounts registering at once touch
+    // the same ledger entry and Soroban fails the loser rather than serialising
+    // it. A failed register writes nothing, so retrying is safe and cannot
+    // orphan a key: the id is persisted only after success.
+    let outcome = await this.signAndSubmit(await ops.buildRegisterAuditor(ctx));
+    for (let attempt = 1; attempt < 4 && outcome.kind !== "succeeded"; attempt++) {
+      outcome = await this.signAndSubmit(await ops.buildRegisterAuditor(ctx));
+    }
     if (outcome.kind !== "succeeded") {
       throw new PrivatePocketError(
-        `Registering your auditor key did not succeed, so Pocket will not set up the private ` +
-          `pocket. Nothing was bound. ${describeOutcome(outcome)}`,
+        `Registering your auditor key did not succeed after several attempts, so Pocket will ` +
+          `not set up the private pocket. Nothing was bound. ${describeOutcome(outcome)}`,
       );
     }
     const allocated = readAllocatedId(outcome);

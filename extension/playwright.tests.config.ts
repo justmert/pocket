@@ -8,7 +8,13 @@ import { defineConfig } from "@playwright/test";
 // Every chain call happens in the service worker, so without this the network
 // stubs in tests/support/stub.ts silently do nothing and a failure-injection
 // test passes while injecting no failure. Set before the browser launches.
-process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = "1";
+//
+// An explicit value in the environment wins, which is not a convenience: it is
+// how tests/support/service-worker-routing.spec.ts is shown FAILING. Run the
+// suite with PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS=0 and that spec goes
+// red on both counts, which is the proof that its green run means something.
+// Anyone who sets it to 0 by accident gets the same red, by design.
+process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS ??= "1";
 
 export default defineConfig({
   testDir: "./tests",

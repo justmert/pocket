@@ -5,11 +5,12 @@
 // without changing what is under test. A test that reaches into `core/` to make
 // a function throw is testing the mock.
 //
-// MV3 puts every chain call in the service worker, and Playwright does not
-// surface service-worker requests to `context.route` unless
-// PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS is set. The suite's config sets
-// it; `serviceWorkerRoutingAvailable` below reports whether it took effect, so
-// a spec can state the limitation rather than pass vacuously.
+// MV3 puts EVERY chain call in the service worker, so a stub that only reaches
+// page traffic would silently do nothing and every failure-injection test would
+// pass while injecting no failure. Playwright does not surface service-worker
+// requests to `context.route` unless PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS
+// is set; the suite's config sets it, and `service-worker-routing.spec.ts`
+// proves it takes effect rather than assuming it.
 import type { BrowserContext, Route } from "@playwright/test";
 
 export const RPC_HOST = "soroban-testnet.stellar.org";
@@ -20,9 +21,21 @@ export function serviceWorkerRoutingAvailable(): boolean {
   return process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS === "1";
 }
 
+/**
+ * Match by parsed host, not by glob.
+ *
+ * A glob has to guess how the URL is spelled, and the RPC endpoint is posted to
+ * with an empty path, which is exactly the case a trailing `/**` is least
+ * reliable about. Parsing the URL cannot be wrong about which host a request is
+ * going to.
+ */
+function toHost(host: string): (url: URL) => boolean {
+  return (url) => url.host === host;
+}
+
 /** Every request to a host, refused as if the machine were offline. */
 export async function offline(context: BrowserContext, host: string): Promise<void> {
-  await context.route(`**://${host}/**`, (route) => route.abort("connectionfailed"));
+  await context.route(toHost(host), (route) => route.abort("connectionfailed"));
 }
 
 /** Every request to a host answered with a status and body of your choosing. */
@@ -31,7 +44,7 @@ export async function respondWith(
   host: string,
   reply: { status: number; body?: string; contentType?: string },
 ): Promise<void> {
-  await context.route(`**://${host}/**`, (route) =>
+  await context.route(toHost(host), (route) =>
     route.fulfill({
       status: reply.status,
       contentType: reply.contentType ?? "application/json",
@@ -48,7 +61,7 @@ export async function respondWith(
  * one exercises the request deadline.
  */
 export async function hang(context: BrowserContext, host: string): Promise<void> {
-  await context.route(`**://${host}/**`, () => {
+  await context.route(toHost(host), () => {
     /* deliberately never settled */
   });
 }
@@ -59,10 +72,44 @@ export async function intercept(
   host: string,
   handler: (route: Route) => void | Promise<void>,
 ): Promise<void> {
-  await context.route(`**://${host}/**`, handler);
+  await context.route(toHost(host), handler);
 }
 
-/** Remove every stub and let real traffic through again, to test recovery. */
+/** Remove every stub for a host and let real traffic through again. */
 export async function restore(context: BrowserContext, host: string): Promise<void> {
-  await context.unroute(`**://${host}/**`);
+  await context.unroute(toHost(host));
+}
+
+/** What `watch` saw. A stub that was never hit did not stub anything. */
+export interface Traffic {
+  /** Every request to the host that the route handler actually saw. */
+  urls: string[];
+  /** How many of those were made by a service worker rather than a page. */
+  fromServiceWorker: number;
+  get total(): number;
+}
+
+/**
+ * Count traffic to a host without changing it.
+ *
+ * The point of `fromServiceWorker`: asserting only that a stub "was hit" proves
+ * nothing about MV3, because the popup page makes requests too. An assertion
+ * that a stub reached the SERVICE WORKER is what distinguishes a real failure
+ * injection from one that silently passed through.
+ */
+export async function watch(context: BrowserContext, host: string): Promise<Traffic> {
+  const traffic: Traffic = {
+    urls: [],
+    fromServiceWorker: 0,
+    get total() {
+      return this.urls.length;
+    },
+  };
+  await context.route(toHost(host), (route) => {
+    const request = route.request();
+    traffic.urls.push(request.url());
+    if (request.serviceWorker()) traffic.fromServiceWorker++;
+    void route.continue();
+  });
+  return traffic;
 }
