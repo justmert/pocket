@@ -75,12 +75,7 @@ export async function readConfidentialAccount(
     .setTimeout(30)
     .build();
 
-  let sim: Awaited<ReturnType<typeof server.simulateTransaction>>;
-  try {
-    sim = await server.simulateTransaction(tx);
-  } catch {
-    return null;
-  }
+  const sim = await server.simulateTransaction(tx);
   // An archived persistent entry comes back with a restore preamble rather
   // than a value. That is a state the private-pocket screen knows how to
   // render, so it must not be raised as an error: reading it as one shows a
