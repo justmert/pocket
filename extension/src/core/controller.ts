@@ -1400,16 +1400,22 @@ export class WalletController {
       const { deriveConfidentialKeys } = await import("./confidential-ops");
       const { vk } = await deriveConfidentialKeys(ctx);
       const { findInbound, creditInbound } = await import("./inbound");
-      const latest = await this.server().getLatestLedger();
-      // RPC retains 120,960 ledgers. Ask for the whole window: a narrower one
-      // silently misses a transfer, and the all-or-nothing check then refuses
-      // the lot for a reason that looks like corruption.
-      const from = Math.max(1, latest.sequence - 120_000);
+      // Ask the RPC where its window actually starts. Computing it as
+      // `latest - 120_960` looks equivalent and is not: a startLedger even one
+      // ledger outside retention returns ZERO EVENTS WITH NO ERROR, so the
+      // widest possible request silently finds nothing. That cost two live
+      // runs to spot, because "no transfers" and "asked out of range" are the
+      // same reply.
+      const health = await this.server().getHealth();
+      const from = Math.max(
+        health.oldestLedger,
+        stored.syncedThrough > 0 ? stored.syncedThrough : health.oldestLedger,
+      );
       const found = await findInbound(this.server(), cfg.token, address, vk, from);
       if (found.length === 0) return stored;
 
       const receiving = creditInbound(stored.receiving, found, account.receivingCommitment);
-      const next = { ...stored, receiving, syncedThrough: latest.sequence };
+      const next = { ...stored, receiving, syncedThrough: health.latestLedger };
       await this.writeOpenings(address, cfg.token, next);
       this.lastInboundFailure = null;
       return next;

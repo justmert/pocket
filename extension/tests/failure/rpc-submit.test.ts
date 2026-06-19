@@ -305,9 +305,38 @@ describe("an unresolved submission never says try again", () => {
     expect(shown).not.toBe(GENERIC);
   });
 
-  it("never lets an RPC-authored string into any outcome message", async () => {
-    // describeOutcome interpolates only XDR discriminant names and our own
-    // hash. An RPC that puts prose in errorResultXdr cannot reach the screen.
+  it("never lets an RPC-authored string into a rejection message", async () => {
+    // The reachable leak. A rejection with NO decodable result reaches
+    // describeSendError, which authors its own words rather than repeating
+    // anything the response carried. The extra fields below are what a real RPC
+    // puts beside the status, and none of them may be interpolated.
+    const tx = future();
+    const server = await FaultServer.start({
+      byMethod: {
+        sendTransaction: rpcOk({
+          status: "ERROR",
+          hash: tx.hash().toString("hex"),
+          latestLedger: 100,
+          latestLedgerCloseTime: "1",
+          error: "SECRET-RPC-STRING",
+          diagnosticEvents: ["SECRET-RPC-STRING"],
+        }),
+      },
+    });
+    open.push(server);
+    const client = withRequestDeadline(new rpc.Server(server.url), 4_000);
+
+    const outcome = await submitAndConfirm(client, tx, { attempts: 2, sleepMs: 5 });
+    expect(outcome.kind).toBe("rejected");
+    const shown = describeError(new SubmitOutcomeError(describeOutcome(outcome), outcome));
+    expect(shown).not.toContain("SECRET-RPC-STRING");
+    expect(shown).toContain("Nothing was charged");
+  });
+
+  it("does not decide anything from an errorResultXdr it could not decode", async () => {
+    // Undecodable XDR makes the SDK throw inside sendTransaction, so whether the
+    // envelope reached the network is unknowable. The honest answer is to poll
+    // by hash, not to report a rejection nobody read.
     const tx = future();
     const server = await FaultServer.start({
       byMethod: {
@@ -319,18 +348,17 @@ describe("an unresolved submission never says try again", () => {
           errorResultXdr: "SECRET-RPC-STRING-NOT-VALID-XDR",
         }),
       },
+      fallback: notFound(),
     });
     open.push(server);
     const client = withRequestDeadline(new rpc.Server(server.url), 4_000);
 
-    const outcome = await submitAndConfirm(client, tx, { attempts: 2, sleepMs: 5 }).catch(
-      (e) => e as Error,
-    );
-    const shown =
-      outcome instanceof Error
-        ? describeError(outcome)
-        : describeError(new SubmitOutcomeError(describeOutcome(outcome), outcome));
+    const outcome = await submitAndConfirm(client, tx, { attempts: 2, sleepMs: 5 });
+    expect(outcome.kind).toBe("pending");
+    expect(server.countOf("sendTransaction")).toBe(1);
+    const shown = describeError(new SubmitOutcomeError(describeOutcome(outcome), outcome));
     expect(shown).not.toContain("SECRET-RPC-STRING");
+    expect(shown).toContain("do not resend");
   });
 });
 

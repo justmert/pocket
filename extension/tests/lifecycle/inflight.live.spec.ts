@@ -230,36 +230,44 @@ test("two tabs sending at the same time never pay twice", async () => {
     const b = await w.popup();
     await expect(b.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 60_000 });
 
-    // Two independent reviews, so two envelopes, each built against the same
-    // account sequence.
+    // Two DIFFERENT payments, so two genuinely distinct envelopes competing for
+    // one account sequence. Identical amounts produce a byte-identical envelope
+    // and therefore one shared handle, which quietly turns this into the
+    // double-confirm test above instead of the two-tab race it is meant to be.
     const [ba, bb] = await Promise.all([
-      send<{ xdr: string }>(page, { type: "buildPayment", to, amount: AMOUNT, assetId: "native" }),
-      send<{ xdr: string }>(b, { type: "buildPayment", to, amount: AMOUNT, assetId: "native" }),
+      send<{ xdr: string }>(page, { type: "buildPayment", to, amount: "5", assetId: "native" }),
+      send<{ xdr: string }>(b, { type: "buildPayment", to, amount: "7", assetId: "native" }),
     ]);
     expect(ba.ok && bb.ok, `${JSON.stringify(ba)} ${JSON.stringify(bb)}`).toBe(true);
+    expect(ba.data!.xdr, "two different payments must be two different envelopes").not.toBe(
+      bb.data!.xdr,
+    );
 
     const replies = await Promise.all([
       send(page, { type: "confirmPayment", handle: ba.data!.xdr }),
       send(b, { type: "confirmPayment", handle: bb.data!.xdr }),
     ]);
 
+    // Two envelopes against one sequence number: only one can ever be included.
+    // Waited for rather than sampled, so the assertion below is never skipped
+    // by Horizon happening to be a second behind.
+    await expect
+      .poll(async () => (await ledgerPayments(address)).filter((p) => p.to === to).length, {
+        timeout: 120_000,
+        intervals: [2000],
+      })
+      .toBe(1);
+
     // One of them has to lose, and the loser must be TOLD, not left to think it
-    // worked. What must never happen is two payments.
-    const paid = (await ledgerPayments(address)).filter((p) => p.to === to);
+    // worked: a user who is told a payment went through when it did not sends
+    // it again by hand, which is the one thing none of this may cause.
     expect(
-      paid.length,
-      `two tabs must not both pay: ${JSON.stringify(replies)}`,
-    ).toBeLessThanOrEqual(1);
-    const failures = replies.filter((r) => !r.ok);
-    for (const f of failures) {
+      replies.filter((r) => r.ok),
+      `only the payment that landed may report success: ${JSON.stringify(replies)}`,
+    ).toHaveLength(1);
+    for (const f of replies.filter((r) => !r.ok)) {
       expect(f.error, "a failed submission must say so in words a user can act on").toBeTruthy();
       expect(f.error).not.toMatch(/undefined|\[object/i);
-    }
-    if (paid.length === 1) {
-      expect(
-        replies.filter((r) => r.ok),
-        "only the payment that landed may report success",
-      ).toHaveLength(1);
     }
 
     // Whatever happened, nothing may be left unaccounted for.
