@@ -82,19 +82,32 @@ export async function readConfidentialAccount(
   // failure where the right answer is "dormant, reactivate it".
   if ("restorePreamble" in sim && sim.restorePreamble) return null;
   if ("error" in sim) {
-    // 3501 is "not registered", which is a normal state and not a failure.
-    if (/#3501|AccountNotRegistered/i.test(sim.error)) return null;
-    // Map recognised contract errors to authored text. An RPC string is not
-    // ours and must never reach a user verbatim.
-    const code = /Error\(Contract, #(\d+)\)/.exec(sim.error)?.[1];
+    // The error is not guaranteed to be a string. An object or a number here
+    // made every regex miss, fell through to `result?.retval` being undefined,
+    // and returned null: "you have no private pocket", from a failed read.
+    // That answer puts a PERMANENT, auditor-binding registration in front of
+    // someone who may already have one, so nothing but a real 3501 may produce
+    // it.
+    const text = typeof sim.error === "string" ? sim.error : JSON.stringify(sim.error);
+    if (/#3501|AccountNotRegistered/i.test(text)) return null;
+    const code = /Error\(Contract, #(\d+)\)/.exec(text)?.[1];
     if (code) throw new ConfidentialReadError(describeContractError(Number(code)));
     throw new ConfidentialReadError(
       "Pocket could not read the private pocket from this deployment.",
     );
   }
-  const raw = (sim as { result?: { retval: xdr.ScVal } }).result?.retval;
-  if (!raw) return null;
-  return decodeConfidentialAccount(raw);
+
+  // No error, no restore preamble, and no result either. That is not "no
+  // account", it is a reply that did not answer the question, and the two must
+  // never collapse into the same branch.
+  const result = (sim as { result?: { retval?: xdr.ScVal } }).result;
+  if (!result || !result.retval) {
+    throw new ConfidentialReadError(
+      "The ledger did not answer whether this account has a private pocket, so Pocket will " +
+        "not guess. Try again in a moment.",
+    );
+  }
+  return decodeConfidentialAccount(result.retval);
 }
 
 /**
