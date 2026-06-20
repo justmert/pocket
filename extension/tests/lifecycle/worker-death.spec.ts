@@ -213,12 +213,15 @@ test("the keep-alive check is not pushed further away by every worker start", as
     // same-named alarm. If the startup path recreated it unconditionally, a user
     // who opens their wallet more often than hourly would never have one fire,
     // and the confidential entry archives on a timer that does not care.
+    // Each answered status is a cold worker that has run its startup path: the
+    // listener only replies after the module body, which is where the schedule
+    // is ensured. Two more round-trips after the last kill, so anything that
+    // startup queued has been issued before the alarm is read back.
     for (let i = 0; i < 3; i++) {
       await killWorker(w, page);
-      const s = await send(page, { type: "status" });
-      expect(s.ok).toBe(true);
-      await page.waitForTimeout(400);
+      expect((await send(page, { type: "status" })).ok).toBe(true);
     }
+    expect((await send(page, { type: "status" })).ok).toBe(true);
 
     const after = (await alarms(page)).find((a) => a.name === "pocket.keepalive");
     expect(after, "the schedule must survive a worker restart").toBeDefined();
