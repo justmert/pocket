@@ -175,13 +175,11 @@ test("a second tab left on Home after the first locked cannot spend", async () =
 test("a browser restart keeps the wallet exactly as it was", async () => {
   const first = await launch();
   const dir = first.dir;
-  let address = "";
-  let keys: string[] = [];
   try {
     const page = await first.popup();
     await onboard(page);
-    address = await addressOf(page);
-    keys = await storageKeys(page);
+    const address = await addressOf(page);
+    const keys = await storageKeys(page);
     await first.suspend();
 
     const again = await relaunch(dir);

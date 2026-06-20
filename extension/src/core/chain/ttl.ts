@@ -60,6 +60,42 @@ export type TtlStatus =
  * user is told to act on. A missing argument must be a compile error, not a
  * quietly wrong expiry.
  */
+/**
+ * `getLedgerEntries` is the SDK's PARSED accessor, and it does
+ * `(raw.entries ?? []).map(...)`. So a reply carrying no `entries` field at
+ * all, or `entries: null`, arrives as an empty array and is indistinguishable
+ * from "there is no such ledger entry".
+ *
+ * That is the same defect `balances.ts` was fixed for, and it is worse here.
+ * A degraded RPC makes a LIVE confidential account read as `absent`, and the
+ * private-pocket screen then offers to set one up: a one-time, publicly
+ * visible transaction that binds an auditor PERMANENTLY, to a user who already
+ * has one and merely went dormant. The two instructions are opposite and one
+ * of them cannot be undone.
+ *
+ * So: ask the raw endpoint and refuse a shape that cannot answer the question.
+ */
+async function entriesOrRefuse(
+  server: rpc.Server,
+  key: xdr.LedgerKey,
+): Promise<{ entries: { liveUntilLedgerSeq?: number }[]; latestLedger: number }> {
+  const raw = (await server._getLedgerEntries(key)) as {
+    entries?: unknown;
+    latestLedger?: unknown;
+  };
+  if (!Array.isArray(raw.entries) || typeof raw.latestLedger !== "number") {
+    throw new LedgerReadError(
+      "the ledger did not answer the question: the response carried no entries field",
+    );
+  }
+  return raw as { entries: { liveUntilLedgerSeq?: number }[]; latestLedger: number };
+}
+
+/** A TTL read that could not be answered. Never confused with "absent". */
+export class LedgerReadError extends Error {
+  override readonly name = "LedgerReadError";
+}
+
 export async function readAccountTtl(
   server: rpc.Server,
   tokenId: string,
@@ -74,7 +110,7 @@ export async function readAccountTtl(
     }),
   );
 
-  const res = await server.getLedgerEntries(key);
+  const res = await entriesOrRefuse(server, key);
   const entry = res.entries[0];
   if (!entry) {
     // getLedgerEntries omits archived entries entirely, so absent and archived
@@ -161,7 +197,7 @@ export async function readInstanceTtl(
     }),
   );
 
-  const res = await server.getLedgerEntries(key);
+  const res = await entriesOrRefuse(server, key);
   const entry = res.entries[0];
   if (!entry?.liveUntilLedgerSeq) return { kind: "absent" };
   if (entry.liveUntilLedgerSeq <= res.latestLedger) return { kind: "archived" };

@@ -178,6 +178,8 @@ const SAFE_ERRORS = new Set([
   // Authored by describeOutcome, which interpolates only XDR enum discriminant
   // names and a hash we computed ourselves. Never an RPC-authored string.
   "SubmitOutcomeError",
+  "LedgerReadError",
+  "LedgerEntryMismatchError",
 ]);
 
 /** Messages we author ourselves and vet, matched exactly. */

@@ -264,9 +264,9 @@ test("a shield killed after the deposit puts the money in receiving and says so"
     // resolves it, through the screen the wallet puts in front of them. Which
     // screen appears depends on exactly where the kill landed, so wait for
     // either rather than guessing.
-    await expect(
-      reopened.getByText(/Unfinished transaction|PUBLIC POCKET/),
-    ).toBeVisible({ timeout: 120_000 });
+    await expect(reopened.getByText(/Unfinished transaction|PUBLIC POCKET/)).toBeVisible({
+      timeout: 120_000,
+    });
     if ((await reopened.getByText("Unfinished transaction").count()) > 0) {
       await reopened.getByRole("button", { name: "Check now" }).click();
     }
