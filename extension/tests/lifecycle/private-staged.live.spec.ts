@@ -430,3 +430,49 @@ test("approving one private operation twice at once runs it once", async () => {
     await w.close();
   }
 });
+
+test("erase-and-restore takes the openings with it and says they cannot be rebuilt", async () => {
+  test.setTimeout(900_000);
+  const w = await launch();
+  try {
+    const page = await w.popup();
+    const phrase = await onboard(page);
+    const address = await addressOf(page);
+    const openingsKey = `pocket.openings.${TOKEN}.${address}`;
+    await fund(address);
+    await waitForFunded(address);
+
+    await register(page);
+    await expect(page.getByText("SPENDABLE")).toBeVisible({ timeout: 180_000 });
+    expect(await storageKeys(page)).toContain(openingsKey);
+
+    // The forgotten-password route. It is authorised by the phrase and it does
+    // erase real money's only key material, which is why the screen says so.
+    const r = await send(page, {
+      type: "recoverFromMnemonic",
+      mnemonic: phrase,
+      password: "a-different-password",
+    });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+
+    // No orphaned blob may survive. A new vault gets a fresh random DEK, so a
+    // leftover opening record is undecryptable forever, and re-importing the
+    // same phrase reproduces the same storage key and would hit it.
+    const keys = await storageKeys(page);
+    expect(keys.filter((k) => k.startsWith("pocket.openings."))).toEqual([]);
+    expect(keys).not.toContain("pocket.staged");
+    expect(keys).not.toContain("pocket.inflight");
+
+    // Same account, and the wallet says plainly what did not come back.
+    expect(await addressOf(page)).toBe(address);
+    const pocket = await send<{ state: string; message?: string }>(page, {
+      type: "privatePocket",
+    });
+    expect(pocket.data?.state).toBe("needsRecovery");
+    expect(pocket.data?.message).toMatch(/no record of its balances/);
+    expect(pocket.data?.message).toMatch(/funds are safe on chain/);
+    expect(pocket.data?.message).toMatch(/cannot be rebuilt yet/);
+  } finally {
+    await w.close();
+  }
+});

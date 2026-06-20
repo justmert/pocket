@@ -278,3 +278,51 @@ test("two tabs sending at the same time never pay twice", async () => {
     await w.close();
   }
 });
+
+test("reloading the popup mid-payment does not send it again", async () => {
+  test.setTimeout(300_000);
+  const { w, page, address } = await fundedWallet();
+  try {
+    const to = await fundedStranger();
+
+    // Hold the confirmation poll open so the reload genuinely lands in the
+    // middle of the flow rather than after it.
+    let blindPolls = true;
+    await w.ctx.route("**/soroban-testnet.stellar.org/**", async (route) => {
+      let method: string | undefined;
+      try {
+        method = (route.request().postDataJSON() as { method?: string })?.method;
+      } catch {
+        method = undefined;
+      }
+      if (blindPolls && method === "getTransaction") return route.abort("failed");
+      return route.continue();
+    });
+
+    await review(page, to);
+    void page.getByRole("button", { name: "Confirm and send" }).click();
+    const during = await waitForStorage(
+      page,
+      (s) => !!s["pocket.inflight"],
+      "no in-flight record was written",
+    );
+    const hash = (during["pocket.inflight"] as { hash: string }).hash;
+
+    // F5 in the middle of "Submitting and waiting for the ledger…". The popup's
+    // own state is gone; the transaction is not.
+    await page.reload();
+    await expect(page.getByText("Unfinished transaction")).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(hash)).toBeVisible();
+    blindPolls = false;
+
+    await page.getByRole("button", { name: "Check now" }).click();
+    await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 120_000 });
+
+    const paid = (await ledgerPayments(address)).filter((p) => p.to === to);
+    expect(paid, "a refresh must not turn one payment into two").toHaveLength(1);
+    expect(paid[0].transaction_hash).toBe(hash);
+    expect(await storageKeys(page)).not.toContain("pocket.inflight");
+  } finally {
+    await w.close();
+  }
+});
