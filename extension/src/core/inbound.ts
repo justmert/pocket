@@ -152,21 +152,23 @@ export async function findInbound(
   const found: InboundTransfer[] = [];
   let cursor: string | undefined;
 
+  // topics: [event name, from, to]. Matching the RECIPIENT slot makes the RPC
+  // do the filtering. It MUST be on the cursor branch too: without it every
+  // paginated call pulls every event the contract ever emitted, and the
+  // all-or-nothing check downstream ends up reasoning about a different event
+  // set than the first page did.
+  const filters = [
+    {
+      type: "contract" as const,
+      contractIds: [tokenId],
+      topics: [[xdr.ScVal.scvSymbol("transfer").toXDR("base64"), "*", me.toXDR("base64")]],
+    },
+  ];
+
   for (;;) {
     const page = await (cursor
-      ? server.getEvents({ cursor, filters: [{ type: "contract", contractIds: [tokenId] }] })
-      : server.getEvents({
-          startLedger: fromLedger,
-          filters: [
-            {
-              type: "contract",
-              contractIds: [tokenId],
-              // topics: [event name, from, to]. Match the RECIPIENT slot, so
-              // the RPC does the filtering rather than this loop.
-              topics: [[xdr.ScVal.scvSymbol("transfer").toXDR("base64"), "*", me.toXDR("base64")]],
-            },
-          ],
-        }));
+      ? server.getEvents({ cursor, filters })
+      : server.getEvents({ startLedger: fromLedger, filters }));
 
     // An empty page is NOT the end. Scanning a wide range, the RPC returns
     // empty pages carrying a cursor and expects you to keep asking; stopping

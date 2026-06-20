@@ -1419,7 +1419,15 @@ export class WalletController {
         stored.syncedThrough > 0 ? stored.syncedThrough : health.oldestLedger,
       );
       const found = await findInbound(this.server(), cfg.token, address, vk, from);
-      if (found.length === 0) return stored;
+      if (found.length === 0) {
+        // Not an error, and it must not read as one. It means the search ran
+        // and the window held nothing for us, which for a diverged pocket
+        // points at history older than the RPC keeps.
+        this.lastInboundFailure =
+          "Pocket searched the last week of ledger history and found no transfer addressed " +
+          "to this account, so the difference is older than that.";
+        return stored;
+      }
 
       const receiving = creditInbound(stored.receiving, found, account.receivingCommitment);
       const next = { ...stored, receiving, syncedThrough: health.latestLedger };
