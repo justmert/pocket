@@ -96,12 +96,43 @@ export async function fund(address: string): Promise<number> {
   );
 }
 
-/** Transactions on this account, newest first. */
-export async function transactions(address: string, limit = 20): Promise<HorizonTransaction[]> {
+/**
+ * Transactions on this account, newest first, INCLUDING failed ones.
+ *
+ * Horizon excludes failed transactions unless `include_failed=true`, and that
+ * default is a trap for an oracle. Two things it breaks, both of which it broke
+ * here before this was fixed:
+ *
+ *   - `expect(txs.every((t) => t.successful)).toBe(true)` is VACUOUS on the
+ *     default. The array is all-successful by construction, so the assertion
+ *     cannot fail no matter what the wallet did. It shipped in this suite and
+ *     was caught only when a fee sum disagreed by 13,303 stroops.
+ *   - A failed transaction still CHARGES ITS FEE and still consumes the
+ *     sequence number. Reconciling a balance against a fee total that silently
+ *     omits them is off by exactly the fees of whatever failed.
+ *
+ * So the default here is the opposite of Horizon's. A caller that genuinely
+ * wants only the successful ones has to say so.
+ */
+export async function transactions(
+  address: string,
+  limit = 20,
+  { includeFailed = true } = {},
+): Promise<HorizonTransaction[]> {
   const page = await getJson<{ _embedded: { records: HorizonTransaction[] } }>(
-    `${HORIZON}/accounts/${address}/transactions?order=desc&limit=${limit}`,
+    `${HORIZON}/accounts/${address}/transactions` +
+      `?order=desc&limit=${limit}&include_failed=${includeFailed}`,
   );
   return page._embedded.records;
+}
+
+/** Total fees THIS account paid, failed attempts included. */
+export function feesPaidBy(address: string, txs: HorizonTransaction[]): number {
+  // `fee_account`, not `source_account`: friendbot's create-account is listed
+  // against the account it funded but friendbot paid for it.
+  return txs
+    .filter((t) => t.fee_account === address)
+    .reduce((sum, t) => sum + Number(t.fee_charged) / 10_000_000, 0);
 }
 
 /** Payment-shaped operations on this account, newest first. */

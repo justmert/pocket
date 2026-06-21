@@ -111,6 +111,17 @@ const GARBAGE: [string, Fault][] = [
   ["result: null", rpcOk(null)],
   ["a simulation with no results and no error", rpcOk({ latestLedger: 9 })],
   ["a simulation whose results list is empty", rpcOk({ latestLedger: 9, results: [] })],
+  // `parseRawSimulation` only treats `error` as an error when it is a STRING.
+  // Anything else falls through to the success branch, so a structured error
+  // arrives as a simulation that succeeded and returned nothing.
+  [
+    "an error reported as an object rather than a string",
+    rpcOk({ latestLedger: 9, error: { code: -32000, message: "SECRET-RPC-STRING" } }),
+  ],
+  [
+    "an error reported as a number",
+    rpcOk({ latestLedger: 9, error: 500 }),
+  ],
   ["a truncated body", { kind: "truncated", body: '{"jsonrpc":"2.0","id":1,"resu' }],
   ["a socket closed mid-body", { kind: "closeMidBody", body: '{"jsonrpc":"2.0","id":1,' }],
   ["a connection reset", { kind: "reset" }],

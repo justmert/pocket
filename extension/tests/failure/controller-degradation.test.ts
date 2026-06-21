@@ -34,7 +34,8 @@ const { WalletController } = await import("../../src/core/controller");
 const { NETWORKS } = await import("../../src/core/config");
 const { describeError } = await import("../../src/core/dispatch");
 const { AccountNotFoundError } = await import("../../src/core/chain/balances");
-const { SorobanDataBuilder } = await import("@stellar/stellar-sdk/base");
+const { SorobanDataBuilder, xdr } = await import("@stellar/stellar-sdk/base");
+const { G, H, IDENTITY, encodePoint } = await import("../../src/core/crypto/grumpkin");
 
 const GENERIC = "Something went wrong. Try again, and check your connection.";
 const REAL_RPC = NETWORKS.testnet.rpcUrl;
@@ -305,6 +306,108 @@ describe("privatePocket(): four sentences, one of them irreversible", () => {
       (e) => describeError(e),
     );
     expect(said).not.toContain("SECRET-RPC-STRING");
+    expect(said).not.toContain("127.0.0.1");
+  });
+});
+
+describe("the inbound-credit path must not route around the error allowlist", () => {
+  // `creditInboundTransfers` catches everything and puts `e.message` into
+  // `lastInboundFailure`, which `privatePocket()` interpolates RAW into the
+  // diverged screen's message. Its comment says "The message is authored by us,
+  // so it is safe to surface", and that is true of the two errors it was written
+  // for. The catch is not that narrow: it also catches transport errors, decode
+  // errors and TypeErrors, none of which we authored.
+  //
+  // `describeError`'s allowlist exists precisely so an RPC-authored string
+  // cannot reach a user. This path does not go through it.
+
+  /** A stored opening for this wallet, sealed the way the controller seals it. */
+  async function storeOpenings(address: string, token: string) {
+    const { getSession } = await import("../../src/core/session");
+    const { sealPayload } = await import("../../src/core/vault/vault");
+    const { openingKey } = await import("../../src/lib/storage");
+    const session = getSession();
+    if (!session) throw new Error("the wallet under test is locked");
+    store.set(
+      openingKey(token, address),
+      await sealPayload(session.dek, {
+        spendable: { value: "0", randomness: "0" },
+        receiving: { value: "0", randomness: "0" },
+        syncedThrough: 0,
+      }),
+    );
+  }
+
+  /** A confidential account whose receiving side does NOT match the stored zero. */
+  function divergedAccount(): Fault {
+    const bytes = (p: { x: bigint; y: bigint }) =>
+      xdr.ScVal.scvBytes(Buffer.from(encodePoint(p)));
+    const entry = (name: string, val: xdr.ScVal) =>
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(name), val });
+    return rpcOk({
+      latestLedger: 1_000,
+      minResourceFee: "100",
+      transactionData: SOROBAN_DATA,
+      events: [],
+      results: [
+        {
+          auth: [],
+          xdr: xdr.ScVal
+            .scvMap([
+              entry("auditor_id", xdr.ScVal.scvU32(1)),
+              // Non-identity, so it cannot open to the stored zero and the
+              // pocket is genuinely diverged.
+              entry("receiving_commitment", bytes(H)),
+              entry("spendable_commitment", bytes(IDENTITY)),
+              entry("spending_public_key", bytes(G)),
+              entry("viewing_public_key", bytes(H)),
+            ])
+            .toXDR("base64"),
+        },
+      ],
+    });
+  }
+
+  it("does not put the RPC's own words on the diverged screen", async () => {
+    const { controller, server, address } = await wallet();
+    const token = NETWORKS.testnet.confidential[0]!.token;
+    await storeOpenings(address, token);
+
+    server.heal({
+      byMethod: {
+        getLedgerEntries: fundedAccount(address),
+        simulateTransaction: divergedAccount(),
+        getHealth: rpcOk({ status: "healthy", latestLedger: 1_000, oldestLedger: 1 }),
+        // The inbound search is the degraded leg, and its error is authored by
+        // the HTTP client, not by us.
+        getEvents: rpcError("SECRET-RPC-STRING"),
+      },
+    });
+
+    const p = await controller.privatePocket();
+    expect(p.state).toBe("diverged");
+    expect(p.message ?? "").not.toContain("SECRET-RPC-STRING");
+  });
+
+  it("does not put a transport failure's wording on the diverged screen", async () => {
+    const { controller, server, address } = await wallet();
+    const token = NETWORKS.testnet.confidential[0]!.token;
+    await storeOpenings(address, token);
+
+    server.heal({
+      byMethod: {
+        getLedgerEntries: fundedAccount(address),
+        simulateTransaction: divergedAccount(),
+        getHealth: rpcOk({ status: "healthy", latestLedger: 1_000, oldestLedger: 1 }),
+        getEvents: { kind: "rateLimited", retryAfter: "60" },
+      },
+    });
+
+    const p = await controller.privatePocket();
+    expect(p.state).toBe("diverged");
+    const said = p.message ?? "";
+    // Nothing from the HTTP client, and nothing naming the endpoint.
+    expect(said).not.toMatch(/status code|AxiosError|ECONNREFUSED/i);
     expect(said).not.toContain("127.0.0.1");
   });
 });

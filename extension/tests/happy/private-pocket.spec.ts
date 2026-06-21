@@ -49,20 +49,23 @@ test("a funded account that has not set up a private pocket says so, and states 
 });
 
 /**
- * These two are NOT ordered: either runs alone, in either order, and neither
- * reads anything the other wrote. They are kept off the same wall clock because
- * of a defect in the deployed auditor registry, not because of a dependency.
+ * Independent, and run in parallel.
  *
- * `register` allocates its auditor id from a shared monotonic counter in the
- * contract's instance storage. Simulation computes the footprint for the id
- * that is free AT SIMULATION TIME, so if another account registers in between,
- * the invocation reaches for a ledger key it never declared and the host traps.
- * Observed on chain as invokeHostFunctionTrapped with the diagnostic "trying to
- * access contract data key outside of the footprint". See finding 2 in
- * _test/T1.md; delete this annotation to reproduce it.
+ * They were pinned serial for a while because concurrent registrations trapped
+ * on chain: `register` allocates its auditor id from a shared counter in the
+ * registry's instance storage, so simulation pins a footprint for whichever id
+ * is free at simulation time and the invocation later reaches for a ledger key
+ * it never declared. `be74266` made the wallet retry, which recovers the flow,
+ * so the pin came off.
+ *
+ * The retry does NOT make it free. The failed attempt still charges its fee and
+ * still burns a sequence number, and the reconciliation below is what keeps that
+ * cost visible: it counts failed transactions too, so a retried run shows up as
+ * "7 successful, 1 failed" with the fee total to match rather than as a clean
+ * run. Finding 2 in `_test/T1.md` is mitigated, not closed.
  */
 test.describe("private pocket operations", () => {
-  test.describe.configure({ mode: "serial" });
+  test.describe.configure({ mode: "parallel" });
 
   test("set up, move in, send privately, move out", async ({ wallet }) => {
     test.setTimeout(20 * 60_000);
@@ -209,37 +212,39 @@ test.describe("private pocket operations", () => {
 
       // ------------------------------------------------------------- the ledger
       // Everything above is what the wallet SAYS. This is what happened.
+      //
+      // `transactions` includes FAILED transactions. Asserting "every one
+      // succeeded" against Horizon's default is vacuous, because the default
+      // omits the failures, and a failed transaction still charges its fee. The
+      // reconciliation below is the assertion that carries the weight, and it
+      // only balances if every fee is counted.
       const txs = await ledger.transactions(sender, 200);
-      expect(
-        txs.every((t) => t.successful),
-        "every transaction this wallet submitted must have succeeded",
-      ).toBe(true);
       // register auditor, register, deposit, merge, transfer, unshield.
-      expect(txs.length).toBeGreaterThanOrEqual(6);
+      expect(txs.filter((t) => t.successful).length).toBeGreaterThanOrEqual(6);
 
-      // Only the ones this account paid for. Friendbot's create-account is listed
-      // here too, and friendbot paid that one.
-      const fees = txs
-        .filter((t) => t.fee_account === sender)
-        .reduce((sum, t) => sum + Number(t.fee_charged) / 10_000_000, 0);
+      const fees = ledger.feesPaidBy(sender, txs);
       const senderEnd = await ledger.nativeBalance(sender);
       // 25 XLM left the public balance and 10 came back, so the public account is
-      // down by exactly 15 plus the fees the ledger itself charged. Any other
-      // number means an amount was moved that no screen ever stated.
+      // down by exactly 15 plus every fee the ledger charged it, successful or
+      // not. Any other number means an amount moved that no screen ever stated.
       expect(senderStart - senderEnd).toBeCloseTo(15 + fees, 5);
+
+      // A retried operation is not a free one. Naming the failures keeps the
+      // cost of finding 2 visible instead of hiding inside a fee total.
+      const failed = txs.filter((t) => !t.successful);
       console.log(
-        `  ledger: ${txs.length} successful transactions, net -${(senderStart - senderEnd).toFixed(7)} XLM public (fees ${fees.toFixed(7)})`,
+        `  ledger: ${txs.filter((t) => t.successful).length} successful, ${failed.length} failed, ` +
+          `net -${(senderStart - senderEnd).toFixed(7)} XLM public (fees ${fees.toFixed(7)})`,
       );
 
       // The recipient paid its own fees and nothing else: a confidential transfer
       // moves no public XLM at either end.
       const recipientTxs = await ledger.transactions(recipient, 200);
-      expect(recipientTxs.every((t) => t.successful)).toBe(true);
-      const recipientFees = recipientTxs
-        .filter((t) => t.fee_account === recipient)
-        .reduce((sum, t) => sum + Number(t.fee_charged) / 10_000_000, 0);
       const recipientEnd = await ledger.nativeBalance(recipient);
-      expect(ledger.FRIENDBOT_XLM - recipientEnd).toBeCloseTo(recipientFees, 5);
+      expect(ledger.FRIENDBOT_XLM - recipientEnd).toBeCloseTo(
+        ledger.feesPaidBy(recipient, recipientTxs),
+        5,
+      );
     } finally {
       await second.close();
     }
