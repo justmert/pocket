@@ -53,6 +53,23 @@ export class PrivatePocketError extends Error {
   override readonly name = "PrivatePocketError";
 }
 
+/**
+ * A wallet is already installed here.
+ *
+ * Named so the message survives `describeError`. Told "Something went wrong,
+ * try again", a user retries, keeps failing, and the obvious next move is to
+ * remove the extension, which is the one action that discards the confidential
+ * openings for good.
+ */
+export class WalletExistsError extends Error {
+  override readonly name = "WalletExistsError";
+}
+
+/** The envelope this handle named is gone: already signed, or expired. */
+export class StaleHandleError extends Error {
+  override readonly name = "StaleHandleError";
+}
+
 /** More than the account can actually send, once the reserve is accounted for. */
 export class InsufficientBalanceError extends Error {
   override readonly name = "InsufficientBalanceError";
@@ -484,14 +501,30 @@ export class WalletController {
     };
   }
 
-  /** Create a new wallet. Returns the mnemonic exactly once, for backup. */
+  /**
+   * Create a new wallet. Returns the mnemonic exactly once, for backup.
+   *
+   * SERIALISED, because the read-then-write here is not atomic and the popup
+   * is an ordinary extension page that opens in a tab, so two of them can run
+   * this at once. Both passed the guard, both installed a seed, and both were
+   * shown a phrase under the words "the only way to recover your wallet".
+   * Last write won, so one of those two phrases owned nothing and its holder
+   * had no way to know: the phrase is shown exactly once and never again.
+   *
+   * `import` and `recoverFromMnemonic` race the same way and are harmless,
+   * because they converge on the same seed. Only `create` invents one.
+   */
   async create(password: string): Promise<{ mnemonic: string; address: string }> {
-    if (await readLocal<VaultHeader>(KEYS.vaultHeader)) {
-      throw new Error("a wallet already exists on this device");
-    }
-    const mnemonic = generateMnemonic(wordlist, 256);
-    const address = await this.installSeed(password, mnemonic);
-    return { mnemonic, address };
+    return this.exclusive(async () => {
+      // Re-read INSIDE the critical section. Checking outside it is what made
+      // this a race rather than a guard.
+      if (await readLocal<VaultHeader>(KEYS.vaultHeader)) {
+        throw new WalletExistsError("a wallet already exists on this device");
+      }
+      const mnemonic = generateMnemonic(wordlist, 256);
+      const address = await this.installSeed(password, mnemonic);
+      return { mnemonic, address };
+    });
   }
 
   async import(password: string, mnemonic: string): Promise<{ address: string }> {
@@ -500,7 +533,7 @@ export class WalletController {
     // recovery material. Deliberate replacement goes through reset(), which
     // requires the current password.
     if (await readLocal<VaultHeader>(KEYS.vaultHeader)) {
-      throw new Error(
+      throw new WalletExistsError(
         "a wallet already exists on this device. Remove it first if you mean to replace it.",
       );
     }
@@ -877,7 +910,21 @@ export class WalletController {
     req: PrivateOpRequest,
   ): Promise<{ handle: string; summary: PrivateOpSummary }> {
     const { address } = requireSession();
-    await this.assertNothingUnresolved();
+    // A merge is exempt, and it has to be.
+    //
+    // When a shield's deposit lands and its merge does not, the wallet tells
+    // the user their funds are in the receiving balance and to press "Make
+    // spendable". The failed merge leaves an unresolved in-flight record, and
+    // this guard then refused that exact operation for up to three minutes.
+    // Both sentences were individually true and together they were a dead end,
+    // on a screen that said nothing about the money sitting in receiving.
+    //
+    // Exempting it is safe because a merge is idempotent in effect: it folds
+    // the whole receiving balance into spendable, so if the earlier one does
+    // land, the later one folds nothing and the result is identical. The guard
+    // exists to stop a SECOND spend racing a first, and a merge spends
+    // nothing.
+    if (req.kind !== "merge") await this.assertNothingUnresolved();
     const cfg = this.confidentialConfig();
     // Trap 14: refuse to prove against a deployment whose verification key is
     // not the one this build proves against. A mismatch otherwise surfaces as
@@ -1484,7 +1531,12 @@ export class WalletController {
     // proved operation the user waited on and cannot recover except by proving
     // it again.
     if (!entry || entry.private) {
-      throw new Error(
+      // Named, because the generic "try again" here is the worst sentence in
+      // the product: it invites the resend the in-flight machinery exists to
+      // prevent, one moment after the payment may actually have succeeded.
+      // The private path already throws a named error; these two disagreeing
+      // was a slip, not a decision.
+      throw new StaleHandleError(
         "That transaction is no longer pending confirmation. Build it again and review it.",
       );
     }

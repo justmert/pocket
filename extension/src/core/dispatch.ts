@@ -192,6 +192,8 @@ const SAFE_ERRORS = new Set([
   // wallet found transfers that do not add up to what the contract holds,
   // which is the one thing they can act on.
   "InboundCreditError",
+  "WalletExistsError",
+  "StaleHandleError",
 ]);
 
 /** Messages we author ourselves and vet, matched exactly. */
