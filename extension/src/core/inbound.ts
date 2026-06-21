@@ -110,6 +110,13 @@ export function creditInbound(
   return credited;
 }
 
+/** One event as the RAW endpoint returns it, before the SDK's parse. */
+interface RawEvent {
+  ledger: number;
+  id: string;
+  value: xdr.ScVal | string;
+}
+
 /** The eight-field transfer body, decoded. */
 interface TransferBody {
   r_e_point: Uint8Array;
@@ -151,6 +158,13 @@ export async function findInbound(
   const me = Address.fromString(account).toScVal();
   const found: InboundTransfer[] = [];
   let cursor: string | undefined;
+  // A page budget. The loop's only other exit is the RPC's cursor, and a
+  // server handing out a fresh one forever would spin here indefinitely. 41
+  // pages covered the entire retained window against the live deployment, so
+  // this is far above any honest history and terminates promptly against a
+  // dishonest one.
+  let pages = 0;
+  const MAX_PAGES = 200;
 
   // topics: [event name, from, to]. Matching the RECIPIENT slot makes the RPC
   // do the filtering. It MUST be on the cursor branch too: without it every
@@ -166,16 +180,28 @@ export async function findInbound(
   ];
 
   for (;;) {
-    const page = await (cursor
-      ? server.getEvents({ cursor, filters })
-      : server.getEvents({ startLedger: fromLedger, filters }));
+    // The RAW accessor, for the same reason balances.ts and ttl.ts use theirs.
+    // `getEvents` parses with `(raw.events ?? []).map(...)`, so a reply with no
+    // events field at all, or events: null, has already become an empty array
+    // by the time we see it and is byte-identical to "the window held nothing
+    // for you". Only the raw response can tell those apart.
+    const page = (await (cursor
+      ? server._getEvents({ cursor, filters })
+      : server._getEvents({ startLedger: fromLedger, filters }))) as {
+      latestLedger?: unknown;
+      events?: unknown;
+      cursor?: string;
+    };
 
     // An empty page is NOT the end. Scanning a wide range, the RPC returns
     // empty pages carrying a cursor and expects you to keep asking; stopping
     // here gave up before reaching any event and made a working search look
     // like "you have received nothing". Only the absence of a cursor ends it.
-    for (const e of page.events) {
-      const body = decodeTransferBody(e.value);
+    for (const e of page.events as RawEvent[]) {
+      // The raw endpoint hands back base64 XDR where the parsed one hands
+      // back an ScVal.
+      const val = typeof e.value === "string" ? xdr.ScVal.fromXDR(e.value, "base64") : e.value;
+      const body = decodeTransferBody(val);
       if (!body) continue;
       let RE: Point;
       try {
@@ -188,6 +214,12 @@ export async function findInbound(
       found.push({ id: `${e.ledger}:${e.id}`, ledger: e.ledger, opening });
     }
     if (!page.cursor || page.cursor === cursor) break;
+    if (++pages >= MAX_PAGES) {
+      throw new InboundCreditError(
+        "Pocket stopped searching the ledger rather than paging through it indefinitely. " +
+          "Your funds are safe on chain.",
+      );
+    }
     cursor = page.cursor;
   }
   return found;

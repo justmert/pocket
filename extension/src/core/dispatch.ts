@@ -178,8 +178,20 @@ const SAFE_ERRORS = new Set([
   // Authored by describeOutcome, which interpolates only XDR enum discriminant
   // names and a hash we computed ourselves. Never an RPC-authored string.
   "SubmitOutcomeError",
+  // NOT LedgerEntryMismatchError. It was deliberately off this list and
+  // balances.ts still documents why: two of its messages interpolate an
+  // address decoded from the RPC's OWN response, so allowlisting it lets an
+  // RPC-chosen value reach the screen. The user gets the generic message,
+  // because "your RPC is lying about which account it answered for" is not
+  // something they can act on. What matters is that no number is rendered.
+  //
+  // LedgerReadError is different and stays: its messages are wholly authored
+  // here and interpolate nothing from the wire.
   "LedgerReadError",
-  "LedgerEntryMismatchError",
+  // Authored here, interpolating nothing from the wire. It tells a user the
+  // wallet found transfers that do not add up to what the contract holds,
+  // which is the one thing they can act on.
+  "InboundCreditError",
 ]);
 
 /** Messages we author ourselves and vet, matched exactly. */

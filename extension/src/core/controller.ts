@@ -1435,10 +1435,15 @@ export class WalletController {
       this.lastInboundFailure = null;
       return next;
     } catch (e) {
-      // Swallowing this hid two bugs of mine during development and leaves a
-      // user staring at "records do not match" with no idea the wallet tried.
-      // The message is authored by us, so it is safe to surface.
-      this.lastInboundFailure = e instanceof Error ? e.message : String(e);
+      // ONLY our own authored text may be surfaced. Passing `e.message`
+      // through put "Request failed with status code 429" on the diverged
+      // screen, which is precisely the RPC-authored string the error allowlist
+      // exists to keep off it. Anything else gets a line we wrote.
+      const { InboundCreditError } = await import("./inbound");
+      this.lastInboundFailure =
+        e instanceof InboundCreditError
+          ? e.message
+          : "Pocket could not reach the ledger to look for transfers you have received.";
       return stored;
     }
   }
