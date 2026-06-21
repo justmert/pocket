@@ -182,10 +182,30 @@ describe("a page that did not answer is not an empty page", () => {
       const server = await serving({ fallback: fault });
       const said = await findInbound(server, TOKEN, ACCOUNT, VK, 1).then(
         (found) =>
-          found.length === 0 ? "reported nothing received, from a page that answered nothing" : "found events",
+          found.length === 0
+            ? "reported nothing received, from a page that answered nothing"
+            : "found events",
         () => "refused",
       );
       expect(said).toBe("refused");
+    });
+
+    it(`refuses ${name} in words we authored, not by crashing`, async () => {
+      // Refusing by accident is not the same as refusing. Reading `events` off
+      // a page that has none throws `TypeError: page.events is not iterable`,
+      // which satisfies "did not report nothing received" while being a
+      // stack-shaped string nobody wrote for a user. It matters here rather
+      // than being pedantic: `creditInboundTransfers` catches this and
+      // interpolates `e.message` RAW into the diverged screen, so the JS
+      // internal message is what the user actually reads.
+      const server = await serving({ fallback: fault });
+      const err = await findInbound(server, TOKEN, ACCOUNT, VK, 1).then(
+        () => null,
+        (e: Error) => e,
+      );
+      expect(err).toBeTruthy();
+      expect(err?.name).not.toBe("TypeError");
+      expect(err?.message ?? "").not.toMatch(/is not iterable|undefined|Cannot read/i);
     });
   }
 

@@ -45,6 +45,11 @@ async function open(dir: string): Promise<Wallet> {
   const ctx = await chromium.launchPersistentContext(dir, {
     channel: "chromium",
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
+    // Cold-start contention only, nothing to do with the wallet: every test here
+    // launches its own browser, and T1 measured roughly one launch timeout in
+    // forty on a loaded machine at the default. A launch that is merely slow
+    // must not be reported as a wallet failure.
+    timeout: 300_000,
   });
   let [sw] = ctx.serviceWorkers();
   if (!sw) sw = await ctx.waitForEvent("serviceworker");
@@ -263,24 +268,68 @@ export async function ledgerAccount(address: string): Promise<{
   return { native: Number(native?.balance ?? 0), exists: true };
 }
 
-/** Every transaction the ledger recorded for this account. */
+/**
+ * Every transaction the ledger recorded for this account, INCLUDING failed ones.
+ *
+ * `include_failed=true` is not optional. Horizon omits failed transactions by
+ * default, so a duplicate submission that was included and trapped is invisible,
+ * and any assertion that counts transactions to prove "it only did this once"
+ * is satisfied by construction rather than by the wallet behaving. It still cost
+ * the user a fee and a sequence number.
+ *
+ * `feeAccount` is here for the same reason: friendbot's create-account
+ * transaction is listed against the account it funded, but friendbot paid for
+ * it, so anything counting what THIS wallet submitted has to filter on it.
+ */
 export async function ledgerTransactions(
   address: string,
-): Promise<{ hash: string; successful: boolean }[]> {
-  const res = await fetch(`${HORIZON}/accounts/${address}/transactions?limit=50&order=desc`);
+): Promise<{ hash: string; successful: boolean; feeAccount: string; feeCharged: string }[]> {
+  const res = await fetch(
+    `${HORIZON}/accounts/${address}/transactions?limit=100&order=desc&include_failed=true`,
+  );
   if (res.status === 404) return [];
   if (!res.ok) throw new Error(`horizon ${res.status}`);
   const body = (await res.json()) as {
-    _embedded: { records: { hash: string; successful: boolean }[] };
+    _embedded: {
+      records: {
+        hash: string;
+        successful: boolean;
+        fee_account: string;
+        fee_charged: string;
+      }[];
+    };
   };
-  return body._embedded.records;
+  return body._embedded.records.map((r) => ({
+    hash: r.hash,
+    successful: r.successful,
+    feeAccount: r.fee_account,
+    feeCharged: r.fee_charged,
+  }));
 }
 
-/** Payments the ledger recorded, which is what "did it send twice" means. */
+/** Transactions THIS wallet submitted and paid for, failed ones included. */
+export async function ownTransactions(
+  address: string,
+): Promise<{ hash: string; successful: boolean; feeCharged: string }[]> {
+  return (await ledgerTransactions(address)).filter((t) => t.feeAccount === address);
+}
+
+/**
+ * Payments the ledger recorded and APPLIED, which is what "did it send twice"
+ * means.
+ *
+ * `include_failed=true` is passed and the failures are then dropped here
+ * deliberately, rather than leaving Horizon's default to do it silently. A
+ * default that happens to give the right answer is not an assertion, and a
+ * duplicate submission that was included and failed still cost a fee and a
+ * sequence number even though it moved nothing.
+ */
 export async function ledgerPayments(
   address: string,
 ): Promise<{ from: string; to: string; amount: string; transaction_hash: string }[]> {
-  const res = await fetch(`${HORIZON}/accounts/${address}/payments?limit=50&order=desc`);
+  const res = await fetch(
+    `${HORIZON}/accounts/${address}/payments?limit=100&order=desc&include_failed=true`,
+  );
   if (res.status === 404) return [];
   if (!res.ok) throw new Error(`horizon ${res.status}`);
   const body = (await res.json()) as {
@@ -291,11 +340,12 @@ export async function ledgerPayments(
         to?: string;
         amount?: string;
         transaction_hash: string;
+        transaction_successful?: boolean;
       }[];
     };
   };
   return body._embedded.records
-    .filter((r) => r.type === "payment")
+    .filter((r) => r.type === "payment" && r.transaction_successful !== false)
     .map((r) => ({
       from: r.from ?? "",
       to: r.to ?? "",

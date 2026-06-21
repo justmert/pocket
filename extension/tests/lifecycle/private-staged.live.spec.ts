@@ -7,6 +7,7 @@ import {
   ledgerTransactions,
   offscreenCount,
   onboard,
+  ownTransactions,
   send,
   storage,
   storageKeys,
@@ -111,14 +112,18 @@ test("a register killed between submitting and persisting its openings loses not
     // The staged post-state is written to disk immediately before the register
     // is submitted. From here the worker must not be allowed to see the
     // outcome, or there is nothing left to interrupt.
+    // Both records, not just the staged one. They are written a beat apart
+    // (staged, then the hash immediately before the network is asked), and
+    // catching the gap between them is a race in the TEST, not a defect: a
+    // worker that died in that window submitted nothing, so the staged record
+    // is dead weight the next operation overwrites.
     const staged = await waitForStorage(
       page,
-      (s) => !!s["pocket.staged"],
-      "the post-state must be staged to disk BEFORE submitting",
+      (s) => !!s["pocket.staged"] && !!s["pocket.inflight"],
+      "the post-state and the submitted hash must both be on disk BEFORE the outcome is known",
       180_000,
     );
     blind.on();
-    expect(staged["pocket.inflight"], "the submitted hash must be recorded too").toBeTruthy();
     expect(
       staged[openingsKey],
       "openings must NOT be written before the ledger has accepted",
@@ -407,7 +412,12 @@ test("approving one private operation twice at once runs it once", async () => {
     expect(built.ok, JSON.stringify(built)).toBe(true);
     const handle = built.data!.handle;
 
-    const before = (await ledgerTransactions(await addressOf(page))).length;
+    // Counted with failed transactions INCLUDED and narrowed to the ones this
+    // wallet paid for. Horizon hides failures by default, so a duplicate that
+    // was included and trapped would be invisible and this assertion would be
+    // satisfied by construction rather than by the wallet behaving.
+    const address = await addressOf(page);
+    const before = (await ownTransactions(address)).length;
     const replies = await Promise.all([
       send(page, { type: "confirmPrivateOp", handle }),
       send(page, { type: "confirmPrivateOp", handle }),
@@ -421,7 +431,7 @@ test("approving one private operation twice at once runs it once", async () => {
     ).toMatch(/no longer pending confirmation/);
 
     await expect
-      .poll(async () => (await ledgerTransactions(await addressOf(page))).length, {
+      .poll(async () => (await ownTransactions(address)).length, {
         timeout: 120_000,
         intervals: [3000],
       })
@@ -472,6 +482,60 @@ test("erase-and-restore takes the openings with it and says they cannot be rebui
     expect(pocket.data?.message).toMatch(/no record of its balances/);
     expect(pocket.data?.message).toMatch(/funds are safe on chain/);
     expect(pocket.data?.message).toMatch(/cannot be rebuilt yet/);
+  } finally {
+    await w.close();
+  }
+});
+
+test("an auditor registration whose outcome is unknown is never resent", async () => {
+  test.setTimeout(900_000);
+  const { w, page, address } = await fundedWallet();
+  try {
+    // Registering the auditor key contends on a counter in the registry's
+    // instance storage, so it can lose and the wallet retries. A retry is only
+    // safe for an outcome that is KNOWN to have consumed nothing. This blinds
+    // the confirmation poll, which is the other thing that happens constantly
+    // under MV3: the transaction really lands and the worker never finds out,
+    // so the outcome is "pending" — may still land, do not resend.
+    const blind = await blindConfirmationPolls(w);
+    blind.on();
+
+    await openPocket(page);
+    await expect(page.getByText(/Not set up yet/)).toBeVisible({ timeout: 120_000 });
+    await page.getByRole("button", { name: "Set up the private pocket" }).click();
+    await expect(page.getByText(/Nothing was bound|did not succeed/)).toBeVisible({
+      timeout: 600_000,
+    });
+    blind.off();
+
+    // What the account actually did, from the ledger. Failed transactions
+    // included, and filtered to the ones this wallet paid for, so friendbot's
+    // create-account does not count as ours.
+    await page.waitForTimeout(3000);
+    const mine = await ownTransactions(address);
+    const landed = mine.filter((t) => t.successful);
+    const paid = landed.reduce((n, t) => n + Number(t.feeCharged), 0);
+
+    // What the wallet believes, next to what the ledger did. Every registration
+    // that landed and was not read back is an auditor key this account owns and
+    // can never name again, paid for and orphaned.
+    const keys = await storageKeys(page);
+    const recorded = keys.filter((k) => k.startsWith("pocket.auditorid."));
+
+    expect(
+      landed.length,
+      `a submission whose outcome is unknown may still land, so it must not be sent again. ` +
+        `The ledger applied ${landed.length} of this wallet's transactions ` +
+        `(${landed.map((t) => t.hash.slice(0, 8)).join(", ")}) for ${paid} stroops, ` +
+        `and the wallet recorded ${recorded.length} auditor ids.`,
+    ).toBeLessThanOrEqual(1);
+
+    // And the one submission it did make must still be findable. An unresolved
+    // transaction whose hash is gone can never be reconciled by anything, which
+    // is the same loss as never having recorded it.
+    expect(keys, "a submission left unresolved must leave the hash that can resolve it").toContain(
+      "pocket.inflight",
+    );
   } finally {
     await w.close();
   }
