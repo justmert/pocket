@@ -197,6 +197,20 @@ export async function findInbound(
     // empty pages carrying a cursor and expects you to keep asking; stopping
     // here gave up before reaching any event and made a working search look
     // like "you have received nothing". Only the absence of a cursor ends it.
+    // The parsed accessor does `(raw.events ?? []).map(...)`, so a reply with
+    // no events field, or events: null, has already become an empty array by
+    // the time the SDK hands it over and is byte-identical to "the window held
+    // nothing for you". Reading the RAW response is what makes them
+    // distinguishable, and this is the check that uses it. Without it the
+    // iteration below throws a TypeError, which reaches the user as the
+    // generic message and tells them nothing.
+    if (typeof page.latestLedger !== "number" || !Array.isArray(page.events)) {
+      throw new InboundCreditError(
+        "The ledger did not answer which transfers this account received, so Pocket will not " +
+          "conclude that it received none.",
+      );
+    }
+
     for (const e of page.events as RawEvent[]) {
       // The raw endpoint hands back base64 XDR where the parsed one hands
       // back an ScVal.
