@@ -32,6 +32,14 @@ export interface PaymentRequest {
  * undecidable, so a transaction that never confirms can never be safely
  * rebuilt (see submit.ts).
  */
+/** Stellar's text memo limit, in bytes. Not characters. */
+export const MEMO_TEXT_MAX_BYTES = 28;
+
+/** A memo the user can shorten. Named so the reason survives describeError. */
+export class MemoTooLongError extends Error {
+  override readonly name = "MemoTooLongError";
+}
+
 export function buildPayment(
   sourceAccount: Account,
   req: PaymentRequest,
@@ -54,6 +62,20 @@ export function buildPayment(
     )
     .setTimeout(DEFAULT_TIMEOUT_SECONDS);
 
-  if (req.memo) builder.addMemo(Memo.text(req.memo));
+  if (req.memo) {
+    // A text memo is 28 BYTES, not 28 characters, and the SDK enforces that
+    // with a bare Error. Unnamed, it reaches the user as "check your
+    // connection", which sends them to their network over a string they typed
+    // and that no amount of retrying will fix. Ten emoji is 40 bytes and looks
+    // far shorter than an English sentence that fits.
+    const used = new TextEncoder().encode(req.memo).length;
+    if (used > MEMO_TEXT_MAX_BYTES) {
+      throw new MemoTooLongError(
+        `That memo is ${used} bytes and the limit is ${MEMO_TEXT_MAX_BYTES}. The limit counts ` +
+          `bytes rather than characters, so accents and emoji use several each.`,
+      );
+    }
+    builder.addMemo(Memo.text(req.memo));
+  }
   return builder.build();
 }

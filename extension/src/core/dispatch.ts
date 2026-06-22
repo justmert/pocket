@@ -194,6 +194,7 @@ const SAFE_ERRORS = new Set([
   "InboundCreditError",
   "WalletExistsError",
   "StaleHandleError",
+  "MemoTooLongError",
 ]);
 
 /** Messages we author ourselves and vet, matched exactly. */
