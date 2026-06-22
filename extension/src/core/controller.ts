@@ -565,9 +565,26 @@ export class WalletController {
       );
     }
 
+    // The address the user consented to reveal is recorded ON the session,
+    // and it is the consent. Answering with whatever address is loaded now
+    // means: connect a site to wallet A, recover into wallet B on the same
+    // device, and the still-live grant hands that site wallet B with no
+    // prompt. The datum is public, so nothing secret leaks; what leaks is the
+    // LINK between a user's old and new addresses, to a third party, which is
+    // exactly what a wallet shipping a private pocket must not do.
+    const current = requireSession().address;
+    if (live.address !== current) {
+      await sessions.disconnect(origin);
+      return err(
+        ERROR.USER_REJECTED,
+        "The wallet on this device changed since this site connected, so Pocket dropped the " +
+          "connection. Reconnect if you still want the site to see this account.",
+      );
+    }
+
     switch (method) {
       case "getAddress":
-        return { address: requireSession().address };
+        return { address: current };
 
       case "signTransaction":
       case "signAuthEntry":
@@ -740,6 +757,9 @@ export class WalletController {
 
   lock(): void {
     clearSession();
+    // A session grants seeing the address and asking to sign. Neither is true
+    // of a locked wallet, so the grant goes with it.
+    void import("./provider/session").then((m) => m.clearSessions());
     // Cached from the last private-pocket read, and only true for the account
     // that read it. Left set, a locked wallet still reports privateEnabled and
     // the home screen offers to open a pocket it cannot reach.
@@ -791,6 +811,10 @@ export class WalletController {
       // leaves an undecryptable blob the next wallet would trip over.
       STAGED_KEY,
       KEYS.publicAddress,
+      // A grant says a site may see this wallet's address. Erasing the wallet
+      // and leaving the grant behind means the NEXT wallet installed here
+      // inherits every connection the last one made, silently.
+      KEYS.dappSessions,
       ...(await openingKeys()),
     ]);
   }
