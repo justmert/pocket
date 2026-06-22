@@ -82,12 +82,15 @@ export async function readConfidentialAccount(
   // failure where the right answer is "dormant, reactivate it".
   if ("restorePreamble" in sim && sim.restorePreamble) return null;
   if ("error" in sim) {
-    // The error is not guaranteed to be a string. An object or a number here
-    // made every regex miss, fell through to `result?.retval` being undefined,
-    // and returned null: "you have no private pocket", from a failed read.
-    // That answer puts a PERMANENT, auditor-binding registration in front of
-    // someone who may already have one, so nothing but a real 3501 may produce
-    // it.
+    // UNREACHABLE THROUGH THE CURRENT SDK, and kept deliberately. Measured
+    // against a real `simulateTransaction`: `parseRawSimulation` attaches an
+    // `error` key ONLY when the raw error was a string, so an object or a
+    // number falls through to the success branch and is caught below by the
+    // no-result refusal instead. So this stringify is defence in depth against
+    // a future SDK that passes structured errors through, NOT the thing that
+    // handles them today. Do not count it as tested: no test can reach it, and
+    // two tests that look like they cover it are really exercising the
+    // no-result path.
     const text = typeof sim.error === "string" ? sim.error : JSON.stringify(sim.error);
     if (/#3501|AccountNotRegistered/i.test(text)) return null;
     const code = /Error\(Contract, #(\d+)\)/.exec(text)?.[1];
