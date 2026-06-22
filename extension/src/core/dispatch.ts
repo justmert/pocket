@@ -103,6 +103,8 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
       return c.reset(str(msg.password, "password"));
     case "privatePocket":
       return c.privatePocket();
+    case "rebuildFromHistory":
+      return c.rebuildFromHistory();
     case "buildPrivateOp":
       return c.buildPrivateOp(opRequest(msg.op));
     case "confirmPrivateOp":
@@ -142,6 +144,7 @@ const ACTIVITY = new Set([
   "buildPrivateOp",
   "confirmPrivateOp",
   "privatePocket",
+  "rebuildFromHistory",
   "recoverFromMnemonic",
 ]);
 
@@ -195,6 +198,8 @@ const SAFE_ERRORS = new Set([
   "WalletExistsError",
   "StaleHandleError",
   "MemoTooLongError",
+  "RecoveryUnavailableError",
+  "RecoveryMismatchError",
 ]);
 
 /** Messages we author ourselves and vet, matched exactly. */

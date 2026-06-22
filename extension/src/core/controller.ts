@@ -472,6 +472,37 @@ export class WalletController {
     );
   }
 
+  /**
+   * Rebuild this account's openings from the durable event history.
+   *
+   * The route out of `needsRecovery` and `diverged`, and the reason
+   * `indexer/` exists. Refuses rather than guessing when no archive is
+   * configured, when the archive cannot serve a gap-free window, or when the
+   * replayed result does not reproduce the commitments the contract holds.
+   */
+  async rebuildFromHistory(): Promise<PrivatePocket> {
+    return this.exclusive(async () => {
+      const { address } = requireSession();
+      const cfg = this.confidentialConfig();
+      const account = await this.readOwnAccount(address, cfg);
+      const ctx = await this.opContext();
+      const { deriveConfidentialKeys } = await import("./confidential-ops");
+      const { vk } = await deriveConfidentialKeys(ctx);
+      const { recoverOpenings } = await import("./recover-openings");
+
+      const rebuilt = await recoverOpenings(
+        NETWORKS[this.network].archiveUrl,
+        cfg.token,
+        address,
+        vk,
+        account,
+      );
+      await this.writeOpenings(address, cfg.token, rebuilt);
+      this.lastInboundFailure = null;
+      return this.privatePocket();
+    });
+  }
+
   /** Openings for this (account, deployment). Encrypted at rest under the DEK. */
   private async readOpenings(
     address: string,
@@ -527,11 +558,30 @@ export class WalletController {
     });
   }
 
+  /**
+   * SERIALISED, for the same reason `create` is.
+   *
+   * The guard below is a read followed by three writes in `installSeed`
+   * (address, then header, then state). Two tabs importing different phrases,
+   * or one creating while another imports, both pass the guard and interleave
+   * those writes. The mild outcome is a user shown an address the device does
+   * not hold. The bad one is a header from one wallet beside state from the
+   * other: the DEK in that header cannot decrypt that state, so the vault is
+   * bricked and neither phrase opens it.
+   *
+   * `exclusive` is a promise chain, not a re-entrant lock, so the inner half
+   * is split out and `recoverFromMnemonic` calls THAT rather than this, or the
+   * queue would wait on itself forever.
+   */
   async import(password: string, mnemonic: string): Promise<{ address: string }> {
-    // Same guard as create(). Without it, any path that sends {type:"import"}
-    // replaces a funded wallet's seed, and the previous mnemonic is the only
-    // recovery material. Deliberate replacement goes through reset(), which
-    // requires the current password.
+    return this.exclusive(() => this.doImport(password, mnemonic));
+  }
+
+  private async doImport(password: string, mnemonic: string): Promise<{ address: string }> {
+    // Without this guard, any path that sends {type:"import"} replaces a
+    // funded wallet's seed, and the previous mnemonic is the only recovery
+    // material. Deliberate replacement goes through reset(), which requires
+    // the current password.
     if (await readLocal<VaultHeader>(KEYS.vaultHeader)) {
       throw new WalletExistsError(
         "a wallet already exists on this device. Remove it first if you mean to replace it.",
@@ -672,6 +722,10 @@ export class WalletController {
    * archive. The caller must have said so before reaching here.
    */
   async recoverFromMnemonic(mnemonic: string, password: string): Promise<string> {
+    return this.exclusive(() => this.doRecoverFromMnemonic(mnemonic, password));
+  }
+
+  private async doRecoverFromMnemonic(mnemonic: string, password: string): Promise<string> {
     const phrase = mnemonic.trim().toLowerCase().replace(/\s+/g, " ");
     if (!validateMnemonic(phrase, wordlist)) {
       throw new RecoveryError("That is not a valid recovery phrase. Check the words and the order.");
@@ -708,7 +762,8 @@ export class WalletController {
     }
 
     await this.erase();
-    const { address } = await this.import(password, phrase);
+    // doImport, not import: we already hold the queue.
+    const { address } = await this.doImport(password, phrase);
     return address;
   }
 

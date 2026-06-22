@@ -77,6 +77,7 @@ export type WalletRequest =
   | { type: "confirmPayment"; handle: string }
   | { type: "reset"; password: string }
   | { type: "privatePocket" }
+  | { type: "rebuildFromHistory" }
   | { type: "buildPrivateOp"; op: PrivateOpRequest }
   | { type: "confirmPrivateOp"; handle: string }
   | { type: "inFlight" }
@@ -126,6 +127,7 @@ export interface ResponseMap {
   confirmPayment: { hash: string; ledger: number };
   reset: void;
   privatePocket: PrivatePocket;
+  rebuildFromHistory: PrivatePocket;
   /** `handle` is opaque, exactly as buildPayment's is. */
   buildPrivateOp: { handle: string; summary: PrivateOpSummary };
   confirmPrivateOp: { hash: string; ledger: number; followed?: string };

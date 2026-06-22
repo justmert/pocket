@@ -292,14 +292,26 @@ export function PrivatePocket({ t, onBack }: { t: Theme; onBack: () => void }) {
               </Button>
             )}
             {(p.state === "diverged" || p.state === "needsRecovery") && (
-              // Deliberately not a button. Replaying history needs an archive
-              // endpoint, and none is configured in this build; offering a
-              // control that cannot work would repeat the exact problem this
-              // screen had.
-              <Notice tone="exposed" t={t}>
-                Rebuilding needs a durable event archive, and this build has none configured. Your
-                funds are safe on chain. Pocket will not spend from a state it cannot verify.
-              </Notice>
+              <>
+                <Notice tone="exposed" t={t}>
+                  Your funds are safe on chain. Rebuilding replays your event history from the
+                  durable archive and checks the result against what the contract holds, so a
+                  wrong or incomplete history is refused rather than accepted.
+                </Notice>
+                <Button
+                  t={t}
+                  onClick={() => {
+                    setError(null);
+                    setBusy("Replaying your history…");
+                    void call({ type: "rebuildFromHistory" })
+                      .then((next) => setP(next))
+                      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+                      .finally(() => setBusy(null));
+                  }}
+                >
+                  Rebuild from history
+                </Button>
+              </>
             )}
           </>
         )}

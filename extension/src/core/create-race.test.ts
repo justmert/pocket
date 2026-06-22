@@ -98,3 +98,56 @@ describe("two tabs creating a wallet at once", () => {
     expect(describeError(err)).toMatch(/already exists/i);
   });
 });
+
+describe("every path that installs a seed is serialised, not just create", () => {
+  beforeEach(() => store.clear());
+
+  it("two concurrent imports of DIFFERENT phrases leave one coherent wallet", async () => {
+    // The `create` fix was only half a fix: `import` had the same guard and no
+    // lock. The mild outcome is a user shown an address the device does not
+    // hold. The bad one is a header from one wallet beside state from the
+    // other, because installSeed writes address, header and state separately.
+    // That DEK cannot decrypt that state, so neither phrase opens the vault.
+    const a = new WalletController();
+    const b = new WalletController();
+    await Promise.all([a.init(), b.init()]);
+
+    const seedA = (await a.create("first")).mnemonic;
+    store.clear();
+    const seedB = (await b.create("second")).mnemonic;
+    store.clear();
+
+    const x = new WalletController();
+    await x.init();
+    const results = await Promise.allSettled([
+      x.import("password one", seedA),
+      x.import("password two", seedB),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+
+    // The decisive check: the vault must actually open. A blended header and
+    // state throws on unlock, which is the failure worth preventing.
+    const winner = results.find((r) => r.status === "fulfilled") as PromiseFulfilledResult<{
+      address: string;
+    }>;
+    const opened = new WalletController();
+    await opened.init();
+    const pw = winner.value.address === (await a.status()).address ? "password one" : "password two";
+    await expect(opened.unlock(pw)).resolves.toBeDefined();
+    expect((await opened.status()).address).toBe(winner.value.address);
+  });
+
+  it("creating in one tab while importing in another leaves one coherent wallet", async () => {
+    const src = new WalletController();
+    await src.init();
+    const phrase = (await src.create("x")).mnemonic;
+    store.clear();
+
+    const c = new WalletController();
+    await c.init();
+    const results = await Promise.allSettled([c.create("via create"), c.import("via import", phrase)]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(await readLocal(KEYS.vaultHeader)).toBeDefined();
+    expect(await readLocal(KEYS.state)).toBeDefined();
+  });
+});

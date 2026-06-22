@@ -38,6 +38,19 @@ export interface NetworkConfig {
    * USDC are two deployments, each with its own confidential identity.
    */
   confidential: ConfidentialDeployment[];
+  /**
+   * The durable event archive, and it is not optional for the private pocket.
+   *
+   * Soroban RPC retains events for 120,960 ledgers, about seven days. Past
+   * that a wallet that lost its local state can see its confidential balances
+   * on chain and cannot spend them, because only the openings make a
+   * commitment spendable and only a replay of the event history rebuilds them.
+   * That is the whole reason `indexer/` exists.
+   *
+   * Absent here, recovery beyond the RPC window is impossible and the wallet
+   * says so rather than guessing.
+   */
+  archiveUrl?: string;
 }
 
 export const NETWORKS: Record<NetworkId, NetworkConfig> = {
@@ -53,6 +66,10 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
     // would mean implementing five known audit findings including a register
     // replay. Ours carry the VKs from OpenZeppelin's post-audit branch, whose
     // hashes are recorded in resources/deployment-testnet.json.
+    // Local by default. A hosted archive replaces this; the wallet refuses to
+    // sync rather than falling back when it cannot reach one, because falling
+    // back moves the cursor past a gap and loses openings permanently.
+    archiveUrl: "http://127.0.0.1:8787",
     confidential: [
       {
         token: "CDMXZEFOM5DN2GSHQKNOOW242RJZGCEM5LOOAPGRQE35GGHB7ALDK2Y6",
