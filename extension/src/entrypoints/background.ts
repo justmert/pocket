@@ -35,6 +35,26 @@ export default defineBackground(() => {
         return false;
       }
 
+      // A dApp call, relayed by the content script. It travels the same
+      // runtime channel but is NOT a wallet request: it carries an origin, it
+      // never reaches `dispatch`, and it can only do what `controller.sep43`
+      // allows. Handled before the wallet router so the two cannot be
+      // confused for one another.
+      if ((msg as { type?: string }).type === "sep43") {
+        const call = msg as unknown as { method: string; params: unknown[] };
+        void (async () => {
+          try {
+            await ready;
+            const { senderOrigin } = await import("../core/provider/session");
+            const origin = senderOrigin(sender);
+            sendResponse({ ok: true, data: await controller.sep43(origin, call.method, call.params) });
+          } catch (e) {
+            sendResponse({ ok: false, error: describeError(e) });
+          }
+        })();
+        return true;
+      }
+
       // The prover speaks on this same runtime channel with its own
       // discriminator. Ignore anything that is not a wallet request outright,
       // rather than answering it and re-arming the idle lock.

@@ -23,6 +23,12 @@ export default defineConfig({
   // rather than leaving that to this comment.
   publicDir: "public",
   manifest: {
+    // The provider object has to run in the PAGE world to be reachable by page
+    // scripts. MV3 forbids remotely hosted code, so it ships in the package
+    // and the content script injects it from here.
+    web_accessible_resources: [
+      { resources: ["injected.js"], matches: ["http://*/*", "https://*/*"] },
+    ],
     name: "Pocket",
     description:
       "A self-custody Stellar wallet with two pockets: one public, one private. Confidential, not anonymous.",

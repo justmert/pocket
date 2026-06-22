@@ -503,6 +503,93 @@ export class WalletController {
     });
   }
 
+  /** Sites connected to this wallet, most recent first. */
+  async dappSessions(): Promise<{ origin: string; connectedAt: number; address: string }[]> {
+    requireSession();
+    const { listSessions } = await import("./provider/session");
+    return listSessions();
+  }
+
+  /**
+   * Grant a site a connection.
+   *
+   * Only ever reached from the popup, by a user who confirmed the origin. A
+   * page cannot cause this: `sep43` refuses an unknown origin and tells the
+   * user to open Pocket, rather than raising a prompt a page could spam.
+   */
+  async connectDapp(origin: string): Promise<{ origin: string; connectedAt: number }> {
+    const { address } = requireSession();
+    const { connect } = await import("./provider/session");
+    return connect(origin, address);
+  }
+
+  async disconnectDapp(origin: string): Promise<void> {
+    requireSession();
+    const { disconnect } = await import("./provider/session");
+    await disconnect(origin);
+  }
+
+  /**
+   * Answer a SEP-43 call from a page.
+   *
+   * The rules, in order of how much they matter:
+   *   1. A locked wallet reveals nothing and signs nothing.
+   *   2. `getAddress` requires a live session for that exact origin, or it
+   *      raises a connection prompt. Nothing else creates a session.
+   *   3. Every signature is approved individually. A session never authorises
+   *      one, because an approval the user cannot see is a blind signature.
+   *   4. The private pocket is unreachable from here. The allowlist is empty
+   *      by default and confidential methods are refused by name, because a
+   *      denylist would fail open the moment a method is added.
+   */
+  async sep43(origin: string, method: string, params: unknown[]): Promise<unknown> {
+    const { ERROR, err, CONFIDENTIAL_METHODS } = await import("./provider/sep43");
+    const sessions = await import("./provider/session");
+
+    if (method === "getNetwork") {
+      // Public information about the wallet, not about the user. Safe while
+      // locked and without a session: it tells a dapp whether to bother.
+      return {
+        network: this.network,
+        networkPassphrase: NETWORKS[this.network].passphrase,
+      };
+    }
+
+    if (!getSession()) return err(ERROR.USER_REJECTED, "Pocket is locked.");
+
+    const live = await sessions.sessionFor(origin);
+    if (!live) {
+      return err(
+        ERROR.USER_REJECTED,
+        "This site is not connected to Pocket. Open Pocket and connect it first.",
+      );
+    }
+
+    switch (method) {
+      case "getAddress":
+        return { address: requireSession().address };
+
+      case "signTransaction":
+      case "signAuthEntry":
+      case "signMessage": {
+        // Deliberately unimplemented rather than silently signing. Signing
+        // needs an approval screen showing exactly what is being signed, and
+        // routing a dapp's bytes through a worker that signs without one is
+        // the single worst thing this wallet could do. Refusing is correct
+        // until that screen exists.
+        void params;
+        void CONFIDENTIAL_METHODS;
+        return err(
+          ERROR.INVALID_REQUEST,
+          "Pocket does not sign for sites yet. It will not sign anything it cannot show you first.",
+        );
+      }
+
+      default:
+        return err(ERROR.INVALID_REQUEST, "Unsupported method.");
+    }
+  }
+
   /** Openings for this (account, deployment). Encrypted at rest under the DEK. */
   private async readOpenings(
     address: string,

@@ -78,6 +78,9 @@ export type WalletRequest =
   | { type: "reset"; password: string }
   | { type: "privatePocket" }
   | { type: "rebuildFromHistory" }
+  | { type: "dappSessions" }
+  | { type: "connectDapp"; origin: string }
+  | { type: "disconnectDapp"; origin: string }
   | { type: "buildPrivateOp"; op: PrivateOpRequest }
   | { type: "confirmPrivateOp"; handle: string }
   | { type: "inFlight" }
@@ -128,6 +131,9 @@ export interface ResponseMap {
   reset: void;
   privatePocket: PrivatePocket;
   rebuildFromHistory: PrivatePocket;
+  dappSessions: { origin: string; connectedAt: number; address: string }[];
+  connectDapp: { origin: string; connectedAt: number };
+  disconnectDapp: void;
   /** `handle` is opaque, exactly as buildPayment's is. */
   buildPrivateOp: { handle: string; summary: PrivateOpSummary };
   confirmPrivateOp: { hash: string; ledger: number; followed?: string };

@@ -26,6 +26,11 @@ export const KEYS = {
    */
   publicAddress: "pocket.address",
   /**
+   * dApp connection grants, keyed by origin. Not secret: a session says a site
+   * may see the address and may ASK to sign, never that it may sign.
+   */
+  dappSessions: "pocket.dapps",
+  /**
    * The auditor id this account registered its OWN key under, per deployment.
    *
    * Allocated by the registry and returned, never chosen, so it has to be

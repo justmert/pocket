@@ -105,6 +105,12 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
       return c.privatePocket();
     case "rebuildFromHistory":
       return c.rebuildFromHistory();
+    case "dappSessions":
+      return c.dappSessions();
+    case "connectDapp":
+      return c.connectDapp(str(msg.origin, "origin"));
+    case "disconnectDapp":
+      return c.disconnectDapp(str(msg.origin, "origin"));
     case "buildPrivateOp":
       return c.buildPrivateOp(opRequest(msg.op));
     case "confirmPrivateOp":
@@ -200,6 +206,7 @@ const SAFE_ERRORS = new Set([
   "MemoTooLongError",
   "RecoveryUnavailableError",
   "RecoveryMismatchError",
+  "OriginRefusedError",
 ]);
 
 /** Messages we author ourselves and vet, matched exactly. */
