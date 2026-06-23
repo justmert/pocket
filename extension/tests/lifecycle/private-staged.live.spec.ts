@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import {
   addressOf,
   fund,
+  fundedStranger,
   killWorker,
   launch,
   ledgerTransactions,
@@ -536,6 +537,47 @@ test("an auditor registration whose outcome is unknown is never resent", async (
     expect(keys, "a submission left unresolved must leave the hash that can resolve it").toContain(
       "pocket.inflight",
     );
+  } finally {
+    await w.close();
+  }
+});
+
+test("a merge is refused while an unrelated transaction is still unresolved", async () => {
+  test.setTimeout(900_000);
+  const { w, page, address } = await fundedWallet();
+  try {
+    await register(page);
+    await expect(page.getByText("SPENDABLE")).toBeVisible({ timeout: 180_000 });
+
+    // A payment, submitted and left unresolved: the poll is blinded so the
+    // worker never learns the outcome, which is the routine MV3 case.
+    const blind = await blindConfirmationPolls(w);
+    blind.on();
+    const built = await send<{ xdr: string }>(page, {
+      type: "buildPayment",
+      to: await fundedStranger(),
+      amount: "1",
+      assetId: "native",
+    });
+    expect(built.ok, JSON.stringify(built)).toBe(true);
+    await send(page, { type: "confirmPayment", handle: built.data!.xdr });
+
+    const record = (await storage(page))["pocket.inflight"] as { hash: string } | undefined;
+    expect(record, "the payment must be on disk as unresolved").toBeTruthy();
+
+    // The outstanding envelope is a PAYMENT. It may still land, and it consumed
+    // a sequence number a merge built now would take as well. A merge folding
+    // the receiving balance twice is harmless; a merge racing a payment for one
+    // sequence number is not, and that is what this guard is for.
+    const merge = await send(page, { type: "buildPrivateOp", op: { kind: "merge" } });
+    blind.off();
+    expect(
+      merge.ok,
+      `a merge must not be built against a sequence an unresolved payment may still ` +
+        `consume. The wallet answered: ${JSON.stringify(merge)}`,
+    ).toBe(false);
+    expect(merge.error).toMatch(/has not resolved yet/);
+    void address;
   } finally {
     await w.close();
   }

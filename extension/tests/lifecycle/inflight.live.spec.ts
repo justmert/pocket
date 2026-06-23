@@ -173,8 +173,13 @@ test("no second payment can be built while an earlier one is unresolved", async 
     expect(r.error).toMatch(/has not resolved yet/);
     expect(r.error).toMatch(/may still land/);
 
-    // And a private operation is refused for the same reason.
-    const p = await send(reopened, { type: "buildPrivateOp", op: { kind: "merge" } });
+    // And a private spend is refused for the same reason. `unshield` rather
+    // than `merge`: merge is now exempt from this guard, which is its own
+    // finding and is tested where a registered pocket makes it meaningful.
+    const p = await send(reopened, {
+      type: "buildPrivateOp",
+      op: { kind: "unshield", amount: "1" },
+    });
     expect(p.ok).toBe(false);
     expect(p.error).toMatch(/has not resolved yet/);
 

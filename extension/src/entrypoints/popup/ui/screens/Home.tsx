@@ -14,7 +14,7 @@ import {
 import { AddressBlock } from "../AddressBlock";
 import { Money } from "../Money";
 import { space, text, type Theme } from "../theme";
-import type { PublicBalance, WalletStatus } from "../../../../core/messages";
+import type { PublicBalance, WalletStatus, YieldPosition } from "../../../../core/messages";
 
 export function Home({
   t,
@@ -32,6 +32,7 @@ export function Home({
   const [balances, setBalances] = useState<PublicBalance[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showReceive, setShowReceive] = useState(false);
+  const [yield_, setYield] = useState<YieldPosition | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -41,6 +42,24 @@ export function Home({
         if (live) setBalances(b);
       } catch (e) {
         if (live) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // Yield is a PUBLIC-pocket fact. Read separately so a yield outage cannot
+  // take the balance down with it.
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        const y = await call({ type: "yieldPosition" });
+        if (live) setYield(y);
+      } catch {
+        // Reported as unavailable rather than as a broken wallet.
+        if (live) setYield({ available: false, reason: "Yield could not be read right now." });
       }
     })();
     return () => {
@@ -114,6 +133,26 @@ export function Home({
           <div style={{ marginTop: space.gutter }}>
             <Label t={t}>Your address</Label>
             <AddressBlock address={status.address} t={t} />
+          </div>
+        )}
+
+        {yield_ && (
+          <div style={{ marginTop: 26 }}>
+            <div style={{ ...text.caption, color: t.faint, marginBottom: 8 }}>YIELD</div>
+            {yield_.available ? (
+              <>
+                <div style={{ ...text.body, color: t.text }}>
+                  {yield_.balance} shares at {yield_.apy}
+                </div>
+                <Notice t={t}>
+                  Yield is public-pocket only. A confidential balance is a commitment, which can
+                  be added and subtracted and nothing else, so a vault cannot compute a share
+                  price over one.
+                </Notice>
+              </>
+            ) : (
+              <Notice t={t}>{yield_.reason}</Notice>
+            )}
           </div>
         )}
 
