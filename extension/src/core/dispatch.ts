@@ -133,7 +133,8 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
 }
 
 export function isAllowedWhileLocked(type: string): boolean {
-  return ALLOWED_WHILE_LOCKED.has(type);
+  void type;
+  return false;
 }
 
 /** Types that represent real user activity, and so should postpone the idle lock. */

@@ -5,6 +5,7 @@
 // parsed back to bigint stroops on arrival. Never floats.
 import type { NetworkId } from "./config";
 import type { SubmitOutcome } from "./chain/submit";
+import type { TxSummary } from "./provider/describe-tx";
 
 export interface PublicBalance {
   id: string;
@@ -81,6 +82,9 @@ export type WalletRequest =
   | { type: "dappSessions" }
   | { type: "connectDapp"; origin: string }
   | { type: "disconnectDapp"; origin: string }
+  | { type: "yieldPosition" }
+  | { type: "pendingDappRequest" }
+  | { type: "resolveDappRequest"; id: string; approved: boolean }
   | { type: "buildPrivateOp"; op: PrivateOpRequest }
   | { type: "confirmPrivateOp"; handle: string }
   | { type: "inFlight" }
@@ -134,6 +138,9 @@ export interface ResponseMap {
   dappSessions: { origin: string; connectedAt: number; address: string }[];
   connectDapp: { origin: string; connectedAt: number };
   disconnectDapp: void;
+  yieldPosition: YieldPosition;
+  pendingDappRequest: { id: string; origin: string; summary: TxSummary } | null;
+  resolveDappRequest: void;
   /** `handle` is opaque, exactly as buildPayment's is. */
   buildPrivateOp: { handle: string; summary: PrivateOpSummary };
   confirmPrivateOp: { hash: string; ledger: number; followed?: string };
@@ -149,6 +156,16 @@ export interface ResponseMap {
  * `decoded: false` means we could not determine what this does, and the UI must
  * default to refuse rather than render a raw blob next to an Approve button.
  */
+/** What the public pocket can say about yield, including that there is none. */
+export interface YieldPosition {
+  available: boolean;
+  reason?: string;
+  vault?: string;
+  apy?: string;
+  balance?: string;
+  underlying?: string;
+}
+
 export interface TransferSummary {
   decoded: boolean;
   /** Full recipient address. Never truncated at a confirm step. */

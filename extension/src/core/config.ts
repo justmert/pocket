@@ -51,6 +51,14 @@ export interface NetworkConfig {
    * says so rather than guessing.
    */
   archiveUrl?: string;
+  /**
+   * Yield, which lives in the PUBLIC pocket only.
+   *
+   * Absent means the wallet says so plainly rather than showing an empty
+   * position, because "no vault configured" and "you have nothing deposited"
+   * are different facts and only one of them is about the user.
+   */
+  defindex?: { baseUrl: string; vault?: string; apiKey?: string };
 }
 
 export const NETWORKS: Record<NetworkId, NetworkConfig> = {
@@ -70,6 +78,13 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
     // sync rather than falling back when it cannot reach one, because falling
     // back moves the cursor past a gap and loses openings permanently.
     archiveUrl: "http://127.0.0.1:8787",
+    // The API key is supplied at build time, never committed. Without it the
+    // wallet reports yield as unconfigured instead of failing at a fetch.
+    defindex: {
+      baseUrl: "https://api.defindex.io",
+      apiKey: import.meta.env.VITE_DEFINDEX_API_KEY,
+      vault: import.meta.env.VITE_DEFINDEX_VAULT,
+    },
     confidential: [
       {
         token: "CDMXZEFOM5DN2GSHQKNOOW242RJZGCEM5LOOAPGRQE35GGHB7ALDK2Y6",
