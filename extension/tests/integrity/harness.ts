@@ -130,6 +130,38 @@ export async function tryAsk<T>(
 }
 
 /**
+ * Send a request WITHOUT waiting for it, parking the promise on the page.
+ *
+ * Every interleaving test needs this: the second actor has to start work while
+ * the first is still inside a call, which is impossible if the test itself is
+ * blocked awaiting that call. `collect` picks the answer up afterwards.
+ */
+export async function fire(page: Page, slot: string, msg: unknown): Promise<void> {
+  await page.evaluate(
+    ([s, m]) => {
+      const w = window as unknown as Record<string, unknown>;
+      w[s as string] = new Promise((res) => {
+        chrome.runtime.sendMessage(m, (r) => {
+          const err = chrome.runtime.lastError;
+          res(r ?? { lost: err?.message ?? "no response" });
+        });
+      });
+    },
+    [slot, msg] as [string, unknown],
+  );
+}
+
+export async function collect<T>(
+  page: Page,
+  slot: string,
+): Promise<{ ok?: boolean; data?: T; error?: string; lost?: string }> {
+  return page.evaluate(
+    (s) => (window as unknown as Record<string, Promise<unknown>>)[s],
+    slot,
+  ) as Promise<{ ok?: boolean; data?: T; error?: string; lost?: string }>;
+}
+
+/**
  * Confirm the eviction actually happened.
  *
  * An unlocked wallet holds its session in the worker's heap and nowhere else,

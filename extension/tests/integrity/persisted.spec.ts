@@ -169,10 +169,34 @@ test("a fresh wallet stores nothing unfinished, and locking writes nothing", asy
     "no private operation ran, so there are no openings to hold",
   ).toEqual([]);
 
+  // Watch for writes rather than sampling for them.
+  //
+  // The first version of this compared a storage snapshot before and after the
+  // lock, and a mutation that made `lock()` write survived it: the write was
+  // fire-and-forget, so the snapshot raced it and usually won. `onChanged`
+  // fires whenever the store is touched by anyone, so a late write is still
+  // observed. That is the difference between an assertion and a coin flip.
+  await harness.popup.evaluate(() => {
+    const w = window as unknown as { t10writes: string[] };
+    w.t10writes = [];
+    chrome.storage.local.onChanged.addListener((changes) => {
+      w.t10writes.push(...Object.keys(changes));
+    });
+  });
+
   const before = JSON.stringify(await storage(harness.popup), keys);
   await wallet.lock();
-  const after = JSON.stringify(await storage(harness.popup), keys);
-  expect(after, "locking is a memory operation, not a disk one").toBe(before);
+  // Two more awaited round trips, so anything the lock scheduled has had a
+  // whole unlock and a second lock to land in.
+  await wallet.unlock(PASSWORD);
+  await wallet.waitForHome();
+  await wallet.lock();
+
+  const writes = await harness.popup.evaluate(
+    () => (window as unknown as { t10writes: string[] }).t10writes,
+  );
+  expect(writes, "locking and unlocking are memory operations, not disk ones").toEqual([]);
+  expect(JSON.stringify(await storage(harness.popup), keys)).toBe(before);
 
   // And the lock really dropped the session rather than only re-rendering.
   const status = await ask<{ locked: boolean }>(harness.popup, { type: "status" });
