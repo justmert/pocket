@@ -109,6 +109,12 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
       return c.dappSessions();
     case "connectDapp":
       return c.connectDapp(str(msg.origin, "origin"));
+    case "yieldPosition":
+      return c.yieldPosition();
+    case "pendingDappRequest":
+      return c.pendingDappRequest();
+    case "resolveDappRequest":
+      return c.resolveDappRequest(str(msg.id, "id"), msg.approved === true);
     case "disconnectDapp":
       return c.disconnectDapp(str(msg.origin, "origin"));
     case "buildPrivateOp":
@@ -133,8 +139,7 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
 }
 
 export function isAllowedWhileLocked(type: string): boolean {
-  void type;
-  return false;
+  return ALLOWED_WHILE_LOCKED.has(type);
 }
 
 /** Types that represent real user activity, and so should postpone the idle lock. */

@@ -36,7 +36,8 @@ import { balancesOf, verifyAgainstChain, applyMerge, credit, ZERO_OPENING } from
 import type { Opening, ConfidentialAccount } from "./witness/types";
 import type { Point } from "./crypto/grumpkin";
 import type { OpContext } from "./confidential-ops";
-import type { PrivateOpRequest, PrivateOpSummary } from "./messages";
+import type { TxSummary as DappTxSummary } from "./provider/describe-tx";
+import type { PrivateOpRequest, PrivateOpSummary, YieldPosition } from "./messages";
 import { deriveEd25519 } from "./keys/sep5";
 
 /** 0.5 XLM. A network parameter, currently identical on testnet and mainnet. */
@@ -501,6 +502,88 @@ export class WalletController {
       this.lastInboundFailure = null;
       return this.privatePocket();
     });
+  }
+
+  /**
+   * The yield vault's state, or a plain reason there is none.
+   *
+   * Yield lives in the PUBLIC pocket and structurally cannot move to the
+   * private one: a Pedersen commitment is additively homomorphic and nothing
+   * more, so a vault cannot compute a share price over one.
+   */
+  async yieldPosition(): Promise<YieldPosition> {
+    const { address } = requireSession();
+    const cfg = NETWORKS[this.network].defindex;
+    if (!cfg?.vault || !cfg.apiKey) {
+      return {
+        available: false,
+        reason:
+          "Yield is not configured for this network. Nothing is at risk; there is simply no " +
+          "vault to deposit into.",
+      };
+    }
+    const { DefindexClient, describeApy } = await import("./integrations/defindex");
+    const client = new DefindexClient({
+      baseUrl: cfg.baseUrl,
+      apiKey: cfg.apiKey,
+      network: this.network,
+    });
+    // A failure in either read is reported, never rendered as a zero: a
+    // fabricated yield figure is exactly as bad as a fabricated balance.
+    const [vault, position] = await Promise.all([
+      client.vault(cfg.vault),
+      client.position(cfg.vault, address),
+    ]);
+    return {
+      available: true,
+      vault: cfg.vault,
+      apy: describeApy(vault.apy, 7),
+      // The API reports SHARES, not underlying. Calling it a balance would
+      // invite a user to read it as XLM, which it is not.
+      balance: position.shares,
+      underlying: vault.assets?.[0]?.symbol ?? "XLM",
+    };
+  }
+
+  /** dApp approvals waiting on the user, keyed by an id the popup returns. */
+  private dappPending = new Map<
+    string,
+    { origin: string; summary: DappTxSummary; resolve: (approved: boolean) => void }
+  >();
+
+  /**
+   * Park a signing request until the user answers it in the popup.
+   *
+   * The worker never decides this. It holds the request, opens the popup and
+   * waits. A timeout resolves to REFUSED, never approved: a user who walked
+   * away has not consented.
+   */
+  private awaitDappApproval(origin: string, summary: DappTxSummary): Promise<boolean> {
+    const id = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    return new Promise((resolve) => {
+      const done = (approved: boolean) => {
+        this.dappPending.delete(id);
+        resolve(approved);
+      };
+      this.dappPending.set(id, { origin, summary, resolve: done });
+      void chrome.action?.openPopup?.().catch(() => undefined);
+      setTimeout(() => {
+        if (this.dappPending.has(id)) done(false);
+      }, 280_000);
+    });
+  }
+
+  /** What the popup should be asking about, if anything. */
+  pendingDappRequest(): { id: string; origin: string; summary: DappTxSummary } | null {
+    const first = [...this.dappPending.entries()][0];
+    if (!first) return null;
+    return { id: first[0], origin: first[1].origin, summary: first[1].summary };
+  }
+
+  /** The user's answer. Anything other than an explicit yes is a refusal. */
+  resolveDappRequest(id: string, approved: boolean): void {
+    requireSession();
+    this.dappPending.get(id)?.resolve(approved);
   }
 
   /** Sites connected to this wallet, most recent first. */
