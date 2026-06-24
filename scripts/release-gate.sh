@@ -220,7 +220,13 @@ PY
   if grep -rIl 'localhost\|127\.0\.0\.1\|0\.0\.0\.0' "$OUT" >/dev/null 2>&1; then
     bad "the package references a loopback address"; bad_pkg=1
   fi
-  if grep -rIoh 'http://[a-zA-Z0-9._:/-]*' "$OUT" 2>/dev/null \
+  # An ENDPOINT, not any occurrence of the scheme. Three things legitimately
+  # contain "http://" and none of them is ever fetched: XML/schema namespace
+  # URIs, which are identifiers; and the content script's `http://*/*` match
+  # pattern, which is a permission the dApp provider needs in order to be
+  # injected into ordinary pages at all. Requiring a host character after the
+  # slashes is what separates a real endpoint from those.
+  if grep -rIoh 'http://[a-zA-Z0-9._-]\+' "$OUT" 2>/dev/null \
      | grep -v 'w3\.org\|json-schema\.org' | grep -q .; then
     bad "the package contains a plaintext http:// endpoint"; bad_pkg=1
   fi

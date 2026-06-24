@@ -74,10 +74,11 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
     // would mean implementing five known audit findings including a register
     // replay. Ours carry the VKs from OpenZeppelin's post-audit branch, whose
     // hashes are recorded in resources/deployment-testnet.json.
-    // Local by default. A hosted archive replaces this; the wallet refuses to
-    // sync rather than falling back when it cannot reach one, because falling
-    // back moves the cursor past a gap and loses openings permanently.
-    archiveUrl: "http://127.0.0.1:8787",
+    // Supplied at build time, never hardcoded: a loopback address baked into
+    // a shipped package points every user at their own machine, where nothing
+    // is listening, and the release gate refuses it for exactly that reason.
+    // Absent, the wallet says recovery is unavailable rather than pretending.
+    archiveUrl: import.meta.env.VITE_ARCHIVE_URL,
     // The API key is supplied at build time, never committed. Without it the
     // wallet reports yield as unconfigured instead of failing at a fetch.
     defindex: {
