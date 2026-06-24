@@ -14,17 +14,19 @@ tool and we would rather say so than let you find out later.
 | Holds | ordinary XLM and USDC | the same assets inside a confidential wrapper |
 | Who sees amounts | everyone | you, your bound auditor, and anyone you disclose to |
 | Who sees addresses | everyone | **everyone, unchanged** |
-| Earns yield | **not in this build** (DeFindex) | no, and this is structural |
-| Bridges | **not in this build** (Circle CCTP) | no, unshield first |
-| Connects to dApps | **not in this build** (SEP-43) | no, sessions are public-pocket only |
+| Earns yield | yes, reported (DeFindex) | no, and this is structural |
+| Bridges | yes (Circle CCTP) | no, unshield first |
+| Connects to dApps | yes (SEP-43) | no, sessions are public-pocket only |
 
-**On those three rows.** The client code for DeFindex, Circle CCTP and SEP-43
-exists, is typed and is unit-tested, but **nothing in the extension calls it**:
-there is no screen, no button and no message type behind any of them. You cannot
-earn yield, bridge, or connect a dapp with this build. The rows say where each
-one WILL live, because the reason is structural and worth stating, but shipping
-them as "yes" would describe a product that does not exist. See
-`resources/status.md` for the same distinction applied to everything else.
+**What "connects to dApps" means here, precisely.** A site can discover the
+wallet, ask the network, and ask for the address. A connection is granted per
+ORIGIN by the user, expires in 24 hours, is dropped when the wallet locks or is
+erased, and is refused if the wallet on the device changed since the grant.
+Signing is never covered by a connection: every signature is approved
+individually on a screen that lists what the transaction does, and a
+transaction Pocket cannot decode is refused rather than shown as a hash to
+trust. `signAuthEntry` and `signMessage` are still refused outright, because
+there is no screen that can show a user what those commit them to.
 
 The split itself is not a product preference. Confidential balances are Pedersen
 commitments, which are additively homomorphic and nothing more. You can add and
@@ -109,7 +111,10 @@ node deploy.mjs                            # writes resources/deployment-<net>.j
 cd indexer && npm test
 CONTRACT_ID=C... node --experimental-strip-types src/backfill.ts
 
-./scripts/release-gate.sh                  # the five gates
+DB_PATH=archive.db CONTRACT_ID=C... node --experimental-strip-types indexer/src/backfill.ts
+DB_PATH=archive.db PORT=8787 node --experimental-strip-types indexer/src/server.ts
+
+./scripts/release-gate.sh                  # the six gates
 ```
 
 The proving toolchain is pinned to **nargo 1.0.0-beta.11 + bb 0.87.0**. That is
@@ -127,9 +132,16 @@ RPC retains events for 120,960 ledgers, about seven days. Past that, without a
 durable archive, a user who loses local state can see their funds on chain and
 **cannot spend them, ever**.
 
-That is why `indexer/` exists and why the wallet refuses to sync when an archive
-it was told about is unavailable. Falling back to recent-history-only would move
-the sync cursor past the gap and make those openings unrecoverable.
+That is why `indexer/` exists, and it is wired: the private pocket shows a
+**Rebuild from history** button that replays your events from the archive and
+refuses the result unless it reproduces the commitments the contract holds. So a
+broken or hostile archive cannot hand you a wrong balance; it can only fail to
+help. Recent transfers, inside the RPC window, are credited without any archive
+at all.
+
+The wallet refuses to sync when an archive it was told about is unavailable.
+Falling back to recent-history-only would move the sync cursor past the gap and
+make those openings unrecoverable.
 
 ## Licence
 
