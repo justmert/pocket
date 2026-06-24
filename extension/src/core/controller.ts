@@ -1107,6 +1107,12 @@ export class WalletController {
    * consume. Once the first envelope's time bounds have passed it can never be
    * included, and building again is safe.
    */
+  /** True when the transaction we are waiting on is itself a merge. */
+  private async unresolvedIsMerge(): Promise<boolean> {
+    const e = await readLocal<{ kind?: string }>(KEYS.inFlight);
+    return e?.kind === "merge";
+  }
+
   private async assertNothingUnresolved(): Promise<void> {
     const e = await this.inFlight();
     if (!e || e.expired) return;
@@ -1173,7 +1179,14 @@ export class WalletController {
     // land, the later one folds nothing and the result is identical. The guard
     // exists to stop a SECOND spend racing a first, and a merge spends
     // nothing.
-    if (req.kind !== "merge") await this.assertNothingUnresolved();
+    // A merge is exempt ONLY when the thing left unresolved is itself a merge,
+    // which is the shield-recovery case this exemption was added for. Exempting
+    // every merge answers the wrong risk: the guard exists because a second
+    // submission consumes the sequence number the first was built against, and
+    // a merge consumes one like anything else.
+    if (req.kind !== "merge" || !(await this.unresolvedIsMerge())) {
+      await this.assertNothingUnresolved();
+    }
     const cfg = this.confidentialConfig();
     // Trap 14: refuse to prove against a deployment whose verification key is
     // not the one this build proves against. A mismatch otherwise surfaces as
@@ -1191,8 +1204,10 @@ export class WalletController {
         // ensures a key of ours is registered and returns the id it got.
         const auditorId = await this.ownAuditorId(ctx, cfg);
         const { tx, openings } = await ops.buildRegister(ctx, auditorId);
-        return this.stagePrivate(tx, {
-          kind: "register",
+        return this.stagePrivate(
+          tx,
+          {
+            kind: "register",
           effects: [
             "Create a confidential account for this address",
             "Bind your OWN auditor key, derived from your recovery phrase. " +
@@ -1230,8 +1245,10 @@ export class WalletController {
         // the receiving side would produce a post-state nothing can verify, and
         // the resolution below is computed from storage when the merge lands.
         await this.requireOpenings(address, cfg.token);
-        return this.stagePrivate(tx, {
-          kind: "merge",
+        return this.stagePrivate(
+          tx,
+          {
+            kind: "merge",
           effects: [
             "Fold everything you have received into your spendable balance",
             "Amounts stay hidden. This proves nothing and reveals nothing",
@@ -1266,8 +1283,10 @@ export class WalletController {
           spendable: stored.spendable,
           onChainSpendable: mine.spendableCommitment,
         });
-        return this.stagePrivate(tx, {
-          kind: "transfer",
+        return this.stagePrivate(
+          tx,
+          {
+            kind: "transfer",
           to: to.value,
           amount: formatAmount(amount),
           effects: [
@@ -1307,8 +1326,10 @@ export class WalletController {
           auditorKey: await this.auditorKeyFor(chain.auditorId, cfg),
           destination: address,
         });
-        return this.stagePrivate(tx, {
-          kind: "unshield",
+        return this.stagePrivate(
+          tx,
+          {
+            kind: "unshield",
           amount: formatAmount(amount),
           effects: [
             `Move ${formatAmount(amount)} XLM from the private pocket back to the public one`,
@@ -1398,7 +1419,12 @@ export class WalletController {
     after: StagedAfter,
   ): { handle: string; summary: PrivateOpSummary } {
     const handle = tx.hash().toString("hex");
-    this.pending.set(handle, { xdr: tx.toXDR(), at: Date.now(), private: after });
+    this.pending.set(handle, {
+      xdr: tx.toXDR(),
+      at: Date.now(),
+      private: after,
+      kind: summary.kind,
+    });
     this.prunePending();
     return { handle, summary: { ...summary, fee: formatAmount(BigInt(tx.fee)) } };
   }
@@ -1434,7 +1460,9 @@ export class WalletController {
       throw new Error("refusing to sign a transaction from a different source account");
     }
 
-    const outcome = await this.submitStaged(decoded, entry.private.resolve);
+    // The summary already names the operation, so the kind is taken from there
+    // rather than duplicated onto the staged record where the two could drift.
+    const outcome = await this.submitStaged(decoded, entry.private.resolve, entry.kind);
     if (outcome.kind !== "succeeded") throw new SubmitOutcomeError(describeOutcome(outcome), outcome);
 
     if (!entry.private.follow) return { hash: outcome.hash, ledger: outcome.ledger };
@@ -1448,7 +1476,7 @@ export class WalletController {
     const ops = await import("./confidential-ops");
     const ctx = await this.opContext();
     const mergeTx = await ops.buildMerge(ctx);
-    const second = await this.submitStaged(mergeTx, { kind: "merge" });
+    const second = await this.submitStaged(mergeTx, { kind: "merge" }, "merge");
     if (second.kind !== "succeeded") {
       const deposited =
         entry.private.resolve.kind === "credit" ? formatAmount(BigInt(entry.private.resolve.amount)) : null;
@@ -1475,8 +1503,9 @@ export class WalletController {
   private async submitStaged(
     tx: Transaction,
     resolve: StagedResolution | null,
+    kind?: string,
   ): Promise<SubmitOutcome> {
-    const outcome = await this.signAndSubmit(tx, resolve);
+    const outcome = await this.signAndSubmit(tx, resolve, kind);
     if (outcome.kind === "succeeded") await this.applyStaged(outcome.hash);
     else if (outcome.kind !== "pending") await this.discardStaged(outcome.hash);
     return outcome;
@@ -1485,6 +1514,7 @@ export class WalletController {
   private async signAndSubmit(
     tx: Transaction,
     resolve: StagedResolution | null = null,
+    kind?: string,
   ): Promise<SubmitOutcome> {
     // A Soroban invocation needs its footprint and auth entries populated, and
     // simulation is the only thing that can do it. Signing before this would
@@ -1506,7 +1536,10 @@ export class WalletController {
 
     return submitAndConfirm(this.server(), prepared, {
       inFlight: {
-        record: (e) => writeLocal(KEYS.inFlight, e),
+        // The KIND travels with the record so a stranded merge can be told
+        // from a stranded payment. Without it the merge exemption would have
+        // to trust its caller rather than check.
+        record: (e) => writeLocal(KEYS.inFlight, kind ? { ...e, kind } : e),
         // Only ever clear our own. Without the check, a keep-alive resolving
         // beside a payment erases the payment's record, and the unfinished
         // transaction screen never appears for the one that matters.
@@ -1617,8 +1650,20 @@ export class WalletController {
     // the same ledger entry and Soroban fails the loser rather than serialising
     // it. A failed register writes nothing, so retrying is safe and cannot
     // orphan a key: the id is persisted only after success.
+    // Retry ONLY outcomes known to have consumed nothing. `pending` is not one
+    // of them: it means "we do not know, it may still land", and
+    // `describeOutcome` says so in those words. Resending it is the exact
+    // double-spend the in-flight machinery exists to prevent, and it is not
+    // exotic under MV3 -- an RPC that stops answering getTransaction inside the
+    // 15-second poll produces it. Measured on testnet before this guard: four
+    // registrations landed, four registry ids allocated, ZERO recorded (the id
+    // is read from the invocation result and a pending outcome carries none),
+    // 0.0192 XLM spent, and the user told "Nothing was bound". Each resend also
+    // overwrote `pocket.inflight`, so three of the four hashes were off disk
+    // permanently and nothing could ever reconcile them.
+    const CONSUMED_NOTHING = new Set(["failed", "rejected", "notAccepted", "expired"]);
     let outcome = await this.signAndSubmit(await ops.buildRegisterAuditor(ctx));
-    for (let attempt = 1; attempt < 4 && outcome.kind !== "succeeded"; attempt++) {
+    for (let attempt = 1; attempt < 4 && CONSUMED_NOTHING.has(outcome.kind); attempt++) {
       outcome = await this.signAndSubmit(await ops.buildRegisterAuditor(ctx));
     }
     if (outcome.kind !== "succeeded") {
@@ -1755,7 +1800,10 @@ export class WalletController {
   }
 
   /** Envelopes this controller built, awaiting confirmation. Keyed by tx hash. */
-  private pending = new Map<string, { xdr: string; at: number; private?: StagedAfter }>();
+  private pending = new Map<
+    string,
+    { xdr: string; at: number; private?: StagedAfter; kind?: string }
+  >();
   private static readonly PENDING_TTL_MS = 10 * 60_000;
 
   private prunePending(): void {
@@ -1808,7 +1856,10 @@ export class WalletController {
     inner.sign(this.keypair());
     const outcome = await submitAndConfirm(this.server(), inner, {
       inFlight: {
-        record: (e) => writeLocal(KEYS.inFlight, e),
+        // The KIND travels with the record. Without it nothing downstream can
+        // tell a stranded merge from a stranded payment, and the merge
+        // exemption would have to trust every caller instead of checking.
+        record: (e) => writeLocal(KEYS.inFlight, { ...e, kind: "payment" }),
         clear: () => removeLocal(KEYS.inFlight),
       },
     });

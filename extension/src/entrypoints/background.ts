@@ -4,7 +4,7 @@
 import "../lib/polyfill"; // must run before any stellar-sdk import
 import { WalletController } from "../core/controller";
 import { dispatch, describeError, isAllowedWhileLocked, isUserActivity } from "../core/dispatch";
-import { isUnlocked, clearSession } from "../core/session";
+import { isUnlocked } from "../core/session";
 import type { WalletRequest, WalletResponse } from "../core/messages";
 
 const AUTO_LOCK_ALARM = "pocket.autolock";
@@ -99,7 +99,13 @@ export default defineBackground(() => {
         armAutoLock(1);
         return;
       }
-      clearSession();
+      // Go through the controller, not straight to `clearSession`. Locking is
+      // more than dropping keys: it also drops dApp grants, so a site that can
+      // read the address does not keep doing so. Calling the session module
+      // directly did the smaller half, which meant the AUTOMATIC lock cleaned
+      // up less than the manual one, in exactly the case the automatic lock
+      // exists for: the user has walked away from the machine.
+      controller.lock();
     }
     if (alarm.name === KEEP_ALIVE_ALARM) void keepAlive();
   });

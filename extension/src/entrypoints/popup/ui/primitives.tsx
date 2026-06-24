@@ -179,7 +179,12 @@ export function Field({
     // least as big as what it reads back to you.
     fontSize: fontSizes.body,
     fontWeight: 500,
-    outline: "none",
+    // NOT `outline: none`. An inline style beats any stylesheet rule that is
+    // not `!important`, so setting it here silently overrode the focus ring
+    // the stylesheet defines, and every text field in the wallet focused with
+    // no visible indicator, keyboard and pointer alike. On Send that is three
+    // fields in a column and no way to tell which one you are typing into.
+    // WCAG 2.4.7. The stylesheet owns focus; this leaves it alone.
     resize: "none",
     boxSizing: "border-box",
   };
