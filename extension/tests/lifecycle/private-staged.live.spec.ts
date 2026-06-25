@@ -19,6 +19,19 @@ import {
   type Wallet,
 } from "./harness";
 
+// Not parallel WITHIN this file, and not for an ordering reason: every test here
+// builds its own wallet and reads nothing another wrote. Proving is CPU-bound and
+// multithreaded, and three of these at once turned a 15-second register into four
+// minutes. `default` rather than `serial` on purpose: serial would SKIP the rest
+// of the file after one failure, which would hide findings.
+//
+// It also keeps this file's auditor registrations from bursting at the shared
+// registry counter all at once. That is a real effect but a partial fix: other
+// FILES still run beside this one, so it does not make the registry contention
+// go away, it only stops this file adding to it. The burst is a symptom of F0;
+// once the retry predicate lands, this file submits one registration per test.
+test.describe.configure({ mode: "default" });
+
 // The most expensive window in the wallet.
 //
 // Openings are the ONLY thing that makes an on-chain commitment spendable, and

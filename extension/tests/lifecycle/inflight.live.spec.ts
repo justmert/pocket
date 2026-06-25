@@ -73,8 +73,8 @@ test("a payment records its hash before submitting and clears it on success", as
     // The ledger's version of events.
     const paid = (await ledgerPayments(address)).filter((p) => p.to === to);
     expect(paid, "exactly one payment must exist").toHaveLength(1);
-    expect(paid[0].amount).toBe("5.0000000");
-    expect(paid[0].transaction_hash).toBe(record.hash);
+    expect(paid[0]?.amount).toBe("5.0000000");
+    expect(paid[0]?.transaction_hash).toBe(record.hash);
   } finally {
     await w.close();
   }
@@ -140,7 +140,7 @@ test("the worker dying mid-poll leaves the hash on disk and the wallet never res
     // The thing this whole mechanism exists for.
     const paid = (await ledgerPayments(address)).filter((p) => p.to === to);
     expect(paid, "the interrupted payment must not have been sent twice").toHaveLength(1);
-    expect(paid[0].transaction_hash).toBe(hash);
+    expect(paid[0]?.transaction_hash).toBe(hash);
   } finally {
     await w.close();
   }
@@ -216,11 +216,11 @@ test("confirming the same reviewed payment twice at once sends it once", async (
     const refused = replies.filter((r) => !r.ok);
     expect(ok, "exactly one confirmation may succeed").toHaveLength(1);
     expect(refused).toHaveLength(1);
-    expect(refused[0].error).toMatch(/no longer pending confirmation/);
+    expect(refused[0]?.error).toMatch(/no longer pending confirmation/);
 
     const paid = (await ledgerPayments(address)).filter((p) => p.to === to);
     expect(paid, "a double confirm must not pay twice").toHaveLength(1);
-    expect(paid[0].amount).toBe("5.0000000");
+    expect(paid[0]?.amount).toBe("5.0000000");
     expect(await storageKeys(page)).not.toContain("pocket.inflight");
   } finally {
     await w.close();
@@ -325,7 +325,7 @@ test("reloading the popup mid-payment does not send it again", async () => {
 
     const paid = (await ledgerPayments(address)).filter((p) => p.to === to);
     expect(paid, "a refresh must not turn one payment into two").toHaveLength(1);
-    expect(paid[0].transaction_hash).toBe(hash);
+    expect(paid[0]?.transaction_hash).toBe(hash);
     expect(await storageKeys(page)).not.toContain("pocket.inflight");
   } finally {
     await w.close();
