@@ -19,6 +19,14 @@
 //   INPUT - a real click on a real control, timed to the screen it produces.
 //           A page can keep painting a CSS animation off the compositor while
 //           its main thread is wedged, so paint alone is not enough.
+//
+// RUN THIS SLICE AT --workers=1. Not for parallel-safety: every test here owns
+// its own browser, profile and account. Proving is CPU-bound and
+// multi-threaded, and T4 measured three concurrent proofs turning a 15-second
+// register into four minutes. A frame-gap bound measured against that is a
+// measurement of the test runner. A red here from a multi-worker run of the
+// whole tree is contention, not a finding, and should be re-run alone before it
+// is believed.
 import { test, expect } from "../support/fixtures";
 import { WAITS } from "../support/wallet";
 import * as ledger from "../support/testnet";

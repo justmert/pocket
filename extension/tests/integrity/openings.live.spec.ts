@@ -298,6 +298,22 @@ test("money received privately is written to disk, not re-read from an event win
       eventsAsked,
       "a record that already opens the chain needs no event scan at all",
     ).toBe(0);
+
+    // Prove that counter is live before trusting a zero.
+    //
+    // "The wallet made no event calls" and "the interception was never wired
+    // up" are the same observation, and one of them means the assertion above
+    // cannot fail. So ask for events deliberately and check it is counted.
+    await second.popup.evaluate(
+      (url) =>
+        fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getEvents", params: {} }),
+        }).then(() => undefined),
+      `https://${RPC_HOST}`,
+    );
+    expect(eventsAsked, "the getEvents stub must actually be intercepting").toBe(1);
     await restore(second.context, RPC_HOST);
 
     // ------------------------------------------------------ make it spendable

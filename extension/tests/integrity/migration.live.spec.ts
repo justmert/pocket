@@ -63,8 +63,18 @@ test("openings written by a previous version still open the balance the contract
     await w.waitForHome(WAITS.ledgerRead);
     await w.openPrivatePocket();
     await w.registerPrivatePocket();
-    await w.openOp("Move in");
-    await w.submitOp({ amount: "25" });
+    console.log("  7076c5a registered the private pocket");
+
+    // The old build's own labels, not the page object's.
+    //
+    // `Wallet.submitOp` fills "Amount (XLM)"; at 7076c5a the field is labelled
+    // "Amount". A page object written against the current UI silently waits
+    // twenty minutes on a locator that will never exist, which is exactly the
+    // failure mode a migration spec has to be immune to: the previous version
+    // is a different product and has to be driven as one.
+    await page.getByRole("button", { name: "Move in", exact: true }).click();
+    await page.getByLabel(/^Amount( \(XLM\))?$/).fill("25");
+    await page.getByRole("button", { name: "Review" }).click();
     await w.approve();
     await expect(page.getByText(/Made spendable in a second transaction/)).toBeVisible({
       timeout: WAITS.submission,
