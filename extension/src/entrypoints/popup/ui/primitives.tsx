@@ -80,7 +80,9 @@ export function Button({
   const variants: Record<string, CSSProperties> = {
     primary: { background: t.accent, color: t.onAccent },
     quiet: { background: t.field, color: t.text, borderColor: t.line },
-    danger: { background: t.danger, color: "#FFFFFF" },
+    // Not hardcoded white. On the dark theme's danger fill that is 2.92:1, and
+    // this variant is the button that erases the wallet.
+    danger: { background: t.danger, color: t.onDanger },
   };
   // Disabled is its own state, not the enabled state at 45% opacity: fading
   // the accent left dark ink on pale yellow, which fails contrast at the exact

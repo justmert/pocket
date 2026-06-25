@@ -41,6 +41,8 @@ export interface Theme {
   exposed: string;
   exposedBg: string;
   danger: string;
+  /** Text drawn ON `danger`. White fails it; see the theme for the numbers. */
+  onDanger: string;
   /** Tint behind a refusal or a destructive warning. */
   dangerBg: string;
   positive: string;
@@ -58,14 +60,25 @@ export function theme(scheme: Scheme): Theme {
     surface: dark ? "#1D1F26" : "#FFFFFF",
     text: dark ? "#F2F1EE" : "#14151A",
     sub: dark ? "#A9A7A1" : "#5B5852",
-    faint: dark ? "#75736E" : "#8E8B85",
+    // Measured, not chosen by eye. The previous pair sat at 3.26:1 (light)
+    // and 3.85:1 (dark) against their own backgrounds, under the 4.5:1 that
+    // WCAG 1.4.3 requires for body text. `faint` carries section labels, the
+    // reserve line, and the ORDINALS on the recovery phrase, and those numbers
+    // carry the word order, so they are not decoration.
+    faint: dark ? "#8A8781" : "#6F6C66",
     line: dark ? "#2A2D36" : "#E8E6E1",
     field: dark ? "rgba(255,255,255,0.05)" : "#F4F3F0",
     sealed: dark ? "rgba(184,173,232,0.14)" : "rgba(94,80,158,0.10)",
     sealedText: dark ? "#CFC7F0" : "#4A3F7A",
-    exposed: dark ? "#E8A33D" : "#A05E00",
+    // 4.31:1 on its own wash before, which is the warning tone failing the
+    // check on the surface it is always drawn against.
+    exposed: dark ? "#F0B45C" : "#8A5000",
     exposedBg: dark ? "rgba(232,163,61,0.14)" : "rgba(160,94,0,0.10)",
     danger: dark ? "#E8756B" : "#B3261E",
+    // White on the dark danger colour is 2.92:1, and it is the label on the
+    // button that ERASES THE WALLET. Near-black on the same fill is 6.24:1.
+    // The light theme's deeper red carries white at 7.4:1 and keeps it.
+    onDanger: dark ? "#14151A" : "#FFFFFF",
     dangerBg: dark ? "rgba(232,117,107,0.14)" : "rgba(179,38,30,0.10)",
     positive: dark ? "#6FCF97" : "#1B7F3B",
     positiveBg: dark ? "rgba(111,207,151,0.14)" : "rgba(27,127,59,0.10)",
