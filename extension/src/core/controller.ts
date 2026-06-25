@@ -1479,7 +1479,13 @@ export class WalletController {
    * indistinguishable from a lost one later, and both make funds unspendable.
    */
   async confirmPrivateOp(handle: string): Promise<{ hash: string; ledger: number; followed?: string }> {
-    return this.exclusive(() => this.doConfirmPrivateOp(handle));
+    return this.exclusive(async () => {
+      try {
+        return await this.doConfirmPrivateOp(handle);
+      } finally {
+        this.setPhase(null);
+      }
+    });
   }
 
   private async doConfirmPrivateOp(
@@ -1517,7 +1523,11 @@ export class WalletController {
     const ops = await import("./confidential-ops");
     const ctx = await this.opContext();
     const mergeTx = await ops.buildMerge(ctx);
-    const second = await this.submitStaged(mergeTx, { kind: "merge" }, "merge");
+      // A shield is TWO transactions, each with its own confirmation poll. The
+      // user learned about the second one afterwards, in the receipt. Name it
+      // while it is happening instead.
+      this.setPhase("Deposit confirmed. Making it spendable, one more transaction…");
+      const second = await this.submitStaged(mergeTx, { kind: "merge" }, "merge");
     if (second.kind !== "succeeded") {
       const deposited =
         entry.private.resolve.kind === "credit" ? formatAmount(BigInt(entry.private.resolve.amount)) : null;
