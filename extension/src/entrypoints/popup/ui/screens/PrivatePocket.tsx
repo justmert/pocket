@@ -66,6 +66,22 @@ export function PrivatePocket({ t, onBack }: { t: Theme; onBack: () => void }) {
 
   // Proving happens in the offscreen document and takes a few hundred
   // milliseconds, so the wait is named rather than left as a bare spinner.
+  // While a long operation runs, ask the worker what it is actually doing.
+  // The phases are real and it is the only context that knows them; the
+  // alternative is one unchanging sentence over eight seconds, which is the
+  // picture a hung app shows.
+  useEffect(() => {
+    if (!busy) return;
+    const id = setInterval(() => {
+      void call({ type: "currentPhase" })
+        .then((p) => {
+          if (p) setBusy(p);
+        })
+        .catch(() => undefined);
+    }, 400);
+    return () => clearInterval(id);
+  }, [busy]);
+
   const start = useCallback(async (op: PrivateOpRequest, label: string) => {
     setError(null);
     setDone(null);

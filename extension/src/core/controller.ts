@@ -545,6 +545,28 @@ export class WalletController {
     };
   }
 
+  /**
+   * What the worker is doing right now, for the popup to show.
+   *
+   * A long operation is a sequence of REAL, distinguishable phases and the
+   * worker is the only context that knows which one it is in. A single
+   * unchanging sentence over eight seconds is the picture a hung app shows,
+   * and this wallet has just told the user the binding is permanent.
+   *
+   * Not a progress bar and not a percentage: those would be invented. Each
+   * phase is named only when it actually starts.
+   */
+  private phase: string | null = null;
+
+  private setPhase(p: string | null): void {
+    this.phase = p;
+  }
+
+  /** The current phase, or null when nothing long is running. */
+  currentPhase(): string | null {
+    return this.phase;
+  }
+
   /** dApp approvals waiting on the user, keyed by an id the popup returns. */
   private dappPending = new Map<
     string,
@@ -1158,7 +1180,15 @@ export class WalletController {
    * signed at confirm are the bytes summarised here.
    */
   async buildPrivateOp(req: PrivateOpRequest): Promise<{ handle: string; summary: PrivateOpSummary }> {
-    return this.exclusive(() => this.doBuildPrivateOp(req));
+    return this.exclusive(async () => {
+      try {
+        return await this.doBuildPrivateOp(req);
+      } finally {
+        // Whatever happened, the worker is no longer mid-phase. Leaving a
+        // stale phase behind would have the popup narrate a step that ended.
+        this.setPhase(null);
+      }
+    });
   }
 
   private async doBuildPrivateOp(
@@ -1193,7 +1223,13 @@ export class WalletController {
     // an opaque contract error at submit time, after the user has waited
     // through proving and signed.
     const circuit = CIRCUIT_FOR[req.kind];
-    if (circuit) await this.assertVk(cfg, circuit);
+    // Each phase is named as it STARTS, and only when it really starts. The
+    // popup polls this; nothing is invented and no percentage is implied.
+    if (circuit) {
+      this.setPhase("Checking this deployment's verification key…");
+      await this.assertVk(cfg, circuit);
+    }
+    this.setPhase("Loading the circuit…");
     const ctx = await this.opContext();
     const ops = await import("./confidential-ops");
 
@@ -1202,8 +1238,11 @@ export class WalletController {
         // D8: the user is their own auditor. The id is NOT chosen by the
         // caller; it is allocated by the registry and read back out, so this
         // ensures a key of ours is registered and returns the id it got.
+        this.setPhase("Registering your auditor key…");
         const auditorId = await this.ownAuditorId(ctx, cfg);
+        this.setPhase("Building and proving. This is the slow part…");
         const { tx, openings } = await ops.buildRegister(ctx, auditorId);
+        this.setPhase(null);
         return this.stagePrivate(
           tx,
           {
@@ -1274,6 +1313,7 @@ export class WalletController {
         }
         const recipient = await this.readOwnAccount(to.value, cfg, "recipient");
         const mine = await this.readOwnAccount(address, cfg);
+        this.setPhase("Building and proving. This is the slow part…");
         const { tx, newSpendable } = await ops.buildTransfer(ctx, {
           recipient: to.value,
           recipientPvk: recipient.viewingPublicKey,
@@ -1319,6 +1359,7 @@ export class WalletController {
           );
         }
         const chain = await this.readOwnAccount(address, cfg);
+        this.setPhase("Building and proving. This is the slow part…");
         const { tx, newSpendable } = await ops.buildUnshield(ctx, {
           amount,
           spendable: stored.spendable,
@@ -1519,8 +1560,11 @@ export class WalletController {
     // A Soroban invocation needs its footprint and auth entries populated, and
     // simulation is the only thing that can do it. Signing before this would
     // produce an envelope the network rejects at once.
+    this.setPhase("Simulating against the ledger…");
     const prepared = await this.server().prepareTransaction(tx);
+    this.setPhase("Signing…");
     prepared.sign(this.keypair());
+    this.setPhase("Submitting, then waiting for the ledger to confirm…");
 
     if (resolve) {
       // Simulation rewrites the envelope, so the hash to stage against is the

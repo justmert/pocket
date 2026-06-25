@@ -109,6 +109,8 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
       return c.dappSessions();
     case "connectDapp":
       return c.connectDapp(str(msg.origin, "origin"));
+    case "currentPhase":
+      return c.currentPhase();
     case "yieldPosition":
       return c.yieldPosition();
     case "pendingDappRequest":

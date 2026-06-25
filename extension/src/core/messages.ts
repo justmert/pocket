@@ -83,6 +83,7 @@ export type WalletRequest =
   | { type: "connectDapp"; origin: string }
   | { type: "disconnectDapp"; origin: string }
   | { type: "yieldPosition" }
+  | { type: "currentPhase" }
   | { type: "pendingDappRequest" }
   | { type: "resolveDappRequest"; id: string; approved: boolean }
   | { type: "buildPrivateOp"; op: PrivateOpRequest }
@@ -139,6 +140,7 @@ export interface ResponseMap {
   connectDapp: { origin: string; connectedAt: number };
   disconnectDapp: void;
   yieldPosition: YieldPosition;
+  currentPhase: string | null;
   pendingDappRequest: { id: string; origin: string; summary: TxSummary } | null;
   resolveDappRequest: void;
   /** `handle` is opaque, exactly as buildPayment's is. */
