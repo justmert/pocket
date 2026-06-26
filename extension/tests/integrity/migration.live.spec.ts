@@ -65,23 +65,17 @@ test("openings written by a previous version still open the balance the contract
     await w.registerPrivatePocket();
     console.log("  7076c5a registered the private pocket");
 
-    // The old build's own labels, not the page object's.
+    // Register only, and no shield. `7076c5a`'s OWN shield leaves it diverged:
+    // driven through its own UI the deposit confirms and the very next read
+    // says "Records do not match the ledger … for the receiving balance". That
+    // is a defect of that commit, since fixed, and it is not what this test is
+    // about, so the old build is asked for the one thing it does correctly:
+    // register, and write the opening record that goes with it.
     //
-    // `Wallet.submitOp` fills "Amount (XLM)"; at 7076c5a the field is labelled
-    // "Amount". A page object written against the current UI silently waits
-    // twenty minutes on a locator that will never exist, which is exactly the
-    // failure mode a migration spec has to be immune to: the previous version
-    // is a different product and has to be driven as one.
-    await page.getByRole("button", { name: "Move in", exact: true }).click();
-    await page.getByLabel(/^Amount( \(XLM\))?$/).fill("25");
-    await page.getByRole("button", { name: "Review" }).click();
-    await w.approve();
-    await expect(page.getByText(/Made spendable in a second transaction/)).toBeVisible({
-      timeout: WAITS.submission,
-    });
-    await expect(w.spendableMoney()).toHaveText(/^25\.0000000\s*XLM$/, {
-      timeout: WAITS.ledgerRead,
-    });
+    // A zero opening is still the record. Whether the current build can FIND
+    // and OPEN it is the migration question, and the answer is visible without
+    // any balance at all: a build that cannot read the record reports
+    // `needsRecovery`, not `ready`.
 
     const oldStorage = await storage(page);
     const oldKeys = Object.keys(oldStorage).sort();
@@ -107,13 +101,20 @@ test("openings written by a previous version still open the balance the contract
     await w2.waitForHome(WAITS.onboarding);
     await w2.openPrivatePocket();
 
-    // The number first, because a wrong balance is one of the two failures
-    // this test exists to catch.
+    // `ready`, not `needsRecovery`. This is the whole migration question in one
+    // assertion: `needsRecovery` is exactly what the current build says when the
+    // opening record is missing or it cannot open it, and it comes with "this
+    // device has no record of its balances". Silence or a wrong balance is the
+    // failure the brief names; this is where either would appear.
     await expect(
       w2.spendableMoney(),
-      "the upgraded build must report the balance the old one left",
-    ).toHaveText(/^25\.0000000\s*XLM$/, { timeout: WAITS.ledgerRead });
+      "an upgraded install must report balances, not that it has no record of them",
+    ).toHaveText(/^0\.0000000\s*XLM$/, { timeout: WAITS.ledgerRead });
     await expect(w2.receivingMoney()).toHaveText(/^0\.0000000\s*XLM$/);
+    await expect(
+      upgraded.getByText(/no record of its balances/),
+      "the upgraded build must not report the old record as missing",
+    ).toHaveCount(0);
 
     // And the record behind it must still be the money. Same check as
     // everywhere else in this slice: the sealed bytes, opened with the
@@ -124,7 +125,7 @@ test("openings written by a previous version still open the balance the contract
     const chain = await chainAccount(address);
     const verdict = openingsOpenTheChain(disk.openings!, chain!);
     expect(verdict.ok, `after upgrading: ${verdict.detail}`).toBe(true);
-    expect(formatStroops(disk.openings!.spendable.value)).toBe("25.0000000");
+    expect(formatStroops(disk.openings!.spendable.value)).toBe("0.0000000");
 
     // Untouched, not rewritten. An upgrade that re-seals the opening store has
     // taken a copy of the one irreplaceable record in the wallet and put it
@@ -141,23 +142,25 @@ test("openings written by a previous version still open the balance the contract
     );
     expect(auditorKeys, "an upgrade must not register a second auditor key").toEqual([]);
 
-    // Still spendable, which is the only definition of "the record survived"
-    // that means anything.
-    await w2.openOp("Move out");
-    await w2.submitOp({ amount: "5" });
+    // Still usable, which is the only definition of "the record survived" that
+    // means anything: the current build shields 25 XLM ON TOP of the previous
+    // version's record, and the result opens the chain.
+    await w2.openOp("Move in");
+    await w2.submitOp({ amount: "25" });
     await w2.approve();
-    await expect(upgraded.getByText(/Confirmed on the ledger/)).toBeVisible({
+    await expect(upgraded.getByText(/Made spendable in a second transaction/)).toBeVisible({
       timeout: WAITS.submission,
     });
-    await expect(w2.spendableMoney()).toHaveText(/^20\.0000000\s*XLM$/, {
+    await expect(w2.spendableMoney()).toHaveText(/^25\.0000000\s*XLM$/, {
       timeout: WAITS.ledgerRead,
     });
     const after = await inspect(upgraded, PASSWORD);
     const chainAfter = await chainAccount(address);
     expect(
       openingsOpenTheChain(after.openings!, chainAfter!).ok,
-      "and the record it wrote on top of the old one opens the chain too",
+      "and the record it wrote on top of the previous version's opens the chain too",
     ).toBe(true);
+    expect(formatStroops(after.openings!.spendable.value)).toBe("25.0000000");
   } finally {
     await install?.close().catch(() => undefined);
     rmSync(dir, { recursive: true, force: true });
