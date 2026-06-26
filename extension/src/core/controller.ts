@@ -482,7 +482,7 @@ export class WalletController {
    * replayed result does not reproduce the commitments the contract holds.
    */
   async rebuildFromHistory(): Promise<PrivatePocket> {
-    return this.exclusive(async () => {
+    await this.exclusive(async () => {
       const { address } = requireSession();
       const cfg = this.confidentialConfig();
       const account = await this.readOwnAccount(address, cfg);
@@ -500,8 +500,11 @@ export class WalletController {
       );
       await this.writeOpenings(address, cfg.token, rebuilt);
       this.lastInboundFailure = null;
-      return this.privatePocket();
     });
+    // OUTSIDE the queue. `privatePocket` credits inbound transfers on its way
+    // through, and that write is serialised too, so calling it from inside
+    // would have the queue wait on itself.
+    return this.privatePocket();
   }
 
   /**
@@ -1824,11 +1827,27 @@ export class WalletController {
         return stored;
       }
 
-      const receiving = creditInbound(stored.receiving, found, account.receivingCommitment);
-      const next = { ...stored, receiving, syncedThrough: health.latestLedger };
-      await this.writeOpenings(address, cfg.token, next);
-      this.lastInboundFailure = null;
-      return next;
+      // The write goes through the SAME queue every spending write uses, and
+      // re-reads inside it. Read-slow-thing-write-back is exactly what broke
+      // `create`, and it is worse here: `{ ...stored, receiving }` carried the
+      // SPENDABLE opening from a snapshot taken before a scan that paginates
+      // the RPC's whole retained window. A merge landing during that scan was
+      // overwritten by the stale spendable side, and a spendable opening that
+      // no longer matches the chain is money that can never be proved against.
+      //
+      // `privatePocket()` is a read that happens to write, and the popup calls
+      // it on every mount, so two tabs are all it takes.
+      return this.exclusive(async () => {
+        const fresh = (await this.readOpenings(address, cfg.token)) ?? stored;
+        // Someone else may have credited or merged while we scanned. Their
+        // result is newer than ours; ours is now about a state that is gone.
+        if (verifyAgainstChain(fresh, account).ok) return fresh;
+        const receiving = creditInbound(fresh.receiving, found, account.receivingCommitment);
+        const next = { ...fresh, receiving, syncedThrough: health.latestLedger };
+        await this.writeOpenings(address, cfg.token, next);
+        this.lastInboundFailure = null;
+        return next;
+      });
     } catch (e) {
       // ONLY our own authored text may be surfaced. Passing `e.message`
       // through put "Request failed with status code 429" on the diverged
