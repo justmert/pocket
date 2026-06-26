@@ -1198,8 +1198,6 @@ export class WalletController {
     req: PrivateOpRequest,
   ): Promise<{ handle: string; summary: PrivateOpSummary }> {
     const { address } = requireSession();
-    // A merge is exempt, and it has to be.
-    //
     // When a shield's deposit lands and its merge does not, the wallet tells
     // the user their funds are in the receiving balance and to press "Make
     // spendable". The failed merge leaves an unresolved in-flight record, and
@@ -1207,16 +1205,20 @@ export class WalletController {
     // Both sentences were individually true and together they were a dead end,
     // on a screen that said nothing about the money sitting in receiving.
     //
-    // Exempting it is safe because a merge is idempotent in effect: it folds
-    // the whole receiving balance into spendable, so if the earlier one does
-    // land, the later one folds nothing and the result is identical. The guard
-    // exists to stop a SECOND spend racing a first, and a merge spends
-    // nothing.
-    // A merge is exempt ONLY when the thing left unresolved is itself a merge,
-    // which is the shield-recovery case this exemption was added for. Exempting
-    // every merge answers the wrong risk: the guard exists because a second
-    // submission consumes the sequence number the first was built against, and
-    // a merge consumes one like anything else.
+    // So a merge is exempt, but ONLY when the thing left unresolved is itself
+    // a merge, which is the shield-recovery case above and nothing else.
+    //
+    // The first version of this exempted EVERY merge, on the argument that a
+    // merge is idempotent in effect: it folds the whole receiving balance into
+    // spendable, so a repeat folds nothing. That argument is true and it
+    // answers the wrong risk. This guard exists because a second submission
+    // consumes the sequence number the first was built against, and a merge
+    // consumes one like anything else, so a merge built while a PAYMENT is
+    // unresolved takes the sequence that payment already claimed. Idempotency
+    // of the operation says nothing about the sequence number.
+    //
+    // Recorded because the reasoning that produced the bug is more persuasive
+    // than the reasoning that fixed it, and a future reader will meet it first.
     if (req.kind !== "merge" || !(await this.unresolvedIsMerge())) {
       await this.assertNothingUnresolved();
     }
