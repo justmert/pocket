@@ -13,7 +13,7 @@ import {
 } from "../primitives";
 import { AddressBlock } from "../AddressBlock";
 import { Money } from "../Money";
-import { space, text, type Theme } from "../theme";
+import { space, text, type Theme, leading } from "../theme";
 import type { PublicBalance, WalletStatus, YieldPosition } from "../../../../core/messages";
 
 export function Home({
@@ -107,11 +107,23 @@ export function Home({
           </Notice>
         )}
 
-        {reserved && (
-          <div style={{ ...text.caption, color: t.faint, marginBottom: space.gutter }}>
-            Plus {reserved} XLM locked by the network as a reserve.
-          </div>
-        )}
+        {/* The row is ALWAYS here, empty until the reserve is known.
+            Rendering it only once the balance arrived dropped the Send and
+            Receive buttons 29px, under a finger already aimed at Send: a press
+            at the old centre lands 6px above the new button, does nothing, and
+            the natural response on a wallet is to press again. Cumulative
+            Layout Shift scored this 0.0021, well inside "good", which is why
+            the assertion is the pixel delta and not CLS. */}
+        <div
+          style={{
+            ...text.caption,
+            color: t.faint,
+            marginBottom: space.gutter,
+            minHeight: text.caption.fontSize * leading.normal,
+          }}
+        >
+          {reserved ? `Plus ${reserved} XLM locked by the network as a reserve.` : "\u00a0"}
+        </div>
 
         <div
           style={{
