@@ -71,6 +71,11 @@ export class StaleHandleError extends Error {
   override readonly name = "StaleHandleError";
 }
 
+/** A well-formed address of the wrong KIND for what the user is doing. */
+export class InvalidAddressKindError extends Error {
+  override readonly name = "InvalidAddressKindError";
+}
+
 /** More than the account can actually send, once the reserve is accounted for. */
 export class InsufficientBalanceError extends Error {
   override readonly name = "InsufficientBalanceError";
@@ -801,7 +806,11 @@ export class WalletController {
     }
     const phrase = mnemonic.trim().toLowerCase().replace(/\s+/g, " ");
     if (!validateMnemonic(phrase, wordlist)) {
-      throw new Error("that is not a valid recovery phrase");
+      // Named, like every other authored refusal. Unnamed it reached the user
+      // as "check your connection", for a phrase they mistyped.
+      throw new RecoveryError(
+        "That is not a valid recovery phrase. Check the words and the order.",
+      );
     }
     return { address: await this.installSeed(password, phrase) };
   }
@@ -1064,7 +1073,7 @@ export class WalletController {
       // letting it fail opaquely inside the builder after the user has already
       // entered an amount. Paying a contract needs a SAC transfer, which the
       // public pocket does not do yet.
-      throw new Error(
+      throw new InvalidAddressKindError(
         "That is a contract address. Pocket can only send to an account address (G...) today.",
       );
     }

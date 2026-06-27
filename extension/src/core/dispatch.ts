@@ -213,6 +213,7 @@ const SAFE_ERRORS = new Set([
   "StaleHandleError",
   "MemoTooLongError",
   "InvalidAmountError",
+  "InvalidAddressKindError",
   "RecoveryUnavailableError",
   "RecoveryMismatchError",
   "OriginRefusedError",

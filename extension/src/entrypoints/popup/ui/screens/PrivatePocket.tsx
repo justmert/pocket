@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { call } from "../rpc";
 import {
   Button,
@@ -46,6 +46,8 @@ export function PrivatePocket({ t, onBack }: { t: Theme; onBack: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [review, setReview] = useState<{ handle: string; summary: PrivateOpSummary } | null>(null);
   const [done, setDone] = useState<{ hash: string; followed?: string } | null>(null);
+  // A ref, not state: a double click outruns a re-render.
+  const confirmingRef = useRef(false);
   const [form, setForm] = useState<{
     kind: PrivateOpRequest["kind"];
     to: string;
@@ -98,6 +100,11 @@ export function PrivatePocket({ t, onBack }: { t: Theme; onBack: () => void }) {
 
   const confirm = useCallback(async () => {
     if (!review) return;
+    // Same guard as the public send. Two clicks reach the worker, it serialises
+    // them, the money moves once, and the second resolves last with "no longer
+    // pending confirmation" -- an error rendered on top of a success.
+    if (confirmingRef.current) return;
+    confirmingRef.current = true;
     setError(null);
     setBusy("Signing and submitting…");
     try {
@@ -110,6 +117,7 @@ export function PrivatePocket({ t, onBack }: { t: Theme; onBack: () => void }) {
       setReview(null);
     } finally {
       setBusy(null);
+      confirmingRef.current = false;
     }
   }, [review, refresh]);
 

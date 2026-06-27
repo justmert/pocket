@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { call } from "../rpc";
 import {
   Button,
@@ -32,6 +32,8 @@ export function Send({ t, onBack }: { t: Theme; onBack: () => void }) {
   const [built, setBuilt] = useState<{ xdr: string; summary: TransferSummary } | null>(null);
   const [result, setResult] = useState<{ hash: string; ledger: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Survives re-render, unlike state, which is what a double click outruns.
+  const sendingRef = useRef(false);
   const [building, setBuilding] = useState(false);
 
   const review = async () => {
@@ -57,6 +59,16 @@ export function Send({ t, onBack }: { t: Theme; onBack: () => void }) {
 
   const send = async () => {
     if (!built) return;
+    // A double click called this twice. The worker serialised them and the
+    // money moved exactly once, but the SECOND call always resolved last and
+    // always with "no longer pending confirmation", and this catch replaced
+    // the receipt with the confirm screen and a live Confirm button. The user
+    // was left believing the payment had failed, looking at the button that
+    // sends it, one moment after it succeeded. Refusing the second click is
+    // the fix; a stale-handle message landing on top of a success is not
+    // something the screen can render honestly.
+    if (sendingRef.current) return;
+    sendingRef.current = true;
     setStage("sending");
     setError(null);
     try {
@@ -67,6 +79,9 @@ export function Send({ t, onBack }: { t: Theme; onBack: () => void }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setStage("confirm");
+      // Only a genuine failure returns the user to the button. A success has
+      // consumed the handle, so the guard stays closed.
+      sendingRef.current = false;
     }
   };
 
