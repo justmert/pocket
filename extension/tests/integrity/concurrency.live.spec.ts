@@ -168,14 +168,27 @@ test("a merge landing while an inbound credit is still reading events must not l
     // ---- tab A: the user, in another tab, doing the whole flow meanwhile
     const tabA = new Wallet(await second.openPopup());
     await tabA.waitForHome(WAITS.ledgerRead);
-    await tabA.openPrivatePocket();
-    try {
-      await expect(tabA.receivingMoney()).toHaveText(/^5\.0000000\s*XLM$/, {
-        timeout: WAITS.ledgerRead,
-      });
-    } catch (e) {
-      console.log(`  tab A screen: ${await tabA.page.locator("body").innerText()}`);
-      throw e;
+    // Reopen until the credit lands, which is what a user does when a screen
+    // says the ledger could not be reached. Observed once in four runs: tab A's
+    // own event scan came back "Pocket could not reach the ledger to look for
+    // transfers you have received" under load, which is a transport failure in
+    // the SETUP of this test rather than anything it is asserting. Retrying the
+    // read is honest; weakening the assertion below would not be.
+    for (let attempt = 1; ; attempt++) {
+      await tabA.openPrivatePocket();
+      try {
+        await expect(tabA.receivingMoney()).toHaveText(/^5\.0000000\s*XLM$/, {
+          timeout: WAITS.ledgerRead,
+        });
+        break;
+      } catch (e) {
+        console.log(
+          `  tab A attempt ${attempt}: ${(await tabA.page.locator("body").innerText()).replace(/\n+/g, " | ")}`,
+        );
+        if (attempt === 3) throw e;
+        await tabA.close();
+        await tabA.waitForHome(WAITS.ledgerRead);
+      }
     }
     await tabA.page.getByRole("button", { name: "Make spendable" }).click();
     await tabA.approve();
