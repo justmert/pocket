@@ -70,6 +70,9 @@ export function Button({
   const base: CSSProperties = {
     ...text.button,
     width: "100%",
+    // A grid or flex item will not shrink below its content without this, and
+    // a button that cannot shrink is a button that gets clipped at high zoom.
+    minWidth: 0,
     padding: "13px 16px",
     borderRadius: radius.lg,
     border: "1px solid transparent",
@@ -106,7 +109,13 @@ export function ButtonRow({ children }: { children: ReactNode }) {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "1fr 1fr",
+        // `1fr` means `minmax(auto, 1fr)`, and `auto` here is the item's
+        // min-content width, so the track refuses to shrink below its label.
+        // At 200% zoom the pair needs 176px in a 156px track and `Frame` is
+        // `overflow: hidden`, so the control CLIPS rather than scrolls: it is
+        // gone, not merely awkward. Spelling the minimum as 0 is what lets it
+        // shrink. WCAG 1.4.4.
+        gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
         gap: space.md,
         marginTop: space.gutter,
       }}
@@ -118,7 +127,13 @@ export function ButtonRow({ children }: { children: ReactNode }) {
 
 /** A stack of full-width buttons, most important first. */
 export function ButtonStack({ children }: { children: ReactNode }) {
-  return <div style={{ display: "grid", gap: space.md, marginTop: space.gutter }}>{children}</div>;
+  // Single column, so nothing to clip horizontally, but the items still need
+  // to be allowed to shrink below their content at high zoom.
+  return (
+    <div style={{ display: "grid", gap: space.md, marginTop: space.gutter, minWidth: 0 }}>
+      {children}
+    </div>
+  );
 }
 
 /** The small text buttons in a header or under a form. */
@@ -232,6 +247,13 @@ export function Notice({
   const c = tones[tone];
   return (
     <div
+      // A Notice appears in response to something: a refusal, a warning, a
+      // confirmation. Without a live region a screen reader user is told
+      // nothing at all, which on a refusal means they believe the action
+      // worked. `alert` for the two urgent tones because they interrupt;
+      // `status` for the rest because they should not. WCAG 4.1.3.
+      role={tone === "danger" || tone === "exposed" ? "alert" : "status"}
+      aria-live={tone === "danger" || tone === "exposed" ? "assertive" : "polite"}
       style={{
         ...text.body,
         background: c.bg,
@@ -259,7 +281,9 @@ export function Header({ title, right, t }: { title: string; right?: ReactNode; 
         borderBottom: `1px solid ${t.line}`,
       }}
     >
-      <span style={{ ...text.heading, color: t.text }}>{title}</span>
+      {/* A real heading, not a styled span. Screen reader users navigate by
+          heading first, and every screen in this wallet returned zero. */}
+      <h1 style={{ ...text.heading, color: t.text, margin: 0 }}>{title}</h1>
       {right}
     </div>
   );
@@ -300,7 +324,14 @@ export function Spinner({ t }: { t: Theme }) {
  */
 export function Loading({ label, t }: { label: string; t: Theme }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: space.sm, minHeight: 24 }}>
+    <div
+      // The label CHANGES as the worker moves through its phases, and each
+      // change is the only signal a screen reader user gets that anything is
+      // happening. Polite, so it does not cut across what they are reading.
+      role="status"
+      aria-live="polite"
+      style={{ display: "flex", alignItems: "center", gap: space.sm, minHeight: 24 }}
+    >
       <Spinner t={t} />
       <span style={{ ...text.body, color: t.sub }}>{label}</span>
     </div>

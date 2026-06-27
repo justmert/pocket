@@ -128,7 +128,13 @@ export function Home({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr",
+            // `1fr` means `minmax(auto, 1fr)`, and `auto` here is the item's
+        // min-content width, so the track refuses to shrink below its label.
+        // At 200% zoom the pair needs 176px in a 156px track and `Frame` is
+        // `overflow: hidden`, so the control CLIPS rather than scrolls: it is
+        // gone, not merely awkward. Spelling the minimum as 0 is what lets it
+        // shrink. WCAG 1.4.4.
+        gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
             gap: space.md,
             marginTop: space.sm,
           }}
