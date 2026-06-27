@@ -412,6 +412,139 @@ describe("the inbound-credit path must not route around the error allowlist", ()
   });
 });
 
+describe("the inbound search asks the RPC where its window starts", () => {
+  // Found by revert-verification: the fix that made this ask `getHealth` rather
+  // than compute `latest - 120_960` was correct and NOTHING held it there.
+  //
+  // Why it matters more than an off-by-a-lot: a `startLedger` even one ledger
+  // outside the retention window returns ZERO EVENTS AND NO ERROR. So the
+  // widest possible request is precisely the one that silently finds nothing,
+  // and "you have received nothing" is indistinguishable from "you asked out of
+  // range". It cost two live runs to spot for exactly that reason.
+  //
+  // The assertion is on what goes on the WIRE, because the bug is a number in a
+  // request, and a test of the arithmetic would just restate the arithmetic.
+
+  async function storedOpenings(address: string, token: string) {
+    const { getSession } = await import("../../src/core/session");
+    const { sealPayload } = await import("../../src/core/vault/vault");
+    const { openingKey } = await import("../../src/lib/storage");
+    const session = getSession();
+    if (!session) throw new Error("the wallet under test is locked");
+    store.set(
+      openingKey(token, address),
+      await sealPayload(session.dek, {
+        spendable: { value: "0", randomness: "0" },
+        receiving: { value: "0", randomness: "0" },
+        syncedThrough: 0,
+      }),
+    );
+  }
+
+  /** A confidential account whose receiving side does not open to the stored zero. */
+  function diverged(): Fault {
+    const bytes = (p: { x: bigint; y: bigint }) => xdr.ScVal.scvBytes(Buffer.from(encodePoint(p)));
+    const entry = (name: string, val: xdr.ScVal) =>
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(name), val });
+    return rpcOk({
+      latestLedger: 1_000_000,
+      minResourceFee: "100",
+      transactionData: SOROBAN_DATA,
+      events: [],
+      results: [
+        {
+          auth: [],
+          xdr: xdr.ScVal
+            .scvMap([
+              entry("auditor_id", xdr.ScVal.scvU32(1)),
+              entry("receiving_commitment", bytes(H)),
+              entry("spendable_commitment", bytes(IDENTITY)),
+              entry("spending_public_key", bytes(G)),
+              entry("viewing_public_key", bytes(H)),
+            ])
+            .toXDR("base64"),
+        },
+      ],
+    });
+  }
+
+  it("never asks from a ledger the RPC has already discarded", async () => {
+    // A node that has been pruned harder than the nominal 120,960 window: it
+    // retains from 990,000 while the latest ledger is 1,000,000. The computed
+    // floor would be 879,040, which this node would answer with silence.
+    const OLDEST = 990_000;
+    const LATEST = 1_000_000;
+
+    const { controller, server, address } = await wallet();
+    const token = NETWORKS.testnet.confidential[0]!.token;
+    await storedOpenings(address, token);
+
+    server.heal({
+      byMethod: {
+        getLedgerEntries: fundedAccount(address),
+        simulateTransaction: diverged(),
+        getHealth: rpcOk({ status: "healthy", latestLedger: LATEST, oldestLedger: OLDEST }),
+        getEvents: rpcOk({
+          latestLedger: LATEST,
+          oldestLedger: OLDEST,
+          latestLedgerCloseTime: "1",
+          oldestLedgerCloseTime: "1",
+          events: [],
+        }),
+      },
+    });
+
+    await controller.privatePocket();
+
+    const asked = server.requests.filter((r) => r.method === "getEvents");
+    expect(asked.length, "the inbound search never ran").toBeGreaterThan(0);
+    const startLedger = (
+      JSON.parse(asked[0]!.body) as { params?: { startLedger?: number } }
+    ).params?.startLedger;
+
+    expect(startLedger, "getEvents was called without a startLedger").toBeTypeOf("number");
+    expect(
+      startLedger,
+      `asked from ledger ${startLedger}, which this RPC discarded at ${OLDEST}. ` +
+        `An out-of-range startLedger returns zero events and no error, so the search ` +
+        `would report an empty inbox rather than a refusal.`,
+    ).toBeGreaterThanOrEqual(OLDEST);
+  });
+
+  it("does not ask from before the window even when it has synced nothing", async () => {
+    // `syncedThrough: 0` is a wallet that has never synced, which is the case
+    // that most invites "just ask from as early as possible".
+    const OLDEST = 990_000;
+    const { controller, server, address } = await wallet();
+    const token = NETWORKS.testnet.confidential[0]!.token;
+    await storedOpenings(address, token);
+
+    server.heal({
+      byMethod: {
+        getLedgerEntries: fundedAccount(address),
+        simulateTransaction: diverged(),
+        getHealth: rpcOk({ status: "healthy", latestLedger: 1_000_000, oldestLedger: OLDEST }),
+        getEvents: rpcOk({
+          latestLedger: 1_000_000,
+          oldestLedger: OLDEST,
+          latestLedgerCloseTime: "1",
+          oldestLedgerCloseTime: "1",
+          events: [],
+        }),
+      },
+    });
+
+    await controller.privatePocket();
+    const asked = server.requests.filter((r) => r.method === "getEvents");
+    expect(asked.length).toBeGreaterThan(0);
+    for (const r of asked) {
+      const start = (JSON.parse(r.body) as { params?: { startLedger?: number } }).params
+        ?.startLedger;
+      if (start !== undefined) expect(start).toBeGreaterThanOrEqual(OLDEST);
+    }
+  });
+});
+
 describe("buildPayment(): refuses to build against a ledger it could not read", () => {
   for (const [name, fault] of GARBAGE) {
     it(`refuses to build after ${name}`, async () => {
