@@ -13,6 +13,7 @@ import {
   TransactionBuilder,
   type Transaction,
 } from "@stellar/stellar-sdk/base";
+import { InvalidAmountError } from "./balances";
 import { DEFAULT_TIMEOUT_SECONDS } from "./submit";
 import { formatAmount } from "./balances";
 
@@ -45,7 +46,7 @@ export function buildPayment(
   req: PaymentRequest,
   networkPassphrase: string,
 ): Transaction {
-  if (req.amount <= 0n) throw new Error("payment amount must be positive");
+  if (req.amount <= 0n) throw new InvalidAmountError("A payment has to be for more than zero.");
 
   const builder = new TransactionBuilder(sourceAccount, {
     fee: req.feeStroops ?? BASE_FEE,

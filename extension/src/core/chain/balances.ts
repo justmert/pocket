@@ -43,6 +43,17 @@ export class AccountNotFoundError extends Error {
  * message, because the specific one would only tell them their RPC is lying,
  * which they cannot act on. What matters is that no number is rendered.
  */
+/**
+ * An amount the user can correct.
+ *
+ * Named because `describeError` allowlists by NAME, and a bare Error here
+ * reached the user as "check your connection" for a comma they typed. No
+ * amount of retrying fixes a comma.
+ */
+export class InvalidAmountError extends Error {
+  override readonly name = "InvalidAmountError";
+}
+
 export class LedgerEntryMismatchError extends Error {
   override readonly name = "LedgerEntryMismatchError";
 }
@@ -205,10 +216,10 @@ export function formatAmount(raw: bigint, decimals = 7): string {
 /** Parse a decimal string into stroops. Rejects excess precision rather than rounding. */
 export function parseAmount(text: string): bigint {
   const m = /^(-?)(\d+)(?:\.(\d*))?$/.exec(text.trim());
-  if (!m) throw new Error(`not a valid amount: ${text}`);
+  if (!m) throw new InvalidAmountError(`That is not an amount Pocket can read: ${text}`);
   const [, sign, whole, frac = ""] = m;
   if (frac.length > 7) {
-    throw new Error(`amount has more than 7 decimal places: ${text}`);
+    throw new InvalidAmountError(`Amounts go to 7 decimal places and that has more: ${text}`);
   }
   const raw = BigInt(whole as string) * STROOPS_PER_UNIT + BigInt(frac.padEnd(7, "0") || "0");
   return sign === "-" ? -raw : raw;
