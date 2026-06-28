@@ -10,7 +10,7 @@
 //
 // The shape being hunted is T4's headline bug in a different file: read, do
 // something slow, write back what you read. What makes it worse here is WHAT is
-// read back. `creditInboundTransfers` writes `{...stored, receiving}` — the
+// read back. `creditInboundTransfers` writes `{...stored, receiving}`, the
 // spendable side comes from its own stale snapshot, so a write that only means
 // to credit the receiving balance carries an old spendable opening with it.
 //

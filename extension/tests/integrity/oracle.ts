@@ -2,7 +2,7 @@
 //
 // Every claim in this slice has the same shape. The wallet renders a number and
 // says the money is there. This file takes the artefact the wallet left on disk
-// — a sealed blob in chrome.storage.local — opens it with nothing but the
+//, a sealed blob in chrome.storage.local, opens it with nothing but the
 // user's password, and checks that what falls out reproduces the accumulator
 // the CONTRACT holds. If those two disagree, the number on screen is a claim
 // about money that cannot be moved.
