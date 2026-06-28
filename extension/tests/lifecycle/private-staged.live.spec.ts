@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import {
   addressOf,
+  alarms,
   fund,
   fundedStranger,
   killWorker,
@@ -590,6 +591,100 @@ test("a merge is refused while an unrelated transaction is still unresolved", as
         `consume. The wallet answered: ${JSON.stringify(merge)}`,
     ).toBe(false);
     expect(merge.error).toMatch(/has not resolved yet/);
+    void address;
+  } finally {
+    await w.close();
+  }
+});
+
+test("the idle lock does not fire in the middle of a private operation", async () => {
+  test.setTimeout(900_000);
+  const { w, page, address, openingsKey } = await fundedWallet();
+  try {
+    await openPocket(page);
+    await expect(page.getByText(/Not set up yet/)).toBeVisible({ timeout: 120_000 });
+    await page.getByRole("button", { name: "Set up the private pocket" }).click();
+    await waitForReview(page);
+
+    // Make the operation OUTLAST the alarm, and be able to prove afterwards
+    // that it did. The first version of this test delayed each poll by 2.5s,
+    // which was not enough: the register confirmed in about fifteen seconds,
+    // success re-armed the idle lock to fifteen minutes, and the 30-second
+    // alarm never fired at all. The test passed against a build with the
+    // deferral deleted, which makes it a test that could not fail.
+    //
+    // Delays sit under the wallet's own 30-second per-request deadline, so what
+    // is being stretched is the operation, not any single request.
+    let slow = true;
+    await w.ctx.route("**/soroban-testnet.stellar.org/**", async (route) => {
+      let method: string | undefined;
+      try {
+        method = (route.request().postDataJSON() as { method?: string })?.method;
+      } catch {
+        method = undefined;
+      }
+      if (slow && (method === "getTransaction" || method === "sendTransaction")) {
+        // 25s, against the wallet's own 30-second per-request ceiling. The
+        // submit and the first confirmation poll together then carry the
+        // operation past the 30-second alarm with margin at both ends.
+        await new Promise((r) => setTimeout(r, 25_000));
+      }
+      return route.continue();
+    });
+
+    // The idle lock, at the platform's shortest honoured delay, verified to be
+    // the pending one before anything starts.
+    await page.evaluate(() => chrome.alarms.create("pocket.autolock", { delayInMinutes: 0.5 }));
+    const armed = (await alarms(page)).find((a) => a.name === "pocket.autolock");
+    expect(armed, "the idle lock must be scheduled").toBeTruthy();
+    const deadline = armed!.scheduledTime;
+    expect(deadline - Date.now()).toBeLessThan(45_000);
+
+    const startedAt = Date.now();
+    void page.getByRole("button", { name: "Approve" }).click();
+
+    // Locking here would strand a transaction that has already been submitted:
+    // the write that records what it did needs the very keys the lock destroys,
+    // and `clearSession` zeroes the seed in place, so an operation already
+    // holding a reference is not spared. The money would be on chain with
+    // nothing on this device able to open it.
+    let sawLocked = false;
+    let finishedAt = 0;
+    while (Date.now() - startedAt < 150_000) {
+      if ((await page.getByText(/Confirmed on the ledger/).count()) > 0) {
+        finishedAt = Date.now();
+        break;
+      }
+      const s = await send<{ locked: boolean }>(page, { type: "status" });
+      if (s.data?.locked) sawLocked = true;
+      await page.waitForTimeout(2000);
+    }
+    slow = false;
+
+    // Cause before consequence. With the deferral removed both of these fire,
+    // and the lock is the one worth reading first.
+    expect(
+      sawLocked,
+      "the wallet locked itself in the middle of a private operation, which strands " +
+        "whatever it had already submitted",
+    ).toBe(false);
+    expect(
+      finishedAt,
+      "the operation never completed, so whatever it submitted was stranded",
+    ).toBeGreaterThan(0);
+    // And the assertion that makes the two above mean anything: the alarm's
+    // moment has to have fallen INSIDE the operation. Without it the whole test
+    // passes whenever the operation happens to finish early, which is exactly
+    // how its first version fooled me into thinking the deferral was covered.
+    expect(
+      finishedAt,
+      "the operation finished before the idle lock was due, so this test proved nothing",
+    ).toBeGreaterThan(deadline);
+
+    // And the deferral did its job: the consequence was written, not lost.
+    expect(await storageKeys(page)).toContain(openingsKey);
+    const pocket = await send<{ state: string }>(page, { type: "privatePocket" });
+    expect(pocket.data?.state).toBe("ready");
     void address;
   } finally {
     await w.close();
