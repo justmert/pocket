@@ -184,7 +184,12 @@ function Backup({ t, mnemonic, onDone }: { t: Theme; mnemonic: string; onDone: (
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
+          // `auto-fit` with a floor, not a fixed three. This is the screen
+          // that is shown ONCE and never again, and below about 210px the
+          // three fixed columns ran the words into each other and cut the last
+          // one off. A user copying by eye from a clipped grid writes down a
+          // phrase that does not work, and finds out when they need it.
+          gridTemplateColumns: "repeat(auto-fit, minmax(84px, 1fr))",
           rowGap: space.xs,
           fontFamily: mono,
           fontSize: 13,

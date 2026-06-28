@@ -16,7 +16,13 @@ export function Frame({ t, children }: { t: Theme; children: ReactNode }) {
         fontFamily: sans,
         display: "flex",
         flexDirection: "column",
-        overflow: "hidden",
+        // Hidden HORIZONTALLY, because nothing in this wallet should ever
+        // scroll sideways. Vertically it must be able to scroll: at high zoom
+        // a screen's own title and its only way out were being clipped with
+        // no way to reach them, which is a trapped user rather than an untidy
+        // layout. WCAG 1.4.4.
+        overflowX: "hidden",
+        overflowY: "auto",
       }}
     >
       {children}

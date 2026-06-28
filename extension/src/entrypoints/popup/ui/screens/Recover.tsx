@@ -69,6 +69,7 @@ export function Recover({
               paddingLeft: space.gutter,
               margin: 0,
               lineHeight: leading.relaxed,
+              overflowWrap: "anywhere",
             }}
           >
             <li>

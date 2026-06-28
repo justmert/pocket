@@ -78,6 +78,13 @@ export function DappApproval({
                 paddingLeft: space.gutter,
                 margin: 0,
                 lineHeight: leading.relaxed,
+                // These lines quote things the user or the chain chose: a memo,
+                // an address, an asset code. A 28-byte memo is very often one
+                // unbroken token, because that is what exchange deposit memos
+                // are, and without this the frame's `overflow: hidden` cuts it
+                // rather than wrapping. Cutting the memo on the screen that
+                // asks you to approve the memo is the worst place for it.
+                overflowWrap: "anywhere",
               }}
             >
               {summary.effects.map((e) => (
