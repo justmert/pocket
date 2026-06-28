@@ -1,6 +1,6 @@
 // Crediting a received transfer, and refusing to credit one we cannot verify.
 import { describe, it, expect } from "vitest";
-import { openInbound, creditInbound, InboundCreditError } from "./inbound";
+import { openInbound, creditInbound, findInbound, InboundCreditError } from "./inbound";
 import { commit, scalarMul, add, H } from "./crypto/grumpkin";
 import { sharedScalar, transferBlinding, encryptAmount, ephemeralScalar } from "./crypto/derive";
 import { R, Q } from "./crypto/field";
@@ -21,6 +21,7 @@ function send(vkRecipient: bigint, amount: bigint, sigma: bigint) {
   };
 }
 
+const ACCOUNT = "GBZXN7PIRZGNMHGA7MUUUF4GWPY5AYPV6LY4UV2GL6VJGIQRXFDNMADI";
 const VK = 0x2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5n;
 
 describe("opening a transfer addressed to us", () => {
@@ -117,5 +118,48 @@ describe("crediting against the chain's own accumulator", () => {
     );
     expect(got.value).toBe(2n);
     expect(commit(got.value, got.randomness)).toEqual(onChain);
+  });
+});
+
+describe("the search window comes from the RPC, not from arithmetic", () => {
+  // UNPINNED before this. Reverting `health.oldestLedger` to a computed
+  // `latestLedger - 120_960` turned nothing red, and this is the bug that cost
+  // two live runs to find: a startLedger one ledger outside retention returns
+  // ZERO EVENTS WITH NO ERROR, so the widest possible request is the one that
+  // silently finds nothing.
+  it("asks from the ledger the RPC says it still holds", async () => {
+    const seen: { startLedger?: number }[] = [];
+    const server = {
+      getHealth: async () => ({ latestLedger: 1_000_000, oldestLedger: 879_041 }),
+      _getEvents: async (args: { startLedger?: number }) => {
+        seen.push(args);
+        return { latestLedger: 1_000_000, events: [], cursor: null };
+      },
+    } as unknown as Parameters<typeof findInbound>[0];
+
+    // Asked from further back than the RPC holds; it must clamp to the floor.
+    await findInbound(server, "CTOKEN", ACCOUNT, VK, 1);
+
+    // The floor the RPC REPORTED, not one derived from its latest ledger.
+    // Arithmetic gets this wrong whenever retention is not exactly the
+    // documented constant, and the reply to a too-early request is silence.
+    expect(seen[0]?.startLedger).toBe(879_041);
+    expect(seen[0]?.startLedger).toBeGreaterThanOrEqual(879_041);
+  });
+
+  it("never asks from before the reported floor, whatever it is handed", async () => {
+    const seen: { startLedger?: number }[] = [];
+    const server = {
+      getHealth: async () => ({ latestLedger: 1_000_000, oldestLedger: 950_000 }),
+      _getEvents: async (args: { startLedger?: number }) => {
+        seen.push(args);
+        return { latestLedger: 1_000_000, events: [], cursor: null };
+      },
+    } as unknown as Parameters<typeof findInbound>[0];
+
+    // A caller asking from further back than the RPC holds. Passing it through
+    // is what produces the silent empty answer.
+    await findInbound(server, "CTOKEN", ACCOUNT, VK, 1);
+    expect(seen[0]?.startLedger).toBeGreaterThanOrEqual(950_000);
   });
 });

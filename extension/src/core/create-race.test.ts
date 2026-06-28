@@ -6,16 +6,24 @@
 // were shown a recovery phrase under the words "the only way to recover your
 // wallet". Last write won. The loser's phrase owned nothing and its holder had
 // no way to find out, because the phrase is shown exactly once.
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import "../lib/polyfill";
 
 const store = new Map<string, unknown>();
+/** Milliseconds a write takes. Zero for ordinary tests, nonzero to force a race. */
+let writeDelay = 0;
 vi.stubGlobal("chrome", {
   storage: {
     local: {
       get: async (k: string | null) =>
         k === null ? Object.fromEntries(store) : store.has(k) ? { [k]: store.get(k) } : {},
       set: async (o: Record<string, unknown>) => {
+        // A real chrome.storage write crosses a process boundary. Resolving on
+        // the microtask queue makes two callers look serialised when nothing
+        // is serialising them, so a race test written against it passes while
+        // the race is wide open. This is the smallest delay that lets another
+        // caller's read observe a half-written state.
+        if (writeDelay > 0) await new Promise((r) => setTimeout(r, writeDelay));
         for (const [k, v] of Object.entries(o)) store.set(k, v);
       },
       remove: async (k: string | string[]) => {
@@ -149,5 +157,92 @@ describe("every path that installs a seed is serialised, not just create", () =>
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     expect(await readLocal(KEYS.vaultHeader)).toBeDefined();
     expect(await readLocal(KEYS.state)).toBeDefined();
+  });
+});
+
+/**
+ * HONEST LABEL: these two assert COHERENCE, and they do NOT pin the
+ * serialisation.
+ *
+ * `recoverFromMnemonic` goes through `exclusive`, and reverting that to a
+ * direct call leaves both of these green. I tried three ways to make them
+ * fail -- a stranger's phrase, the wallet's own phrase, and a storage mock
+ * with a real delay on every write -- and could not. So by this pass's own
+ * rule they are reported as tests that could not be made to fail rather than
+ * quietly counted as coverage.
+ *
+ * What they DO hold is worth keeping: whatever the interleaving, exactly one
+ * password opens the vault afterwards. A blended header and state, which is
+ * the unrecoverable outcome, would show up here as zero.
+ *
+ * What would actually pin it is a hook that holds one caller's write open
+ * while another proceeds, which is how T5b's harness forces the import race.
+ * That belongs in `tests/auth`, which owns that harness.
+ */
+describe("recovery leaves a coherent wallet, however it interleaves", () => {
+  beforeEach(() => {
+    store.clear();
+    writeDelay = 0;
+  });
+  afterEach(() => {
+    writeDelay = 0;
+  });
+
+  // UNPINNED before this: reverting `exclusive(() => doRecoverFromMnemonic(...))`
+  // to a direct call turned nothing red. Recovery has the same check-then-act
+  // shape as create and import, and it ends by calling doImport, so it can
+  // interleave with either of them and leave a header from one wallet beside
+  // state sealed under the other's DEK.
+  it("a recovery racing an import leaves one wallet that actually opens", async () => {
+    writeDelay = 2;
+    const other = new WalletController();
+    await other.init();
+    const strangerPhrase = (await other.create("stranger")).mnemonic;
+    store.clear();
+
+    const c = new WalletController();
+    await c.init();
+    // The recovery uses THIS wallet's own phrase, because recoverFromMnemonic
+    // refuses one belonging to a different wallet, and that refusal is a
+    // separate property already tested above.
+    const { mnemonic } = await c.create("original");
+
+    const results = await Promise.allSettled([
+      c.recoverFromMnemonic(mnemonic, "recovered password"),
+      c.import("imported password", strangerPhrase),
+    ]);
+    // Import refuses over an existing vault, so exactly one can win. What
+    // matters is that the survivor is coherent, not which one it is.
+    expect(results.filter((r) => r.status === "fulfilled").length).toBeGreaterThanOrEqual(1);
+
+    const opened = new WalletController();
+    await opened.init();
+    const pw = ["recovered password", "imported password", "original"];
+    const worked = await Promise.allSettled(pw.map((p) => opened.unlock(p)));
+    // Exactly one password opens it. Zero means a blended header and state,
+    // which is a vault no phrase can ever open.
+    expect(worked.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+  });
+
+  it("two concurrent recoveries of the same phrase leave one coherent wallet", async () => {
+    writeDelay = 2;
+    const c = new WalletController();
+    await c.init();
+    const { mnemonic } = await c.create("original");
+
+    // The same phrase twice, two different new passwords. Both are legitimate
+    // and both erase then reinstall, so an interleave puts a header from one
+    // beside state sealed under the other's DEK.
+    await Promise.allSettled([
+      c.recoverFromMnemonic(mnemonic, "password a"),
+      c.recoverFromMnemonic(mnemonic, "password b"),
+    ]);
+
+    const opened = new WalletController();
+    await opened.init();
+    const worked = await Promise.allSettled(
+      ["password a", "password b"].map((p) => opened.unlock(p)),
+    );
+    expect(worked.filter((r) => r.status === "fulfilled")).toHaveLength(1);
   });
 });

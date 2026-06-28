@@ -1816,17 +1816,12 @@ export class WalletController {
       const { deriveConfidentialKeys } = await import("./confidential-ops");
       const { vk } = await deriveConfidentialKeys(ctx);
       const { findInbound, creditInbound } = await import("./inbound");
-      // Ask the RPC where its window actually starts. Computing it as
-      // `latest - 120_960` looks equivalent and is not: a startLedger even one
-      // ledger outside retention returns ZERO EVENTS WITH NO ERROR, so the
-      // widest possible request silently finds nothing. That cost two live
-      // runs to spot, because "no transfers" and "asked out of range" are the
-      // same reply.
+      // `findInbound` clamps to the RPC's reported floor itself, so passing a
+      // best guess is safe: asking from before retention is what returns zero
+      // events with no error, and the function that talks to the RPC is the
+      // one that knows that.
       const health = await this.server().getHealth();
-      const from = Math.max(
-        health.oldestLedger,
-        stored.syncedThrough > 0 ? stored.syncedThrough : health.oldestLedger,
-      );
+      const from = stored.syncedThrough > 0 ? stored.syncedThrough : 1;
       const found = await findInbound(this.server(), cfg.token, address, vk, from);
       if (found.length === 0) {
         // Not an error, and it must not read as one. It means the search ran

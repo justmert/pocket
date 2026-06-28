@@ -156,6 +156,19 @@ export async function findInbound(
   fromLedger: number,
 ): Promise<InboundTransfer[]> {
   const me = Address.fromString(account).toScVal();
+  // The floor belongs HERE, not in the caller. A `startLedger` even one ledger
+  // outside retention returns ZERO EVENTS WITH NO ERROR, so getting it wrong
+  // produces silence rather than a complaint, and the widest possible request
+  // is the one that silently finds nothing. Asking the RPC where its window
+  // actually starts is the only reliable answer: computing it as
+  // `latestLedger - 120_960` assumes a constant the node is free to change.
+  //
+  // A caller cannot get this wrong now, because the function that talks to the
+  // RPC is the one that knows the RPC's constraint.
+  const health = (await server.getHealth()) as { oldestLedger?: number };
+  const floor = typeof health.oldestLedger === "number" ? health.oldestLedger : fromLedger;
+  const from = Math.max(fromLedger, floor);
+
   const found: InboundTransfer[] = [];
   let cursor: string | undefined;
   // A page budget. The loop's only other exit is the RPC's cursor, and a
@@ -187,7 +200,7 @@ export async function findInbound(
     // for you". Only the raw response can tell those apart.
     const page = (await (cursor
       ? server._getEvents({ cursor, filters })
-      : server._getEvents({ startLedger: fromLedger, filters }))) as {
+      : server._getEvents({ startLedger: from, filters }))) as {
       latestLedger?: unknown;
       events?: unknown;
       cursor?: string;
