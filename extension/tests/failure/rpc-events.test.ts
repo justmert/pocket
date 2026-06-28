@@ -23,15 +23,19 @@
 //     nothing.
 import { describe, it, expect, afterEach } from "vitest";
 import { rpc } from "@stellar/stellar-sdk";
-import { Address, xdr } from "@stellar/stellar-sdk/base";
+import { Address, xdr, scValToNative } from "@stellar/stellar-sdk/base";
 import "../../src/lib/polyfill";
 import { findInbound, creditInbound, openInbound, InboundCreditError } from "../../src/core/inbound";
 import { withRequestDeadline } from "../../src/core/chain/http";
 import { describeError } from "../../src/core/dispatch";
-import { G, H, commit, encodePoint, scalarMul } from "../../src/core/crypto/grumpkin";
+import { G, H, commit, decodePoint, encodePoint, scalarMul } from "../../src/core/crypto/grumpkin";
 import { sharedScalar, encryptAmount, transferBlinding } from "../../src/core/crypto/derive";
-import { R, toBytesBE } from "../../src/core/crypto/field";
+import { R, toBytesBE, fromBytesBE } from "../../src/core/crypto/field";
 import { FaultServer, DEAD_ORIGIN, rpcOk, rpcError, type Fault } from "./_harness/faults";
+import {
+  LIVE_TRANSFER_VALUE_B64,
+  LIVE_TRANSFER_FIELDS,
+} from "./_fixtures/live-transfer-event";
 
 const ACCOUNT = "GBZXN7PIRZGNMHGA7MUUUF4GWPY5AYPV6LY4UV2GL6VJGIQRXFDNMADI";
 const SENDER = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7";
@@ -262,6 +266,72 @@ describe("the recipient filter is applied on every page, not just the first", ()
       expect(r.body).toContain(me);
       expect(r.body).toContain(TOKEN);
     }
+  });
+});
+
+describe("the decoder is pinned against the contract, not against our encoder", () => {
+  // The `bigint` decode bug was found by printing a live event, not by a failing
+  // test, and the reason no test caught it is worth stating: every fixture that
+  // exercised this path was built with the same encoder the fix expects. Those
+  // tests agree with the fix by construction. They cannot disagree with it, so
+  // they cannot pin it.
+  //
+  // `_fixtures/live-transfer-event.ts` is a real event body off the deployed
+  // contract. It cannot drift from the contract because it came from it.
+
+  const live = () => scValToNative(xdr.ScVal.fromXDR(LIVE_TRANSFER_VALUE_B64, "base64")) as
+    Record<string, unknown>;
+
+  it("publishes exactly the eight fields, at the widths we decode", () => {
+    const body = live();
+    expect(Object.keys(body).sort()).toEqual(Object.keys(LIVE_TRANSFER_FIELDS).sort());
+    for (const [name, width] of Object.entries(LIVE_TRANSFER_FIELDS)) {
+      const v = body[name];
+      expect(v, `${name} is absent`).toBeDefined();
+      expect(v instanceof Uint8Array, `${name} decoded as ${typeof v}, not bytes`).toBe(true);
+      expect((v as Uint8Array).length, `${name} width`).toBe(width);
+    }
+  });
+
+  it("publishes BYTES, never bigints, which is the bug this pins", () => {
+    // Stated as its own assertion because it is the exact mistake: a
+    // `typeof x === "bigint"` check silently rejects every real event and the
+    // inbound search reports an empty inbox with no error anywhere.
+    const body = live();
+    for (const name of ["r_e_point", "v_tilde", "sigma"]) {
+      expect(typeof body[name], `${name} is a bigint on the wire`).not.toBe("bigint");
+    }
+  });
+
+  it("decodes and credits a transfer carrying the contract's own point and salt", async () => {
+    // The strongest form available without the recipient's key: the ephemeral
+    // point and the salt are the REAL bytes from ledger 3900337, in the real
+    // encoding, and only `v_tilde` is recomputed so the transfer is addressed
+    // to a key this test holds. If the decoder expects bigints, this finds
+    // nothing.
+    const body = live();
+    const RE = decodePoint(body.r_e_point as Uint8Array);
+    const sigma = fromBytesBE(body.sigma as Uint8Array);
+    const amount = 4_200n;
+    const s = sharedScalar(VK, RE);
+    const vTilde = (amount + encryptAmount(0n, s, sigma)) % R;
+
+    const entry = (name: string, val: xdr.ScVal) =>
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(name), val });
+    const bytes = (b: Uint8Array) => xdr.ScVal.scvBytes(Buffer.from(b));
+    const rebuilt = xdr.ScVal.scvMap([
+      entry("r_e_point", bytes(body.r_e_point as Uint8Array)),
+      entry("sigma", bytes(body.sigma as Uint8Array)),
+      entry("v_tilde", bytes(toBytesBE(vTilde))),
+    ]);
+
+    const server = await serving({
+      fallback: eventsPage([eventRow("live", 3_900_337, rebuilt.toXDR("base64"))], null),
+    });
+    const found = await findInbound(server, TOKEN, ACCOUNT, VK, 1);
+    expect(found, "the real point and salt were not decoded").toHaveLength(1);
+    expect(found[0]?.opening.value).toBe(amount);
+    expect(found[0]?.opening.randomness).toBe(transferBlinding(s, sigma));
   });
 });
 
