@@ -78,8 +78,16 @@ export function Button({
     width: "100%",
     // A grid or flex item will not shrink below its content without this, and
     // a button that cannot shrink is a button that gets clipped at high zoom.
+    // The box shrinking is only half of it: the LABEL has to be able to wrap
+    // too, or the text runs past the box it was just allowed to narrow. At
+    // Chrome's 500% maximum the viewport is 160px and "Receive" overflowed by
+    // 20px in place.
     minWidth: 0,
+    overflowWrap: "anywhere",
     padding: "13px 16px",
+    // A wrapped label needs room for its second line, so the height is a floor
+    // rather than a fixed value.
+    minHeight: 46,
     borderRadius: radius.lg,
     border: "1px solid transparent",
     cursor: disabled ? "not-allowed" : "pointer",
