@@ -39,6 +39,16 @@ export interface ChromeShim {
    * races is worse than no test.
    */
   beforeLocalWrite?: (key: string, value: unknown) => unknown;
+  /**
+   * Called after every `storage.local` remove, with the keys that went.
+   *
+   * RECORDING ONLY, and its return value is ignored on purpose: an erase is the
+   * one moment when a wallet exists nowhere, and a test that wants to race that
+   * window needs to know when it opened. Returning a promise here would suspend
+   * the erase and move the schedule, which is the mistake documented on the
+   * write path.
+   */
+  afterLocalRemove?: (keys: string[]) => void;
 }
 
 type MessageListener = (
@@ -98,7 +108,9 @@ export function installChrome(): ChromeShim {
       }
     },
     remove: async (k: string | string[]) => {
-      for (const key of Array.isArray(k) ? k : [k]) m.delete(key);
+      const keys = Array.isArray(k) ? k : [k];
+      for (const key of keys) m.delete(key);
+      if (hooked) shim.afterLocalRemove?.(keys);
     },
     clear: async () => m.clear(),
   });

@@ -36,7 +36,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   chrome.beforeLocalWrite = undefined;
-  chrome.afterLocalRead = undefined;
+  chrome.afterLocalRemove = undefined;
   clearSession();
 });
 
@@ -283,6 +283,43 @@ describe("the write phases cannot interleave, which is the property rather than 
     // Recovery reinstalls, and the racing create is refused, so exactly one
     // triple again. Two would mean the erase window was open to a stranger.
     expect(order).toEqual(ONE_INSTALL);
+  });
+
+  it("holds the queue across its own erase, not just up to it", async () => {
+    // This test exists because the mutation that should have falsified the one
+    // above turned NOTHING red. Unserialising `recoverFromMnemonic` changes
+    // nothing under the natural schedule, because a racing `create` reads the
+    // vault header and is refused BEFORE the erase ever happens. The guard was
+    // shipping with no test that could fail.
+    //
+    // The window that matters is between the erase and the reinstall, when the
+    // device holds no wallet at all and every vault-exists guard says yes. So
+    // the racing caller is started when that window OPENS, which is a schedule
+    // the browser is free to produce and the one the guard exists for. The hook
+    // only records; it returns nothing and suspends nothing.
+    const c = new WalletController();
+    await c.init();
+    const { mnemonic, address } = await c.create(PASSWORD);
+    c.lock();
+
+    const order = recordInstallWrites();
+    let erased!: () => void;
+    const eraseWindowOpen = new Promise<void>((r) => (erased = r));
+    chrome.afterLocalRemove = (keys) => {
+      if (keys.includes(KEYS.vaultHeader)) erased();
+    };
+
+    const recovering = c.recoverFromMnemonic(mnemonic, "new password");
+    await eraseWindowOpen;
+    const racing = c.create("racing tab");
+    await Promise.allSettled([recovering, racing]);
+
+    expect(order, "a second install got into the erase window").toEqual(ONE_INSTALL);
+    // And it is the RECOVERED wallet that survived. Recovery proved it owns
+    // this account; the racing tab proved nothing. If the racing tab's address
+    // is the one on disk, recovery erased a wallet and then lost the device to
+    // somebody who could not have authorised the erase.
+    expect(storedAddress(), "the racing tab's wallet is the one on the device").toBe(address);
   });
 
   it("the vault the winner left behind actually opens", async () => {

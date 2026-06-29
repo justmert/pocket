@@ -210,12 +210,28 @@ describe("the sender check", () => {
     // which is the whole reason it is phrased against the BUILT manifest rather
     // than against intent. What replaces it is not "a content script is fine":
     // it is the narrower set of facts that make this one safe.
-    const manifest = JSON.parse(
-      readFileSync(
-        fileURLToPath(new URL("../../.output/chrome-mv3/manifest.json", import.meta.url)),
-        "utf8",
-      ),
-    ) as Record<string, unknown>;
+    //
+    // Read from a build this suite OWNS when one is named. `.output/chrome-mv3`
+    // is shared with a dozen agents, and this assertion has already failed once
+    // with ENOENT because somebody else's `npm run build` had deleted the
+    // directory mid-read. That is a false red, which costs as much trust as a
+    // false green. `POCKET_EXT_PATH` points at `.output-t5/chrome-mv3`, built
+    // from `wxt.t5.config.ts`, and the browser spec in this slice uses the same
+    // one, so the manifest asserted here is the manifest that was driven.
+    const built = process.env.POCKET_EXT_PATH
+      ? `${process.env.POCKET_EXT_PATH}/manifest.json`
+      : fileURLToPath(new URL("../../.output/chrome-mv3/manifest.json", import.meta.url));
+    let raw: string;
+    try {
+      raw = readFileSync(built, "utf8");
+    } catch (e) {
+      throw new Error(
+        `no built manifest at ${built}. Build one first: ` +
+          `npm run build -- -c wxt.t5.config.ts, then set POCKET_EXT_PATH. ` +
+          `Reading the shared .output is what made this flaky. (${String(e)})`,
+      );
+    }
+    const manifest = JSON.parse(raw) as Record<string, unknown>;
 
     // No page may connect to the worker directly. Everything from the web has
     // to go through the relay, where the browser stamps a real origin on it.

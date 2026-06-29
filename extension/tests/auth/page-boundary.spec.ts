@@ -19,7 +19,7 @@
 // silently not inject, which would make every assertion below pass for the
 // wrong reason. `serves the provider at all` exists to catch exactly that.
 import { test, expect } from "@playwright/test";
-import { launchWallet, type Harness } from "../support/extension";
+import { launchWallet, askWorker, type Harness } from "../support/extension";
 import { Wallet } from "../support/wallet";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -29,15 +29,31 @@ const PASSWORD = "correct horse battery staple";
 
 /** A real origin, so the content script's http match actually fires. */
 async function serveBlankPage(): Promise<{ url: string; close: () => Promise<void> }> {
-  const server: Server = createServer((_req, res) => {
+  const server: Server = createServer((req, res) => {
     res.writeHead(200, { "content-type": "text/html" });
-    res.end("<!doctype html><title>a website</title><h1>a website</h1>");
+    // `/frame` is a second real page on the same origin, used as an iframe so
+    // the subframe questions are asked about a frame content scripts could
+    // actually be injected into.
+    res.end(
+      req.url === "/frame"
+        ? "<!doctype html><title>a frame</title><body><p>a frame</p></body>"
+        : "<!doctype html><title>a website</title><body><h1>a website</h1></body>",
+    );
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const port = (server.address() as AddressInfo).port;
   return {
     url: `http://127.0.0.1:${port}/`,
-    close: () => new Promise<void>((r) => server.close(() => r())),
+    close: () =>
+      new Promise<void>((r) => {
+        // `close()` stops accepting and then WAITS for open connections, and
+        // Chromium holds the page's socket open with keep-alive. Without this
+        // the first spec hung for its full fifteen-minute timeout after the
+        // assertions had already passed, which reads exactly like a wallet bug
+        // and is not one.
+        server.closeAllConnections();
+        server.close(() => r());
+      }),
   };
 }
 
@@ -163,10 +179,23 @@ test.describe("an ordinary website, with the wallet installed", () => {
     }
   });
 
-  test("cannot get a signature, and is told why in words a developer can act on", async () => {
+  test("cannot get a signature even WITH a live grant, which is the whole point of a grant", async () => {
+    // Written first without the connect step, and it passed for the wrong
+    // reason: with no grant, `sep43` refuses at the grant check and never
+    // reaches the signing branch at all. Building an extension whose provider
+    // happily returned `{signedTxXdr}` left this test green. So the site is
+    // connected first, deliberately, and the refusal is then asserted to be the
+    // SIGNING refusal rather than the not-connected one.
+    //
+    // Connecting is done through the worker because it is setup, not the
+    // subject: granting is the popup's job and a page cannot do it, which
+    // `cannot smuggle a wallet request through the relay's channel` is the test
+    // that actually proves.
     const site = await openSite();
     try {
       await new Wallet(site.harness.popup).createWallet(PASSWORD);
+      await askWorker(site.harness.popup, { type: "connectDapp", origin: site.origin });
+
       for (const [method, params] of [
         ["signTransaction", ["AAAAAgAAAAA", {}]],
         ["signAuthEntry", ["AAAAAgAAAAA", {}]],
@@ -178,8 +207,18 @@ test.describe("an ordinary website, with the wallet installed", () => {
         };
         expect(res.signedTxXdr, `${method} returned something signed`).toBeUndefined();
         expect(res.error, `${method} did not refuse`).toBeTruthy();
-        expect(JSON.stringify(res)).not.toMatch(/G[A-Z2-7]{55}/);
+        // The branch that must have run. Without this the test cannot tell a
+        // signing policy from a missing grant.
+        expect(res.error!.message, `${method} refused for the wrong reason`).toMatch(
+          /does not sign|cannot show you/i,
+        );
       }
+
+      // And the grant really was live, or everything above is vacuous again.
+      const withGrant = (await ask(site.page, "getAddress")) as { address?: string };
+      expect(withGrant.address, "the grant was not live, so the refusals prove nothing").toMatch(
+        /^G[A-Z2-7]{55}$/,
+      );
     } finally {
       await site.close();
     }
@@ -257,19 +296,22 @@ test.describe("an ordinary website, with the wallet installed", () => {
     // alone would let an ad iframe speak for the page the user trusts.
     const site = await openSite();
     try {
-      const fromFrame = await site.page.evaluate(async () => {
+      const fromFrame = await site.page.evaluate(async (frameUrl) => {
         const iframe = document.createElement("iframe");
-        iframe.src = "about:blank";
+        // A REAL http frame, not `about:blank`. Content scripts do not run in
+        // about:blank frames without `match_about_blank`, so an about:blank
+        // frame reports "no provider here" whatever the manifest says, and the
+        // assertion below would hold even for a build that injected into every
+        // frame. Measured: flipping the content script to `allFrames: true`
+        // left this test green until the frame became a real origin.
+        iframe.src = frameUrl;
+        const loaded = new Promise((r) => iframe.addEventListener("load", r, { once: true }));
         document.body.appendChild(iframe);
-        await new Promise((r) => setTimeout(r, 100));
+        await loaded;
         const win = iframe.contentWindow!;
         const hasProvider = "pocket" in win;
-        // Post as the frame, which is what `e.source !== window` rejects.
-        win.parent.postMessage(
-          { channel: "pocket:sep43", id: "frame-1", method: "getAddress", params: [] },
-          "*",
-        );
-        const answered = await new Promise<boolean>((resolve) => {
+
+        const answered = new Promise<boolean>((resolve) => {
           const onReply = (e: MessageEvent) => {
             const d = e.data as { channel?: string; id?: string };
             if (d?.channel === "pocket:sep43:reply" && d.id === "frame-1") resolve(true);
@@ -277,8 +319,22 @@ test.describe("an ordinary website, with the wallet installed", () => {
           window.addEventListener("message", onReply);
           setTimeout(() => resolve(false), 3_000);
         });
-        return { hasProvider, answered };
-      });
+
+        // The post has to happen INSIDE the frame, or `e.source` is the top
+        // window and the relay answers it correctly. Calling
+        // `frame.contentWindow.parent.postMessage(...)` from here does NOT do
+        // that: the source of a MessageEvent comes from the calling realm, and
+        // `page.evaluate` runs in the top frame. Written that way first, this
+        // test failed, and it was right to: it was asserting about a message
+        // the page itself had sent.
+        const script = win.document.createElement("script");
+        script.textContent =
+          'window.parent.postMessage({channel:"pocket:sep43",id:"frame-1",' +
+          'method:"getAddress",params:[]}, "*")';
+        win.document.body.appendChild(script);
+
+        return { hasProvider, answered: await answered };
+      }, `${site.origin}/frame`);
       expect(fromFrame.hasProvider, "the provider was injected into a subframe").toBe(false);
       expect(fromFrame.answered, "the relay answered a subframe").toBe(false);
     } finally {

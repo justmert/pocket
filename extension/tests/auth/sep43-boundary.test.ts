@@ -58,16 +58,58 @@ async function unlockedWallet() {
   return (res!.data as { address: string }).address;
 }
 
+/**
+ * The AUTHORED refusal, not merely "a string that mentions being locked".
+ *
+ * This helper exists because of a mutation result. Deleting the locked check
+ * from `sep43` outright turned NOTHING red: the call fell through to
+ * `requireSession()`, which throws, and the thrown message is the string
+ * "wallet is locked", which satisfied a `/locked/i` assertion perfectly. The
+ * tests were passing on an exception rather than on the guard.
+ *
+ * A SEP-43 refusal is a SUCCESSFUL message carrying an `error` object. An
+ * exception escaping the branch is `{ok:false}` with a message from
+ * `describeError`. Those two are trivially distinguishable, and only one of
+ * them is the wallet deciding something.
+ */
+function authoredRefusal(res: { ok: boolean; error?: string; data?: unknown } | undefined) {
+  expect(res?.ok, `the call threw instead of refusing: ${res?.error}`).toBe(true);
+  const data = res!.data as { error?: { code: number; message: string } };
+  expect(data.error, "answered without an error object").toBeTruthy();
+  return data.error!;
+}
+
 describe("a locked wallet tells a site nothing about its owner", () => {
   it("refuses getAddress while locked", async () => {
     await unlockedWallet();
     await asPopup({ type: "connectDapp", origin: SITE });
     await asPopup({ type: "lock" });
 
-    const res = await fromSite("getAddress");
-    const payload = JSON.stringify(res?.data ?? res);
-    expect(payload).toMatch(/locked/i);
-    expect(payload).not.toMatch(/G[A-Z2-7]{55}/);
+    const err = authoredRefusal(await fromSite("getAddress"));
+    expect(err.code).toBe(-4); // USER_REJECTED: the dapp must not retry
+    expect(err.message).toMatch(/locked/i);
+    expect(JSON.stringify(err)).not.toMatch(/G[A-Z2-7]{55}/);
+  });
+
+  it("refuses getAddress after a worker restart, with the grant still on disk", async () => {
+    // The case that makes the locked check load-bearing rather than
+    // theoretical. Locking through the button clears the grants too, so after a
+    // deliberate lock there is no grant left for the locked check to stand in
+    // front of. MV3 evicting the worker is different: the session dies with the
+    // worker's memory and the grant, which lives in storage, does not. That is
+    // the normal state of an idle browser, and it is the one where "is there a
+    // session" is the only thing left saying no.
+    await unlockedWallet();
+    await asPopup({ type: "connectDapp", origin: SITE });
+    expect(await sessionFor(SITE), "no grant to survive the restart").toBeTruthy();
+
+    clearSession(); // the worker died; storage did not
+
+    expect(await sessionFor(SITE), "the grant did not survive, so this proves nothing").toBeTruthy();
+    const err = authoredRefusal(await fromSite("getAddress"));
+    expect(err.code).toBe(-4);
+    expect(err.message).toMatch(/locked/i);
+    expect(JSON.stringify(err)).not.toMatch(/G[A-Z2-7]{55}/);
   });
 
   it("refuses every signing method while locked", async () => {
@@ -76,8 +118,8 @@ describe("a locked wallet tells a site nothing about its owner", () => {
     await asPopup({ type: "lock" });
 
     for (const method of ["signTransaction", "signAuthEntry", "signMessage"]) {
-      const res = await fromSite(method, SITE, ["anything"]);
-      expect(JSON.stringify(res?.data ?? res), method).toMatch(/locked/i);
+      const err = authoredRefusal(await fromSite(method, SITE, ["anything"]));
+      expect(err.message, method).toMatch(/locked/i);
     }
   });
 
