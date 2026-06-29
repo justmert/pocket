@@ -218,6 +218,7 @@ export const EVERY_REQUEST: { type: string; msg: Record<string, unknown> }[] = [
     type: "resolveDappRequest",
     msg: { type: "resolveDappRequest", id: "x", approved: true },
   },
+  { type: "currentPhase", msg: { type: "currentPhase" } },
 ];
 
 /** The six the worker answers while locked. Everything else must be refused. */
