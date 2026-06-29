@@ -216,10 +216,18 @@ export function formatAmount(raw: bigint, decimals = 7): string {
 /** Parse a decimal string into stroops. Rejects excess precision rather than rounding. */
 export function parseAmount(text: string): bigint {
   const m = /^(-?)(\d+)(?:\.(\d*))?$/.exec(text.trim());
-  if (!m) throw new InvalidAmountError(`That is not an amount Pocket can read: ${text}`);
+  // The message is authored and interpolates NOTHING. Allowlisting a name puts
+  // the whole message on screen, so echoing `text` back rendered 100,039
+  // characters of whatever was typed into a 360px popup. Repeating the typo is
+  // useless anyway: it is still in the field the user is looking at.
+  if (!m) {
+    throw new InvalidAmountError(
+      "That is not an amount Pocket can read. Use digits and at most one decimal point.",
+    );
+  }
   const [, sign, whole, frac = ""] = m;
   if (frac.length > 7) {
-    throw new InvalidAmountError(`Amounts go to 7 decimal places and that has more: ${text}`);
+    throw new InvalidAmountError("Amounts go to 7 decimal places and that has more.");
   }
   const raw = BigInt(whole as string) * STROOPS_PER_UNIT + BigInt(frac.padEnd(7, "0") || "0");
   return sign === "-" ? -raw : raw;

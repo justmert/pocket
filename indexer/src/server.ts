@@ -4,7 +4,7 @@
 // dependency to a service that must run for years unattended is a poor trade.
 import { createServer } from "node:http";
 import { open } from "./schema.ts";
-import { accountEvents, latestCheckpoint, health } from "./api.ts";
+import { accountEvents, latestCheckpoint, health, BadCursorError } from "./api.ts";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const DB_PATH = process.env.DB_PATH ?? "pocket-archive.db";
@@ -113,6 +113,7 @@ const server = createServer((req, res) => {
     // wrong is useful and leaks nothing: the message is authored here and
     // quotes only what the caller already sent.
     if (e instanceof BadRequestError) return json(res, 400, { error: e.message });
+    if (e instanceof BadCursorError) return json(res, 400, { error: e.message });
     // Never leak an internal message: this service sees only public event data,
     // but the habit matters and a stack trace helps nobody outside.
     json(res, 500, { error: "internal error" });
@@ -123,13 +124,17 @@ const server = createServer((req, res) => {
 function numParam(url: URL, name: string): number | undefined {
   const v = url.searchParams.get(name);
   if (v === null) return undefined;
-  const n = Number(v);
-  // A malformed value used to become NaN, propagate into from/to, and
-  // serialise as null in the response. It failed closed, but it reported a
-  // nonsense range while doing so. Refuse it instead of answering about a
-  // window that cannot exist.
-  if (!Number.isInteger(n) || n < 0) {
+  // `Number()` accepts far more than a ledger number: "0x10" is 16, "1e3" is
+  // 1000, " 5 " is 5, "" is 0, and "Infinity" is Infinity. A client asking for
+  // ledger 0x10 and being answered about ledger 16 has been silently
+  // misunderstood, which is worse than being refused. So the SHAPE is checked
+  // before the value.
+  if (!/^\d+$/.test(v)) {
     throw new BadRequestError(`${name} must be a non-negative integer, got "${v}"`);
+  }
+  const n = Number(v);
+  if (!Number.isSafeInteger(n)) {
+    throw new BadRequestError(`${name} is out of range: "${v}"`);
   }
   return n;
 }

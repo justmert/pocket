@@ -141,16 +141,33 @@ export const moneySizes = {
  * matches. Three weights, not two: a wallet whose warnings are as heavy as its
  * balance has no hierarchy left for the warning.
  */
+// Every text style can break. A wallet renders addresses, memos, asset codes
+// and hashes, all chosen by someone other than us, and at 500% zoom the
+// viewport is 160px. Setting this once here is what stops each new screen
+// having to remember it, which is how the confirm screen came to clip the
+// memo it was asking the user to approve.
+const breakable = { overflowWrap: "anywhere" } as const;
+
 export const text = {
-  hero: { fontSize: fontSizes.display, fontWeight: 700, fontVariantNumeric: "tabular-nums" },
-  title: { fontSize: fontSizes.title, fontWeight: 700 },
-  heading: { fontSize: fontSizes.heading, fontWeight: 600 },
-  rowTitle: { fontSize: fontSizes.body, fontWeight: 600 },
-  value: { fontSize: fontSizes.body, fontWeight: 600, fontVariantNumeric: "tabular-nums" },
-  button: { fontSize: fontSizes.body, fontWeight: 600 },
-  body: { fontSize: fontSizes.small, fontWeight: 500 },
-  label: { fontSize: fontSizes.small, fontWeight: 500 },
-  caption: { fontSize: fontSizes.caption, fontWeight: 500 },
+  hero: {
+    ...breakable,
+    fontSize: fontSizes.display,
+    fontWeight: 700,
+    fontVariantNumeric: "tabular-nums",
+  },
+  title: { ...breakable, fontSize: fontSizes.title, fontWeight: 700 },
+  heading: { ...breakable, fontSize: fontSizes.heading, fontWeight: 600 },
+  rowTitle: { ...breakable, fontSize: fontSizes.body, fontWeight: 600 },
+  value: {
+    ...breakable,
+    fontSize: fontSizes.body,
+    fontWeight: 600,
+    fontVariantNumeric: "tabular-nums",
+  },
+  button: { ...breakable, fontSize: fontSizes.body, fontWeight: 600 },
+  body: { ...breakable, fontSize: fontSizes.small, fontWeight: 500 },
+  label: { ...breakable, fontSize: fontSizes.small, fontWeight: 500 },
+  caption: { ...breakable, fontSize: fontSizes.caption, fontWeight: 500 },
 } as const;
 
 /** Chrome caps a toolbar popup near 600px. */

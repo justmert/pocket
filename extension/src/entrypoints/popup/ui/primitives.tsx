@@ -174,6 +174,11 @@ export function TextButton({
         margin: `-${space.xs}px`,
         textAlign: "left",
         fontFamily: sans,
+        // A button does not shrink below its content on its own, so a label
+        // longer than a zoomed viewport runs past the edge with nothing to
+        // scroll. "Forgot your password?" needed 130px in a 124px window.
+        maxWidth: "100%",
+        minWidth: 0,
       }}
     >
       {children}
@@ -293,6 +298,14 @@ export function Header({ title, right, t }: { title: string; right?: ReactNode; 
         justifyContent: "space-between",
         padding: "16px 18px",
         borderBottom: `1px solid ${t.line}`,
+        // Sticky, so scrolling to the button that signs a payment does not
+        // scroll away the title that says which screen you are on. At 200%
+        // zoom the header sat 284px above a 300px window while the user was
+        // being asked to approve something.
+        position: "sticky",
+        top: 0,
+        zIndex: 1,
+        background: t.bg,
       }}
     >
       {/* A real heading, not a styled span. Screen reader users navigate by

@@ -53,6 +53,11 @@ export function health(db: Database.Database, contractId: string) {
  * `types` filters by event name and is applied AFTER attribution, never by
  * dropping events from storage.
  */
+/** A cursor this archive did not issue. A caller error, not an empty range. */
+export class BadCursorError extends Error {
+  override readonly name = "BadCursorError";
+}
+
 export function accountEvents(
   db: Database.Database,
   contractId: string,
@@ -73,7 +78,16 @@ export function accountEvents(
   const to = opts.toLedger ?? bounds.to;
   // Rows still come only from what we hold; there is nothing else to serve.
   const queryTo = Math.min(to, bounds.to);
-  const limit = Math.min(opts.limit ?? 200, 1000);
+  // `limit=0` served a complete page of nothing: a client paging through would
+  // read "complete: true, events: []" and conclude it had the whole history.
+  // Zero is not a page size, it is a request for no answer.
+  const limit = Math.min(Math.max(opts.limit ?? 200, 1), 1000);
+  // An inverted window cannot be complete, because it describes no ledgers at
+  // all. Answering `complete: true` about it is a true statement about an empty
+  // set and a false one about the history the caller asked for.
+  if (to < from) {
+    return { events: [], from_ledger: from, to_ledger: to, cursor: null, complete: false };
+  }
 
   const params: unknown[] = [contractId, account, from, queryTo];
   let typeClause = "";
@@ -85,9 +99,18 @@ export function accountEvents(
   if (opts.cursor) {
     // Keyset pagination on the canonical order, so a page boundary cannot skip
     // or repeat an event even if new ones arrive between pages.
-    const [l, o, i] = opts.cursor.split(":").map(Number);
+    // A malformed cursor used to become NaN, and `?? 0` then turned it into
+    // "start from the beginning" while the reply still said complete. A client
+    // that mangled its cursor was answered about a different window than it
+    // asked for and told the answer was whole. Refuse instead: a cursor is
+    // ours, so a bad one is a caller error, not a range.
+    const parts = opts.cursor.split(":");
+    if (parts.length !== 3 || !parts.every((p) => /^\d+$/.test(p))) {
+      throw new BadCursorError(`cursor is not one this archive issued: "${opts.cursor}"`);
+    }
+    const [l, o, i] = parts.map(Number) as [number, number, number];
     cursorClause = ` AND (e.ledger_seq, e.tx_application_order, e.event_index) > (?, ?, ?)`;
-    params.push(l ?? 0, o ?? 0, i ?? 0);
+    params.push(l, o, i);
   }
 
   const rows = db
