@@ -37,7 +37,21 @@ async function scrollModel(page: import("@playwright/test").Page) {
   });
 }
 
-test("at 200% zoom the frame is twice the height of its window and the document takes up the slack", async ({
+// REVISED, deliberately, because the fix for this slice's own finding 5
+// changed the property this test was written to hold.
+//
+// It asserted that the frame keeps a fixed 600px height and the DOCUMENT
+// scrolls to reach the rest. That was true and it was the cause of finding 5:
+// with the whole frame taller than the window, scrolling to the button that
+// signs a payment scrolled the header off the top, so the user approved a
+// transaction on a screen whose title they could no longer see. A sticky
+// header cannot help when the element it is sticky inside is itself moving.
+//
+// The frame is now capped at the window (`maxHeight: 100vh`), so the CONTENT
+// scrolls within it and the header stays. The property worth pinning is
+// therefore the opposite one, and the reachability check it was really about
+// is kept intact: everything below the fold must still be reachable.
+test("at 200% zoom the frame fits its window and the content scrolls inside it", async ({
   wallet,
 }) => {
   const page = wallet.page;
@@ -50,16 +64,20 @@ test("at 200% zoom the frame is twice the height of its window and the document 
   // against the constant it set it from. Both assertions below are properties
   // of the PRODUCT at that viewport, and both go red if the frame stops being
   // a fixed 600px box.
-  expect(m.frameHeight, "the frame keeps its declared 600px height whatever the window does").toBe(
-    600,
-  );
+  expect(
+    m.frameHeight,
+    "the frame must not be taller than its window, or the header scrolls away with it",
+  ).toBeLessThanOrEqual(m.window.height);
   // The one that matters. Nothing makes `html`/`body` scrollable on purpose, so
   // an `overflow: hidden` added up there some day would leave the bottom half
   // of every screen unreachable at 200% zoom and this line is what would say so.
+  // The document itself must NOT scroll: that is what dragged the header off.
+  // Reachability moves inside the frame, which is asserted by the tests below
+  // that walk every control at this viewport.
   expect(
     m.documentScrollsBy,
-    `the popup body has to scroll ${m.frameHeight - m.window.height}px to show the bottom of a frame taller than its window`,
-  ).toBe(m.frameHeight - m.window.height);
+    "the popup body must not scroll, or the header goes with it",
+  ).toBe(0);
 });
 
 test("at 200% zoom every control on the tallest screens is still reachable", async ({ wallet }) => {
