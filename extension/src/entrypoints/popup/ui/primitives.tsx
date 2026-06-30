@@ -10,7 +10,14 @@ export function Frame({ t, children }: { t: Theme; children: ReactNode }) {
         // scrolls the BODY, which drags the header off the top of the window.
         // A fixed frame keeps the header put and lets the content scroll under
         // it, the same way on every screen.
+        // Fixed at 600 so an unzoomed popup is the full height Chrome allows,
+        // but capped at the WINDOW so a zoomed one shrinks with it. Without the
+        // cap the frame stayed 600px tall inside a 300px window at 200% zoom,
+        // the body scrolled rather than the frame, and the sticky header went
+        // with it: scrolling to the button that signs a payment scrolled away
+        // the title saying which screen you were on.
         height: FRAME.height,
+        maxHeight: "100vh",
         background: t.bg,
         color: t.text,
         fontFamily: sans,

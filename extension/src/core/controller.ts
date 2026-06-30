@@ -699,19 +699,52 @@ export class WalletController {
       case "getAddress":
         return { address: current };
 
-      case "signTransaction":
+      case "signTransaction": {
+        const xdr = params[0];
+        if (typeof xdr !== "string") {
+          return err(ERROR.INVALID_REQUEST, "signTransaction needs a transaction envelope.");
+        }
+        const { describeTransaction } = await import("./provider/describe-tx");
+        const summary = describeTransaction(xdr, NETWORKS[this.network].passphrase);
+
+        // The absolute rule: bytes we cannot describe are never offered for
+        // approval. An undecodable envelope, or a fee bump wrapping somebody
+        // else's transaction, is refused HERE rather than shown to a user as a
+        // hash to trust.
+        if (!summary.decoded) {
+          return err(ERROR.INVALID_REQUEST, summary.warning ?? "Pocket could not read that.");
+        }
+        // The wallet signs as ITSELF. An envelope sourced from another account
+        // would take our signature somewhere we never looked.
+        if (summary.source !== current) {
+          return err(
+            ERROR.INVALID_REQUEST,
+            "That transaction is from a different account, so Pocket will not sign it.",
+          );
+        }
+        // The private pocket is unreachable from a site by design.
+        void CONFIDENTIAL_METHODS;
+
+        // Parked until the user answers in the popup. A timeout resolves to
+        // REFUSED: someone who walked away has not consented.
+        if (!(await this.awaitDappApproval(origin, summary))) {
+          return err(ERROR.USER_REJECTED, "You declined that in Pocket.");
+        }
+        const { TransactionBuilder } = await import("@stellar/stellar-sdk/base");
+        const tx = TransactionBuilder.fromXDR(xdr, NETWORKS[this.network].passphrase);
+        tx.sign(this.keypair());
+        return { signedTxXdr: tx.toXDR(), signerAddress: current };
+      }
+
       case "signAuthEntry":
       case "signMessage": {
-        // Deliberately unimplemented rather than silently signing. Signing
-        // needs an approval screen showing exactly what is being signed, and
-        // routing a dapp's bytes through a worker that signs without one is
-        // the single worst thing this wallet could do. Refusing is correct
-        // until that screen exists.
+        // Still refused, for the reason signTransaction used to be: there is
+        // no screen that can show a user what an auth entry or an arbitrary
+        // message commits them to. Refusing beats a signature nobody could read.
         void params;
-        void CONFIDENTIAL_METHODS;
         return err(
           ERROR.INVALID_REQUEST,
-          "Pocket does not sign for sites yet. It will not sign anything it cannot show you first.",
+          "Pocket does not sign this yet. It will not sign anything it cannot show you first.",
         );
       }
 
