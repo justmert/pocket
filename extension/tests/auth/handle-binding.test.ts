@@ -18,6 +18,7 @@ import { accountKey, accountEntry, entryFor, entriesResult } from "../failure/_h
 const chrome = installChrome();
 
 const { WalletController, PrivatePocketError } = await import("../../src/core/controller");
+const { describeError } = await import("../../src/core/dispatch");
 const { NETWORKS } = await import("../../src/core/config");
 const { clearSession } = await import("../../src/core/session");
 const { TransactionBuilder, Operation, Asset, Keypair, Account, BASE_FEE } = await import(
@@ -313,5 +314,97 @@ describe("the bytes signed are the bytes summarised", () => {
     await expect(controller.confirmPayment(handle)).rejects.toThrow(
       /not the single payment that was reviewed/i,
     );
+  });
+});
+
+describe("the three refusals a mutation pass found untested", () => {
+  // Each of these exists because a mutation turned NOTHING red. They are the
+  // answer to "was the mutation pass worth running", and none of them would
+  // have been written from reading the suite.
+
+  it("refuses a handle marked private, even though confirmPayment issued nothing else", async () => {
+    // Mutation E3b relaxed `if (!entry || entry.private)` to `if (!entry)` and
+    // no test noticed, because building a real private handle needs a proof and
+    // nothing here can produce one. So the entry is planted in the shape the
+    // prover would have left it. That is reaching past the front door, and it
+    // is the only way to reach this branch at all; the branch matters because a
+    // private envelope signed through the public path skips the staged-openings
+    // write, and an opening that is never written is funds that are visible on
+    // chain and permanently unspendable.
+    const { controller, address } = await funded();
+    const tx = new TransactionBuilder(new Account(address, "1"), {
+      fee: BASE_FEE,
+      networkPassphrase: NETWORKS.testnet.passphrase,
+      timebounds: { minTime: 0, maxTime: Math.floor(Date.now() / 1000) + 600 },
+    })
+      .addOperation(Operation.payment({ destination: RECIPIENT, asset: Asset.native(), amount: "1" }))
+      .build();
+
+    const pending = (controller as unknown as { pending: Map<string, unknown> }).pending;
+    const handle = tx.hash().toString("hex");
+    pending.set(handle, {
+      xdr: tx.toXDR(),
+      at: Date.now(),
+      private: { resolve: null, follow: false },
+    });
+
+    await expect(controller.confirmPayment(handle)).rejects.toThrow(
+      /no longer pending confirmation/i,
+    );
+    // And it survived, because the check happens before the handle is consumed.
+    // Refusing after deleting would destroy a proof the user waited on.
+    expect(pending.has(handle), "the misrouted private handle was consumed").toBe(true);
+  });
+
+  it("refuses raw XDR whose source and shape would otherwise pass every later check", async () => {
+    // The existing raw-XDR test builds an accountMerge, which the operation
+    // check catches on its own, so it stayed green when the handle lookup was
+    // made to fall back to the caller's bytes. This one hands over a perfectly
+    // well-formed payment from this very wallet: source check passes, operation
+    // check passes, and the ONLY thing standing between it and a signature is
+    // that the worker never built it.
+    const { controller, address } = await funded();
+    const theirs = new TransactionBuilder(new Account(address, "9999"), {
+      fee: BASE_FEE,
+      networkPassphrase: NETWORKS.testnet.passphrase,
+      timebounds: { minTime: 0, maxTime: Math.floor(Date.now() / 1000) + 600 },
+    })
+      .addOperation(
+        Operation.payment({ destination: RECIPIENT, asset: Asset.native(), amount: "1000" }),
+      )
+      .build();
+
+    await expect(controller.confirmPayment(theirs.toXDR())).rejects.toThrow(
+      /no longer pending confirmation/i,
+    );
+  });
+
+  it("tells the user something generic when it refuses for an internal reason", async () => {
+    // Mutation G1b made `describeError` pass every message through verbatim and
+    // nothing in this slice noticed. The refusals in `confirmPayment` are plain
+    // `Error`s carrying sentences written for a developer reading a stack, not
+    // for a person holding a phone: "refusing to sign a transaction from a
+    // different source account" tells a user nothing they can act on, and the
+    // allowlist exists precisely so unnamed errors cannot reach a screen.
+    const { controller } = await funded();
+    const stranger = Keypair.random();
+    const foreign = new TransactionBuilder(new Account(stranger.publicKey(), "1"), {
+      fee: BASE_FEE,
+      networkPassphrase: NETWORKS.testnet.passphrase,
+      timebounds: { minTime: 0, maxTime: Math.floor(Date.now() / 1000) + 600 },
+    })
+      .addOperation(Operation.payment({ destination: RECIPIENT, asset: Asset.native(), amount: "1" }))
+      .build();
+
+    const pending = (controller as unknown as { pending: Map<string, unknown> }).pending;
+    const handle = foreign.hash().toString("hex");
+    pending.set(handle, { xdr: foreign.toXDR(), at: Date.now() });
+
+    const shown = await controller.confirmPayment(handle).then(
+      () => "signed it",
+      (e) => describeError(e),
+    );
+    expect(shown).toBe("Something went wrong. Try again, and check your connection.");
+    expect(shown).not.toMatch(/source account|refusing to sign/i);
   });
 });
