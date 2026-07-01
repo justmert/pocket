@@ -16,7 +16,13 @@ import { xdr, scValToNative } from "@stellar/stellar-sdk/base";
 import jsXdr from "@stellar/js-xdr";
 import { ArchiveClient } from "./chain/archive";
 import type { StoredEvent } from "./chain/archive-types";
-import { replay, INITIAL_STATE, isReplayEvent, type ConfidentialEvent } from "./sync";
+import {
+  replay,
+  INITIAL_STATE,
+  isReplayEvent,
+  UnreplayableEventError,
+  type ConfidentialEvent,
+} from "./sync";
 import { verifyAgainstChain } from "./private";
 import type { ConfidentialAccount, Opening } from "./witness/types";
 
@@ -124,7 +130,28 @@ export async function recoverOpenings(
     .map(decodeStored)
     .filter((e): e is ConfidentialEvent => e !== null);
 
-  const state = replay(INITIAL_STATE, events, { vk, address: account });
+  // An account that has ever RECEIVED a confidential transfer cannot be rebuilt
+  // from events, and this is where a user finds that out. The contract passes
+  // C_transfer in the invocation payload and does not publish it in the event,
+  // so the event stream carries no way to confirm a decrypted amount is the one
+  // that was actually committed. `replay` refuses rather than credit an
+  // unverifiable amount, which is right, and the refusal has to be readable:
+  // without this it reached the screen as "check your connection", sending
+  // someone to retry a network problem that does not exist and will not clear.
+  let state;
+  try {
+    state = replay(INITIAL_STATE, events, { vk, address: account });
+  } catch (e) {
+    if (e instanceof UnreplayableEventError) {
+      throw new RecoveryUnavailableError(
+        "This account has received a confidential transfer, and a received transfer cannot be " +
+          "rebuilt from history: the contract does not publish the commitment that would prove " +
+          "the amount is yours. Pocket will not credit an amount it cannot verify. Your funds " +
+          "are safe on chain.",
+      );
+    }
+    throw e;
+  }
   const rebuilt = {
     spendable: state.spendable,
     receiving: state.receiving,

@@ -63,6 +63,34 @@ function depositEvent(to: string, amount: bigint, ledger: number) {
   };
 }
 
+/** A transfer INTO this account, in the same stored wire form. */
+function inboundTransferEvent(to: string, ledger: number) {
+  const topics = Buffer.concat(
+    [
+      nativeToScVal("transfer", { type: "symbol" }),
+      nativeToScVal(FUNDER, { type: "address" }),
+      nativeToScVal(to, { type: "address" }),
+    ].map((t) => t.toXDR()),
+  );
+  // The real body, as observed on chain: no commitment in it. That absence is
+  // the whole reason this cannot be replayed.
+  const data = xdr.ScVal.scvMap([
+    new xdr.ScMapEntry({
+      key: nativeToScVal("sigma", { type: "symbol" }),
+      val: nativeToScVal(1n, { type: "i128" }),
+    }),
+  ]);
+  return {
+    id: `${ledger}-0-0`,
+    event_type: "transfer",
+    ledger_seq: ledger,
+    tx_application_order: 0,
+    event_index: 0,
+    topics_xdr: topics.toString("base64"),
+    data_xdr: data.toXDR("base64"),
+  };
+}
+
 /** An archive that serves exactly these events and says its window is complete. */
 async function archiveServing(events: unknown[], ingestedThrough = 5_000): Promise<string> {
   const server = await FaultServer.start({
@@ -169,6 +197,27 @@ describe("a rebuilt balance is checked against the contract, not trusted", () =>
         receivingCommitment: IDENTITY,
       } as never),
     ).rejects.toThrow(RecoveryUnavailableError);
+  });
+
+  it("explains that a RECEIVED transfer cannot be rebuilt, in words a person can act on", async () => {
+    // The limit that matters most in practice, because any account that has been
+    // paid confidentially hits it. The contract passes C_transfer in the
+    // invocation payload and does not publish it in the event, so nothing in the
+    // event stream can confirm a decrypted amount is the committed one. Refusing
+    // is correct. Refusing with "check your connection" is not: it sends someone
+    // to retry a network fault that does not exist.
+    const url = await archiveServing([inboundTransferEvent(ACCOUNT, 300)]);
+    const err = await recoverOpenings(url, TOKEN, ACCOUNT, VK, {
+      spendableCommitment: IDENTITY,
+      receivingCommitment: IDENTITY,
+    } as never).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RecoveryUnavailableError);
+    const shown = describeError(err);
+    expect(shown).toMatch(/received a confidential transfer/i);
+    expect(shown).toMatch(/safe on chain/i);
+    expect(shown).not.toMatch(/check your connection/i);
+    // And not the internal wording, which names circuit variables.
+    expect(shown).not.toMatch(/r_e_point|v_tilde|sigma/);
   });
 
   it("does not credit a deposit that was made TO someone else", async () => {

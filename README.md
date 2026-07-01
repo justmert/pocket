@@ -139,6 +139,15 @@ broken or hostile archive cannot hand you a wrong balance; it can only fail to
 help. Recent transfers, inside the RPC window, are credited without any archive
 at all.
 
+**What rebuilding cannot do, and it is a real limit.** An account that has ever
+RECEIVED a confidential transfer cannot be rebuilt from history. Opening an
+inbound transfer needs the commitment `C_transfer`, and the contract passes it in
+the invocation payload without publishing it in the event, so the event stream
+carries nothing that can confirm a decrypted amount is the one committed. Pocket
+refuses rather than credit an amount it cannot verify, and says so. Deposits,
+merges, withdrawals and transfers you SENT replay normally. Closing this needs
+the commitment in the event, which is a contract change upstream, not ours.
+
 The wallet refuses to sync when an archive it was told about is unavailable.
 Falling back to recent-history-only would move the sync cursor past the gap and
 make those openings unrecoverable.
