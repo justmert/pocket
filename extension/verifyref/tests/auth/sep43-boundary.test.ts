@@ -17,7 +17,7 @@
 // question 1 is not covered by the generic allowlist and has to be asked here.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import "../../src/lib/polyfill";
-import { installChrome, EXTENSION_ID } from "./_harness/chrome";
+import { installChrome, EXTENSION_ID, POPUP_SENDER } from "./_harness/chrome";
 
 const chrome = installChrome();
 
@@ -48,7 +48,7 @@ const fromSite = (method: string, origin = SITE, params: unknown[] = []) =>
   >;
 
 const asPopup = (msg: Record<string, unknown>) =>
-  chrome.send(msg, { id: EXTENSION_ID }) as Promise<
+  chrome.send(msg, POPUP_SENDER) as Promise<
     { ok: boolean; error?: string; data?: unknown } | undefined
   >;
 
@@ -185,7 +185,7 @@ describe("an unlocked wallet still tells an unconnected site nothing", () => {
     await asPopup({ type: "connectDapp", origin: SITE });
     const res = (await chrome.send(
       { type: "sep43", method: "getAddress", params: [] },
-      { id: EXTENSION_ID },
+      POPUP_SENDER,
     )) as { ok: boolean; error: string };
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/could not determine which site/i);
@@ -221,11 +221,30 @@ describe("a grant is a grant to ask, never a grant to sign", () => {
     await unlockedWallet();
     await asPopup({ type: "connectDapp", origin: SITE });
 
-    for (const method of ["signTransaction", "signAuthEntry", "signMessage"]) {
+    // `signAuthEntry` and `signMessage` are refused outright and always will
+    // be: there is no screen that can show a person what either commits them
+    // to, and a signature nobody could read is not consent.
+    for (const method of ["signAuthEntry", "signMessage"]) {
       const res = await fromSite(method, SITE, ["AAAAAgAAAA..."]);
-      const payload = JSON.stringify(res?.data ?? res);
-      expect(payload, method).toMatch(/will not sign anything it cannot show you/i);
+      expect(JSON.stringify(res?.data ?? res), method).toMatch(
+        /will not sign anything it cannot show you/i,
+      );
     }
+
+    // `signTransaction` IS reachable now, which is the whole point of the
+    // approval screen, so this asserts the property rather than the old
+    // sentence: undecodable bytes are refused before any approval is raised.
+    // This oracle used to pin "will not sign anything it cannot show you" for
+    // all three, and it kept passing after signing was wired because the
+    // refusal happened to contain the words for a different reason.
+    const bad = await fromSite("signTransaction", SITE, ["AAAAAgAAAA..."]);
+    const payload = JSON.stringify(bad?.data ?? bad);
+    expect(payload).toMatch(/could not read this transaction/i);
+    expect(payload, "a refusal must not carry a signature").not.toMatch(/signedTxXdr|signerAddress/);
+    // And nothing was queued for a human to approve, because there is nothing
+    // to show them.
+    const queued = await asPopup({ type: "pendingDappRequest" });
+    expect(queued?.data ?? null, "undecodable bytes reached the approval queue").toBe(null);
   });
 
   it("refuses a method that is not in the provider's vocabulary", async () => {

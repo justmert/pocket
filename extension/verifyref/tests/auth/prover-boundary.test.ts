@@ -11,7 +11,7 @@
 // traffic would be answering the wallet's own messages.
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import "../../src/lib/polyfill";
-import { EXTENSION_ID } from "./_harness/chrome";
+import { EXTENSION_ID, POPUP_SENDER } from "./_harness/chrome";
 import { PROVER_CHANNEL } from "../../src/core/prover/protocol";
 
 type Listener = (
@@ -39,7 +39,7 @@ await import("../../src/entrypoints/offscreen/main");
 /** Deliver a message the way the browser would, and report what came back. */
 function deliver(
   msg: unknown,
-  sender: { id?: string } = { id: EXTENSION_ID },
+  sender: { id?: string } = POPUP_SENDER,
 ): { answered: boolean; async: boolean; reply: unknown } {
   let reply: unknown;
   let answered = false;

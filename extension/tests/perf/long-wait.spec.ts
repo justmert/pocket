@@ -20,7 +20,7 @@
 import { test, expect } from "../support/fixtures";
 import { WAITS } from "../support/wallet";
 import * as ledger from "../support/testnet";
-import { installProbe, arm, disarm, read, now, screens, longestStaticMs, WATCH } from "./probe";
+import { installProbe, arm, disarm, read, now, screens, longestStaticMs, WATCH, at } from "./probe";
 
 const PASSWORD = "a-strong-test-password";
 
@@ -100,8 +100,8 @@ test("the wallet never goes quiet during a private operation: something is alway
   // One sampling interval of slack at the closing edge: a mark is stamped by a
   // rAF and a sample by an interval, so the two disagree by up to a frame about
   // exactly when the review screen replaced the wait.
-  const from = build.marks.busy;
-  const to = build.marks.review - 120;
+  const from = at(build, "busy");
+  const to = at(build, "review") - 120;
   const waiting = screens(build.samples.filter((s) => s.t >= from && s.t <= to));
 
   expect(to - from, "there must be a wait to inspect").toBeGreaterThan(500);
@@ -141,8 +141,8 @@ test("the short wait the wallet already has does not leave the screen unchanged 
   const p = await read(wallet.page);
   await disarm(wallet.page);
 
-  const from = p.marks.creating;
-  const to = p.marks.backup - 120;
+  const from = at(p, "creating");
+  const to = at(p, "backup") - 120;
   const during = p.samples.filter((s) => s.t >= from && s.t <= to);
   expect(to - from, "there must be a wait to inspect").toBeGreaterThan(300);
   expect(during.length, "the wait must have been sampled").toBeGreaterThan(1);

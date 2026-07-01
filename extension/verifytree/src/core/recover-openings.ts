@@ -112,7 +112,7 @@ export async function recoverOpenings(
   // the contract holds is wrong, and storing it would leave a balance that
   // looks right and cannot be spent.
   const check = verifyAgainstChain(rebuilt, onChain);
-  if (false) {
+  if (!check.ok) {
     throw new RecoveryMismatchError(
       `The rebuilt ${check.which} balance does not match what the contract holds, so Pocket ` +
         `will not use it. Your funds are safe on chain. This means the history it was given ` +
