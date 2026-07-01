@@ -34,6 +34,9 @@ const { WalletController } = await import("../../src/core/controller");
 const { NETWORKS } = await import("../../src/core/config");
 const { describeError } = await import("../../src/core/dispatch");
 const { AccountNotFoundError } = await import("../../src/core/chain/balances");
+// The values come from a dynamic import so the polyfill lands first; the
+// NAMESPACE has to be imported statically or `xdr.ScVal` is not a type here.
+import type { xdr as xdrTypes } from "@stellar/stellar-sdk/base";
 const { SorobanDataBuilder, xdr } = await import("@stellar/stellar-sdk/base");
 const { G, H, IDENTITY, encodePoint } = await import("../../src/core/crypto/grumpkin");
 
@@ -342,7 +345,7 @@ describe("the inbound-credit path must not route around the error allowlist", ()
   function divergedAccount(): Fault {
     const bytes = (p: { x: bigint; y: bigint }) =>
       xdr.ScVal.scvBytes(Buffer.from(encodePoint(p)));
-    const entry = (name: string, val: xdr.ScVal) =>
+    const entry = (name: string, val: xdrTypes.ScVal) =>
       new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(name), val });
     return rpcOk({
       latestLedger: 1_000,
@@ -444,7 +447,7 @@ describe("the inbound search asks the RPC where its window starts", () => {
   /** A confidential account whose receiving side does not open to the stored zero. */
   function diverged(): Fault {
     const bytes = (p: { x: bigint; y: bigint }) => xdr.ScVal.scvBytes(Buffer.from(encodePoint(p)));
-    const entry = (name: string, val: xdr.ScVal) =>
+    const entry = (name: string, val: xdrTypes.ScVal) =>
       new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(name), val });
     return rpcOk({
       latestLedger: 1_000_000,

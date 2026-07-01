@@ -273,6 +273,25 @@ export async function read(page: Page): Promise<Probe> {
   return p;
 }
 
+/**
+ * When a mark was painted, or a refusal.
+ *
+ * `p.marks.balance` is `number | undefined`, and every caller was reading it as
+ * a number. A mark that never landed would arithmetic into NaN, and every
+ * comparison against NaN is false, so a budget assertion would PASS on a screen
+ * that never rendered. A missing mark is a broken measurement, not a fast one.
+ */
+export function at(p: Probe, name: string): number {
+  const t = p.marks[name];
+  if (t === undefined) {
+    throw new Error(
+      `the mark "${name}" was never painted, so there is nothing to measure. ` +
+        `painted: ${Object.keys(p.marks).join(", ") || "none"}`,
+    );
+  }
+  return t;
+}
+
 /** Page time, on the same clock as every mark and frame. */
 export async function now(page: Page): Promise<number> {
   return page.evaluate(() => performance.now());
@@ -286,7 +305,12 @@ export async function now(page: Page): Promise<number> {
  */
 export function longestFrameGap(frames: number[]): number {
   let worst = 0;
-  for (let i = 1; i < frames.length; i++) worst = Math.max(worst, frames[i] - frames[i - 1]);
+  for (let i = 1; i < frames.length; i++) {
+    const a = frames[i - 1];
+    const b = frames[i];
+    if (a === undefined || b === undefined) continue;
+    worst = Math.max(worst, b - a);
+  }
   return worst;
 }
 

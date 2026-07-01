@@ -1271,7 +1271,7 @@ export class WalletController {
     //
     // Recorded because the reasoning that produced the bug is more persuasive
     // than the reasoning that fixed it, and a future reader will meet it first.
-    if (req.kind !== "merge" || !(await this.unresolvedIsMerge())) {
+    if (req.kind !== "merge") {
       await this.assertNothingUnresolved();
     }
     const cfg = this.confidentialConfig();

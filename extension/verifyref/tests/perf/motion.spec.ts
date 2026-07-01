@@ -16,7 +16,7 @@ import { test, expect } from "../support/fixtures";
 import { WAITS } from "../support/wallet";
 import * as ledger from "../support/testnet";
 import { intercept, restore, RPC_HOST } from "../support/stub";
-import { installProbe, read, now, framesBetween, longestFrameGap, WATCH } from "./probe";
+import { installProbe, read, now, framesBetween, longestFrameGap, WATCH, at } from "./probe";
 
 const PASSWORD = "a-strong-test-password";
 
@@ -100,6 +100,10 @@ test("with reduced motion asked for, the wait spinner is slowed and NOT frozen",
   // this measures the animation instead of the test runner's clock.
   const turned = await spinner.evaluate((el) => {
     const a = el.getAnimations()[0];
+    // No animation at all is the failure this test exists to catch, so it says
+    // so rather than reading `currentTime` off undefined and reporting a
+    // TypeError that looks like a harness fault.
+    if (!a) throw new Error("the spinner declares no animation, so nothing can be turning");
     const was = a.currentTime;
     const at = (ms: number) => {
       a.currentTime = ms;
@@ -160,7 +164,7 @@ test("without reduced motion, the press feedback and the spinner keep their norm
   // The contrast with the test above. If both readings were the same, one of
   // the two tests would be measuring nothing.
   for (const d of durations) {
-    const first = Number(d.split(",")[0].replace("s", ""));
+    const first = Number((d.split(",")[0] ?? "").replace("s", ""));
     expect(first, "press feedback exists when the user has not asked for less motion").toBeGreaterThan(
       0.01,
     );
@@ -193,10 +197,10 @@ test("no animation stands between a press and the screen it opens", async ({ wal
   await expect(wallet.page.getByLabel("Recipient")).toBeVisible();
   const p = await read(wallet.page);
 
-  expect(p.marks.sendScreen, "the Send screen must have been painted").toBeGreaterThan(0);
-  console.log(`  click to the frame carrying the Send screen: ${(p.marks.sendScreen - t0).toFixed(1)}ms`);
+  expect(at(p, "sendScreen"), "the Send screen must have been painted").toBeGreaterThan(0);
+  console.log(`  click to the frame carrying the Send screen: ${(at(p, "sendScreen") - t0).toFixed(1)}ms`);
   expect(
-    p.marks.sendScreen - t0,
+    at(p, "sendScreen") - t0,
     "the next screen must arrive on the next frame, not after a transition",
   ).toBeLessThan(GATE_MS);
 });

@@ -111,7 +111,7 @@ export async function forEachViewport(
     try {
       await check(vp);
     } catch (e) {
-      failures.push(e instanceof Error ? e.message.split("\n")[0] : String(e));
+      failures.push(e instanceof Error ? (e.message.split("\n")[0] ?? e.message) : String(e));
     }
   }
   expect(failures.join("\n"), "layout failures, one per viewport").toBe("");

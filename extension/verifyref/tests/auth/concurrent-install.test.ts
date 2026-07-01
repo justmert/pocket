@@ -15,6 +15,7 @@
 // check-then-act shape and were judged harmless because "they converge on the
 // same seed". This spec tests that judgement rather than repeating it.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import type { WalletStatus } from "../../src/core/messages";
 import "../../src/lib/polyfill";
 import { installChrome } from "./_harness/chrome";
 
@@ -218,7 +219,7 @@ describe("the write phases cannot interleave, which is the property rather than 
   //
   // The hook only records. It returns undefined, so it adds no microtask and
   // does not move the schedule it is measuring.
-  const INSTALL_KEYS = [KEYS.publicAddress, KEYS.vaultHeader, KEYS.state];
+  const INSTALL_KEYS: string[] = [KEYS.publicAddress, KEYS.vaultHeader, KEYS.state];
 
   function recordInstallWrites(): string[] {
     const order: string[] = [];
@@ -335,12 +336,18 @@ describe("the write phases cannot interleave, which is the property rather than 
     clearSession();
     const fresh = new WalletController();
     await fresh.init();
-    const opened = await passwords.reduce<Promise<{ address: string } | null>>(
+    // `unlock` answers with the full status, whose `address` is optional. It
+    // was being typed as `{ address: string }`, so the assertion below read a
+    // field TypeScript had been told could not be missing and nothing checked
+    // this file.
+    const opened = await passwords.reduce<Promise<WalletStatus | null>>(
       async (acc, pw) => (await acc) ?? fresh.unlock(pw).catch(() => null),
       Promise.resolve(null),
     );
     expect(opened, "neither password opened the installed vault").not.toBeNull();
-    expect(opened!.address).toBe(storedAddress());
+    expect(opened!.address, "an opened vault must report the address it holds").toBe(
+      storedAddress(),
+    );
   });
 });
 

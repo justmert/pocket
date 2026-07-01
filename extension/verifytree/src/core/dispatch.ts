@@ -211,7 +211,7 @@ const SAFE_ERRORS = new Set([
   "InboundCreditError",
   "WalletExistsError",
   "StaleHandleError",
-
+  "MemoTooLongError",
   "InvalidAmountError",
   "InvalidAddressKindError",
   "RecoveryUnavailableError",

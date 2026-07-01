@@ -110,11 +110,23 @@ export async function unwrapDek(header: VaultHeader, password: string): Promise<
     "decrypt",
   ]);
   const pt = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: b64.decode(header.wrap.iv), additionalData: headerAad(header) },
+    { name: "AES-GCM", iv: buf(b64.decode(header.wrap.iv)), additionalData: buf(headerAad(header)) },
     kek,
-    b64.decode(header.wrap.ct),
+    buf(b64.decode(header.wrap.ct)),
   );
   return new Uint8Array(pt);
+}
+
+/**
+ * A byte view WebCrypto accepts.
+ *
+ * `Uint8Array<ArrayBufferLike>` is not `BufferSource`: the lib types demand a
+ * view over a real ArrayBuffer, and a SharedArrayBuffer-backed one would be a
+ * runtime error rather than a cast away. Everything here comes from base64 and
+ * is backed by a plain ArrayBuffer.
+ */
+function buf(u: Uint8Array): ArrayBuffer {
+  return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength) as ArrayBuffer;
 }
 
 /** Open a payload sealed under the DEK. Throws on a wrong key or tampering. */
@@ -125,11 +137,11 @@ export async function openSealed<T>(dek: Uint8Array, sealed: Sealed): Promise<T>
   const pt = await crypto.subtle.decrypt(
     {
       name: "AES-GCM",
-      iv: b64.decode(sealed.iv),
-      additionalData: new TextEncoder().encode(`pocket.payload.v${sealed.v}`),
+      iv: buf(b64.decode(sealed.iv)),
+      additionalData: buf(new TextEncoder().encode(`pocket.payload.v${sealed.v}`)),
     },
     key,
-    b64.decode(sealed.ct),
+    buf(b64.decode(sealed.ct)),
   );
   return JSON.parse(new TextDecoder().decode(new Uint8Array(pt))) as T;
 }

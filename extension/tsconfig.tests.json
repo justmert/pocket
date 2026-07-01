@@ -3,5 +3,5 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["tests", "playwright.tests.config.ts", "wxt.mutant.config.ts", ".wxt/wxt.d.ts"]
+  "include": ["tests", "src/types", "playwright.tests.config.ts", "wxt.mutant.config.ts", ".wxt/wxt.d.ts"]
 }

@@ -21,9 +21,8 @@ const { WalletController, PrivatePocketError } = await import("../../src/core/co
 const { describeError } = await import("../../src/core/dispatch");
 const { NETWORKS } = await import("../../src/core/config");
 const { clearSession } = await import("../../src/core/session");
-const { TransactionBuilder, Operation, Asset, Keypair, Account, BASE_FEE } = await import(
-  "@stellar/stellar-sdk/base"
-);
+const { TransactionBuilder, Operation, Asset, Keypair, Account, BASE_FEE, FeeBumpTransaction } =
+  await import("@stellar/stellar-sdk/base");
 
 const PASSWORD = "correct horse battery staple";
 const RECIPIENT = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7";
@@ -258,7 +257,9 @@ describe("the bytes signed are the bytes summarised", () => {
       JSON.parse(sent!.body) as { params: { transaction: string } }
     ).params.transaction;
     const decoded = TransactionBuilder.fromXDR(envelopeB64, NETWORKS.testnet.passphrase);
-    if (!("operations" in decoded)) throw new Error("a fee-bump reached the wire");
+    // `instanceof`, not `"operations" in`: the `in` check narrows nothing for
+    // TypeScript across a class union, so every read below was unchecked.
+    if (decoded instanceof FeeBumpTransaction) throw new Error("a fee-bump reached the wire");
 
     expect(decoded.source).toBe(address);
     expect(decoded.operations).toHaveLength(1);

@@ -13,6 +13,7 @@
 // would advance the cursor past a gap, and the openings behind that gap would
 // be unrecoverable rather than merely delayed.
 import { xdr, scValToNative } from "@stellar/stellar-sdk/base";
+import jsXdr from "@stellar/js-xdr";
 import { ArchiveClient } from "./chain/archive";
 import type { StoredEvent } from "./chain/archive-types";
 import { replay, INITIAL_STATE, isReplayEvent, type ConfidentialEvent } from "./sync";
@@ -28,6 +29,24 @@ export class RecoveryMismatchError extends Error {
 }
 
 /**
+ * Read a run of ScVals that were written one after another with no envelope.
+ *
+ * There is no length to read, so the only way to know how many there are is to
+ * decode until the buffer is spent. `XdrReader` is the same reader the SDK uses
+ * internally for exactly this.
+ */
+function readConcatenated(base64: string): xdr.ScVal[] {
+  const reader = new jsXdr.XdrReader(Buffer.from(base64, "base64"));
+  const out: xdr.ScVal[] = [];
+  // The SDK's generated declaration says `read(io: Buffer)`. It is wrong: every
+  // caller inside js-xdr passes an XdrReader, and a Buffer has no `readInt32BE`
+  // cursor for it to advance. Verified at runtime against real stored topics
+  // before writing this, not inferred from the types.
+  while (!reader.eof) out.push(xdr.ScVal.read(reader as unknown as Buffer));
+  return out;
+}
+
+/**
  * Decode one stored event into the shape the replay engine takes.
  *
  * The archive stores topics and data as base64 XDR, which is what the ledger
@@ -37,9 +56,16 @@ export class RecoveryMismatchError extends Error {
  */
 function decodeStored(e: StoredEvent): ConfidentialEvent | null {
   if (!isReplayEvent(e.event_type)) return null;
-  const topicsVec = xdr.ScVec.fromXDR(e.topics_xdr, "base64");
+  // `topics_xdr` is the ledger's own topic ScVals CONCATENATED, which is what
+  // `indexer/src/ingest.ts` writes: `Buffer.concat(e.topic.map(t => t.toXDR()))`.
+  // It is NOT an ScVec, and reading it as one throws on every event in the
+  // archive, because an ScVec's first four bytes are a length and a bare
+  // concatenation's first four bytes are the first value's discriminant. That
+  // is what this decoder did, so archive-backed recovery could not decode a
+  // single event. Measured against the real stored bytes, not assumed.
+  const topicVals = readConcatenated(e.topics_xdr);
   // topic[0] is the event name; the parties follow.
-  const topics = topicsVec
+  const topics = topicVals
     .slice(1)
     .map((t) => scValToNative(t) as unknown)
     .map((v) => (typeof v === "string" ? v : ""));

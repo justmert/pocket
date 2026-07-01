@@ -40,7 +40,11 @@ export function accountEntry(
     new xdr.AccountEntry({
       accountId: xdr.PublicKey.publicKeyTypeEd25519(StrKey.decodeEd25519PublicKey(accountId)),
       balance: xdr.Int64.fromString(balanceStroops.toString()),
-      seqNum: xdr.SequenceNumber.fromString(opts.seq ?? "100"),
+      // `xdr.SequenceNumber` and `xdr.Int64` are the same constructor at
+      // runtime (the XDR is `typedef int64 SequenceNumber`), but only Int64 is
+      // in the SDK's declarations. Verified, not assumed: `xdr.SequenceNumber
+      // === xdr.Int64`.
+      seqNum: xdr.Int64.fromString(opts.seq ?? "100"),
       numSubEntries: opts.subEntries ?? 0,
       inflationDest: null,
       flags: 0,

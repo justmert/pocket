@@ -116,13 +116,16 @@ describe("every name on the allowlist actually round-trips", () => {
   // specific one mattered.
   const authored: [string, Error][] = [
     ["CorruptVaultError", new CorruptVaultError(AUTHORED)],
-    ["SchemaVersionError", new SchemaVersionError(AUTHORED)],
+    // Takes the schema version it found, not a message: it authors its own.
+    ["SchemaVersionError", new SchemaVersionError(99)],
     ["AccountNotFoundError", new AccountNotFoundError("GABC")],
     ["PrivatePocketError", new PrivatePocketError(AUTHORED)],
     ["RecoveryError", new RecoveryError(AUTHORED)],
     ["ArchiveUnavailableError", new ArchiveUnavailableError("no answer")],
     ["IncompleteHistoryError", new IncompleteHistoryError(1, 2)],
-    ["UnspendableBlindingError", new UnspendableBlindingError(AUTHORED)],
+    // Also authors its own, and takes nothing. It was being handed AUTHORED,
+    // which TypeScript never saw because nothing typechecked this tree.
+    ["UnspendableBlindingError", new UnspendableBlindingError()],
     ["CctpParameterError", new CctpParameterError(AUTHORED)],
     ["ConfidentialReadError", new ConfidentialReadError(AUTHORED)],
     ["InsufficientBalanceError", new InsufficientBalanceError(AUTHORED)],
@@ -203,7 +206,16 @@ describe("nothing we did not author reaches the screen", () => {
     // Two different mistakes with two different remedies. A checksum failure is
     // a transcription error; anything else is not an address at all.
     expect(describeError(new InvalidAddressError("bad", "checksum"))).toMatch(/bad checksum/i);
-    expect(describeError(new InvalidAddressError("bad", "format"))).toMatch(/does not look like/i);
+    // "malformed", not "format": the union is malformed | checksum |
+    // unsupported, and "format" was a reason the code cannot produce. The
+    // assertion passed anyway because anything-but-checksum takes that branch,
+    // so it was testing the fallback while claiming to test a real case.
+    expect(describeError(new InvalidAddressError("bad", "malformed"))).toMatch(
+      /does not look like/i,
+    );
+    expect(describeError(new InvalidAddressError("bad", "unsupported"))).toMatch(
+      /does not look like/i,
+    );
   });
 
   it("keeps a ledger identity mismatch off the screen, deliberately", () => {

@@ -15,7 +15,7 @@ import { test, expect } from "../support/fixtures";
 import { WAITS } from "../support/wallet";
 import * as ledger from "../support/testnet";
 import { intercept, restore, RPC_HOST } from "../support/stub";
-import { installProbe, read, moved, trackOf } from "./probe";
+import { installProbe, read, moved, trackOf, at } from "./probe";
 
 const PASSWORD = "a-strong-test-password";
 
@@ -67,7 +67,7 @@ test("the balance arriving does not move the Send button under the user's finger
   // position before the balance landed. Written that way first, this test
   // passed while the button was moving 29 pixels.
   const from = 0;
-  const to = p.marks.balance + 500;
+  const to = at(p, "balance") + 500;
   const tops = trackOf(p.positions, "Send", from, to);
   const readings = p.positions.filter((q) => q.name === "Send" && q.t <= to).length;
 
@@ -75,7 +75,7 @@ test("the balance arriving does not move the Send button under the user's finger
   // arrival, or "it did not move" would just mean "it was never seen".
   expect(readings, "the Send button must have been measured more than once").toBeGreaterThan(1);
   expect(
-    p.marks.balance - p.marks.home,
+    at(p, "balance") - at(p, "home"),
     "the balance must have arrived after the buttons were already on screen",
   ).toBeGreaterThan(HELD_MS / 2);
 

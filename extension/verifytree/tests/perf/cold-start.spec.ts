@@ -13,7 +13,7 @@ import { test, expect } from "../support/fixtures";
 import { WAITS } from "../support/wallet";
 import * as ledger from "../support/testnet";
 import { intercept, restore, RPC_HOST } from "../support/stub";
-import { installProbe, read } from "./probe";
+import { installProbe, read, at } from "./probe";
 import { killWorker } from "./mv3";
 
 const PASSWORD = "a-strong-test-password";
@@ -56,20 +56,20 @@ test("a popup opened on a dead service worker paints the wallet, and says it is 
   await expect(wallet.lockedNotice()).toBeVisible({ timeout: WAITS.ledgerRead });
 
   const p = await read(wallet.page);
-  console.log(`  cold shell ${p.marks.shell?.toFixed(0)}ms, "Starting…" ${p.marks.starting?.toFixed(0)}ms`);
+  console.log(`  cold shell ${at(p, "shell")?.toFixed(0)}ms, "Starting…" ${at(p, "starting")?.toFixed(0)}ms`);
 
   // The first frame carrying the wallet's own name. Stamped inside the page on
   // the frame AFTER the DOM changed, so it is a painted frame rather than a
   // React commit.
   expect(
-    p.marks.shell,
+    at(p, "shell"),
     "the popup must draw something the user recognises as Pocket, not a blank frame",
   ).toBeLessThan(PAINT_MS);
 
   // And it must NAME the wait rather than showing an empty shell. This is the
   // one wait in the product a user hits every single time they open the wallet.
   expect(
-    p.marks.starting ?? Number.POSITIVE_INFINITY,
+    at(p, "starting") ?? Number.POSITIVE_INFINITY,
     "the boot frame must say it is starting while the worker wakes",
   ).toBeLessThan(PAINT_MS);
 });
@@ -94,9 +94,9 @@ test("a cold service worker still reaches a usable password field within a bound
     await expect(wallet.lockedNotice()).toBeVisible({ timeout: WAITS.ledgerRead });
 
     const p = await read(wallet.page);
-    console.log(`  cold start ${i + 1}: shell ${p.marks.shell?.toFixed(0)}ms, password field ${p.marks.locked?.toFixed(0)}ms`);
+    console.log(`  cold start ${i + 1}: shell ${at(p, "shell")?.toFixed(0)}ms, password field ${at(p, "locked")?.toFixed(0)}ms`);
     expect(
-      p.marks.locked,
+      at(p, "locked"),
       `cold start ${i + 1} of 3: the password field must be on screen`,
     ).toBeLessThan(INTERACTIVE_MS);
 
@@ -145,15 +145,15 @@ test("a slow ledger does not hold up the screen it is going to land on", async (
 
   const early = await read(wallet.page);
   expect(
-    early.marks.home,
+    at(early, "home"),
     "Send and Receive must be on screen while the ledger is still being read",
   ).toBeLessThan(INTERACTIVE_MS);
 
   await expect(wallet.money().first()).toBeVisible({ timeout: WAITS.ledgerRead });
   const p = await read(wallet.page);
-  console.log(`  home ${p.marks.home?.toFixed(0)}ms, balance ${p.marks.balance?.toFixed(0)}ms, RPC held ${HELD_MS}ms`);
+  console.log(`  home ${at(p, "home")?.toFixed(0)}ms, balance ${at(p, "balance")?.toFixed(0)}ms, RPC held ${HELD_MS}ms`);
   expect(
-    p.marks.balance - p.marks.home,
+    at(p, "balance") - at(p, "home"),
     "the balance must have landed on a screen that was already up",
   ).toBeGreaterThan(HELD_MS / 2);
 
