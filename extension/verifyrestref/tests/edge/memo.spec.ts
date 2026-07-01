@@ -1,0 +1,142 @@
+// The memo, through the screen a user actually sees.
+//
+// A Stellar text memo is 28 BYTES, not 28 characters. The distinction is
+// invisible in ASCII and decisive outside it: a 28-character English memo fits
+// and a 10-character emoji memo does not. `src/core/memo-bytes.test.ts` pins
+// the boundary at the unit level; this file pins what the user is TOLD, which
+// is the half that decides whether a rejected memo is fixable.
+//
+// The memo check sits after the balance read in `doBuildPayment`, so every test
+// here needs a funded account: an unfunded one is refused for the balance
+// before the memo is ever looked at.
+import { Keypair } from "@stellar/stellar-sdk/base";
+import {
+  test,
+  expect,
+  onboard,
+  receiveAddress,
+  fund,
+  compose,
+  review,
+  closeSend,
+  GENERIC_FAILURE,
+} from "./edge";
+
+const valid = () => Keypair.random().publicKey();
+const bytes = (s: string) => new TextEncoder().encode(s).length;
+
+test("a memo that fits in 28 bytes is accepted and shown back exactly", async ({ wallet }) => {
+  test.slow();
+  const page = wallet.page;
+  await onboard(page);
+  await fund(await receiveAddress(page));
+  const to = valid();
+
+  const fits = [
+    { name: "28 ASCII characters, the limit exactly", memo: "a".repeat(28) },
+    { name: "seven emoji, 28 bytes exactly", memo: "🙂".repeat(7) },
+    { name: "RTL text", memo: "مرحبا" },
+    { name: "a single character", memo: "x" },
+  ];
+
+  const refused: string[] = [];
+  for (const c of fits) {
+    expect(bytes(c.memo), `${c.name} must actually be within the limit`).toBeLessThanOrEqual(28);
+    await compose(page, { to, amount: "1", memo: c.memo });
+    const out = await review(page);
+    if (out.stage !== "confirm") {
+      refused.push(`${c.name}: ${out.message}`);
+    } else {
+      // The memo is signed, so it has to be reviewable character for
+      // character. A memo silently altered between the field and the envelope
+      // is the usual way an exchange deposit is lost.
+      await expect(page.getByText(`Attach the memo "${c.memo}"`)).toBeVisible();
+    }
+    await closeSend(page);
+  }
+  expect(refused, `memos within the byte limit were refused:\n${refused.join("\n")}`).toEqual([]);
+});
+
+test("a memo past 28 bytes is refused", async ({ wallet }) => {
+  test.slow();
+  const page = wallet.page;
+  await onboard(page);
+  await fund(await receiveAddress(page));
+  const to = valid();
+
+  const tooLong = [
+    { name: "29 ASCII characters, one over", memo: "a".repeat(29) },
+    { name: "ten emoji, 40 bytes and 10 characters", memo: "🙂".repeat(10) },
+    { name: "a very long single token", memo: "x".repeat(500) },
+  ];
+
+  const accepted: string[] = [];
+  for (const c of tooLong) {
+    expect(bytes(c.memo), `${c.name} must actually be over the limit`).toBeGreaterThan(28);
+    await compose(page, { to, amount: "1", memo: c.memo });
+    const out = await review(page);
+    if (out.stage === "confirm") accepted.push(`${c.name} reached the confirm screen`);
+    await closeSend(page);
+  }
+  expect(
+    accepted,
+    `an oversized memo must never be signed:\n${accepted.join("\n")}`,
+  ).toEqual([]);
+});
+
+test("an oversized memo is named as the memo, not as a connection problem", async ({ wallet }) => {
+  test.slow();
+  const page = wallet.page;
+  await onboard(page);
+  await fund(await receiveAddress(page));
+
+  // Ten emoji. Ten characters on screen, forty bytes on the wire, and the one
+  // case where a user has no way of guessing what is wrong unless told.
+  await compose(page, { to: valid(), amount: "1", memo: "🙂".repeat(10) });
+  const out = await review(page);
+  expect(out.stage).toBe("error");
+  const said = out.stage === "error" ? out.message : "";
+
+  expect(said, "the refusal must name the memo").toMatch(/memo/i);
+  expect(
+    said,
+    "no amount of retrying shortens a memo, so telling the user to check their connection " +
+      "sends them to their router over a string they typed",
+  ).not.toMatch(GENERIC_FAILURE);
+  // And it has to say WHICH limit, because "too long" is not actionable when
+  // the memo is visibly ten characters.
+  expect(said, "the refusal must say the limit counts bytes").toMatch(/byte/i);
+});
+
+test("a memo that is only whitespace is reviewed as a memo, not as none", async ({ wallet }) => {
+  test.slow();
+  const page = wallet.page;
+  await onboard(page);
+  await fund(await receiveAddress(page));
+
+  // Whitespace is a real, signed memo and it looks like an empty field. The
+  // confirm screen must not describe it as "no memo": that is the one
+  // difference between a deposit that credits and one that does not.
+  await compose(page, { to: valid(), amount: "1", memo: "   " });
+  const out = await review(page);
+  expect(out.stage, out.stage === "error" ? out.message : "").toBe("confirm");
+  const body = await page.locator("body").innerText();
+  expect(body, "a whitespace memo is still a memo and must not be reported as none").not.toContain(
+    "Send with NO memo",
+  );
+});
+
+test("no memo at all is stated as an absence, never left to be inferred", async ({ wallet }) => {
+  test.slow();
+  const page = wallet.page;
+  await onboard(page);
+  await fund(await receiveAddress(page));
+
+  await compose(page, { to: valid(), amount: "1", memo: "" });
+  const out = await review(page);
+  expect(out.stage, out.stage === "error" ? out.message : "").toBe("confirm");
+  await expect(page.getByText("Send with NO memo")).toBeVisible();
+  await expect(
+    page.getByText("No memo. Exchanges usually require one; a deposit without it can be lost."),
+  ).toBeVisible();
+});

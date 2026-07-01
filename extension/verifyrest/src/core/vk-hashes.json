@@ -1,0 +1,8 @@
+{
+  "register": "e01ba8729578e9ec4ea982801e2d806028246eeafe1a2e551e1f9cdef69a7268",
+  "withdraw": "d800122c23d7216ead4f3d7c70c84fd39db37d4f7743659b7d6bf05674ce5c09",
+  "transfer": "b9c6d437368efc5343d33be20b3455840b0b66ae7ad430bebc75c93a172b173c",
+  "spender_transfer": "2366fbe28a033e3adaa2fc61e508c300a5e31dce9f73e03692b678f801182038",
+  "set_spender": "0cc48b122d7895fae17570c299c80ddc2f2f0c4c3750ab798a887cf3411df7fb",
+  "revoke_spender": "ce95f994dbcefa4d3d89bc7c7abc12b373c780a16b1e166fad46ba05dcf17660"
+}

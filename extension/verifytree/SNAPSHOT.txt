@@ -1,0 +1,3 @@
+snapshot taken 2026-08-01T15:07:15Z
+HEAD c4875ee
+src is HEAD's, exactly. the working tree differed from it by:

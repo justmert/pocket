@@ -26,7 +26,7 @@ export interface ChromeShim {
   /** Fire an alarm as the browser would. */
   fireAlarm(name: string): void;
   /** Deliver a runtime message as the browser would, and await the reply. */
-  send(message: unknown, sender?: { id?: string; origin?: string }): Promise<unknown>;
+  send(message: unknown, sender?: { id?: string; origin?: string; url?: string }): Promise<unknown>;
   /** Listeners the worker registered, so a test can prove one exists. */
   messageListeners: number;
   /**
@@ -53,11 +53,18 @@ export interface ChromeShim {
 
 type MessageListener = (
   msg: unknown,
-  sender: { id?: string; origin?: string },
+  sender: { id?: string; origin?: string; url?: string },
   sendResponse: (r: unknown) => void,
 ) => boolean | undefined;
 
 export const EXTENSION_ID = "pocketextensionidaaaaaaaaaaaaaaaa";
+/** What Chrome actually stamps on a message from our own popup. */
+export const EXTENSION_ORIGIN = `chrome-extension://${EXTENSION_ID}`;
+export const POPUP_SENDER = {
+  id: EXTENSION_ID,
+  origin: EXTENSION_ORIGIN,
+  url: `${EXTENSION_ORIGIN}/popup.html`,
+};
 
 /**
  * Install the shim. Call this at module top level, BEFORE importing anything
@@ -121,6 +128,7 @@ export function installChrome(): ChromeShim {
       ContextType: { OFFSCREEN_DOCUMENT: "OFFSCREEN_DOCUMENT" },
       getContexts: async () => [],
       lastError: undefined,
+      getURL: (path: string) => `${EXTENSION_ORIGIN}${path}`,
       onMessage: {
         addListener: (fn: MessageListener) => messageHandlers.push(fn),
       },
@@ -157,7 +165,15 @@ export function installChrome(): ChromeShim {
     fireAlarm(name: string) {
       for (const h of alarmHandlers) h({ name });
     },
-    async send(message: unknown, sender: { id?: string; origin?: string } = { id: EXTENSION_ID }) {
+    // The default sender is a POPUP, url and all. It used to be `{ id }` alone,
+    // which Chrome never sends for a page and which made the harness unable to
+    // tell the popup apart from a content script: both are "the extension's id
+    // and nothing else". Eighty-eight tests agreed with each other about a
+    // sender that does not exist.
+    async send(
+      message: unknown,
+      sender: { id?: string; origin?: string; url?: string } = POPUP_SENDER,
+    ) {
       if (messageHandlers.length === 0) throw new Error("no message listener is registered");
       return new Promise((resolve) => {
         let answered = false;
