@@ -273,7 +273,7 @@ describe("the write phases cannot interleave, which is the property rather than 
     const c = new WalletController();
     await c.init();
     const { mnemonic } = await c.create(PASSWORD);
-    c.lock();
+    await c.lock();
 
     const order = recordInstallWrites();
     await Promise.allSettled([
@@ -300,7 +300,7 @@ describe("the write phases cannot interleave, which is the property rather than 
     const c = new WalletController();
     await c.init();
     const { mnemonic, address } = await c.create(PASSWORD);
-    c.lock();
+    await c.lock();
 
     const order = recordInstallWrites();
     let erased!: () => void;
@@ -352,7 +352,7 @@ describe("recoverFromMnemonic racing an install", () => {
     const c = new WalletController();
     await c.init();
     const { mnemonic, address } = await c.create(PASSWORD);
-    c.lock();
+    await c.lock();
 
     const [recovered] = await Promise.allSettled([
       c.recoverFromMnemonic(mnemonic, "new password"),
@@ -372,7 +372,7 @@ describe("recoverFromMnemonic racing an install", () => {
     const c = new WalletController();
     await c.init();
     await c.create(PASSWORD);
-    c.lock();
+    await c.lock();
 
     const strangers = generateMnemonic(wordlist, 256);
     await Promise.allSettled([

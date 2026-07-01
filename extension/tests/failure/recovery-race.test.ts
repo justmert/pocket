@@ -116,7 +116,7 @@ async function installedAndLocked() {
   const c = new WalletController();
   await c.init();
   const { mnemonic, address } = await c.create(PASSWORD);
-  c.lock();
+  await c.lock();
   return { controller: c, mnemonic, address };
 }
 

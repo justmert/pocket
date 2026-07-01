@@ -58,7 +58,7 @@ describe("wallet lifecycle", () => {
   it("locks, then unlocks to the same address", async () => {
     const c = new WalletController();
     const { address } = await c.create("pw");
-    c.lock();
+    await c.lock();
     expect((await c.status()).locked).toBe(true);
     expect(getSession()).toBeNull();
 
@@ -70,7 +70,7 @@ describe("wallet lifecycle", () => {
   it("rejects the wrong password", async () => {
     const c = new WalletController();
     await c.create("pw");
-    c.lock();
+    await c.lock();
     await expect(c.unlock("nope")).rejects.toBeInstanceOf(WrongPasswordError);
     expect((await c.status()).locked).toBe(true);
   });
@@ -103,7 +103,7 @@ describe("wallet lifecycle", () => {
   it("refuses balance reads while locked", async () => {
     const c = new WalletController();
     await c.create("pw");
-    c.lock();
+    await c.lock();
     await expect(c.balances()).rejects.toThrow(/locked/);
   });
 
@@ -111,7 +111,7 @@ describe("wallet lifecycle", () => {
     const c = new WalletController();
     const { address } = await c.create("pw");
     for (let i = 0; i < 3; i++) {
-      c.lock();
+      await c.lock();
       expect((await c.unlock("pw")).address).toBe(address);
     }
   });
@@ -129,7 +129,7 @@ describe("destructive-path guards (audit C1)", () => {
       c.import("pw2", "illness spike retreat truth genius clock brain pass fit cave bargain toe"),
     ).rejects.toThrow(/already exists/);
     // And the original wallet is untouched.
-    c.lock();
+    await c.lock();
     expect((await c.unlock("pw")).address).toBe(address);
   });
 
@@ -138,7 +138,7 @@ describe("destructive-path guards (audit C1)", () => {
     const { address } = await c.create("pw");
 
     await expect(c.reset("wrong")).rejects.toBeInstanceOf(WrongPasswordError);
-    c.lock();
+    await c.lock();
     expect((await c.unlock("pw")).address).toBe(address);
 
     await c.reset("pw");
@@ -264,7 +264,7 @@ describe("private pocket reporting", () => {
   it("refuses while locked", async () => {
     const c = new WalletController();
     await c.create("pw");
-    c.lock();
+    await c.lock();
     await expect(c.privatePocket()).rejects.toThrow(/locked/);
   });
 

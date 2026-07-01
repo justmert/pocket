@@ -38,7 +38,29 @@ export function senderOrigin(sender: chrome.runtime.MessageSender): string {
   if (!origin || origin === "null") {
     throw new OriginRefusedError("Pocket could not determine which site is asking, so it refused.");
   }
+  // A site is an http(s) page and nothing else. Without this, `chrome-extension://`
+  // is an origin like any other, and the wallet's own popup could hold a dApp
+  // session against itself: a grant the user was never asked for, on the one
+  // origin whose messages skip every origin check.
+  if (!/^https?:\/\//.test(origin)) {
+    throw new OriginRefusedError("Pocket could not determine which site is asking, so it refused.");
+  }
   return origin;
+}
+
+/**
+ * True only for the extension's own pages: popup, options, offscreen.
+ *
+ * `sender.id === chrome.runtime.id` does NOT mean this. A content script runs
+ * inside a hostile page's process and carries the extension's id, so that check
+ * alone lets anything our relay forwards reach the wallet router. The relay
+ * forwards only `sep43` today, and that is a property of one file rather than of
+ * the boundary. This is the boundary: an extension page is one whose URL is
+ * under the extension's own origin, which a content script's never is.
+ */
+export function isExtensionPage(sender: chrome.runtime.MessageSender, base: string): boolean {
+  if (!sender.url) return false;
+  return sender.url.startsWith(base);
 }
 
 async function all(): Promise<Record<string, DappSession>> {

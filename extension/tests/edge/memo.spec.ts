@@ -115,6 +115,78 @@ test("an oversized memo is named as the memo, not as a connection problem", asyn
   expect(said, "the refusal must say the limit counts bytes").toMatch(/byte/i);
 });
 
+test("the byte count in the refusal is the byte count of what was typed", async ({ wallet }) => {
+  test.slow();
+  const page = wallet.page;
+  await onboard(page);
+  await fund(await receiveAddress(page));
+  const to = valid();
+
+  // A number in an error message is a promise that the user can act on it: if
+  // it says 40 and the limit is 28, twelve bytes have to come out. So the
+  // number has to be the byte count of the string in the box, counted the same
+  // way the envelope will count it, and the limit has to be the real one.
+  const cases = [
+    { name: "ten emoji", memo: "🙂".repeat(10), is: 40 },
+    // Trailing spaces are bytes too. If anything trimmed the memo before
+    // counting, the number in the message and the number the user can see in
+    // the field would disagree, and the advice would be wrong by two.
+    { name: "28 ASCII plus two trailing spaces", memo: `${"a".repeat(28)}  `, is: 30 },
+    { name: "27 ASCII plus one accented character", memo: `${"a".repeat(27)}é`, is: 29 },
+  ];
+
+  const wrong: string[] = [];
+  for (const c of cases) {
+    const used = bytes(c.memo);
+    expect(used, `the ${c.name} fixture must be ${c.is} bytes`).toBe(c.is);
+    await compose(page, { to, amount: "1", memo: c.memo });
+    const out = await review(page);
+    const said = out.stage === "error" ? out.message : "ACCEPTED";
+    if (!said.includes(String(used))) wrong.push(`${c.name}: ${used} bytes, but it said "${said}"`);
+    if (!/\b28\b/.test(said)) wrong.push(`${c.name}: the limit 28 was not stated: "${said}"`);
+    await closeSend(page);
+  }
+  expect(wrong, wrong.join("\n")).toEqual([]);
+});
+
+test("the memo limit is 28 bytes, not 27 and not 29", async ({ wallet }) => {
+  test.slow();
+  const page = wallet.page;
+  await onboard(page);
+  await fund(await receiveAddress(page));
+  const to = valid();
+
+  // Both sides of the same boundary in one test, because a guard that is off by
+  // one in the SAFE direction still costs a user their memo and no test that
+  // only pushes from above would ever see it.
+  const boundary = [
+    { memo: "a".repeat(27), is: 27, accepted: true },
+    { memo: "a".repeat(28), is: 28, accepted: true },
+    { memo: "🙂".repeat(7), is: 28, accepted: true },
+    { memo: `${"🙂".repeat(6)}abcd`, is: 28, accepted: true },
+    { memo: "a".repeat(29), is: 29, accepted: false },
+    { memo: `${"a".repeat(27)}é`, is: 29, accepted: false },
+  ].map((c) => ({ ...c, name: `${c.is} bytes as ${JSON.stringify(c.memo.slice(0, 12))}…` }));
+
+  const wrong: string[] = [];
+  for (const c of boundary) {
+    // The fixture is checked before the wallet is: a case that is not the
+    // number of bytes it claims tests the boundary next door.
+    expect(bytes(c.memo), `${c.name} must actually be ${c.is} bytes`).toBe(c.is);
+    await compose(page, { to, amount: "1", memo: c.memo });
+    const out = await review(page);
+    const reached = out.stage === "confirm";
+    if (reached !== c.accepted) {
+      wrong.push(
+        `${c.name} was ${reached ? "accepted" : "refused"}: ` +
+          (out.stage === "error" ? out.message : "reached the confirm screen"),
+      );
+    }
+    await closeSend(page);
+  }
+  expect(wrong, wrong.join("\n")).toEqual([]);
+});
+
 test("a memo that is only whitespace is reviewed as a memo, not as none", async ({ wallet }) => {
   test.slow();
   const page = wallet.page;

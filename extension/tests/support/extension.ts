@@ -139,7 +139,7 @@ export async function popup(ctx: BrowserContext, id: string): Promise<Page> {
 export async function askWorker<T>(page: Page, message: unknown): Promise<T> {
   return page.evaluate(
     (msg) =>
-      new Promise((res, rej) => {
+      new Promise<unknown>((res, rej) => {
         chrome.runtime.sendMessage(msg, (r: { ok: boolean; data?: unknown; error?: string }) => {
           if (!r) return rej(new Error("the worker did not answer"));
           r.ok ? res(r.data) : rej(new Error(r.error));

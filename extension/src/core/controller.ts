@@ -905,15 +905,25 @@ export class WalletController {
     return openPayload<{ mnemonic: string }>(dek, sealed);
   }
 
-  lock(): void {
+  async lock(): Promise<void> {
+    // Everything in memory goes first and synchronously, so nothing can read a
+    // locked wallet's state during the part of the cleanup that suspends.
     clearSession();
-    // A session grants seeing the address and asking to sign. Neither is true
-    // of a locked wallet, so the grant goes with it.
-    void import("./provider/session").then((m) => m.clearSessions());
     // Cached from the last private-pocket read, and only true for the account
     // that read it. Left set, a locked wallet still reports privateEnabled and
-    // the home screen offers to open a pocket it cannot reach.
+    // the home screen offers to open a pocket it cannot reach. It is cleared
+    // HERE rather than at the end because everything below awaits: a status
+    // read landing in that window would otherwise see the stale flag.
     this.privateReady = false;
+    // A session grants seeing the address and asking to sign. Neither is true
+    // of a locked wallet, so the grant goes with it.
+    //
+    // AWAITED, not fire-and-forget. `void import(...).then(...)` left the end
+    // state correct and the ordering guaranteed by nothing: a caller that
+    // locked and immediately asked `sep43` for the address raced a promise
+    // nobody was holding. A lock that has returned must have finished locking.
+    const { clearSessions } = await import("./provider/session");
+    await clearSessions();
   }
 
   /**

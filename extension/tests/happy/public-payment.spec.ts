@@ -102,11 +102,12 @@ test("a payment leaves one wallet, arrives in another, and the ledger agrees", a
     // The one operation on the recipient's account is this payment, for this
     // amount, from this sender.
     const [credit] = await ledger.payments(recipient, 1);
-    expect(credit.type).toBe("payment");
-    expect(credit.from).toBe(sender);
-    expect(credit.to).toBe(recipient);
-    expect(credit.amount).toBe("100.0000000");
-    expect(credit.transaction_hash).toBe(hash);
+    expect(credit, "the recipient's account must show a payment operation").toBeDefined();
+    expect(credit!.type).toBe("payment");
+    expect(credit!.from).toBe(sender);
+    expect(credit!.to).toBe(recipient);
+    expect(credit!.amount).toBe("100.0000000");
+    expect(credit!.transaction_hash).toBe(hash);
 
     // And the receiving wallet, reopened, shows the money without being told
     // where it came from.

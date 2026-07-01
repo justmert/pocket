@@ -72,11 +72,11 @@ describe("erase and restore", () => {
 
   it("restores the same address under a new password", async () => {
     const { c, mnemonic, address } = await freshWallet("correct horse battery staple");
-    c.lock();
+    await c.lock();
     expect(await c.recoverFromMnemonic(mnemonic, "a different password now")).toBe(address);
 
     // The new password must work, and only the new one.
-    c.lock();
+    await c.lock();
     await expect(c.unlock("correct horse battery staple")).rejects.toThrow();
     await expect(c.unlock("a different password now")).resolves.toBeDefined();
   });
@@ -169,7 +169,7 @@ describe("erase authorisation with no stored address", () => {
 
     // The owner proves the password. That is what authorises writing the
     // address, since it is derived from the seed the vault just yielded.
-    c.lock();
+    await c.lock();
     await c.unlock("correct horse battery staple");
     expect(await readLocal<string>(KEYS.publicAddress)).toBe(address);
 

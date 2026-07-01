@@ -84,7 +84,7 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
     case "unlock":
       return c.unlock(str(msg.password, "password"));
     case "lock":
-      c.lock();
+      await c.lock();
       return c.status();
     case "setNetwork":
       return c.setNetwork(msg.network);

@@ -354,10 +354,30 @@ describe("state that must not outlive its session", () => {
     const { c } = await worker();
     (c as unknown as { privateReady: boolean }).privateReady = true;
     expect((await c.status()).privateEnabled).toBe(true);
-    c.lock();
+    await c.lock();
     // The home screen offers "Open private pocket" off this flag, and after a
     // lock it knows nothing about the account it last read.
     expect((await c.status()).privateEnabled).toBe(false);
+  });
+
+  it("is locked from the moment lock() is CALLED, not when it settles", async () => {
+    // `lock()` awaits a dynamic import to clear dApp grants, so it suspends.
+    // Everything in memory has to be gone before that suspension: a status read
+    // that lands in the window would otherwise be answered by a wallet that has
+    // been locked and does not know it yet. Deliberately NOT awaited, because
+    // the await is what would hide the bug.
+    const { c } = await worker();
+    (c as unknown as { privateReady: boolean }).privateReady = true;
+    expect((await c.status()).privateEnabled).toBe(true);
+
+    const locking = c.lock();
+    // Same microtask the caller gets back control in.
+    expect(
+      (c as unknown as { privateReady: boolean }).privateReady,
+      "the private flag survived into lock()'s suspension",
+    ).toBe(false);
+    expect((await c.status()).privateEnabled).toBe(false);
+    await locking;
   });
 
   it("drops the staged consequence when the wallet is erased", async () => {

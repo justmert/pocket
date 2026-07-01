@@ -5,6 +5,7 @@ import "../lib/polyfill"; // must run before any stellar-sdk import
 import { WalletController } from "../core/controller";
 import { dispatch, describeError, isAllowedWhileLocked, isUserActivity } from "../core/dispatch";
 import { isUnlocked } from "../core/session";
+import { isExtensionPage } from "../core/provider/session";
 import type { WalletRequest, WalletResponse } from "../core/messages";
 
 const AUTO_LOCK_ALARM = "pocket.autolock";
@@ -34,12 +35,21 @@ export default defineBackground(() => {
         sendResponse({ ok: false, error: "Unauthorized sender." });
         return false;
       }
+      // ...and a content script carries that same id, so it is not on its own a
+      // boundary. Anything not from one of our own pages may take the `sep43`
+      // route below and nothing else.
+      const ownPage = isExtensionPage(sender, chrome.runtime.getURL("/"));
 
       // A dApp call, relayed by the content script. It travels the same
       // runtime channel but is NOT a wallet request: it carries an origin, it
       // never reaches `dispatch`, and it can only do what `controller.sep43`
       // allows. Handled before the wallet router so the two cannot be
       // confused for one another.
+      if (!ownPage && (msg as { type?: string }).type !== "sep43") {
+        sendResponse({ ok: false, error: "Unauthorized sender." });
+        return false;
+      }
+
       if ((msg as { type?: string }).type === "sep43") {
         const call = msg as unknown as { method: string; params: unknown[] };
         void (async () => {
@@ -105,7 +115,9 @@ export default defineBackground(() => {
       // directly did the smaller half, which meant the AUTOMATIC lock cleaned
       // up less than the manual one, in exactly the case the automatic lock
       // exists for: the user has walked away from the machine.
-      controller.lock();
+      // Awaited via the alarm handler's own promise: an idle lock that has not
+      // finished clearing grants has not finished locking.
+      void controller.lock();
     }
     if (alarm.name === KEEP_ALIVE_ALARM) void keepAlive();
   });

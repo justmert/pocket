@@ -57,7 +57,7 @@ async function installedAndLocked() {
       syncedThrough: 42,
     }),
   );
-  c.lock();
+  await c.lock();
   return { controller: c, mnemonic, address };
 }
 
@@ -219,7 +219,7 @@ describe("recoverFromMnemonic: the one destructive path reachable while locked",
     await controller.unlock(PASSWORD);
     expect(chrome.local.get(KEYS.publicAddress)).toBe(address);
 
-    controller.lock();
+    await controller.lock();
     const restored = await controller.recoverFromMnemonic(mnemonic, "a brand new password");
     expect(restored).toBe(address);
   });
@@ -229,7 +229,7 @@ describe("recoverFromMnemonic: the one destructive path reachable while locked",
     const restored = await controller.recoverFromMnemonic(mnemonic, "a brand new password");
     expect(restored).toBe(address);
     // And the new password is the one that works now.
-    controller.lock();
+    await controller.lock();
     await expect(controller.unlock("a brand new password")).resolves.toMatchObject({
       locked: false,
     });
@@ -316,8 +316,8 @@ describe("status and lock reveal nothing and destroy nothing", () => {
 
   it("lock is idempotent and destroys nothing on disk", async () => {
     const { controller } = await installedAndLocked();
-    controller.lock();
-    controller.lock();
+    await controller.lock();
+    await controller.lock();
     expect(getSession()).toBeNull();
     expect(whatSurvives()).toEqual(INTACT);
   });

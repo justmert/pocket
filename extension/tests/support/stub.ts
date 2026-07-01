@@ -29,8 +29,24 @@ export function serviceWorkerRoutingAvailable(): boolean {
  * reliable about. Parsing the URL cannot be wrong about which host a request is
  * going to.
  */
+const MATCHERS = new Map<string, (url: URL) => boolean>();
+
 function toHost(host: string): (url: URL) => boolean {
-  return (url) => url.host === host;
+  // Memoised, and that is load-bearing rather than an optimisation.
+  //
+  // `context.unroute(matcher)` identifies the route to remove by the matcher
+  // itself, and a fresh closure is never equal to the one that was registered.
+  // Building a new function per call made `restore()` a silent no-op: the stub
+  // stayed installed, the dependency never "came back", and every
+  // recovers-when-the-dependency-returns test would have failed -- or, written
+  // more loosely, passed while proving nothing. Caught by a real red in
+  // `ui-states/async-states.spec.ts`.
+  let m = MATCHERS.get(host);
+  if (!m) {
+    m = (url: URL) => url.host === host;
+    MATCHERS.set(host, m);
+  }
+  return m;
 }
 
 /** Every request to a host, refused as if the machine were offline. */

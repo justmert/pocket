@@ -9,6 +9,8 @@ import { Send } from "./ui/screens/Send";
 import { PrivatePocket } from "./ui/screens/PrivatePocket";
 import { InFlight } from "./ui/screens/InFlight";
 import { Recover } from "./ui/screens/Recover";
+import { DappApproval } from "./ui/screens/DappApproval";
+import type { TxSummary } from "../../core/provider/describe-tx";
 import type { WalletStatus } from "../../core/messages";
 
 export function App() {
@@ -16,6 +18,11 @@ export function App() {
   const [bootError, setBootError] = useState<string | null>(null);
   const [view, setView] = useState<"home" | "send" | "private">("home");
   const [recovering, setRecovering] = useState(false);
+  const [dappRequest, setDappRequest] = useState<{
+    id: string;
+    origin: string;
+    summary: TxSummary;
+  } | null>(null);
   const [unresolved, setUnresolved] = useState<{
     hash: string;
     maxTime: number;
@@ -58,6 +65,19 @@ export function App() {
 
   // Checked on every mount. MV3 kills the worker aggressively, so a poll
   // interrupted mid-flight is a normal event rather than an edge case.
+  // A site asking for a signature outranks everything else the popup could
+  // show: the page is blocked waiting, and a request that sits unseen times
+  // out as a refusal.
+  useEffect(() => {
+    void (async () => {
+      try {
+        setDappRequest(await call({ type: "pendingDappRequest" }));
+      } catch {
+        // A locked or restarting worker simply has nothing pending.
+      }
+    })();
+  }, [status?.locked]);
+
   useEffect(() => {
     void (async () => {
       try {
@@ -117,6 +137,9 @@ export function App() {
   // A transaction whose outcome the worker never saw, because it died mid-poll
   // or the popup closed. Shown before anything else: without it a user builds a
   // second payment while the first may still land, and pays twice.
+  if (dappRequest) {
+    return <DappApproval t={t} request={dappRequest} onDone={() => setDappRequest(null)} />;
+  }
   if (unresolved) {
     return (
       <InFlight
