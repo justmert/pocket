@@ -1,3 +1,0 @@
-snapshot taken 2026-08-01T17:12:09Z
-HEAD af2ed05
-src is HEAD's, exactly. the working tree differed from it by:
