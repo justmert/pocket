@@ -308,6 +308,12 @@ note "Build and test"
 # trusted.
 (cd extension && npx tsc --noEmit >/tmp/pocket-tsc.log 2>&1) && ok "extension: types" \
   || { bad "extension types"; sed -n '1,25p' /tmp/pocket-tsc.log | sed 's/^/        /'; }
+# The tests tree is a separate project and was never typechecked by anything.
+# It held 36 errors, including two error classes constructed with arguments they
+# do not take, in a file whose whole job is asserting what those classes say.
+(cd extension && npx tsc --noEmit -p tsconfig.tests.json >/tmp/pocket-tsc-tests.log 2>&1) \
+  && ok "extension: types (tests)" \
+  || { bad "extension test types"; sed -n '1,25p' /tmp/pocket-tsc-tests.log | sed 's/^/        /'; }
 (cd extension && npx eslint src >/tmp/pocket-lint.log 2>&1) && ok "extension: lint" \
   || { bad "extension lint"; sed -n '1,25p' /tmp/pocket-lint.log | sed 's/^/        /'; }
 
@@ -319,6 +325,17 @@ rm -f "$VITEST_JSON"
    >/tmp/pocket-vitest.log 2>&1) && ok "extension: tests" \
   || { bad "extension tests"; { sed -n '/Failed Tests/,$p' /tmp/pocket-vitest.log | head -40 \
        || tail -40 /tmp/pocket-vitest.log; } | sed 's/^/        /'; }
+
+# The suites under `tests/`, which `vitest.config.ts` does not include.
+#
+# They were run once each by the agent that wrote them and by nothing since. A
+# commit that broke 88 of them passed a pre-commit run reporting 597 green,
+# because the 88 were in a directory no configured run looked at. A test nobody
+# runs is a file.
+(cd extension && npx vitest run --config vitest.suites.config.ts \
+   >/tmp/pocket-suites.log 2>&1) && ok "extension: tests (auth, failure, edge)" \
+  || { bad "extension suite tests"; { sed -n '/Failed Tests/,$p' /tmp/pocket-suites.log | head -40 \
+       || tail -40 /tmp/pocket-suites.log; } | sed 's/^/        /'; }
 
 # A SKIPPED test is not a passing test, and vitest exits 0 with any number of
 # them. Measured on a clean checkout: `vitest run src/core/witness/parity.test.ts`
