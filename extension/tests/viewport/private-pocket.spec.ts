@@ -56,11 +56,17 @@ test("the unfunded and unregistered pockets keep their copy and their button on 
   await wallet.openPrivatePocket();
   await expect(page.getByText("Not set up yet")).toBeVisible({ timeout: WAITS.ledgerRead });
 
-  // The three permanent facts are stated ABOVE the button that commits to them.
-  // That only protects anyone if all three are on screen at the same time as
-  // the button, which is precisely a layout property.
+  // The facts that are permanent, public or COSTLY are stated ABOVE the button
+  // that commits to them. That only protects anyone if they are on screen at the
+  // same time as the button, which is precisely a layout property.
+  //
+  // The cost sentence is the longest copy on this screen and it was added after
+  // this test was written, so it is the one most likely to push the button off a
+  // 384x600 frame. That is exactly why it belongs here.
   const bullets = [
-    /Setting up is a public transaction/,
+    /sends the first one straight away/,
+    /pays a network fee/,
+    /Setting up is public/,
     /Only amounts are hidden/,
     /cannot be changed later/,
   ];

@@ -33,12 +33,21 @@ test("a funded account that has not set up a private pocket says so, and states 
   await wallet.openPrivatePocket();
   await expect(wallet.page.getByText("Not set up yet")).toBeVisible({ timeout: WAITS.ledgerRead });
 
-  // Three facts that are permanent or public, stated ABOVE the button that
-  // commits to them, not in a confirmation afterwards.
+  // Facts that are permanent, public, or COSTLY, stated ABOVE the button that
+  // commits to them and not in a confirmation afterwards.
+  //
+  // The cost one is the newest and it is here because it was missing: pressing
+  // this button submits a transaction and pays a fee before any review screen
+  // exists, and the copy used to say "a public transaction", singular, which
+  // read as though nothing happened until you approved something. The ordering
+  // cannot be changed (the registry allocates the auditor id and returns it, so
+  // the account-creation proof cannot be built until that registration lands),
+  // so the disclosure has to carry it.
+  await expect(wallet.page.getByText(/TWO transactions/)).toBeVisible();
+  await expect(wallet.page.getByText(/sends the first one straight away/)).toBeVisible();
+  await expect(wallet.page.getByText(/pays a network fee/)).toBeVisible();
   await expect(
-    wallet.page.getByText(
-      "Setting up is a public transaction. Anyone can see this account has one.",
-    ),
+    wallet.page.getByText("Setting up is public. Anyone can see this account has a private pocket."),
   ).toBeVisible();
   await expect(wallet.page.getByText(/Only amounts are hidden/)).toBeVisible();
   await expect(wallet.page.getByText(/derived from your recovery phrase/)).toBeVisible();

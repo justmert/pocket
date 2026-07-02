@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { FRAME, fontSizes, leading, motion, radius, sans, space, text, type Theme } from "./theme";
 
@@ -356,7 +357,27 @@ export function Spinner({ t }: { t: Theme }) {
  * row with different gaps; a wallet that says nothing while it waits is
  * indistinguishable from one that has hung.
  */
+/** After this long, a wait starts counting out loud. */
+const ELAPSED_AFTER_MS = 3_000;
+
 export function Loading({ label, t }: { label: string; t: Theme }) {
+  // Proving is one phase and it is genuinely slow: measured at 6.8 seconds of a
+  // single unchanging sentence, which is the picture a hung app shows. There is
+  // no progress to report from inside bb.js, so the honest thing to report is
+  // the time itself. A number that ticks is the difference between "working"
+  // and "stuck", and it is the only signal available that is not invented.
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    // Restarts on every phase change, so the count is the age of THIS phase and
+    // not of the whole operation. A counter that kept running across phases
+    // would say 40s while the wallet was two seconds into its last step.
+    setSeconds(0);
+    const started = Date.now();
+    const id = setInterval(() => setSeconds(Math.floor((Date.now() - started) / 1000)), 1_000);
+    return () => clearInterval(id);
+  }, [label]);
+
+  const elapsed = seconds * 1_000 >= ELAPSED_AFTER_MS ? ` ${seconds}s` : "";
   return (
     <div
       // The label CHANGES as the worker moves through its phases, and each
@@ -368,6 +389,14 @@ export function Loading({ label, t }: { label: string; t: Theme }) {
     >
       <Spinner t={t} />
       <span style={{ ...text.body, color: t.sub }}>{label}</span>
+      {/* Outside the live region's sentence but inside the same row: a screen
+          reader should not read a new number every second, so this is
+          aria-hidden and the label alone remains the announced text. */}
+      {elapsed && (
+        <span aria-hidden="true" style={{ ...text.caption, color: t.faint, fontVariantNumeric: "tabular-nums" }}>
+          {elapsed}
+        </span>
+      )}
     </div>
   );
 }

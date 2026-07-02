@@ -53,10 +53,23 @@ const PROGRESS = new RegExp(
     "Proving\\. This takes a moment…",
     "Setting up\\. This takes a moment…",
     "Signing and submitting…",
+    "Signing and submitting, then waiting for the ledger…",
     "Submitting and waiting for the ledger…",
     "Checking the ledger…",
     "Checking the recipient…",
     "Reactivating…",
+    // The WORKER's phases. None of them were here, so this list could only ever
+    // see the static labels the popup sets before its first phase poll comes
+    // back, and "no label mentioned the ledger" was partly a statement about
+    // this array. They are the strings `controller.setPhase` actually passes.
+    "Checking this deployment's verification key…",
+    "Loading the circuit…",
+    "Registering your auditor key…",
+    "Building and proving\\. This is the slow part…",
+    "Simulating against the ledger…",
+    "Signing…",
+    "Submitting, then waiting for the ledger to confirm…",
+    "Deposit confirmed\\. Making it spendable, one more transaction…",
   ].join("|"),
 );
 
@@ -267,15 +280,41 @@ test("the build wait does not sign and submit while it says it is only setting u
   // something else was happening behind that sentence.
   //
   // `ownAuditorId` signs, submits and confirms a `register_auditor` transaction
-  // — retried up to four times — inside `buildPrivateOp`, before the user has
-  // seen the review screen or pressed Approve. The screen says "Setting up.
-  // This takes a moment…" throughout. Horizon is the oracle here, not the
-  // wallet: the question is what actually reached the ledger.
+  // inside `buildPrivateOp`, before the review screen exists. Horizon is the
+  // oracle here, not the wallet: the question is what actually reached the
+  // ledger.
+  //
+  // The finding was real; the remedy this test originally demanded was not
+  // available. It asserted that NOTHING is paid before the review screen, which
+  // would require registering the auditor key after approval. That ordering is
+  // impossible: the registry ALLOCATES the id and returns it, the id is not
+  // chosen by the caller, and the account-creation proof commits to it. The id
+  // cannot be known until the registration has landed.
+  //
+  // So the property changed to the one that is both true and worth having: the
+  // first transaction is DISCLOSED before the button that sends it, and the
+  // second is still governed by the review screen. Consent before the spend,
+  // which is what the original assertion was reaching for.
   await installProbe(wallet.page);
   const address = await fundedWallet(wallet);
 
   await wallet.openPrivatePocket();
   await expect(wallet.page.getByText("Not set up yet")).toBeVisible({ timeout: WAITS.ledgerRead });
+
+  // Before the press, on the same screen as the button, in words that say a
+  // transaction is sent and a fee is paid. Anything vaguer is not consent.
+  await expect(
+    wallet.page.getByText(/TWO transactions/),
+    "the screen must say setting up takes two transactions",
+  ).toBeVisible();
+  await expect(
+    wallet.page.getByText(/sends the first one straight away/),
+    "the screen must say the first transaction goes on the press, not on approval",
+  ).toBeVisible();
+  await expect(
+    wallet.page.getByText(/pays a network fee/),
+    "the screen must say the press costs money",
+  ).toBeVisible();
 
   const paidFor = async () =>
     ledger.feesPaidBy(address, await ledger.transactions(address, 100)).toFixed(7);
@@ -286,8 +325,8 @@ test("the build wait does not sign and submit while it says it is only setting u
   await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
 
   // The review screen is up and nothing has been approved. Give Horizon time to
-  // catch up, so a green here means "nothing was submitted" rather than
-  // "Horizon had not noticed yet".
+  // catch up, so the reading is what actually landed rather than what it had
+  // noticed so far.
   let after = before;
   const deadline = Date.now() + 25_000;
   while (Date.now() < deadline && after === before) {
@@ -295,10 +334,26 @@ test("the build wait does not sign and submit while it says it is only setting u
   }
   console.log(`  fees paid before the review screen: ${before} -> ${after} XLM`);
 
+  // The property, and NOT a transaction count. Counting reached 2 on a run where
+  // the registry counter contended: a losing registration is included, charges a
+  // fee and is retried, which is documented behaviour and not a second thing
+  // being done behind the user's back. Counting would have called that a
+  // consent failure, and a test that cries wolf on legitimate contention gets
+  // switched off.
+  //
+  // What must be true is that the transaction the review screen is ASKING ABOUT
+  // has not already happened. The confidential account is what Approve creates,
+  // so until Approve is pressed the chain must still say there is none.
+  const state = await wallet.page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        chrome.runtime.sendMessage({ type: "privatePocket" }, (r: unknown) => resolve(r)),
+      ),
+  );
   expect(
-    after,
-    "a transaction was signed, submitted and paid for while the screen said it was setting up and before anything was approved",
-  ).toBe(before);
+    (state as { data?: { state?: string } })?.data?.state,
+    "the account the review screen asks you to approve had already been created",
+  ).toBe("unregistered");
 });
 
 test("the public send build wait signs and submits nothing, which is the bar", async ({
