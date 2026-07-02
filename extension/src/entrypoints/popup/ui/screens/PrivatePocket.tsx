@@ -106,7 +106,12 @@ export function PrivatePocket({ t, onBack }: { t: Theme; onBack: () => void }) {
     if (confirmingRef.current) return;
     confirmingRef.current = true;
     setError(null);
-    setBusy("Signing and submitting…");
+    // Names the LEDGER WAIT, because that is the longest part of what follows
+    // and the part a user is most likely to read as a hang. The worker reports
+    // finer phases while this runs and they replace this text, but the opening
+    // label has to be true on its own: it is the one on screen before the first
+    // poll comes back.
+    setBusy("Signing and submitting, then waiting for the ledger…");
     try {
       const r = await call({ type: "confirmPrivateOp", handle: review.handle });
       setReview(null);
@@ -298,7 +303,21 @@ export function PrivatePocket({ t, onBack }: { t: Theme; onBack: () => void }) {
                     marginBottom: space.lg,
                   }}
                 >
-                  <li>Setting up is a public transaction. Anyone can see this account has one.</li>
+                  {/* TWO transactions, and the first one goes as soon as this
+                      button is pressed, before any review screen. That is not a
+                      choice: the registry ALLOCATES the auditor id and returns
+                      it, so the id cannot be known until the registration has
+                      landed, and the account-creation proof commits to the id.
+                      The ordering is forced, so the disclosure has to come
+                      before the press. It used to say "a public transaction",
+                      singular, and a fee was paid while the screen said it was
+                      only setting up. */}
+                  <li>
+                    Setting up takes TWO transactions and pressing this button sends the first one
+                    straight away: it registers your auditor key and pays a network fee. You will be
+                    shown the second one to approve before anything else is signed.
+                  </li>
+                  <li>Setting up is public. Anyone can see this account has a private pocket.</li>
                   <li>
                     Your address stays public on every private payment. Only amounts are hidden.
                   </li>

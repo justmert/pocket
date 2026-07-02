@@ -13,7 +13,7 @@ import {
 } from "../primitives";
 import { AddressBlock } from "../AddressBlock";
 import { Money } from "../Money";
-import { space, text, type Theme, leading } from "../theme";
+import { space, text, type Theme, leading, fontSizes } from "../theme";
 import type { PublicBalance, WalletStatus, YieldPosition } from "../../../../core/messages";
 
 export function Home({
@@ -88,24 +88,44 @@ export function Home({
         <SectionLabel t={t}>PUBLIC POCKET</SectionLabel>
 
         {/* Never fabricate a zero while loading: an empty state is honest, a
-            made-up balance is not. */}
-        {balances === null && !error ? (
-          <div style={{ height: 40, display: "flex", alignItems: "center" }}>
+            made-up balance is not.
+
+            ONE box, the same height in every state. The loading placeholder was
+            a hard-coded 40px and the balance that replaced it is a 40px hero on
+            a 1.3 line box, so arriving data pushed everything below it down 4px
+            — including the Send button, under a finger already aimed at it. The
+            earlier 29px version of this bug is described below; this is the same
+            bug, four pixels wide, left behind when that one was fixed. A
+            placeholder whose height is written as a number and a content box
+            whose height is computed from type metrics WILL drift apart, so the
+            reservation is computed from the same metrics the content uses. */}
+        <div
+          style={{
+            minHeight: fontSizes.display * leading.tight,
+            display: "flex",
+            alignItems: "center",
+            // CONSTANT. Keying it on `reserved` moved everything below by the
+            // difference between the two spacings (18 and 6) at the moment the
+            // balance arrived: twelve pixels, upward, under a finger aimed at
+            // Send. The reserve caption below reserves its own line whether or
+            // not it has text, so this margin has no reason to vary.
+            marginBottom: space.xs,
+          }}
+        >
+          {balances === null && !error ? (
             <Loading label="Reading the ledger…" t={t} />
-          </div>
-        ) : error ? (
-          <Notice tone="danger" t={t}>
-            {error}
-          </Notice>
-        ) : native ? (
-          <div style={{ marginBottom: reserved ? space.xs : space.gutter }}>
+          ) : error ? (
+            <Notice tone="danger" t={t}>
+              {error}
+            </Notice>
+          ) : native ? (
             <Money amount={native.amount} code="XLM" size="hero" t={t} />
-          </div>
-        ) : (
-          <Notice tone="danger" t={t}>
-            The ledger did not report a balance for this account. Reopen the wallet to try again.
-          </Notice>
-        )}
+          ) : (
+            <Notice tone="danger" t={t}>
+              The ledger did not report a balance for this account. Reopen the wallet to try again.
+            </Notice>
+          )}
+        </div>
 
         {/* The row is ALWAYS here, empty until the reserve is known.
             Rendering it only once the balance arrived dropped the Send and

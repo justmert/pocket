@@ -216,7 +216,7 @@ const SAFE_ERRORS = new Set([
   "InvalidAddressKindError",
   "RecoveryUnavailableError",
   "RecoveryMismatchError",
-  "OriginRefusedError",
+
 ]);
 
 /** Messages we author ourselves and vet, matched exactly. */
