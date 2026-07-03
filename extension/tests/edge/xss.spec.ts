@@ -17,6 +17,7 @@ import {
   review,
   closeSend,
   SLOW,
+  settled,
 } from "./edge";
 import type { Page } from "@playwright/test";
 
@@ -79,6 +80,7 @@ test("an injection payload in the memo is rendered as text, not parsed", async (
 
   await onboard(page);
   await fund(await receiveAddress(page));
+  await settled(page);
   const before = await injectedNodes(page);
 
   await compose(page, { to: valid(), amount: "1", memo: IMG_PAYLOAD });
@@ -107,6 +109,7 @@ test("injection payloads in the recipient field are refused without being echoed
     void d.dismiss();
   });
   await onboard(page);
+  await settled(page);
   const before = await injectedNodes(page);
 
   const echoed: string[] = [];
@@ -150,11 +153,12 @@ test("injection payloads in the recovery phrase field are refused without being 
     // Whatever the wallet says, it must not be the phrase read back: a
     // recovery phrase is the one string that must never be re-rendered, and a
     // payload is just the case where that is visible.
-    await expect(page.getByText("PUBLIC POCKET")).toBeHidden();
+    await expect(page.getByRole("button", { name: "Public pocket" })).toBeHidden();
     const body = await page.locator("body").innerText();
     expect(body, `${p.name} must not be echoed into the page`).not.toContain(p.value);
   }
 
+  await settled(page);
   expect(await injectedNodes(page)).toEqual(before);
   expect(dialogs).toBe(0);
 });
@@ -164,6 +168,7 @@ test("a very long single token in a field cannot reach the ledger or the DOM", a
 }) => {
   const page = wallet.page;
   await onboard(page);
+  await settled(page);
   const before = await injectedNodes(page);
 
   // 100,000 characters with no break opportunity, in every field at once.
@@ -173,12 +178,17 @@ test("a very long single token in a field cannot reach the ledger or the DOM", a
   expect(out.stage).toBe("error");
   const said = out.stage === "error" ? out.message : "";
   expect(said.length, "the wallet must not render a 100,000-character error").toBeLessThan(1_000);
+  // back to the screen the baseline was taken on. send is a sheet over home
+  // now, so leaving it open compares one screen against two.
+  await closeSend(page);
+  await settled(page);
   expect(await injectedNodes(page)).toEqual(before);
 });
 
 test("an amount refusal does not read the typed value back onto the screen", async ({ wallet }) => {
   const page = wallet.page;
   await onboard(page);
+  await settled(page);
   const before = await injectedNodes(page);
 
   // A VALID recipient, so the address check passes and the amount is what is
@@ -201,5 +211,7 @@ test("an amount refusal does not read the typed value back onto the screen", asy
     );
     await closeSend(page);
   }
+  await settled(page);
+  await settled(page);
   expect(await injectedNodes(page)).toEqual(before);
 });

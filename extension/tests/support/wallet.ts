@@ -5,14 +5,22 @@
 // object that asserts hides which spec cares about what, and a spec that never
 // names its own expectations cannot be reviewed.
 //
-// Everything is selected by role, label or visible text. Nothing selects on a
-// class, a style attribute or a test id, so a refactor of the styling cannot
-// break the suite, and a change to the WORDS is supposed to break it: the words
-// on a signing screen are the product.
+// Everything is selected by role, accessible name or visible text. Nothing
+// selects on a class, a style attribute or a test id, so a restyle cannot break
+// the suite, and a change to the WORDS is supposed to break it: the words on a
+// signing screen are the product.
 import { expect, type Locator, type Page } from "@playwright/test";
 
 /** A G-address, exactly as it must appear on screen: never truncated. */
 export const ADDRESS_RE = /^G[A-Z2-7]{55}$/;
+
+/**
+ * An amount, as the accessibility tree carries it: the exact figure, ungrouped,
+ * with its code. The visible rendering splits the whole from the fraction and
+ * groups the thousands, so this is the one form that is both what a screen
+ * reader announces and what the worker actually reported.
+ */
+export const MONEY_RE = /^-?\d+\.\d{7}\s\w+$/;
 
 /** How long the slowest honest wait is allowed to take, per stage. */
 export const WAITS = {
@@ -38,7 +46,7 @@ export class Wallet {
 
   /** The splash the very first run shows. */
   splash(): Locator {
-    return this.page.getByText("A Stellar wallet with two pockets");
+    return this.page.getByText("Two pockets on Stellar");
   }
 
   /**
@@ -76,7 +84,7 @@ export class Wallet {
 
   async importPhrase(phrase: string, password: string): Promise<void> {
     await this.page.getByRole("button", { name: "I have a recovery phrase" }).click();
-    await this.page.getByLabel("Recovery phrase").fill(phrase);
+    await this.page.getByLabel(/Recovery phrase/).fill(phrase);
     await this.page.getByLabel("New password", { exact: true }).fill(password);
     await this.page.getByRole("button", { name: "Import wallet" }).click();
     await this.waitForHome();
@@ -84,28 +92,33 @@ export class Wallet {
 
   // ------------------------------------------------------------------- session
 
+  /** The pocket tabs are the one thing every unlocked home screen carries. */
+  homeMarker(): Locator {
+    return this.page.getByRole("button", { name: "Public pocket" });
+  }
+
   async waitForHome(timeout = WAITS.onboarding): Promise<void> {
-    await expect(this.page.getByText("PUBLIC POCKET", { exact: true })).toBeVisible({ timeout });
+    await expect(this.homeMarker()).toBeVisible({ timeout });
   }
 
   async lock(): Promise<void> {
-    await this.page.getByRole("button", { name: "Lock" }).click();
-    await expect(this.page.getByText(/Locked\. Enter your password/)).toBeVisible();
+    await this.page.getByRole("button", { name: "Lock wallet" }).click();
+    await expect(this.lockedNotice()).toBeVisible();
   }
 
   async unlock(password: string): Promise<void> {
     await this.page.getByLabel("Password", { exact: true }).fill(password);
-    await this.page.getByRole("button", { name: "Unlock" }).click();
+    await this.page.getByRole("button", { name: "Unlock", exact: true }).click();
   }
 
   lockedNotice(): Locator {
-    return this.page.getByText(/Locked\. Enter your password/);
+    return this.page.getByText("Enter your password to continue.");
   }
 
   /** The way out of a forgotten password. */
   async openRecover(): Promise<void> {
     await this.page.getByRole("button", { name: "Forgot your password?" }).click();
-    await expect(this.page.getByText("Erase and restore").first()).toBeVisible();
+    await expect(this.page.getByRole("heading", { name: "Erase and restore" })).toBeVisible();
   }
 
   /**
@@ -122,27 +135,33 @@ export class Wallet {
 
   // ---------------------------------------------------------------------- home
 
-  /** Reveal the receive address, then read it back in full. */
+  /** The bottom bar, which is how every screen and sheet is reached. */
+  nav(name: "Home" | "Receive" | "Send" | "Send privately" | "Move" | "Settings"): Locator {
+    return this.page.getByRole("button", { name, exact: true });
+  }
+
+  /** Choose which pocket the home screen is showing. */
+  async openPocket(which: "Public pocket" | "Private pocket"): Promise<void> {
+    await this.page.getByRole("button", { name: which }).click();
+  }
+
+  /** Open the receive sheet and read the address back in full. */
   async revealAddress(): Promise<string> {
-    await this.page.getByRole("button", { name: "Receive" }).click();
-    await expect(this.page.getByText("Your address")).toBeVisible();
+    await this.nav("Receive").click();
+    await expect(this.page.getByRole("dialog", { name: "Receive" })).toBeVisible();
     return this.readAddress();
   }
 
-  /**
-   * The address exactly as rendered. Whitespace is stripped because the block
-   * is chunked in fours for legibility, and the chunks are separated by margin
-   * rather than by characters.
-   */
+  /** The address exactly as rendered. Never truncated anywhere it is read. */
   async readAddress(): Promise<string> {
     const block = this.page.getByText(ADDRESS_RE).first();
     await expect(block).toBeVisible({ timeout: WAITS.ledgerRead });
     return (await block.innerText()).replace(/\s/g, "");
   }
 
-  /** Any amount rendered as money: "1234.5670000 XLM". */
+  /** Any amount, read from the exact figure rather than the split rendering. */
   money(): Locator {
-    return this.page.getByText(/^-?[\d]+\.\d{7}\s*XLM$/);
+    return this.page.getByText(MONEY_RE);
   }
 
   /** The public XLM figure on the home screen, as a number. */
@@ -155,13 +174,13 @@ export class Wallet {
   // ---------------------------------------------------------------------- send
 
   async openSend(): Promise<void> {
-    await this.page.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(this.page.getByLabel("Recipient")).toBeVisible();
+    await this.nav("Send").click();
+    await expect(this.page.getByLabel("To", { exact: true })).toBeVisible();
   }
 
-  /** Fill the compose form and ask for the confirm screen. */
+  /** Fill the compose form and ask for the review step. */
   async composePayment(p: { to: string; amount: string; memo?: string }): Promise<void> {
-    await this.page.getByLabel("Recipient").fill(p.to);
+    await this.page.getByLabel("To", { exact: true }).fill(p.to);
     await this.page.getByLabel("Amount (XLM)").fill(p.amount);
     if (p.memo !== undefined) await this.page.getByLabel("Memo (optional)").fill(p.memo);
     await this.page.getByRole("button", { name: "Review" }).click();
@@ -170,10 +189,13 @@ export class Wallet {
   /** Approve the reviewed payment and wait for the receipt. Returns its hash. */
   async confirmPayment(): Promise<string> {
     await this.page.getByRole("button", { name: "Confirm and send" }).click();
-    await expect(this.page.getByText("Sent", { exact: true })).toBeVisible({
-      timeout: WAITS.submission,
-    });
+    await expect(this.receipt()).toBeVisible({ timeout: WAITS.submission });
     return this.readHash();
+  }
+
+  /** The line that only appears once the ledger has included a transaction. */
+  receipt(): Locator {
+    return this.page.getByText(/^Confirmed in ledger \d+\.$/);
   }
 
   /** A 64-character transaction hash from a receipt. */
@@ -185,38 +207,65 @@ export class Wallet {
 
   // ------------------------------------------------------------- private pocket
 
+  /** Show the private pocket on the home screen. */
   async openPrivatePocket(): Promise<void> {
-    await this.page
-      .getByRole("button", { name: /private pocket/i })
-      .first()
-      .click();
-    await expect(this.page.getByText("Private pocket", { exact: true })).toBeVisible();
+    await this.openPocket("Private pocket");
+  }
+
+  /** The sheet that carries every private-pocket operation. */
+  async openMove(): Promise<void> {
+    await this.nav("Move").click();
+    await expect(this.page.getByRole("dialog")).toBeVisible();
   }
 
   /** Register: the one-time, permanent set-up. Returns once it has confirmed. */
   async registerPrivatePocket(): Promise<void> {
-    await expect(this.page.getByText("Not set up yet")).toBeVisible({
+    await this.openMove();
+    await expect(this.page.getByRole("button", { name: "Set up the private pocket" })).toBeVisible({
       timeout: WAITS.ledgerRead,
     });
     await this.page.getByRole("button", { name: "Set up the private pocket" }).click();
     await this.approve();
-    await expect(this.page.getByText(/Confirmed on the ledger/)).toBeVisible({
-      timeout: WAITS.submission,
-    });
+    await expect(this.receipt()).toBeVisible({ timeout: WAITS.submission });
+    await this.page.getByRole("button", { name: "Done" }).click();
   }
 
-  /** Wait for the review screen, check nothing, and approve it. */
-  async approve(): Promise<void> {
+  /** Wait for the review step, check nothing, and approve it. */
+  async approve(label: "Approve" | "Confirm and send" = "Approve"): Promise<void> {
     await expect(this.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
-    await this.page.getByRole("button", { name: "Approve" }).click();
+    await this.page.getByRole("button", { name: label }).click();
   }
 
-  /** Open one of the three operation forms. */
-  async openOp(kind: "Move in" | "Move out" | "Send privately"): Promise<void> {
+  /**
+   * Open one of the private-pocket operations.
+   *
+   * A private send is the bar's own send action while the private pocket is
+   * open, not a row inside the move sheet: spending is spending, and it is
+   * reached the same way in both pockets.
+   */
+  async openOp(kind: "Move in" | "Move out" | "Make spendable" | "Send privately"): Promise<void> {
+    if (kind === "Send privately") {
+      await this.nav("Send privately").click();
+      await expect(this.page.getByLabel("To", { exact: true })).toBeVisible();
+      return;
+    }
+    if ((await this.page.getByRole("button", { name: kind, exact: true }).count()) === 0) {
+      await this.openMove();
+    }
     await this.page.getByRole("button", { name: kind, exact: true }).click();
   }
 
-  /** Fill an operation form and ask for the review screen. */
+  /** The spendable figure: the private pocket's hero. */
+  spendableMoney(): Locator {
+    return this.money().nth(0);
+  }
+
+  /** What has arrived and is one signature away from being spendable. */
+  receivingMoney(): Locator {
+    return this.money().nth(1);
+  }
+
+  /** Fill an amount form and ask for the review step. */
   async submitOp(fields: { amount: string; to?: string }): Promise<void> {
     if (fields.to !== undefined) await this.page.getByLabel("To", { exact: true }).fill(fields.to);
     await this.page.getByLabel("Amount (XLM)").fill(fields.amount);
@@ -224,31 +273,28 @@ export class Wallet {
   }
 
   /**
-   * The two private balances, as locators, in the order the screen states them.
+   * The two private balances.
    *
-   * Spendable first, receiving second, always. The distinction is the point:
-   * money that has arrived is not money that can be sent until it is merged,
-   * and collapsing the two is what produces "why can't I send my own money".
+   * Spendable is the hero; receiving is stated separately and only when there
+   * is some. The distinction is the point: money that has arrived is not money
+   * that can be sent until it is merged, and collapsing the two is what
+   * produces "why can't I send my own money".
    */
-  spendableMoney(): Locator {
-    return this.money().nth(0);
-  }
-
-  receivingMoney(): Locator {
-    return this.money().nth(1);
-  }
-
-  /** The two private balances, as numbers. Null when nothing is reported. */
   async privateBalances(): Promise<{ spendable: number | null; receiving: number | null }> {
-    await expect(this.page.getByText("SPENDABLE", { exact: true })).toBeVisible({
+    await expect(this.page.getByRole("button", { name: "Private pocket" })).toBeVisible({
       timeout: WAITS.ledgerRead,
     });
+    const amounts = this.money();
+    const count = await amounts.count();
     const read = async (n: number): Promise<number | null> => {
-      const m = this.money().nth(n);
-      if ((await m.count()) === 0) return null;
-      return Number((await m.innerText()).replace(/[^\d.]/g, ""));
+      if (count <= n) return null;
+      return Number((await amounts.nth(n).innerText()).replace(/[^\d.]/g, ""));
     };
-    return { spendable: await read(0), receiving: await read(1) };
+    const receivingLabel = this.page.getByText("Receiving", { exact: true });
+    return {
+      spendable: await read(0),
+      receiving: (await receivingLabel.count()) > 0 ? await read(1) : null,
+    };
   }
 
   async close(): Promise<void> {

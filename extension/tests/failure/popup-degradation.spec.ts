@@ -82,7 +82,7 @@ async function onboard(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: 60_000 });
   await page.getByRole("button", { name: "I have written it down" }).click();
-  await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
 }
 
 /** Every digit-shaped thing on screen, so a fabricated balance cannot hide. */
@@ -100,7 +100,7 @@ test("an unreachable RPC shows an error, never a zero balance", async () => {
 
     // The spinner must be replaced by something. A wait that never ends is the
     // same failure as a wrong number, just slower to notice.
-    await expect(page.getByText("Reading the ledger…")).toHaveCount(0, { timeout: 60_000 });
+    await expect(page.getByText("Reading the ledger")).toHaveCount(0, { timeout: 60_000 });
 
     const text = await screenText(page);
     expect(text).not.toContain("0.0000000");
@@ -127,7 +127,7 @@ test("an RPC answering with no entries field shows an error, never a zero balanc
   try {
     const page = await popup(ctx, id);
     await onboard(page);
-    await expect(page.getByText("Reading the ledger…")).toHaveCount(0, { timeout: 60_000 });
+    await expect(page.getByText("Reading the ledger")).toHaveCount(0, { timeout: 60_000 });
 
     const text = await screenText(page);
     expect(text).not.toContain("0.0000000");
@@ -146,7 +146,7 @@ test("a rate-limited RPC shows an error, never a zero balance", async () => {
   try {
     const page = await popup(ctx, id);
     await onboard(page);
-    await expect(page.getByText("Reading the ledger…")).toHaveCount(0, { timeout: 60_000 });
+    await expect(page.getByText("Reading the ledger")).toHaveCount(0, { timeout: 60_000 });
 
     const text = await screenText(page);
     expect(text).not.toContain("0.0000000");
@@ -168,7 +168,7 @@ test("the balance appears once the RPC comes back, in the same session", async (
   try {
     const page = await popup(ctx, id);
     await onboard(page);
-    await expect(page.getByText("Reading the ledger…")).toHaveCount(0, { timeout: 60_000 });
+    await expect(page.getByText("Reading the ledger")).toHaveCount(0, { timeout: 60_000 });
     expect(await screenText(page)).toMatch(/Something went wrong|did not report a balance/i);
 
     // The dependency returns. 100 XLM held, 1 XLM locked as the base reserve.
@@ -178,7 +178,7 @@ test("the balance appears once the RPC comes back, in the same session", async (
     // back, so the assertion is that the next look shows the truth.
     await page.close();
     const again = await popup(ctx, id);
-    await expect(again.getByText("99.0000000")).toBeVisible({ timeout: 60_000 });
+    await expect(again.getByText("99.0000000 XLM").first()).toBeVisible({ timeout: 60_000 });
     const text = await screenText(again);
     expect(text).toContain("Plus 1.0000000 XLM locked by the network as a reserve");
     expect(text).not.toMatch(/Something went wrong/i);
@@ -198,7 +198,7 @@ test("an account that genuinely does not exist yet shows zero, and says so", asy
   try {
     const page = await popup(ctx, id);
     await onboard(page);
-    await expect(page.getByText("0.0000000")).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText("0.0000000 XLM").first()).toBeVisible({ timeout: 60_000 });
     expect(await screenText(page)).not.toMatch(/Something went wrong/i);
   } finally {
     await ctx.close();
@@ -209,7 +209,7 @@ test("an account that genuinely does not exist yet shows zero, and says so", asy
 
 test("a stalled RPC ends the wait rather than spinning forever", async () => {
   // A server that accepts the connection and never answers. Without the request
-  // deadline the popup showed "Reading the ledger…" with nothing scheduled to
+  // deadline the popup showed "Reading the ledger" with nothing scheduled to
   // end it. The assertion is a BOUND, set by the wallet's own 30s deadline.
   const server = await FaultServer.start({ fallback: { kind: "stall" } });
   const port = Number(new URL(server.url).port);
@@ -217,9 +217,9 @@ test("a stalled RPC ends the wait rather than spinning forever", async () => {
   try {
     const page = await popup(ctx, id);
     await onboard(page);
-    await expect(page.getByText("Reading the ledger…")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Reading the ledger")).toBeVisible({ timeout: 15_000 });
     // The wallet's ceiling is 30s. Anything under 45 proves something ends it.
-    await expect(page.getByText("Reading the ledger…")).toHaveCount(0, { timeout: 45_000 });
+    await expect(page.getByText("Reading the ledger")).toHaveCount(0, { timeout: 45_000 });
     const text = await screenText(page);
     expect(text).not.toContain("0.0000000");
     expect(text).toMatch(/Something went wrong|did not report a balance/i);

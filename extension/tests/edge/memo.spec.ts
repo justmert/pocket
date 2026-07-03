@@ -21,6 +21,7 @@ import {
   closeSend,
   GENERIC_FAILURE,
   SLOW,
+  surfaceText,
 } from "./edge";
 
 // Every action gets a bound. Playwright's default `actionTimeout` is 0, meaning
@@ -199,7 +200,7 @@ test("a memo that is only whitespace is reviewed as a memo, not as none", async 
   await compose(page, { to: valid(), amount: "1", memo: "   " });
   const out = await review(page);
   expect(out.stage, out.stage === "error" ? out.message : "").toBe("confirm");
-  const body = await page.locator("body").innerText();
+  const body = await surfaceText(page);
   expect(body, "a whitespace memo is still a memo and must not be reported as none").not.toContain(
     "Send with NO memo",
   );
@@ -216,6 +217,6 @@ test("no memo at all is stated as an absence, never left to be inferred", async 
   expect(out.stage, out.stage === "error" ? out.message : "").toBe("confirm");
   await expect(page.getByText("Send with NO memo")).toBeVisible();
   await expect(
-    page.getByText("No memo. Exchanges usually require one; a deposit without it can be lost."),
+    page.getByText("None. Exchanges usually require one; a deposit without it can be lost."),
   ).toBeVisible();
 });

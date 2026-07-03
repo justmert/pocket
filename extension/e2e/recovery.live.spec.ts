@@ -55,7 +55,7 @@ test("a funded private pocket whose openings are gone rebuilds from the archive"
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "I have written it down" }).click();
-  await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
 
   await page.getByRole("button", { name: "Receive" }).click();
   address = (await page.locator("div[style*='break-all']").innerText()).replace(/\s/g, "");
@@ -67,7 +67,7 @@ test("a funded private pocket whose openings are gone rebuilds from the archive"
   await page.getByRole("button", { name: "Set up the private pocket" }).click();
   await expect(page.getByText(/What this does/)).toBeVisible({ timeout: 180_000 });
   await page.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByText(/Confirmed on the ledger/)).toBeVisible({ timeout: 240_000 });
+  await expect(page.getByText(/Confirmed in ledger/)).toBeVisible({ timeout: 240_000 });
 
   await expect(page.getByText(/SPENDABLE/)).toBeVisible({ timeout: 120_000 });
   await page.getByRole("button", { name: "Move in" }).click();

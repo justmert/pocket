@@ -1,213 +1,367 @@
-import { useEffect, useState } from "react";
-import { call } from "../rpc";
-import {
-  Button,
-  Content,
-  Frame,
-  Header,
-  Label,
-  Loading,
-  Notice,
-  SectionLabel,
-  TextButton,
-} from "../primitives";
-import { AddressBlock } from "../AddressBlock";
-import { Money } from "../Money";
-import { space, text, type Theme, leading, fontSizes } from "../theme";
-import type { PublicBalance, WalletStatus, YieldPosition } from "../../../../core/messages";
+import type { CSSProperties } from "react";
+import { nativeOf, useWallet } from "../WalletProvider";
+import { NAV_SPACE } from "../BottomNav";
+import { Amount, HeroAmount } from "../Amount";
+import { Avatar, shortAddress } from "../Address";
+import { Card, IconCircle, Notice, Overline, Row, ScrollArea, Skeleton } from "../primitives";
+import { Check, Copy, Lock, Refresh, Shield } from "../icons";
+import { fontSizes, radius, space, text, type Pocket, type Theme } from "../theme";
+import type { PrivatePocket } from "../../../../core/messages";
 
-export function Home({
-  t,
-  status,
-  onLock,
-  onSend,
-  onPrivate,
-}: {
-  t: Theme;
-  status: WalletStatus;
-  onLock: () => void;
-  onSend: () => void;
-  onPrivate: () => void;
-}) {
-  const [balances, setBalances] = useState<PublicBalance[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [showReceive, setShowReceive] = useState(false);
-  const [yield_, setYield] = useState<YieldPosition | null>(null);
-
-  useEffect(() => {
-    let live = true;
-    void (async () => {
-      try {
-        const b = await call({ type: "balances" });
-        if (live) setBalances(b);
-      } catch (e) {
-        if (live) setError(e instanceof Error ? e.message : String(e));
-      }
-    })();
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  // Yield is a PUBLIC-pocket fact. Read separately so a yield outage cannot
-  // take the balance down with it.
-  useEffect(() => {
-    let live = true;
-    void (async () => {
-      try {
-        const y = await call({ type: "yieldPosition" });
-        if (live) setYield(y);
-      } catch {
-        // Reported as unavailable rather than as a broken wallet.
-        if (live) setYield({ available: false, reason: "Yield could not be read right now." });
-      }
-    })();
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  const native = balances?.find((b) => b.id === "native");
-  // The reserve is real money the account holds and cannot send. Showing only
-  // the spendable figure made a freshly funded 10,000 XLM account read 9999
-  // with nothing on screen to explain the missing one.
-  const reserved = native?.reserved && Number(native.reserved) > 0 ? native.reserved : null;
+export function Home() {
+  const w = useWallet();
+  const t = w.t;
+  const status = w.status;
+  const priv = w.priv;
+  const native = nativeOf(w.balances);
+  const isPrivate = w.pocket === "private";
 
   return (
-    <Frame t={t}>
-      <Header
-        title="Pocket"
-        t={t}
-        right={
-          <TextButton t={t} onClick={onLock}>
-            Lock
-          </TextButton>
-        }
-      />
-      <Content>
-        <SectionLabel t={t}>PUBLIC POCKET</SectionLabel>
+    <ScrollArea background={t.canvas}>
+      {t.dark && <div aria-hidden style={glow(t)} />}
+      <div style={{ position: "relative", padding: `${space.gutter}px ${space.gutter}px ${NAV_SPACE}px` }}>
+        <AccountRow />
 
-        {/* Never fabricate a zero while loading: an empty state is honest, a
-            made-up balance is not.
+        <div style={{ display: "flex", gap: space.lg, marginTop: space.lg }}>
+          <PocketTab pocket="public" label="Public pocket" />
+          {status?.privateAvailable && <PocketTab pocket="private" label="Private pocket" />}
+        </div>
 
-            ONE box, the same height in every state. The loading placeholder was
-            a hard-coded 40px and the balance that replaced it is a 40px hero on
-            a 1.3 line box, so arriving data pushed everything below it down 4px
-            — including the Send button, under a finger already aimed at it. The
-            earlier 29px version of this bug is described below; this is the same
-            bug, four pixels wide, left behind when that one was fixed. A
-            placeholder whose height is written as a number and a content box
-            whose height is computed from type metrics WILL drift apart, so the
-            reservation is computed from the same metrics the content uses. */}
-        <div
-          style={{
-            minHeight: fontSizes.display * leading.tight,
-            display: "flex",
-            alignItems: "center",
-            // CONSTANT. Keying it on `reserved` moved everything below by the
-            // difference between the two spacings (18 and 6) at the moment the
-            // balance arrived: twelve pixels, upward, under a finger aimed at
-            // Send. The reserve caption below reserves its own line whether or
-            // not it has text, so this margin has no reason to vary.
-            marginBottom: space.xs,
-          }}
-        >
-          {balances === null && !error ? (
-            <Loading label="Reading the ledger…" t={t} />
-          ) : error ? (
-            <Notice tone="danger" t={t}>
-              {error}
-            </Notice>
-          ) : native ? (
-            <Money amount={native.amount} code="XLM" size="hero" t={t} />
+        <div style={{ marginTop: space.sm }}>
+          {isPrivate ? <PrivateHero /> : <PublicHero />}
+        </div>
+
+        {isPrivate ? <PrivateBody /> : <PublicBody />}
+      </div>
+    </ScrollArea>
+  );
+
+  function PublicHero() {
+    if (w.balanceError && !native) {
+      return (
+        <Notice t={t} tone="danger">
+          {w.balanceError}
+        </Notice>
+      );
+    }
+    if (w.balances && !native) {
+      return (
+        <Notice t={t} tone="danger">
+          The ledger did not report a balance for this account. Reopen the wallet to try again.
+        </Notice>
+      );
+    }
+    return (
+      <>
+        <HeroAmount t={t} value={native ? native.amount : null} code="XLM" />
+        <div style={{ ...text.caption, color: t.faint, minHeight: 16 }}>
+          {native?.reserved && Number(native.reserved) > 0
+            ? `Plus ${native.reserved} XLM locked by the network as a reserve.`
+            : " "}
+        </div>
+      </>
+    );
+  }
+
+  function PrivateHero() {
+    if (w.privError && !priv) {
+      return (
+        <Notice t={t} tone="danger">
+          {w.privError}
+        </Notice>
+      );
+    }
+    if (!priv) {
+      return <HeroAmount t={t} value={null} code="XLM" />;
+    }
+    if (priv.state !== "ready") {
+      return (
+        <div style={{ minHeight: Math.round(fontSizes.hero * 1.12), display: "flex", alignItems: "center" }}>
+          <span style={{ ...text.display, color: t.faint }}>Not open yet</span>
+        </div>
+      );
+    }
+    if (!priv.spendable) {
+      return (
+        <div style={{ minHeight: Math.round(fontSizes.hero * 1.12), display: "flex", alignItems: "center" }}>
+          <span style={{ ...text.body, color: t.sub }}>
+            Not reported. Close and reopen the wallet to read it again.
+          </span>
+        </div>
+      );
+    }
+    return (
+      <>
+        <HeroAmount t={t} value={priv.spendable} code="XLM" />
+        <div style={{ ...text.caption, color: t.faint, minHeight: 16 }}>
+          Amounts here are hidden on the ledger. Addresses are not.
+        </div>
+      </>
+    );
+  }
+
+  function PublicBody() {
+    return (
+      <>
+        {status?.privateAvailable && priv && priv.state !== "ready" && (
+          <div style={{ marginTop: space.gutter }}>
+            <PrivatePrompt priv={priv} />
+          </div>
+        )}
+
+        <div style={{ marginTop: space.xl }}>
+          <Overline t={t}>Assets</Overline>
+          {w.balances === null ? (
+            <div style={{ display: "grid", gap: space.md, paddingTop: space.xs }}>
+              <Skeleton width="100%" height={40} />
+            </div>
           ) : (
-            <Notice tone="danger" t={t}>
-              The ledger did not report a balance for this account. Reopen the wallet to try again.
-            </Notice>
+            w.balances.map((b, i) => (
+              <Row
+                key={b.id}
+                t={t}
+                index={i}
+                icon={<AssetMark t={t} code={b.code} />}
+                title={b.code}
+                sub={b.id === "native" ? "Stellar Lumens" : b.issuer ? shortAddress(b.issuer) : undefined}
+                value={<Amount t={t} value={b.amount} size="row" />}
+                valueSub={!b.authorized ? "Not authorised" : undefined}
+              />
+            ))
           )}
         </div>
 
-        {/* The row is ALWAYS here, empty until the reserve is known.
-            Rendering it only once the balance arrived dropped the Send and
-            Receive buttons 29px, under a finger already aimed at Send: a press
-            at the old centre lands 6px above the new button, does nothing, and
-            the natural response on a wallet is to press again. Cumulative
-            Layout Shift scored this 0.0021, well inside "good", which is why
-            the assertion is the pixel delta and not CLS. */}
-        <div
-          style={{
-            ...text.caption,
-            color: t.faint,
-            marginBottom: space.gutter,
-            minHeight: text.caption.fontSize * leading.normal,
-          }}
-        >
-          {reserved ? `Plus ${reserved} XLM locked by the network as a reserve.` : "\u00a0"}
-        </div>
+        <YieldRow />
+      </>
+    );
+  }
 
-        <div
-          style={{
-            display: "grid",
-            // `1fr` means `minmax(auto, 1fr)`, and `auto` here is the item's
-        // min-content width, so the track refuses to shrink below its label.
-        // At 200% zoom the pair needs 176px in a 156px track and `Frame` is
-        // `overflow: hidden`, so the control CLIPS rather than scrolls: it is
-        // gone, not merely awkward. Spelling the minimum as 0 is what lets it
-        // shrink. WCAG 1.4.4.
-        gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-            gap: space.md,
-            marginTop: space.sm,
-          }}
-        >
-          <Button t={t} onClick={onSend}>
-            Send
-          </Button>
-          <Button t={t} variant="quiet" onClick={() => setShowReceive((v) => !v)}>
-            Receive
-          </Button>
+  function PrivateBody() {
+    if (!priv) return null;
+    if (priv.state !== "ready") {
+      return (
+        <div style={{ marginTop: space.gutter }}>
+          <PrivatePrompt priv={priv} />
         </div>
-
-        {showReceive && status.address && (
+      );
+    }
+    return (
+      <>
+        {priv.receiving && Number(priv.receiving) > 0 && (
           <div style={{ marginTop: space.gutter }}>
-            <Label t={t}>Your address</Label>
-            <AddressBlock address={status.address} t={t} />
+            <Card t={t} tone="accent">
+              <div style={{ display: "flex", alignItems: "center", gap: space.md }}>
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span style={{ ...text.rowSub, color: t.sub, display: "block" }}>Receiving</span>
+                  <Amount t={t} value={priv.receiving} code="XLM" size="row" />
+                </span>
+                <button
+                  type="button"
+                  onClick={() => w.openSheet("move")}
+                  style={{
+                    all: "unset",
+                    cursor: "pointer",
+                    ...text.chip,
+                    color: t.dark ? t.accent : t.text,
+                    background: t.field,
+                    padding: `8px ${space.md}px`,
+                    borderRadius: radius.pill,
+                  }}
+                >
+                  Make spendable
+                </button>
+              </div>
+            </Card>
           </div>
         )}
 
-        {yield_ && (
-          <div style={{ marginTop: 26 }}>
-            <div style={{ ...text.caption, color: t.faint, marginBottom: 8 }}>YIELD</div>
-            {yield_.available ? (
-              <>
-                <div style={{ ...text.body, color: t.text }}>
-                  {yield_.balance} shares at {yield_.apy}
-                </div>
-                <Notice t={t}>
-                  Yield is public-pocket only. A confidential balance is a commitment, which can
-                  be added and subtracted and nothing else, so a vault cannot compute a share
-                  price over one.
-                </Notice>
-              </>
-            ) : (
-              <Notice t={t}>{yield_.reason}</Notice>
-            )}
-          </div>
-        )}
-
-        {status.privateAvailable && (
-          <div style={{ marginTop: space.xl }}>
-            <SectionLabel t={t}>PRIVATE POCKET</SectionLabel>
-            {/* The honest framing, on the surface rather than buried in a
-                settings page: amounts are hidden, addresses never are. */}
-            <Notice t={t}>
-              Hides amounts, never addresses. Who you pay stays public on the ledger.
+        {typeof priv.daysRemaining === "number" && priv.daysRemaining < 8 && (
+          <div style={{ marginTop: space.gutter }}>
+            <Notice t={t} tone="exposed">
+              This pocket goes dormant in {priv.daysRemaining} days unless it is used. Opening the
+              wallet before then is what keeps it alive.
             </Notice>
-            <Button t={t} variant="quiet" onClick={onPrivate}>
-              {status.privateEnabled ? "Open private pocket" : "Set up private pocket"}
-            </Button>
           </div>
         )}
-      </Content>
-    </Frame>
+
+        <div style={{ marginTop: space.xl }}>
+          <Overline t={t}>How this pocket works</Overline>
+          <Row
+            t={t}
+            icon={<Shield size={20} />}
+            title="Amounts are hidden"
+            sub="Every address stays public on the ledger."
+          />
+        </div>
+      </>
+    );
+  }
+
+  function PrivatePrompt({ priv }: { priv: PrivatePocket }) {
+    const open = () => w.openSheet("move");
+    const action = PROMPT_ACTION[priv.state];
+    return (
+      <Card t={t} tone="accent">
+        <div style={{ display: "flex", alignItems: "center", gap: space.md, marginBottom: priv.message ? space.sm : 0 }}>
+          <span
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              background: t.accentFill,
+              color: t.onAccent,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flex: "0 0 auto",
+            }}
+          >
+            <Shield size={19} />
+          </span>
+          <span style={{ ...text.rowTitle, color: t.text, flex: 1, minWidth: 0 }}>
+            {PROMPT_TITLE[priv.state]}
+          </span>
+          {action && (
+            <button
+              type="button"
+              onClick={open}
+              style={{
+                all: "unset",
+                cursor: "pointer",
+                ...text.chip,
+                color: t.dark ? t.accent : t.text,
+                background: t.field,
+                padding: `8px ${space.md}px`,
+                borderRadius: radius.pill,
+              }}
+            >
+              {action}
+            </button>
+          )}
+        </div>
+        {priv.message && (
+          <div style={{ ...text.body, color: t.sub, lineHeight: 1.5 }}>{priv.message}</div>
+        )}
+      </Card>
+    );
+  }
+
+  function YieldRow() {
+    const y = w.yieldPosition;
+    if (!y) return null;
+    return (
+      <div style={{ marginTop: space.xl }}>
+        <Overline t={t}>Yield</Overline>
+        {y.available ? (
+          <Row
+            t={t}
+            title="Vault position"
+            sub={y.apy ? `${y.apy} reported` : undefined}
+            value={y.balance ? `${y.balance} shares` : undefined}
+          />
+        ) : (
+          <div style={{ ...text.body, color: t.sub, lineHeight: 1.5 }}>{y.reason}</div>
+        )}
+      </div>
+    );
+  }
+
+  function AccountRow() {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: space.md }}>
+        {status?.address ? <Avatar address={status.address} size={44} /> : <Skeleton width={44} height={44} />}
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ ...text.heading, color: t.text }}>Pocket</div>
+          {status?.address ? (
+            <button
+              type="button"
+              onClick={() => w.copy(status.address!)}
+              aria-label="Copy your address"
+              style={{
+                all: "unset",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                color: t.sub,
+              }}
+            >
+              <span style={{ ...text.rowSub, fontVariantNumeric: "tabular-nums" }}>
+                {shortAddress(status.address)}
+              </span>
+              {w.copied ? <Check size={14} sw={2.4} /> : <Copy size={13} />}
+            </button>
+          ) : (
+            <Skeleton width={120} height={13} />
+          )}
+        </div>
+        <IconCircle t={t} label="Refresh" onClick={() => void w.refresh()}>
+          <Refresh size={18} className={w.refreshing ? "pocket-spinner" : undefined} />
+        </IconCircle>
+        <IconCircle t={t} label="Lock wallet" onClick={() => void w.lock()}>
+          <Lock size={18} />
+        </IconCircle>
+      </div>
+    );
+  }
+
+  function PocketTab({ pocket, label }: { pocket: Pocket; label: string }) {
+    const on = w.pocket === pocket;
+    const style: CSSProperties = {
+      all: "unset",
+      cursor: "pointer",
+      ...text.rowTitle,
+      fontWeight: 800,
+      letterSpacing: "-0.01em",
+      color: on ? t.text : t.faint,
+      paddingBottom: 4,
+      borderBottom: `2px solid ${on ? t.accent : "transparent"}`,
+      transition: "color 200ms ease, border-color 200ms ease",
+    };
+    return (
+      <button type="button" aria-pressed={on} onClick={() => w.setPocket(pocket)} style={style}>
+        {label}
+      </button>
+    );
+  }
+}
+
+const PROMPT_TITLE: Record<PrivatePocket["state"], string> = {
+  unavailable: "No private pocket on this network",
+  unfunded: "Fund this account first",
+  unregistered: "Private pocket not set up",
+  archived: "Private pocket is dormant",
+  needsRecovery: "Balances need rebuilding",
+  diverged: "Records do not match the ledger",
+  ready: "",
+};
+
+const PROMPT_ACTION: Record<PrivatePocket["state"], string | null> = {
+  unavailable: null,
+  unfunded: null,
+  unregistered: "Set up",
+  archived: "Reactivate",
+  needsRecovery: "Rebuild",
+  diverged: "Rebuild",
+  ready: null,
+};
+
+function AssetMark({ t, code }: { t: Theme; code: string }) {
+  return (
+    <span style={{ ...text.rowSub, fontWeight: 800, color: t.dark ? t.accent : t.text }}>
+      {code.slice(0, 3)}
+    </span>
   );
+}
+
+function glow(t: Theme): CSSProperties {
+  return {
+    position: "absolute",
+    top: -40,
+    left: 0,
+    right: 0,
+    height: 220,
+    background: `radial-gradient(80% 100% at 50% 0%, ${t.accentSoft}, transparent 62%)`,
+    pointerEvents: "none",
+  };
 }

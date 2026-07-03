@@ -121,8 +121,8 @@ test("repeated unlock clicks leave one unlocked wallet, not several sessions", a
     const page = await w.popup();
     await onboard(page);
     const address = await addressOf(page);
-    await page.getByRole("button", { name: "Lock" }).click();
-    await expect(page.getByText(/Locked\. Enter your password/)).toBeVisible();
+    await page.getByRole("button", { name: "Lock wallet" }).click();
+    await expect(page.getByText(/Enter your password to continue/)).toBeVisible();
 
     // Five at once, which is what an impatient user's double-tap plus a slow
     // scrypt looks like from the worker's side.
@@ -161,8 +161,8 @@ test("a wrong password mixed in with right ones never unlocks, and never locks o
     const page = await w.popup();
     await onboard(page);
     const address = await addressOf(page);
-    await page.getByRole("button", { name: "Lock" }).click();
-    await expect(page.getByText(/Locked\. Enter your password/)).toBeVisible();
+    await page.getByRole("button", { name: "Lock wallet" }).click();
+    await expect(page.getByText(/Enter your password to continue/)).toBeVisible();
 
     const replies = await Promise.all([
       send(page, { type: "unlock", password: "wrong-one" }),
@@ -189,8 +189,8 @@ test("two erase-and-restore submissions at once leave one wallet on the same add
     const page = await w.popup();
     const phrase = await onboard(page);
     const address = await addressOf(page);
-    await page.getByRole("button", { name: "Lock" }).click();
-    await expect(page.getByText(/Locked\. Enter your password/)).toBeVisible();
+    await page.getByRole("button", { name: "Lock wallet" }).click();
+    await expect(page.getByText(/Enter your password to continue/)).toBeVisible();
 
     const a = await w.popup();
     const b = await w.popup();
@@ -213,14 +213,14 @@ test("two erase-and-restore submissions at once leave one wallet on the same add
     // A successful restore leaves the wallet open, so the way to prove the
     // vault it wrote is the one the new password opens is to lock it first.
     const reopened = await w.popup();
-    await expect(reopened.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 60_000 });
+    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
     expect(await addressOf(reopened), "the restored wallet must be the same account").toBe(address);
-    await reopened.getByRole("button", { name: "Lock" }).click();
-    await expect(reopened.getByText(/Locked\. Enter your password/)).toBeVisible();
+    await reopened.getByRole("button", { name: "Lock wallet" }).click();
+    await expect(reopened.getByText(/Enter your password to continue/)).toBeVisible();
     await reopened.getByRole("textbox", { name: "Password", exact: true }).fill("second-password");
     await reopened.getByRole("button", { name: "Unlock" }).click();
     await expect(
-      reopened.getByText("PUBLIC POCKET"),
+      reopened.getByRole("button", { name: "Public pocket" }),
       "the surviving vault must open with the password the restore was given",
     ).toBeVisible({ timeout: 60_000 });
     expect(await addressOf(reopened)).toBe(address);
@@ -237,7 +237,7 @@ test("erase-and-restore refuses a phrase belonging to a different wallet", async
     await onboard(page);
     const address = await addressOf(page);
     const keysBefore = await storageKeys(page);
-    await page.getByRole("button", { name: "Lock" }).click();
+    await page.getByRole("button", { name: "Lock wallet" }).click();
 
     const stranger = "legal winner thank year wave sausage worth useful legal winner thank yellow";
     const r = await send(page, {
@@ -253,7 +253,7 @@ test("erase-and-restore refuses a phrase belonging to a different wallet", async
     const reopened = await w.popup();
     await reopened.getByRole("textbox", { name: "Password", exact: true }).fill(PASSWORD);
     await reopened.getByRole("button", { name: "Unlock" }).click();
-    await expect(reopened.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 60_000 });
+    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
     expect(await addressOf(reopened)).toBe(address);
   } finally {
     await w.close();
@@ -277,7 +277,7 @@ test("closing the popup mid-compose loses the draft and nothing else", async () 
 
     const reopened = await w.popup();
     // Back at the start, with nothing carried over and nothing left behind.
-    await expect(reopened.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 60_000 });
+    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
     await expect(reopened.getByText("Unfinished transaction")).toHaveCount(0);
     expect(await storageKeys(reopened)).toEqual(before);
 

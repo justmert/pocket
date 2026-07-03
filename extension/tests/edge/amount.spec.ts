@@ -19,6 +19,7 @@ import {
   closeSend,
   GENERIC_FAILURE,
   SLOW,
+  surfaceText,
 } from "./edge";
 
 // Every action gets a bound. Playwright's default `actionTimeout` is 0, meaning
@@ -213,6 +214,6 @@ test("one stroop is stated as one stroop, not rounded away to zero", async ({ wa
   const out = await review(page);
   expect(out.stage, out.stage === "error" ? out.message : "").toBe("confirm");
   await expect(page.getByText("Send 0.0000001 XLM to this address")).toBeVisible();
-  const body = await page.locator("body").innerText();
+  const body = await surfaceText(page);
   expect(body, "one stroop must never be shown as zero").not.toContain("0.0000000 XLM");
 });

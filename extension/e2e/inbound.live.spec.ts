@@ -40,14 +40,14 @@ async function launchWallet(): Promise<Wallet> {
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "I have written it down" }).click();
-  await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
 
   await page.getByRole("button", { name: "Receive" }).click();
   const address = (await page.locator("div[style*='break-all']").innerText()).replace(/\s/g, "");
   const funded = await fetch(`${FRIENDBOT}?addr=${address}`);
   expect(funded.ok, `friendbot must fund ${address}`).toBe(true);
   await page.reload();
-  await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
   return { ctx, page, dir, address };
 }
 
@@ -58,7 +58,7 @@ async function fundPrivate(w: Wallet, amount: string): Promise<void> {
   await w.page.getByRole("button", { name: "Set up the private pocket" }).click();
   await expect(w.page.getByText(/What this does/)).toBeVisible({ timeout: 180_000 });
   await w.page.getByRole("button", { name: "Approve" }).click();
-  await expect(w.page.getByText(/Confirmed on the ledger/)).toBeVisible({ timeout: 240_000 });
+  await expect(w.page.getByText(/Confirmed in ledger/)).toBeVisible({ timeout: 240_000 });
 
   await expect(w.page.getByText(/SPENDABLE/)).toBeVisible({ timeout: 120_000 });
   await w.page.getByRole("button", { name: "Move in" }).click();
@@ -89,13 +89,13 @@ test("a received confidential transfer is credited, not reported as diverged", a
     await sender.page.getByRole("button", { name: "Review" }).click();
     await expect(sender.page.getByText(/AMOUNT is hidden/)).toBeVisible({ timeout: 120_000 });
     await sender.page.getByRole("button", { name: "Approve" }).click();
-    await expect(sender.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+    await expect(sender.page.getByText(/Confirmed in ledger/)).toBeVisible({
       timeout: 240_000,
     });
 
     // THE ASSERTION. Reopen the recipient's pocket and look.
     await recipient.page.reload();
-    await expect(recipient.page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 30_000 });
+    await expect(recipient.page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
     await recipient.page.getByRole("button", { name: /private pocket/i }).click();
 
     // It must NOT say the records disagree with the ledger. That was the bug:

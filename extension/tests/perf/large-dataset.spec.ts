@@ -78,7 +78,7 @@ test("a received transfer is found by scanning the retained window, and the scre
     await wallet.page.getByLabel("Amount (XLM)").fill("5");
     await wallet.page.getByRole("button", { name: "Review" }).click();
     await wallet.approve();
-    await expect(wallet.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+    await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
       timeout: WAITS.submission,
     });
 

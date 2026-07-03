@@ -50,7 +50,7 @@ test("creates a wallet and funds it", async () => {
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "I have written it down" }).click();
-  await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
 
   // Read the address the wallet actually derived, from its own receive view.
   await page.getByRole("button", { name: "Receive" }).click();
@@ -66,7 +66,7 @@ test("creates a wallet and funds it", async () => {
 test("registers a confidential account with a real proof", async () => {
   test.setTimeout(300_000);
   await page.reload();
-  await expect(page.getByText(/PUBLIC POCKET/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: /private pocket/i }).click();
 
   // A funded, unregistered account. The three permanent facts must be stated
@@ -89,7 +89,7 @@ test("registers a confidential account with a real proof", async () => {
   await expect(page.getByText(/not reversible/)).toBeVisible();
 
   await page.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByText(/Confirmed on the ledger/)).toBeVisible({ timeout: 180_000 });
+  await expect(page.getByText(/Confirmed in ledger/)).toBeVisible({ timeout: 180_000 });
 });
 
 test("shields XLM and makes it spendable", async () => {
@@ -131,7 +131,7 @@ test("sends a confidential transfer to another account", async () => {
   await expect(page.getByText(RECIPIENT.slice(0, 20))).toBeVisible();
 
   await page.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByText(/Confirmed on the ledger/)).toBeVisible({ timeout: 240_000 });
+  await expect(page.getByText(/Confirmed in ledger/)).toBeVisible({ timeout: 240_000 });
 });
 
 test("the account bound its OWN auditor key, not the operator's", async () => {

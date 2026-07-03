@@ -1,20 +1,21 @@
 import { useState } from "react";
 import { call } from "../rpc";
-import { Button, ButtonStack, Frame, Header, Label, Notice } from "../primitives";
-import { MonoBlock } from "../AddressBlock";
-import { Money } from "../Money";
-import { leading, space, text, type Theme } from "../theme";
+import { MonoBlock } from "../Address";
+import { Amount } from "../Amount";
+import { Button, ButtonRow, ButtonStack, Header, Label, Notice, Screen } from "../primitives";
+import { useOnce } from "../flow";
+import { space, text, type Theme } from "../theme";
 import type { TxSummary } from "../../../../core/provider/describe-tx";
 
-/**
- * A site is asking for a signature.
- *
- * The screen exists so the wallet never signs bytes a person has not read.
- * Two things are load-bearing and neither is decoration: the ORIGIN is shown
- * verbatim and untruncated, because it is the only thing distinguishing the
- * real site from a lookalike, and Approve does not render at all when the
- * envelope could not be decoded. A hash the user cannot read is not consent.
- */
+/** stroops to XLM. the envelope carries the fee in stroops and a wallet that
+ *  labels seven digits of stroops as XLM is off by a factor of ten million. */
+function feeInXlm(stroops: string): string {
+  const n = BigInt(stroops || "0");
+  const whole = n / 10_000_000n;
+  const rest = (n % 10_000_000n).toString().padStart(7, "0");
+  return `${whole}.${rest}`;
+}
+
 export function DappApproval({
   t,
   request,
@@ -25,102 +26,113 @@ export function DappApproval({
   onDone: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const { summary, origin } = request;
+  const [error, setError] = useState<string | null>(null);
+  const once = useOnce();
+  const { summary } = request;
 
   const answer = async (approved: boolean) => {
+    if (!once.claim()) return;
     setBusy(true);
+    setError(null);
     try {
       await call({ type: "resolveDappRequest", id: request.id, approved });
-    } finally {
       onDone();
+    } catch (e) {
+      // a refusal that failed to reach the worker must not close the screen: the
+      // site is still waiting, and the user would be left believing they answered.
+      setError(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+      once.release();
     }
   };
 
   return (
-    <Frame t={t}>
-      <Header title="Signature request" t={t} />
-      <div style={{ padding: space.gutter, flex: 1, overflowY: "auto" }}>
-        <Label t={t}>This site is asking</Label>
-        {/* Full origin, never shortened. A lookalike domain is the entire
-            attack, and an ellipsis is where it hides. */}
-        <MonoBlock t={t}>{origin}</MonoBlock>
+    <Screen t={t}>
+      <Header t={t} title="Signature request" />
 
-        {!summary.decoded ? (
-          <div style={{ marginTop: space.lg }}>
-            <Notice tone="danger" t={t}>
-              {summary.warning ??
-                "Pocket could not read this transaction, so it will not offer to sign it."}
+      <Label t={t}>This site is asking</Label>
+      <MonoBlock t={t}>{request.origin}</MonoBlock>
+
+      {!summary.decoded ? (
+        <>
+          <div style={{ marginTop: space.md }}>
+            <Notice t={t} tone="danger">
+              {summary.warning ?? "Pocket could not read this transaction, so it will not offer to sign it."}
             </Notice>
-            {/* No Approve button here, deliberately. There is nothing to consent to. */}
-            <ButtonStack>
-              <Button t={t} disabled={busy} onClick={() => void answer(false)}>
-                Close
-              </Button>
-            </ButtonStack>
           </div>
-        ) : (
-          <>
-            {summary.warning && (
-              <div style={{ marginTop: space.lg }}>
-                <Notice tone="danger" t={t}>
-                  {summary.warning}
-                </Notice>
-              </div>
-            )}
-
-            <div style={{ marginTop: space.lg }}>
-              <Label t={t}>What this does</Label>
+          {error && (
+            <Notice t={t} tone="danger">
+              {error}
+            </Notice>
+          )}
+          <ButtonStack>
+            <Button t={t} busy={busy} onClick={() => void answer(false)}>
+              Close
+            </Button>
+          </ButtonStack>
+        </>
+      ) : (
+        <>
+          {summary.warning && (
+            <div style={{ marginTop: space.md }}>
+              <Notice t={t} tone="danger">
+                {summary.warning}
+              </Notice>
             </div>
+          )}
+
+          <div style={{ marginTop: space.gutter }}>
+            <Label t={t}>What this does</Label>
             <ul
               style={{
                 ...text.body,
                 color: t.text,
                 paddingLeft: space.gutter,
-                margin: 0,
-                lineHeight: leading.relaxed,
-                // These lines quote things the user or the chain chose: a memo,
-                // an address, an asset code. A 28-byte memo is very often one
-                // unbroken token, because that is what exchange deposit memos
-                // are, and without this the frame's `overflow: hidden` cuts it
-                // rather than wrapping. Cutting the memo on the screen that
-                // asks you to approve the memo is the worst place for it.
+                margin: `0 0 ${space.md}px`,
+                lineHeight: 1.55,
                 overflowWrap: "anywhere",
               }}
             >
-              {summary.effects.map((e) => (
-                <li key={e}>{e}</li>
+              {summary.effects.map((e, i) => (
+                <li key={i} style={{ marginBottom: 4 }}>
+                  {e}
+                </li>
               ))}
             </ul>
+          </div>
 
-            <div style={{ marginTop: space.lg }}>
-              <Label t={t}>Memo</Label>
-            </div>
-            {summary.memo ? (
-              <MonoBlock t={t}>{summary.memo}</MonoBlock>
-            ) : (
-              <div style={{ ...text.body, color: t.sub }}>No memo.</div>
-            )}
+          <Label t={t}>Memo</Label>
+          {summary.memo ? (
+            <MonoBlock t={t}>{summary.memo}</MonoBlock>
+          ) : (
+            <div style={{ ...text.body, color: t.sub }}>None.</div>
+          )}
 
-            <div style={{ marginTop: space.lg }}>
-              <Label t={t}>Network fee</Label>
-              <Money amount={summary.fee} code="XLM" size="inline" t={t} />
-            </div>
+          <div style={{ marginTop: space.gutter }}>
+            <Label t={t}>Network fee</Label>
+            <Amount t={t} value={feeInXlm(summary.fee)} code="XLM" size="row" />
+          </div>
 
-            <Notice t={t}>
-              Approving signs this once. It does not let this site sign anything else.
+          <div style={{ marginTop: space.gutter }}>
+            <Notice t={t}>Approving signs this once. It does not let the site sign anything else.</Notice>
+          </div>
+
+          {error && (
+            <Notice t={t} tone="danger">
+              {error}
             </Notice>
+          )}
 
-            <ButtonStack>
-              <Button t={t} variant="quiet" disabled={busy} onClick={() => void answer(false)}>
-                Reject
-              </Button>
-              <Button t={t} disabled={busy} onClick={() => void answer(true)}>
-                {busy ? "Signing…" : "Approve and sign"}
-              </Button>
-            </ButtonStack>
-          </>
-        )}
-      </div>
-    </Frame>
+          <ButtonRow>
+            <Button t={t} variant="quiet" busy={busy} onClick={() => void answer(false)}>
+              Reject
+            </Button>
+            <Button t={t} busy={busy} onClick={() => void answer(true)}>
+              {busy ? "Signing" : "Approve"}
+            </Button>
+          </ButtonRow>
+        </>
+      )}
+    </Screen>
   );
 }

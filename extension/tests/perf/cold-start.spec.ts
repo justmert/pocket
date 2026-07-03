@@ -56,7 +56,7 @@ test("a popup opened on a dead service worker paints the wallet, and says it is 
   await expect(wallet.lockedNotice()).toBeVisible({ timeout: WAITS.ledgerRead });
 
   const p = await read(wallet.page);
-  console.log(`  cold shell ${at(p, "shell")?.toFixed(0)}ms, "Starting…" ${at(p, "starting")?.toFixed(0)}ms`);
+  console.log(`  cold shell ${at(p, "shell")?.toFixed(0)}ms, "Starting" ${at(p, "starting")?.toFixed(0)}ms`);
 
   // The first frame carrying the wallet's own name. Stamped inside the page on
   // the frame AFTER the DOM changed, so it is a painted frame rather than a
@@ -136,7 +136,7 @@ test("a slow ledger does not hold up the screen it is going to land on", async (
   });
 
   await wallet.page.reload();
-  await expect(wallet.page.getByText("PUBLIC POCKET", { exact: true })).toBeVisible({
+  await expect(wallet.page.getByRole("button", { name: "Public pocket" })).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
   // Feedback while it waits, not a blank space and not a fabricated zero.

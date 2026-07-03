@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { call } from "../rpc";
-import { Button, Field, Frame, Notice, TextButton } from "../primitives";
+import { Button, Field, Frame, Notice, ScrollArea, TextButton } from "../primitives";
+import { Brand } from "../Brand";
 import { space, text, type Theme } from "../theme";
 
 export function Unlock({
@@ -13,10 +14,11 @@ export function Unlock({
   onForgot: () => void;
 }) {
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const submit = async () => {
+    if (!password || busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -24,53 +26,65 @@ export function Unlock({
       onUnlocked();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      // a wrong password leaves nothing worth keeping in the field.
       setPassword("");
-    } finally {
       setBusy(false);
     }
   };
 
   return (
     <Frame t={t}>
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          padding: space.gutter,
-        }}
-      >
-        <div style={{ ...text.hero, marginBottom: space.xs }}>Pocket</div>
-        <div style={{ ...text.body, color: t.sub, marginBottom: space.xl }}>
-          Locked. Enter your password to continue.
-        </div>
+      <ScrollArea className="pocket-page" background={t.canvas}>
         <form
           onSubmit={(e) => {
             e.preventDefault();
             void submit();
           }}
+          style={{
+            minHeight: "100%",
+            boxSizing: "border-box",
+            padding: `${space.xl}px ${space.gutter}px ${space.gutter}px`,
+            display: "flex",
+            flexDirection: "column",
+          }}
         >
-          <Field t={t} label="Password" type="password" value={password} onChange={setPassword} />
-          {error && (
-            <Notice tone="danger" t={t}>
-              {error}
-            </Notice>
-          )}
-          <Button t={t} type="submit" disabled={busy || !password}>
-            {busy ? "Unlocking…" : "Unlock"}
-          </Button>
+          <div style={{ textAlign: "center", marginTop: space.xl }}>
+            <Brand t={t} size={72} />
+            <h1
+              style={{ ...text.screenTitle, color: t.text, margin: `${space.gutter}px 0 ${space.xs}px` }}
+            >
+              Locked
+            </h1>
+            <p style={{ ...text.body, color: t.sub, margin: 0 }}>
+              Enter your password to continue.
+            </p>
+          </div>
+
+          <div style={{ marginTop: "auto", paddingTop: space.xl }}>
+            {error && (
+              <Notice t={t} tone="danger">
+                {error}
+              </Notice>
+            )}
+            <Field
+              t={t}
+              label="Password"
+              type="password"
+              value={password}
+              onChange={setPassword}
+              autoFocus
+            />
+            <Button t={t} type="submit" disabled={!password} busy={busy}>
+              {busy ? "Unlocking" : "Unlock"}
+            </Button>
+            <div style={{ textAlign: "center", marginTop: space.sm }}>
+              <TextButton t={t} tone="sub" onClick={onForgot}>
+                Forgot your password?
+              </TextButton>
+            </div>
+          </div>
         </form>
-        {/* Without this, a forgotten password is a dead end even for someone
-            holding their recovery phrase: the only way out would be removing
-            the extension by hand, which silently discards the confidential
-            openings too. */}
-        <div style={{ marginTop: space.gutter }}>
-          <TextButton t={t} onClick={onForgot}>
-            Forgot your password?
-          </TextButton>
-        </div>
-      </div>
+      </ScrollArea>
     </Frame>
   );
 }

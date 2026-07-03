@@ -36,7 +36,7 @@ async function createWith(page: Page, password: string): Promise<void> {
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: SLOW });
   await page.getByRole("button", { name: "I have written it down" }).click();
-  await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
 }
 
 test("the eight-character minimum is enforced at exactly eight, and stated", async ({ wallet }) => {
@@ -94,8 +94,8 @@ test("a password is taken exactly as typed: padding is part of it, not noise", a
   const padded = "  spaced out  ";
   await createWith(page, padded);
 
-  await page.getByRole("button", { name: "Lock" }).click();
-  await expect(page.getByText(/Locked\. Enter your password/)).toBeVisible();
+  await page.getByRole("button", { name: "Lock wallet" }).click();
+  await expect(page.getByText(/Enter your password to continue/)).toBeVisible();
 
   // The trimmed form must NOT open it.
   await page.getByLabel("Password", { exact: true }).fill(padded.trim());
@@ -105,7 +105,7 @@ test("a password is taken exactly as typed: padding is part of it, not noise", a
   // The exact string must.
   await page.getByLabel("Password", { exact: true }).fill(padded);
   await page.getByRole("button", { name: "Unlock" }).click();
-  await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
 });
 
 test("an emoji password round-trips through the vault unchanged", async ({ wallet }) => {
@@ -120,10 +120,10 @@ test("an emoji password round-trips through the vault unchanged", async ({ walle
   expect([...emoji], "and four characters to a human").toHaveLength(4);
 
   await createWith(page, emoji);
-  await page.getByRole("button", { name: "Lock" }).click();
+  await page.getByRole("button", { name: "Lock wallet" }).click();
   await page.getByLabel("Password", { exact: true }).fill(emoji);
   await page.getByRole("button", { name: "Unlock" }).click();
-  await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
 });
 
 test("a very long password is not truncated to something shorter", async ({ wallet }) => {
@@ -136,7 +136,7 @@ test("a very long password is not truncated to something shorter", async ({ wall
   expect(long.length).toBeGreaterThan(1000);
 
   await createWith(page, long);
-  await page.getByRole("button", { name: "Lock" }).click();
+  await page.getByRole("button", { name: "Lock wallet" }).click();
 
   await page.getByLabel("Password", { exact: true }).fill(long.slice(0, 72));
   await page.getByRole("button", { name: "Unlock" }).click();
@@ -147,14 +147,14 @@ test("a very long password is not truncated to something shorter", async ({ wall
 
   await page.getByLabel("Password", { exact: true }).fill(long);
   await page.getByRole("button", { name: "Unlock" }).click();
-  await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
 });
 
 test("a wrong password is named as wrong and clears the field", async ({ wallet }) => {
   test.slow();
   const page = wallet.page;
   await createWith(page, "a-strong-password");
-  await page.getByRole("button", { name: "Lock" }).click();
+  await page.getByRole("button", { name: "Lock wallet" }).click();
 
   const field = page.getByLabel("Password", { exact: true });
   await field.fill("a-strong-passwerd");
@@ -175,7 +175,7 @@ test("an empty password never reaches the key derivation", async ({ wallet }) =>
   test.slow();
   const page = wallet.page;
   await createWith(page, "a-strong-password");
-  await page.getByRole("button", { name: "Lock" }).click();
+  await page.getByRole("button", { name: "Lock wallet" }).click();
   await expect(page.getByRole("button", { name: "Unlock" })).toBeDisabled();
   await page.getByLabel("Password", { exact: true }).fill(" ");
   await expect(

@@ -76,7 +76,7 @@ test("a wallet that lost its openings gets them back from the archive", async ()
     await page.getByRole("button", { name: "Set up the private pocket" }).click();
     await waitForReview(page);
     await page.getByRole("button", { name: "Approve" }).click();
-    await expect(page.getByText(/Confirmed on the ledger/)).toBeVisible({ timeout: 300_000 });
+    await expect(page.getByText(/Confirmed in ledger/)).toBeVisible({ timeout: 300_000 });
     await expect(page.getByText("SPENDABLE")).toBeVisible({ timeout: 180_000 });
 
     await page.getByRole("button", { name: "Move in" }).click();
@@ -84,7 +84,7 @@ test("a wallet that lost its openings gets them back from the archive", async ()
     await page.getByRole("button", { name: "Review" }).click();
     await waitForReview(page);
     await page.getByRole("button", { name: "Approve" }).click();
-    await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 600_000 });
+    await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 600_000 });
 
     // No second navigation: the private-pocket read goes to the worker, which is
     // the same thing the screen calls. Clicking through again only adds a way
@@ -144,7 +144,7 @@ test("a wallet that lost its openings gets them back from the archive", async ()
       await payer.page.getByRole("button", { name: "Set up the private pocket" }).click();
       await waitForReview(payer.page);
       await payer.page.getByRole("button", { name: "Approve" }).click();
-      await expect(payer.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+      await expect(payer.page.getByText(/Confirmed in ledger/)).toBeVisible({
         timeout: 300_000,
       });
       await expect(payer.page.getByText("SPENDABLE")).toBeVisible({ timeout: 180_000 });
@@ -154,7 +154,7 @@ test("a wallet that lost its openings gets them back from the archive", async ()
       await payer.page.getByRole("button", { name: "Review" }).click();
       await waitForReview(payer.page);
       await payer.page.getByRole("button", { name: "Approve" }).click();
-      await expect(payer.page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 600_000 });
+      await expect(payer.page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 600_000 });
 
       // Reloaded: Home decides between "Set up" and "Open" from a status it
       // read before this wallet had a private pocket, and coming back from the
@@ -170,7 +170,7 @@ test("a wallet that lost its openings gets them back from the archive", async ()
       await payer.page.getByRole("button", { name: "Review" }).click();
       await waitForReview(payer.page);
       await payer.page.getByRole("button", { name: "Approve" }).click();
-      await expect(payer.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+      await expect(payer.page.getByText(/Confirmed in ledger/)).toBeVisible({
         timeout: 600_000,
       });
       received = 12;

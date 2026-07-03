@@ -134,7 +134,7 @@ test("the worker dying mid-poll leaves the hash on disk and the wallet never res
     await expect(reopened.getByText(/Do not send it again/)).toBeVisible();
 
     await reopened.getByRole("button", { name: "Check now" }).click();
-    await expect(reopened.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 120_000 });
+    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 120_000 });
     expect(await storageKeys(reopened)).not.toContain("pocket.inflight");
 
     // The thing this whole mechanism exists for.
@@ -233,7 +233,7 @@ test("two tabs sending at the same time never pay twice", async () => {
   try {
     const to = await fundedStranger();
     const b = await w.popup();
-    await expect(b.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 60_000 });
+    await expect(b.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
 
     // Two DIFFERENT payments, so two genuinely distinct envelopes competing for
     // one account sequence. Identical amounts produce a byte-identical envelope
@@ -321,7 +321,7 @@ test("reloading the popup mid-payment does not send it again", async () => {
     blindPolls = false;
 
     await page.getByRole("button", { name: "Check now" }).click();
-    await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 120_000 });
 
     const paid = (await ledgerPayments(address)).filter((p) => p.to === to);
     expect(paid, "a refresh must not turn one payment into two").toHaveLength(1);

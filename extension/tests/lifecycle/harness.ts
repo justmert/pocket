@@ -222,13 +222,13 @@ export async function onboard(page: Page, password = PASSWORD): Promise<string> 
     .allInnerTexts();
   const phrase = cells.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
-  await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
   return phrase;
 }
 
 export async function unlockUi(page: Page, password = PASSWORD): Promise<void> {
   await page.getByRole("textbox", { name: "Password", exact: true }).fill(password);
-  await page.getByRole("button", { name: "Unlock" }).click();
+  await page.getByRole("button", { name: "Unlock", exact: true }).click();
 }
 
 /** The address the wallet itself reports. */

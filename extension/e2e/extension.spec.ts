@@ -36,7 +36,7 @@ async function onboard(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "I have written it down" }).click();
-  await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 15_000 });
 }
 
 test("the extension loads and the service worker starts", async () => {
@@ -44,7 +44,7 @@ test("the extension loads and the service worker starts", async () => {
   try {
     expect(id).toMatch(/^[a-z]{32}$/);
     const page = await popup(ctx, id);
-    await expect(page.getByText("A Stellar wallet with two pockets")).toBeVisible();
+    await expect(page.getByText("Two pockets on Stellar")).toBeVisible();
     // The honest framing must be on the first screen a user ever sees.
     await expect(page.getByText(/hides.*amounts.*not addresses/i)).toBeVisible();
   } finally {
@@ -83,8 +83,8 @@ test("locks, rejects a wrong password, then unlocks", async () => {
     const page = await popup(ctx, id);
     await onboard(page);
 
-    await page.getByRole("button", { name: "Lock" }).click();
-    await expect(page.getByText(/Locked\. Enter your password/)).toBeVisible();
+    await page.getByRole("button", { name: "Lock wallet" }).click();
+    await expect(page.getByText(/Enter your password to continue/)).toBeVisible();
 
     await page.getByRole("textbox", { name: "Password", exact: true }).fill("wrong");
     await page.getByRole("button", { name: "Unlock" }).click();
@@ -92,7 +92,7 @@ test("locks, rejects a wrong password, then unlocks", async () => {
 
     await page.getByRole("textbox", { name: "Password", exact: true }).fill(PASSWORD);
     await page.getByRole("button", { name: "Unlock" }).click();
-    await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
   } finally {
     await ctx.close();
     rmSync(dir, { recursive: true, force: true });
@@ -157,7 +157,7 @@ test("surfaces the private pocket honestly on the home screen", async () => {
     const page = await popup(ctx, id);
     await onboard(page);
 
-    await expect(page.getByText("PRIVATE POCKET", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Private pocket" })).toBeVisible();
     // The claim must be on the surface, not buried in a settings page.
     await expect(page.getByText(/Hides amounts, never addresses/i)).toBeVisible();
     await expect(page.getByText(/Who you pay stays public/i)).toBeVisible();
@@ -220,7 +220,7 @@ test("an imported phrase reproduces the same address", async () => {
       await p2.getByRole("textbox", { name: "New password", exact: true }).fill(PASSWORD);
       await p2.getByRole("button", { name: "Import wallet" }).click();
 
-      await expect(p2.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 30_000 });
+      await expect(p2.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
       await p2.getByRole("button", { name: "Receive" }).click();
       const restored = (await p2.locator("div[style*='break-all']").innerText()).replace(/\s/g, "");
       expect(restored).toBe(expected);

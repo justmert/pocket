@@ -47,7 +47,7 @@ const MAX_STATIC_MS = 3_000;
  */
 const PROGRESS = new RegExp(
   [
-    "Starting…",
+    "Starting",
     "Reading the ledger…",
     "Building…",
     "Proving\\. This takes a moment…",
@@ -56,7 +56,7 @@ const PROGRESS = new RegExp(
     "Signing and submitting, then waiting for the ledger…",
     "Submitting and waiting for the ledger…",
     "Checking the ledger…",
-    "Checking the recipient…",
+    "Checking",
     "Reactivating…",
     // The WORKER's phases. None of them were here, so this list could only ever
     // see the static labels the popup sets before its first phase poll comes
@@ -138,7 +138,7 @@ test("the short wait the wallet already has does not leave the screen unchanged 
   // tight to be met by anything.
   await installProbe(wallet.page, {
     ...WATCH,
-    creating: "Creating…",
+    creating: "Creating",
     backup: "Write this down",
   });
   await wallet.page.bringToFront();
@@ -212,7 +212,7 @@ test("the wait after Approve does not leave the screen unchanged for seconds", a
   await arm(wallet.page);
   const t0 = await now(wallet.page);
   await wallet.page.getByRole("button", { name: "Approve" }).click();
-  await expect(wallet.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+  await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
     timeout: WAITS.submission,
   });
   const t1 = await now(wallet.page);
@@ -241,7 +241,7 @@ test("the wait after Approve says the wallet is waiting for the ledger", async (
 
   await arm(wallet.page);
   await wallet.page.getByRole("button", { name: "Approve" }).click();
-  await expect(wallet.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+  await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
     timeout: WAITS.submission,
   });
   const p = await read(wallet.page);
@@ -255,7 +255,7 @@ test("the wait after Approve says the wallet is waiting for the ledger", async (
   // The assertion is on the WAIT LABEL, not on the screen containing it, and
   // that distinction was not academic. Written as "some screen during this wait
   // mentions the ledger" this test went green, because the success notice reads
-  // "Confirmed on the ledger." and lands while `busy` is still set. It was
+  // "Confirmed in ledger." and lands while `busy` is still set. It was
   // passing on the receipt for the wait it was supposed to be judging.
   const labels = new Set<string>();
   for (const s of screens(p.samples)) {

@@ -71,16 +71,16 @@ export const WATCH: Record<string, string> = {
   // rather than a blank rectangle. First meaningful paint.
   shell: "Pocket",
   // The named wait the boot frame shows while the worker answers `status`.
-  starting: "Starting…",
+  starting: "Starting",
   // Interactive, unlocked: Send and Receive are on screen.
-  home: "PUBLIC POCKET",
+  home: "Public pocket",
   // Interactive, locked: the password field is on screen. This is what a
   // returning user sees, because an evicted MV3 worker is a lock.
-  locked: "Locked\\. Enter your password",
+  locked: "Enter your password to continue",
   // The real balance, seven decimals, from the ledger.
   balance: "\\d+\\.\\d{7}\\s*XLM",
   // Onboarding's first screen.
-  splash: "A Stellar wallet with two pockets",
+  splash: "Two pockets on Stellar",
 };
 
 /** Controls whose position is followed, by the text on them. */

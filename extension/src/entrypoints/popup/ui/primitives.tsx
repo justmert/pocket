@@ -1,30 +1,54 @@
-import { useEffect, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
-import { FRAME, fontSizes, leading, motion, radius, sans, space, text, type Theme } from "./theme";
+// the shared visual vocabulary. every screen and sheet composes these, so a
+// button, a field or a sheet is the same object wherever it appears.
+import { useEffect, useId, useRef, useState } from "react";
+import type {
+  ButtonHTMLAttributes,
+  CSSProperties,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+} from "react";
+import { FRAME, fonts, motion, radius, space, text, type Theme } from "./theme";
+import { Back as BackIcon, Close as CloseIcon } from "./icons";
+
+/* ---------------------------------------------------------------- frame -- */
 
 /**
- * The frame's height ceiling, MEASURED. Never `vh`, and never a percentage.
+ * the popup shell.
  *
- * A toolbar popup has no size of its own. Chrome gives it a 25x25 minimum and
- * an 800x600 maximum and then sizes it FROM the document, so the viewport is
- * the popup and the popup is the content. `100vh` closes that loop: on the
- * first layout it resolved against the 25px minimum, capped this frame at 25,
- * and Chrome sized the popup to the frame it had just crushed. The wallet
- * opened as a 3px sliver of its own header, with nothing in the console to say
- * why, and it stayed that way because a crushed frame gives Chrome no reason to
- * grow. Verified against Chrome's documented popup sizing, not inferred from
- * the symptom.
- *
- * Every e2e test passed throughout, because all of them open popup.html as a
- * TAB, where the viewport is the window, `100vh` is 600-plus and no cap ever
- * bites. The action popup is a layout mode the suite had never entered.
- *
- * A resize is the platform saying it has settled on a size, so it is the only
- * thing trusted here. Before the first one there is no cap at all, which is
- * exactly what lets Chrome measure this frame at its natural height and size
- * the popup to fit it.
+ * height is a fixed pixel value and the ceiling is measured, never `vh`: a
+ * toolbar popup is sized from its own document, so a viewport unit resolves
+ * against a 25px first layout and crushes the frame chrome is about to measure.
  */
-function usePopupHeightCap(): number | undefined {
+export function Frame({ t, children }: { t: Theme; children: ReactNode }) {
+  const cap = useWindowCap();
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: FRAME.width,
+        height: FRAME.height,
+        maxHeight: cap,
+        overflow: "hidden",
+        background: t.bg,
+        color: t.text,
+        fontFamily: fonts.sans,
+        // the surface crossfades under the wash instead of hard cutting.
+        transition: `background ${motion.pocket} ease`,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * the height chrome settled on, or nothing until it says.
+ *
+ * a resize is the platform reporting a decision. before the first one there is
+ * no ceiling at all, which is what lets the frame be measured at its natural
+ * height and the popup be sized to fit it.
+ */
+function useWindowCap(): number | undefined {
   const [cap, setCap] = useState<number | undefined>(undefined);
   useEffect(() => {
     const measure = () => setCap(window.innerHeight);
@@ -34,144 +58,252 @@ function usePopupHeightCap(): number | undefined {
   return cap;
 }
 
-export function Frame({ t, children }: { t: Theme; children: ReactNode }) {
-  const cap = usePopupHeightCap();
-  return (
-    <div
-      style={{
-        width: FRAME.width,
-        // Fixed, not a minimum. Chrome caps a toolbar popup at 600px and then
-        // scrolls the BODY, which drags the header off the top of the window.
-        // A fixed frame keeps the header put and lets the content scroll under
-        // it, the same way on every screen.
-        // Fixed at 600 so an unzoomed popup is the full height Chrome allows,
-        // but capped at the WINDOW so a zoomed one shrinks with it. Without the
-        // cap the frame stayed 600px tall inside a 300px window at 200% zoom,
-        // the body scrolled rather than the frame, and the sticky header went
-        // with it: scrolling to the button that signs a payment scrolled away
-        // the title saying which screen you were on.
-        height: FRAME.height,
-        maxHeight: cap,
-        background: t.bg,
-        color: t.text,
-        fontFamily: sans,
-        display: "flex",
-        flexDirection: "column",
-        // Hidden HORIZONTALLY, because nothing in this wallet should ever
-        // scroll sideways. Vertically it must be able to scroll: at high zoom
-        // a screen's own title and its only way out were being clipped with
-        // no way to reach them, which is a trapped user rather than an untidy
-        // layout. WCAG 1.4.4.
-        overflowX: "hidden",
-        overflowY: "auto",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-/**
- * The scrolling column under a header. One screen gutter, one scroll model.
- *
- * The extra room at the bottom is deliberate: measured at 360x600 with a
- * receipt on screen and a form open, the private pocket's Review button landed
- * exactly on the fold, which reads as the end of the screen when it is not.
- */
-export function Content({ children }: { children: ReactNode }) {
-  return (
-    <div
-      style={{
-        padding: space.gutter,
-        paddingBottom: space.xl,
-        flex: 1,
-        overflowY: "auto",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-export function Button({
+/** a full-height scrolling surface inside the frame. */
+export function ScrollArea({
   children,
-  onClick,
-  disabled,
-  variant = "primary",
-  type = "button",
-  t,
+  background,
+  className,
+  style,
 }: {
   children: ReactNode;
-  onClick?: () => void;
-  disabled?: boolean;
-  variant?: "primary" | "quiet" | "danger";
-  /**
-   * Defaults to "button" on purpose. A bare <button> inside a <form> defaults
-   * to "submit", so a Cancel next to a form used to fire the form's submit
-   * handler as well as its own onClick. On the erase-and-restore screen that
-   * meant Cancel could wipe the wallet.
-   */
-  type?: "button" | "submit";
-  t: Theme;
+  background?: string;
+  className?: string;
+  style?: CSSProperties;
 }) {
-  const base: CSSProperties = {
-    ...text.button,
-    width: "100%",
-    // A grid or flex item will not shrink below its content without this, and
-    // a button that cannot shrink is a button that gets clipped at high zoom.
-    // The box shrinking is only half of it: the LABEL has to be able to wrap
-    // too, or the text runs past the box it was just allowed to narrow. At
-    // Chrome's 500% maximum the viewport is 160px and "Receive" overflowed by
-    // 20px in place.
-    minWidth: 0,
-    overflowWrap: "anywhere",
-    padding: "13px 16px",
-    // A wrapped label needs room for its second line, so the height is a floor
-    // rather than a fixed value.
-    minHeight: 46,
-    borderRadius: radius.lg,
-    border: "1px solid transparent",
-    cursor: disabled ? "not-allowed" : "pointer",
-    fontFamily: sans,
-    transition: `transform ${motion.press} ${motion.ease}, background ${motion.press} ${motion.ease}`,
-  };
-  const variants: Record<string, CSSProperties> = {
-    primary: { background: t.accent, color: t.onAccent },
-    quiet: { background: t.field, color: t.text, borderColor: t.line },
-    // Not hardcoded white. On the dark theme's danger fill that is 2.92:1, and
-    // this variant is the button that erases the wallet.
-    danger: { background: t.danger, color: t.onDanger },
-  };
-  // Disabled is its own state, not the enabled state at 45% opacity: fading
-  // the accent left dark ink on pale yellow, which fails contrast at the exact
-  // moment the user is trying to work out what is missing.
-  const off: CSSProperties = { background: t.field, color: t.faint, borderColor: t.line };
+  return (
+    <div
+      className={className}
+      style={{
+        position: "absolute",
+        inset: 0,
+        overflowX: "hidden",
+        overflowY: "auto",
+        background,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** a full page, entering with the page motion rather than a sheet's. */
+export function Screen({
+  t,
+  children,
+  background,
+}: {
+  t: Theme;
+  children: ReactNode;
+  background?: string;
+}) {
+  return (
+    <Frame t={t}>
+      <ScrollArea className="pocket-page" background={background ?? t.canvas}>
+        <div style={{ padding: `${space.gutter}px ${space.gutter}px ${space.xl}px` }}>
+          {children}
+        </div>
+      </ScrollArea>
+    </Frame>
+  );
+}
+
+/* --------------------------------------------------------------- header -- */
+
+export function Header({
+  t,
+  title,
+  onBack,
+  onClose,
+  right,
+}: {
+  t: Theme;
+  title?: string;
+  onBack?: () => void;
+  onClose?: () => void;
+  right?: ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: space.md,
+        minHeight: 44,
+        marginBottom: space.gutter,
+      }}
+    >
+      {onBack && <CircleBtn t={t} icon="back" onClick={onBack} label="Back" />}
+      {title ? (
+        <div style={{ ...text.screenTitle, color: t.text, minWidth: 0, flex: 1 }}>{title}</div>
+      ) : (
+        <div style={{ flex: 1 }} />
+      )}
+      {right}
+      {onClose && <CircleBtn t={t} icon="close" onClick={onClose} label="Close" />}
+    </div>
+  );
+}
+
+export function CircleBtn({
+  t,
+  icon,
+  label,
+  size = 38,
+  children,
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  t: Theme;
+  icon?: "back" | "close";
+  label: string;
+  size?: number;
+  children?: ReactNode;
+}) {
+  const glyph = Math.round(size * 0.5);
   return (
     <button
-      type={type}
-      style={{ ...base, ...(disabled ? off : variants[variant]) }}
-      onClick={onClick}
-      disabled={disabled}
+      {...rest}
+      type="button"
+      aria-label={label}
+      style={{
+        all: "unset",
+        boxSizing: "border-box",
+        cursor: "pointer",
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: t.accentSoft,
+        color: t.dark ? t.accent : t.text,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flex: "0 0 auto",
+      }}
+    >
+      {icon === "back" && <BackIcon size={glyph} sw={2.4} />}
+      {icon === "close" && <CloseIcon size={glyph} sw={2.4} />}
+      {!icon && children}
+    </button>
+  );
+}
+
+/** a round icon button that carries its own glyph. */
+export function IconCircle({
+  t,
+  label,
+  size = 40,
+  children,
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  t: Theme;
+  label: string;
+  size?: number;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      {...rest}
+      type="button"
+      aria-label={label}
+      style={{
+        all: "unset",
+        boxSizing: "border-box",
+        cursor: "pointer",
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: t.accentSoft,
+        color: t.dark ? t.accent : t.text,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flex: "0 0 auto",
+      }}
     >
       {children}
     </button>
   );
 }
 
-/** A pair of buttons: the way out on the left, the way on on the right. */
+/* -------------------------------------------------------------- buttons -- */
+
+export function Button({
+  t,
+  variant = "primary",
+  busy = false,
+  disabled,
+  children,
+  type = "button",
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  t: Theme;
+  variant?: "primary" | "quiet" | "danger";
+  /** shows a spinner in place of the label and blocks a second press. */
+  busy?: boolean;
+  children: ReactNode;
+}) {
+  const off = disabled || busy;
+  const fills: Record<string, CSSProperties> = {
+    primary: {
+      background: t.accentFill,
+      color: t.onAccent,
+      boxShadow: t.dark ? "none" : "0 3px 10px -6px rgba(120,90,0,0.45)",
+    },
+    quiet: { background: t.field, color: t.text, border: `1px solid ${t.line}` },
+    danger: { background: t.danger, color: t.onDanger },
+  };
+  return (
+    <button
+      {...rest}
+      type={type}
+      disabled={off}
+      aria-busy={busy || undefined}
+      style={{
+        ...text.button,
+        boxSizing: "border-box",
+        width: "100%",
+        minWidth: 0,
+        minHeight: 52,
+        padding: "14px 18px",
+        borderRadius: radius.pill,
+        border: "1px solid transparent",
+        fontFamily: "inherit",
+        cursor: off ? "not-allowed" : "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: space.sm,
+        overflowWrap: "anywhere",
+        ...(off
+          ? { background: t.field, color: t.faint, border: `1px solid ${t.line}` }
+          : fills[variant]),
+      }}
+    >
+      {busy && <Spinner size={17} />}
+      {children}
+    </button>
+  );
+}
+
+/** buttons in a column, most important first. */
+export function ButtonStack({ children }: { children: ReactNode }) {
+  return (
+    <div style={{ display: "grid", gap: space.sm, marginTop: space.gutter, minWidth: 0 }}>
+      {children}
+    </div>
+  );
+}
+
+/** the way out on the left, the way on on the right. */
 export function ButtonRow({ children }: { children: ReactNode }) {
   return (
     <div
       style={{
         display: "grid",
-        // `1fr` means `minmax(auto, 1fr)`, and `auto` here is the item's
-        // min-content width, so the track refuses to shrink below its label.
-        // At 200% zoom the pair needs 176px in a 156px track and `Frame` is
-        // `overflow: hidden`, so the control CLIPS rather than scrolls: it is
-        // gone, not merely awkward. Spelling the minimum as 0 is what lets it
-        // shrink. WCAG 1.4.4.
+        // spelling the minimum as 0 is what lets a track shrink below its
+        // label, which is what keeps both buttons on screen at high zoom.
         gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-        gap: space.md,
+        gap: space.sm,
         marginTop: space.gutter,
       }}
     >
@@ -180,46 +312,29 @@ export function ButtonRow({ children }: { children: ReactNode }) {
   );
 }
 
-/** A stack of full-width buttons, most important first. */
-export function ButtonStack({ children }: { children: ReactNode }) {
-  // Single column, so nothing to clip horizontally, but the items still need
-  // to be allowed to shrink below their content at high zoom.
-  return (
-    <div style={{ display: "grid", gap: space.md, marginTop: space.gutter, minWidth: 0 }}>
-      {children}
-    </div>
-  );
-}
-
-/** The small text buttons in a header or under a form. */
+/** a quiet inline action, for anything that is not a screen's main move. */
 export function TextButton({
-  children,
-  onClick,
   t,
-}: {
-  children: ReactNode;
-  onClick: () => void;
+  children,
+  tone = "accent",
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
   t: Theme;
+  tone?: "accent" | "sub" | "danger";
+  children: ReactNode;
 }) {
+  const colors = { accent: t.dark ? t.accent : t.text, sub: t.sub, danger: t.danger };
   return (
     <button
+      {...rest}
       type="button"
-      onClick={onClick}
       style={{
-        ...text.caption,
-        background: "none",
-        border: "none",
-        color: t.sub,
+        all: "unset",
         cursor: "pointer",
-        padding: space.xs,
-        margin: `-${space.xs}px`,
-        textAlign: "left",
-        fontFamily: sans,
-        // A button does not shrink below its content on its own, so a label
-        // longer than a zoomed viewport runs past the edge with nothing to
-        // scroll. "Forgot your password?" needed 130px in a 124px window.
-        maxWidth: "100%",
-        minWidth: 0,
+        ...text.label,
+        color: colors[tone],
+        padding: "8px 4px",
+        borderRadius: radius.sm,
       }}
     >
       {children}
@@ -227,102 +342,304 @@ export function TextButton({
   );
 }
 
+/* --------------------------------------------------------------- inputs -- */
+
 export function Field({
+  t,
   label,
   value,
   onChange,
   placeholder,
   type = "text",
-  multiline,
-  t,
+  mono = false,
+  autoFocus,
+  multiline = false,
+  hint,
+  invalid,
+  onSubmit,
 }: {
+  t: Theme;
   label: string;
   value: string;
-  onChange: (v: string) => void;
+  onChange(v: string): void;
   placeholder?: string;
-  type?: string;
+  type?: "text" | "password";
+  mono?: boolean;
+  autoFocus?: boolean;
   multiline?: boolean;
-  t: Theme;
+  hint?: ReactNode;
+  invalid?: boolean;
+  onSubmit?(): void;
 }) {
-  const style: CSSProperties = {
+  const id = useId();
+  const hintId = `${id}-hint`;
+  const base: CSSProperties = {
+    ...text.input,
+    boxSizing: "border-box",
     width: "100%",
-    padding: "11px 12px",
+    minWidth: 0,
+    padding: "14px 16px",
     borderRadius: radius.md,
-    border: `1px solid ${t.line}`,
     background: t.field,
     color: t.text,
-    fontFamily: sans,
-    // 15 was off the type scale. What you type into a wallet should be at
-    // least as big as what it reads back to you.
-    fontSize: fontSizes.body,
-    fontWeight: 500,
-    // NOT `outline: none`. An inline style beats any stylesheet rule that is
-    // not `!important`, so setting it here silently overrode the focus ring
-    // the stylesheet defines, and every text field in the wallet focused with
-    // no visible indicator, keyboard and pointer alike. On Send that is three
-    // fields in a column and no way to tell which one you are typing into.
-    // WCAG 2.4.7. The stylesheet owns focus; this leaves it alone.
+    border: `1px solid ${invalid ? t.danger : "transparent"}`,
+    fontFamily: mono ? fonts.mono : "inherit",
+    outline: "none",
     resize: "none",
-    boxSizing: "border-box",
   };
+  const described = hint ? hintId : undefined;
   return (
-    <label style={{ display: "block", marginBottom: space.lg }}>
-      <div style={{ ...text.label, color: t.sub, marginBottom: space.xs }}>{label}</div>
+    <div style={{ marginBottom: space.md }}>
+      {/* the hint sits OUTSIDE the label and is pointed at instead. inside it,
+          a rule that appears while you type becomes part of the field's own
+          name, so the field stops being findable by the name it had. */}
+      <label htmlFor={id} style={{ ...text.label, color: t.sub, display: "block", marginBottom: space.xs }}>
+        {label}
+      </label>
       {multiline ? (
         <textarea
-          style={{ ...style, minHeight: 88 }}
+          id={id}
           value={value}
-          placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          autoFocus={autoFocus}
+          aria-describedby={described}
+          aria-invalid={invalid || undefined}
+          rows={3}
+          style={base}
         />
       ) : (
         <input
-          style={style}
-          type={type}
+          id={id}
           value={value}
-          placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          type={type}
+          autoFocus={autoFocus}
+          aria-describedby={described}
+          aria-invalid={invalid || undefined}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && onSubmit) {
+              e.preventDefault();
+              onSubmit();
+            }
+          }}
+          style={base}
         />
       )}
-    </label>
+      {hint && (
+        <div
+          id={hintId}
+          style={{
+            ...text.caption,
+            color: invalid ? t.danger : t.faint,
+            marginTop: space.xs,
+          }}
+        >
+          {hint}
+        </div>
+      )}
+    </div>
   );
 }
 
-/** A statement of fact the user needs before acting. Not decoration. */
-export function Notice({
-  tone = "info",
-  children,
+/* -------------------------------------------------------------- surface -- */
+
+export function Card({
   t,
+  children,
+  tone = "surface",
+  style,
 }: {
-  tone?: "info" | "exposed" | "danger" | "success";
-  children: ReactNode;
   t: Theme;
+  children: ReactNode;
+  tone?: "surface" | "accent" | "field";
+  style?: CSSProperties;
 }) {
-  const tones = {
-    info: { bg: t.field, fg: t.sub, border: t.line },
-    exposed: { bg: t.exposedBg, fg: t.exposed, border: "transparent" },
-    danger: { bg: t.dangerBg, fg: t.danger, border: "transparent" },
-    success: { bg: t.positiveBg, fg: t.positive, border: "transparent" },
-  } as const;
-  const c = tones[tone];
+  const tones: Record<string, CSSProperties> = {
+    surface: { background: t.surface, border: `1px solid ${t.line}` },
+    accent: { background: t.accentSoft, border: `1px solid ${t.accentLine}` },
+    field: { background: t.field, border: "1px solid transparent" },
+  };
+  return (
+    <div style={{ borderRadius: radius.lg, padding: space.md, minWidth: 0, ...tones[tone], ...style }}>
+      {children}
+    </div>
+  );
+}
+
+/** a list row: leading glyph, title over subtitle, trailing value. */
+export function Row({
+  t,
+  icon,
+  title,
+  sub,
+  value,
+  valueSub,
+  onClick,
+  tone = "plain",
+  index,
+}: {
+  t: Theme;
+  icon?: ReactNode;
+  title: string;
+  sub?: ReactNode;
+  value?: ReactNode;
+  valueSub?: ReactNode;
+  onClick?: () => void;
+  tone?: "plain" | "danger";
+  /** staggers the entrance so a list arrives instead of appearing. */
+  index?: number;
+}) {
+  const inner = (
+    <>
+      {icon && (
+        <span
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: radius.md,
+            background: tone === "danger" ? t.dangerSoft : t.accentSoft,
+            color: tone === "danger" ? t.danger : t.dark ? t.accent : t.text,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flex: "0 0 auto",
+          }}
+        >
+          {icon}
+        </span>
+      )}
+      <span style={{ minWidth: 0, textAlign: "left", flex: 1 }}>
+        <span
+          style={{ ...text.rowTitle, color: tone === "danger" ? t.danger : t.text, display: "block" }}
+        >
+          {title}
+        </span>
+        {sub && (
+          <span style={{ ...text.rowSub, color: t.sub, display: "block", marginTop: 1 }}>{sub}</span>
+        )}
+      </span>
+      {(value || valueSub) && (
+        <span style={{ textAlign: "right", minWidth: 0 }}>
+          {value && <span style={{ ...text.value, color: t.text, display: "block" }}>{value}</span>}
+          {valueSub && (
+            <span style={{ ...text.rowSub, color: t.sub, display: "block" }}>{valueSub}</span>
+          )}
+        </span>
+      )}
+    </>
+  );
+
+  const style: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: space.md,
+    width: "100%",
+    padding: `${space.sm}px 0`,
+    minWidth: 0,
+    animationDelay: index != null ? `${index * 45}ms` : undefined,
+  };
+
+  if (!onClick) {
+    return (
+      <div className={index != null ? "pocket-row-in" : undefined} style={style}>
+        {inner}
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={index != null ? "pocket-row-in" : undefined}
+      style={{ all: "unset", cursor: "pointer", boxSizing: "border-box", ...style }}
+    >
+      {inner}
+    </button>
+  );
+}
+
+export function Overline({ t, children }: { t: Theme; children: ReactNode }) {
+  return (
+    <div style={{ ...text.overline, color: t.faint, textTransform: "uppercase", marginBottom: space.sm }}>
+      {children}
+    </div>
+  );
+}
+
+/** a field or section label inside a screen. sentence case: a review is read,
+ *  not shouted. */
+export function Label({ t, children }: { t: Theme; children: ReactNode }) {
+  return (
+    <div style={{ ...text.label, color: t.sub, marginBottom: space.xs }}>{children}</div>
+  );
+}
+
+export function Chip({
+  t,
+  children,
+  tone = "neutral",
+}: {
+  t: Theme;
+  children: ReactNode;
+  tone?: "neutral" | "accent" | "danger" | "positive" | "exposed";
+}) {
+  const tones: Record<string, { bg: string; fg: string }> = {
+    neutral: { bg: t.field, fg: t.sub },
+    accent: { bg: t.accentSoft, fg: t.dark ? t.accent : t.text },
+    danger: { bg: t.dangerSoft, fg: t.danger },
+    positive: { bg: t.positiveSoft, fg: t.positive },
+    exposed: { bg: t.exposedSoft, fg: t.exposed },
+  };
+  const c = tones[tone]!;
+  return (
+    <span
+      style={{
+        ...text.caption,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        padding: "5px 10px",
+        borderRadius: radius.pill,
+        background: c.bg,
+        color: c.fg,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+export function Notice({
+  t,
+  tone = "neutral",
+  children,
+}: {
+  t: Theme;
+  tone?: "neutral" | "danger" | "positive" | "exposed";
+  children: ReactNode;
+}) {
+  const tones: Record<string, { bg: string; fg: string }> = {
+    neutral: { bg: t.field, fg: t.text },
+    danger: { bg: t.dangerSoft, fg: t.danger },
+    positive: { bg: t.positiveSoft, fg: t.positive },
+    exposed: { bg: t.exposedSoft, fg: t.exposed },
+  };
+  const c = tones[tone]!;
   return (
     <div
-      // A Notice appears in response to something: a refusal, a warning, a
-      // confirmation. Without a live region a screen reader user is told
-      // nothing at all, which on a refusal means they believe the action
-      // worked. `alert` for the two urgent tones because they interrupt;
-      // `status` for the rest because they should not. WCAG 4.1.3.
-      role={tone === "danger" || tone === "exposed" ? "alert" : "status"}
-      aria-live={tone === "danger" || tone === "exposed" ? "assertive" : "polite"}
+      role={tone === "danger" ? "alert" : undefined}
       style={{
         ...text.body,
         background: c.bg,
         color: c.fg,
-        border: `1px solid ${c.border}`,
+        padding: `${space.sm}px ${space.md}px`,
         borderRadius: radius.md,
-        padding: "10px 12px",
-        lineHeight: leading.normal,
-        marginBottom: space.lg,
+        marginBottom: space.md,
+        overflowWrap: "anywhere",
+        lineHeight: 1.45,
       }}
     >
       {children}
@@ -330,106 +647,243 @@ export function Notice({
   );
 }
 
-export function Header({ title, right, t }: { title: string; right?: ReactNode; t: Theme }) {
+/* ------------------------------------------------------------- feedback -- */
+
+export function Spinner({ size = 20, color }: { size?: number; color?: string }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "16px 18px",
-        borderBottom: `1px solid ${t.line}`,
-        // Sticky, so scrolling to the button that signs a payment does not
-        // scroll away the title that says which screen you are on. At 200%
-        // zoom the header sat 284px above a 300px window while the user was
-        // being asked to approve something.
-        position: "sticky",
-        top: 0,
-        zIndex: 1,
-        background: t.bg,
-      }}
-    >
-      {/* A real heading, not a styled span. Screen reader users navigate by
-          heading first, and every screen in this wallet returned zero. */}
-      <h1 style={{ ...text.heading, color: t.text, margin: 0 }}>{title}</h1>
-      {right}
-    </div>
-  );
-}
-
-/** The caption above a value or a section. One treatment, everywhere. */
-export function Label({ children, t }: { children: ReactNode; t: Theme }) {
-  return <div style={{ ...text.label, color: t.sub, marginBottom: space.xs }}>{children}</div>;
-}
-
-/** The all-caps caption naming a pocket or a balance. */
-export function SectionLabel({ children, t }: { children: ReactNode; t: Theme }) {
-  return <div style={{ ...text.caption, color: t.faint, marginBottom: space.xs }}>{children}</div>;
-}
-
-export function Spinner({ t }: { t: Theme }) {
-  return (
-    <div
-      // Named so the reduced-motion rule can slow it rather than freeze it.
+    <span
+      aria-hidden
       className="pocket-spinner"
       style={{
-        width: 18,
-        height: 18,
-        flexShrink: 0,
-        border: `2px solid ${t.line}`,
-        borderTopColor: t.accent,
+        width: size,
+        height: size,
         borderRadius: "50%",
-        animation: `pocket-spin ${motion.spin} linear infinite`,
+        border: `${Math.max(2, Math.round(size / 9))}px solid`,
+        borderColor: "currentColor",
+        borderTopColor: color ?? "transparent",
+        opacity: 0.75,
+        display: "inline-block",
+        flex: "0 0 auto",
       }}
     />
   );
 }
 
 /**
- * A wait, always named. Three screens had grown their own spinner-and-label
- * row with different gaps; a wallet that says nothing while it waits is
- * indistinguishable from one that has hung.
+ * a value that has not arrived yet.
+ *
+ * a shimmer rather than a zero, because a zero is a number the user could act
+ * on and it would be the wrong one.
  */
-/** After this long, a wait starts counting out loud. */
-const ELAPSED_AFTER_MS = 3_000;
+export function Skeleton({ width, height = 16 }: { width: number | string; height?: number }) {
+  return <span className="pocket-skeleton" style={{ display: "block", width, height }} />;
+}
 
-export function Loading({ label, t }: { label: string; t: Theme }) {
-  // Proving is one phase and it is genuinely slow: measured at 6.8 seconds of a
-  // single unchanging sentence, which is the picture a hung app shows. There is
-  // no progress to report from inside bb.js, so the honest thing to report is
-  // the time itself. A number that ticks is the difference between "working"
-  // and "stuck", and it is the only signal available that is not invented.
-  const [seconds, setSeconds] = useState(0);
-  useEffect(() => {
-    // Restarts on every phase change, so the count is the age of THIS phase and
-    // not of the whole operation. A counter that kept running across phases
-    // would say 40s while the wallet was two seconds into its last step.
-    setSeconds(0);
-    const started = Date.now();
-    const id = setInterval(() => setSeconds(Math.floor((Date.now() - started) / 1000)), 1_000);
-    return () => clearInterval(id);
-  }, [label]);
-
-  const elapsed = seconds * 1_000 >= ELAPSED_AFTER_MS ? ` ${seconds}s` : "";
+export function Toast({ t, children }: { t: Theme; children: ReactNode }) {
   return (
     <div
-      // The label CHANGES as the worker moves through its phases, and each
-      // change is the only signal a screen reader user gets that anything is
-      // happening. Polite, so it does not cut across what they are reading.
       role="status"
-      aria-live="polite"
-      style={{ display: "flex", alignItems: "center", gap: space.sm, minHeight: 24 }}
+      className="pocket-fade-in"
+      style={{
+        ...text.body,
+        position: "absolute",
+        left: "50%",
+        bottom: 104,
+        transform: "translateX(-50%)",
+        background: t.dark ? "#2A2733" : "#14151A",
+        color: "#FFFFFF",
+        padding: "11px 18px",
+        borderRadius: radius.pill,
+        zIndex: 60,
+        maxWidth: FRAME.width - 48,
+        textAlign: "center",
+        boxShadow: "0 12px 30px -12px rgba(0,0,0,0.55)",
+      }}
     >
-      <Spinner t={t} />
-      <span style={{ ...text.body, color: t.sub }}>{label}</span>
-      {/* Outside the live region's sentence but inside the same row: a screen
-          reader should not read a new number every second, so this is
-          aria-hidden and the label alone remains the announced text. */}
-      {elapsed && (
-        <span aria-hidden="true" style={{ ...text.caption, color: t.faint, fontVariantNumeric: "tabular-nums" }}>
-          {elapsed}
-        </span>
-      )}
+      {children}
     </div>
+  );
+}
+
+/* --------------------------------------------------------------- sheets -- */
+
+/**
+ * grab a sheet's header and pull it down to put it away. released short of the
+ * threshold it springs back.
+ */
+function useDragDismiss(onDismiss: () => void) {
+  const [dy, setDy] = useState(0);
+  const [grabbing, setGrabbing] = useState(false);
+  const startY = useRef<number | null>(null);
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLElement>) => {
+    // controls inside the header keep their own press.
+    if ((e.target as HTMLElement).closest("button, input, textarea, a, [role='button']")) return;
+    startY.current = e.clientY;
+    setGrabbing(true);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // capture is not available on every target, and the drag still works.
+    }
+  };
+  const onPointerMove = (e: ReactPointerEvent<HTMLElement>) => {
+    if (startY.current == null) return;
+    const d = e.clientY - startY.current;
+    setDy(d > 0 ? d : 0);
+  };
+  const finish = () => {
+    if (startY.current == null) return;
+    const dismiss = dy > 90;
+    startY.current = null;
+    setGrabbing(false);
+    if (dismiss) onDismiss();
+    else setDy(0);
+  };
+
+  return {
+    handleProps: {
+      onPointerDown,
+      onPointerMove,
+      onPointerUp: finish,
+      onPointerCancel: finish,
+    },
+    grabStyle: { cursor: grabbing ? "grabbing" : "grab", touchAction: "none" } as CSSProperties,
+    style: {
+      transform: dy ? `translateY(${dy}px)` : undefined,
+      transition: grabbing ? "none" : `transform ${motion.sheet} ${motion.enter}`,
+    } as CSSProperties,
+  };
+}
+
+/**
+ * a bottom sheet.
+ *
+ * it stays mounted through the exit, so closing reads as putting it away rather
+ * than as it vanishing. the backdrop fades on its own timing, independent of
+ * the card's slide.
+ */
+export function Sheet({
+  t,
+  open,
+  onClose,
+  title,
+  children,
+  /** fills the frame, for a step that needs the room. */
+  full = false,
+}: {
+  t: Theme;
+  open: boolean;
+  onClose: () => void;
+  title?: string;
+  children: ReactNode;
+  full?: boolean;
+}) {
+  const [mounted, setMounted] = useState(open);
+  const [closing, setClosing] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const drag = useDragDismiss(onClose);
+
+  useEffect(() => {
+    if (open) {
+      clearTimeout(timer.current);
+      setMounted(true);
+      setClosing(false);
+    } else if (mounted) {
+      setClosing(true);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        setMounted(false);
+        setClosing(false);
+      }, 240);
+    }
+    return () => clearTimeout(timer.current);
+  }, [open, mounted]);
+
+  // escape closes whatever is on top, the same as pressing close.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!mounted) return null;
+
+  return (
+    <>
+      <div
+        onClick={onClose}
+        className={closing ? "pocket-fade-out" : "pocket-fade-in"}
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: t.dark ? "rgba(4,3,10,0.42)" : "rgba(20,21,26,0.14)",
+          backdropFilter: "blur(6px) saturate(1.1)",
+          WebkitBackdropFilter: "blur(6px) saturate(1.1)",
+          zIndex: 30,
+        }}
+      />
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={closing ? "pocket-sheet-out" : "pocket-sheet-in"}
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          top: full ? 0 : "auto",
+          maxHeight: "100%",
+          display: "flex",
+          flexDirection: "column",
+          background: t.sheet,
+          color: t.text,
+          borderRadius: full ? 0 : `${radius.sheet}px ${radius.sheet}px 0 0`,
+          zIndex: 31,
+          boxShadow: t.dark ? "0 -20px 50px -30px #000" : "0 -18px 46px -30px rgba(20,21,26,0.5)",
+          ...drag.style,
+        }}
+      >
+        <div
+          {...drag.handleProps}
+          style={{ ...drag.grabStyle, padding: `${space.md}px ${space.lg}px 0`, flex: "0 0 auto" }}
+        >
+          {!full && (
+            <div
+              aria-hidden
+              style={{
+                width: 38,
+                height: 4,
+                borderRadius: radius.pill,
+                background: t.line,
+                margin: "0 auto",
+              }}
+            />
+          )}
+          <div style={{ display: "flex", alignItems: "center", gap: space.md, marginTop: space.md }}>
+            {title ? (
+              <div style={{ ...text.screenTitle, color: t.text, flex: 1, minWidth: 0 }}>{title}</div>
+            ) : (
+              <div style={{ flex: 1 }} />
+            )}
+            <CircleBtn t={t} icon="close" onClick={onClose} label="Close" />
+          </div>
+        </div>
+        <div
+          style={{
+            padding: `${space.gutter}px ${space.lg}px ${space.lg}px`,
+            overflowX: "hidden",
+            overflowY: "auto",
+            minHeight: 0,
+          }}
+        >
+          {children}
+        </div>
+      </section>
+    </>
   );
 }

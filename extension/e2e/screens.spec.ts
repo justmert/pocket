@@ -88,7 +88,7 @@ test("the phrase the backup step hands over is one that restores the wallet", as
     // And it is not merely well-formed: it derives the account this wallet is
     // about to use. Same derivation the extension itself uses.
     await page.getByRole("button", { name: "I have written it down" }).click();
-    await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: "Receive" }).click();
     const shown = (await page.getByText(/^G[A-Z2-7]{55}$/).first().innerText()).replace(/\s/g, "");
     const derived = deriveEd25519(mnemonicToSeedSync(copied), 0).publicKey();
@@ -109,25 +109,25 @@ test("cancel never submits a form, and the submit button still does", async () =
     await page.getByRole("button", { name: "Create wallet" }).click();
     await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: "I have written it down" }).click();
-    await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("button", { name: "Lock" }).click();
+    await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "Lock wallet" }).click();
 
     // Enter in the password field must still unlock: the fix that stops Cancel
     // submitting is a default of type="button", which silently breaks every
     // form that relied on the old implicit submit.
     await page.getByRole("textbox", { name: "Password", exact: true }).fill(PASSWORD);
     await page.keyboard.press("Enter");
-    await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
 
     // Clicking Unlock must work too.
-    await page.getByRole("button", { name: "Lock" }).click();
+    await page.getByRole("button", { name: "Lock wallet" }).click();
     await page.getByRole("textbox", { name: "Password", exact: true }).fill(PASSWORD);
     await page.getByRole("button", { name: "Unlock" }).click();
-    await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
 
     // Now the erase-and-restore form, where a stray submit destroys the wallet.
     // Fill it with everything a real erase needs, then press Cancel.
-    await page.getByRole("button", { name: "Lock" }).click();
+    await page.getByRole("button", { name: "Lock wallet" }).click();
     await page.getByRole("button", { name: "Forgot your password?" }).click();
     await page.getByRole("button", { name: "I understand, continue" }).click();
     const phrase = Array.from({ length: 24 }, () => "abandon").join(" ");
@@ -138,11 +138,11 @@ test("cancel never submits a form, and the submit button still does", async () =
 
     // Cancel means cancel: back on the unlock screen, nothing erased, and the
     // original password still opens the wallet.
-    await expect(page.getByText(/Locked\. Enter your password/)).toBeVisible();
+    await expect(page.getByText(/Enter your password to continue/)).toBeVisible();
     await expect(page.getByText(/Restoring/)).toHaveCount(0);
     await page.getByRole("textbox", { name: "Password", exact: true }).fill(PASSWORD);
     await page.getByRole("button", { name: "Unlock" }).click();
-    await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
   } finally {
     await ctx.close();
     rmSync(dir, { recursive: true, force: true });
@@ -165,7 +165,7 @@ test("the private pocket's actions are reachable in a 600px popup", async () => 
     // The backup step is the tallest screen in onboarding.
     await expect(page.getByRole("button", { name: "I have written it down" })).toBeInViewport();
     await page.getByRole("button", { name: "I have written it down" }).click();
-    await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
 
     await expect(page.getByRole("button", { name: "Send" })).toBeInViewport();
     await expect(page.getByRole("button", { name: "Set up private pocket" })).toBeInViewport();

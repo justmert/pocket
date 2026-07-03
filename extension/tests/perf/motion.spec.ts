@@ -194,7 +194,7 @@ test("no animation stands between a press and the screen it opens", async ({ wal
 
   const t0 = await now(wallet.page);
   await wallet.page.getByRole("button", { name: "Send", exact: true }).click();
-  await expect(wallet.page.getByLabel("Recipient")).toBeVisible();
+  await expect(wallet.page.getByLabel("To", { exact: true })).toBeVisible();
   const p = await read(wallet.page);
 
   expect(at(p, "sendScreen"), "the Send screen must have been painted").toBeGreaterThan(0);

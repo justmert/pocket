@@ -19,6 +19,7 @@ import {
   BLAMES_THE_NETWORK,
   GENERIC_FAILURE,
   SLOW,
+  surfaceText,
 } from "./edge";
 
 // Every action gets a bound. Playwright's default `actionTimeout` is 0, meaning
@@ -178,7 +179,7 @@ test("the recipient on the confirm screen is the typed address, in full, never s
   // a base32 run cut off with an ellipsis. `shortenForList` exists for lists
   // and is explicitly banned from a confirm step, and an assertion that only
   // reads the first block would not notice a second, shortened one beside it.
-  const body = await page.locator("body").innerText();
+  const body = await surfaceText(page);
   expect(body, "a confirm screen must not carry a truncated address anywhere").not.toMatch(
     /[A-Z2-7]{4,}…/,
   );

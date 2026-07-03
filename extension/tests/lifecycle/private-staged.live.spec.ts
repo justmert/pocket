@@ -109,7 +109,7 @@ async function register(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Set up the private pocket" }).click();
   await waitForReview(page);
   await page.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByText(/Confirmed on the ledger/)).toBeVisible({ timeout: 300_000 });
+  await expect(page.getByText(/Confirmed in ledger/)).toBeVisible({ timeout: 300_000 });
 }
 
 test("a register killed between submitting and persisting its openings loses nothing", async () => {
@@ -168,7 +168,7 @@ test("a register killed between submitting and persisting its openings loses not
     await unlockUi(reopened);
     await expect(reopened.getByText("Unfinished transaction")).toBeVisible({ timeout: 120_000 });
     await reopened.getByRole("button", { name: "Check now" }).click();
-    await expect(reopened.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 180_000 });
+    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 180_000 });
 
     keys = await storageKeys(reopened);
     expect(keys, "the openings must have been recovered").toContain(openingsKey);
@@ -229,7 +229,7 @@ test("a proof killed mid-flight stages nothing and does not orphan an auditor ke
     await unlockUi(reopened);
     if ((await reopened.getByText("Unfinished transaction").count()) > 0) {
       await reopened.getByRole("button", { name: "Check now" }).click();
-      await expect(reopened.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 180_000 });
+      await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 180_000 });
     }
     await register(reopened);
 
@@ -290,7 +290,7 @@ test("a shield killed after the deposit puts the money in receiving and says so"
     if ((await reopened.getByText("Unfinished transaction").count()) > 0) {
       await reopened.getByRole("button", { name: "Check now" }).click();
     }
-    await expect(reopened.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 240_000 });
+    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 240_000 });
 
     // Whichever side of the merge the kill landed on, the invariant is the
     // same: 25 XLM went in, the chain and this device agree about where it is,
@@ -322,7 +322,7 @@ test("a shield killed after the deposit puts the money in receiving and says so"
       await waitForReview(reopened);
       await reopened.getByRole("button", { name: "Approve" }).click();
       try {
-        await expect(reopened.getByText(/Confirmed on the ledger/)).toBeVisible({
+        await expect(reopened.getByText(/Confirmed in ledger/)).toBeVisible({
           timeout: 300_000,
         });
       } catch (e) {
@@ -651,7 +651,7 @@ test("the idle lock does not fire in the middle of a private operation", async (
     let sawLocked = false;
     let finishedAt = 0;
     while (Date.now() - startedAt < 150_000) {
-      if ((await page.getByText(/Confirmed on the ledger/).count()) > 0) {
+      if ((await page.getByText(/Confirmed in ledger/).count()) > 0) {
         finishedAt = Date.now();
         break;
       }

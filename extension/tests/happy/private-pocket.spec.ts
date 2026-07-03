@@ -27,7 +27,7 @@ test("a funded account that has not set up a private pocket says so, and states 
   await wallet.reopen();
   await wallet.waitForHome(WAITS.ledgerRead);
   // The entry point says what it is offering before it is opened.
-  await expect(wallet.page.getByText("PRIVATE POCKET", { exact: true })).toBeVisible();
+  await expect(wallet.page.getByRole("button", { name: "Private pocket" })).toBeVisible();
   await expect(wallet.page.getByText(/Hides amounts, never addresses/)).toBeVisible();
 
   await wallet.openPrivatePocket();
@@ -111,7 +111,7 @@ test.describe("private pocket operations", () => {
       ).toBeVisible();
       await expect(wallet.page.getByText(/not reversible/)).toBeVisible();
       await wallet.page.getByRole("button", { name: "Approve" }).click();
-      await expect(wallet.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+      await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
         timeout: WAITS.submission,
       });
       console.log("  registered");
@@ -189,7 +189,7 @@ test.describe("private pocket operations", () => {
       // Never truncated at a confirm step.
       expect(await wallet.readAddress()).toBe(recipient);
       await wallet.page.getByRole("button", { name: "Approve" }).click();
-      await expect(wallet.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+      await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
         timeout: WAITS.submission,
       });
       await expect(wallet.spendableMoney()).toHaveText(/^20\.0000000\s*XLM$/, {
@@ -211,7 +211,7 @@ test.describe("private pocket operations", () => {
         wallet.page.getByText("This withdrawal amount becomes PUBLIC on the ledger"),
       ).toBeVisible();
       await wallet.page.getByRole("button", { name: "Approve" }).click();
-      await expect(wallet.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+      await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
         timeout: WAITS.submission,
       });
       await expect(wallet.spendableMoney()).toHaveText(/^10\.0000000\s*XLM$/, {
@@ -304,7 +304,7 @@ test.describe("private pocket operations", () => {
       await wallet.page.getByLabel("Amount (XLM)").fill("5");
       await wallet.page.getByRole("button", { name: "Review" }).click();
       await wallet.approve();
-      await expect(wallet.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+      await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
         timeout: WAITS.submission,
       });
       // The sender's own spendable balance really did fall by five, so the money
@@ -336,7 +336,7 @@ test.describe("private pocket operations", () => {
         other.page.getByText("Fold everything you have received into your spendable balance"),
       ).toBeVisible();
       await other.page.getByRole("button", { name: "Approve" }).click();
-      await expect(other.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+      await expect(other.page.getByText(/Confirmed in ledger/)).toBeVisible({
         timeout: WAITS.submission,
       });
 
@@ -351,7 +351,7 @@ test.describe("private pocket operations", () => {
       await other.page.getByLabel("Amount (XLM)").fill("5");
       await other.page.getByRole("button", { name: "Review" }).click();
       await other.approve();
-      await expect(other.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+      await expect(other.page.getByText(/Confirmed in ledger/)).toBeVisible({
         timeout: WAITS.submission,
       });
     } finally {

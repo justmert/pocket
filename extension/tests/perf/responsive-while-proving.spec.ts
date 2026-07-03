@@ -126,7 +126,7 @@ test("the popup still obeys a click while a proof runs", async ({ wallet }) => {
   // the page so the number is the user's, not the test runner's.
   const t0 = await now(wallet.page);
   await wallet.page.getByRole("button", { name: "Close" }).click();
-  await expect(wallet.page.getByText("PUBLIC POCKET", { exact: true })).toBeVisible({
+  await expect(wallet.page.getByRole("button", { name: "Public pocket" })).toBeVisible({
     timeout: WAITS.proving,
   });
   const t1 = await now(wallet.page);

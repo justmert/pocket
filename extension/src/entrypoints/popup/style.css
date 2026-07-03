@@ -7,9 +7,12 @@ body {
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
+  /* the "fi" ligature drops the dot on the i, so "Confirm" loses a letter shape
+   * that a wallet cannot afford to blur. */
+  font-variant-ligatures: no-common-ligatures;
+  font-feature-settings: "liga" 0, "clig" 0;
 }
 
-/* Chrome sizes a popup to its content, so the frame sets the width. */
 #root {
   display: flex;
 }
@@ -18,28 +21,41 @@ button {
   font-family: inherit;
 }
 
-/* Press feedback on EVERY button, not only the ones built from the Button
- * primitive. The header's Lock and Close used to jump between scales with no
- * transition because the duration lived in one component's inline style. */
-button {
-  transition: transform 90ms cubic-bezier(0.2, 0, 0, 1);
+/* scrollbars are hidden but scrolling stays; the frame is 384px wide and a
+ * gutter costs more than it tells anyone. */
+*::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent;
+}
+* {
+  scrollbar-width: none;
 }
 
-button:active:not(:disabled) {
-  transform: scale(0.98);
+/* every tappable answers a press, wherever it was built. */
+button,
+[role="button"] {
+  transition: transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+button:active:not(:disabled),
+[role="button"]:active {
+  transform: scale(0.96);
 }
 
-/* One focus ring, in the accent of whichever scheme is active. App.tsx sets
- * the variable from the theme, so light gets the yellow and dark the lilac
- * instead of Chrome's blue, which is the only blue in the product. */
-:focus-visible {
+/* most tappables strip the native outline, so the ring is re-asserted here in
+ * whichever accent the current pocket is wearing. */
+:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
   outline: 2px solid var(--pocket-accent, currentColor);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
-/* Text inputs get the ring on real focus, not only keyboard focus: a caret
- * alone is a weak signal for which field of a payment form you are in. */
 input:focus,
 textarea:focus {
   outline: 2px solid var(--pocket-accent, currentColor);
@@ -52,19 +68,177 @@ textarea:focus {
   }
 }
 
-/* Respect a user who has asked for less motion. Transitions go; the spinner
- * stays, because it is the only thing on screen telling them the wallet is
- * still working, and a frozen spinner reads as a hung one. It is slowed
- * instead, which is the reduced variant rather than no variant. */
+@keyframes pocket-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pocket-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* sheets come up from the bottom and go back down, so closing one reads as
+ * putting it away rather than as it disappearing. */
+@keyframes pocket-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes pocket-sheet-down {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+/* full screens are a different move from sheets: they settle into place. */
+@keyframes pocket-page-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pocket-page-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes pocket-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* switching pockets is the one moment worth marking. the accent washes out
+ * from the switch as the surface crosses light to dark. */
+@keyframes pocket-wash {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  35% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
+@keyframes pocket-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes pocket-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.pocket-page {
+  animation: pocket-page-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.pocket-page-out {
+  animation: pocket-page-out 200ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  pointer-events: none;
+}
+.pocket-sheet-in {
+  animation: pocket-sheet-up 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.pocket-sheet-out {
+  animation: pocket-sheet-down 240ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  pointer-events: none;
+}
+.pocket-fade-in {
+  animation: pocket-fade-in 200ms ease;
+}
+.pocket-fade-out {
+  animation: pocket-fade-out 200ms ease forwards;
+  pointer-events: none;
+}
+.pocket-row-in {
+  animation: pocket-row-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.pocket-wash {
+  animation: pocket-wash 620ms cubic-bezier(0.33, 0, 0.2, 1) forwards;
+  pointer-events: none;
+  transform-origin: 50% 18%;
+}
+.pocket-spinner {
+  animation: pocket-spin 700ms linear infinite;
+}
+.pocket-pulse {
+  animation: pocket-pulse 1300ms ease-in-out infinite;
+}
+
+/* a balance that has not arrived is a shimmer, never a zero. */
+.pocket-skeleton {
+  background-image: linear-gradient(
+    90deg,
+    rgba(140, 140, 150, 0.09) 25%,
+    rgba(140, 140, 150, 0.2) 37%,
+    rgba(140, 140, 150, 0.09) 63%
+  );
+  background-size: 200% 100%;
+  animation: pocket-shimmer 1500ms ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* a reader who asked for less motion still needs the spinner: it is the only
+ * thing saying the wallet is still working. everything else stops. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     transition-duration: 0.001ms !important;
     animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
   }
 
   .pocket-spinner {
-    animation-duration: 1.6s !important;
+    animation: pocket-spin 1600ms linear infinite !important;
+  }
+  .pocket-skeleton {
+    animation: pocket-shimmer 2400ms ease-in-out infinite !important;
   }
 }

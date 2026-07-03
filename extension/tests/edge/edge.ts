@@ -45,19 +45,19 @@ export async function onboard(page: Page, password = PASSWORD): Promise<string> 
     .allInnerTexts();
   const phrase = cells.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
-  await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
   return phrase;
 }
 
-/** The wallet's own address, read off the Receive panel the way a user does. */
+/** The wallet's own address, read off the receive sheet the way a user does. */
 export async function receiveAddress(page: Page): Promise<string> {
-  await page.getByRole("button", { name: "Receive" }).click();
-  await expect(page.getByText("Your address")).toBeVisible();
+  await page.getByRole("button", { name: "Receive", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Receive" })).toBeVisible();
   const shown = await page
     .getByText(/^G[A-Z2-7]{55}$/)
     .first()
     .innerText();
-  await page.getByRole("button", { name: "Receive" }).click();
+  await page.getByRole("button", { name: "Close" }).click();
   return shown.replace(/\s/g, "");
 }
 
@@ -72,10 +72,16 @@ export async function compose(
   page: Page,
   fields: { to?: string; amount?: string; memo?: string },
 ): Promise<void> {
-  const recipient = page.getByLabel("Recipient");
-  if (!(await recipient.isVisible())) {
+  // send is a sheet now, and a sheet that is closing is still on screen for the
+  // length of its exit. asking "is the field visible" during that window said
+  // yes, so nothing reopened it and the fill landed on a form that was about to
+  // detach. the open sheet is the thing to wait on.
+  const dialog = page.getByRole("dialog", { name: /^Send/ });
+  if ((await dialog.count()) === 0) {
     await page.getByRole("button", { name: "Send", exact: true }).click();
   }
+  await expect(dialog).toBeVisible();
+  const recipient = page.getByLabel("To", { exact: true });
   await expect(recipient).toBeVisible();
   if (fields.to !== undefined) await recipient.fill(fields.to);
   if (fields.amount !== undefined) await page.getByLabel("Amount (XLM)").fill(fields.amount);
@@ -86,15 +92,28 @@ export async function compose(
 const COMPOSE_CHROME = new Set([
   "Send",
   "Close",
-  "Recipient",
+  "To",
   "Amount (XLM)",
   "Memo (optional)",
   "Review",
 ]);
 
-/** Every line on screen that is not part of the screen's own furniture. */
+/**
+ * Every line the open sheet says that is not its own furniture.
+ *
+ * Scoped to the sheet, not to the body: send is a sheet over the home screen
+ * now, so the home screen's own text is still in the document behind it and
+ * reading the body would count a balance as something the send form said.
+ */
 export async function saidBeyond(page: Page, chrome: Set<string>): Promise<string> {
-  return beyond(await page.locator("body").innerText(), chrome);
+  return beyond(await surfaceText(page), chrome);
+}
+
+/** The topmost sheet if one is open, otherwise the whole screen. */
+export async function surfaceText(page: Page): Promise<string> {
+  const dialog = page.getByRole("dialog").last();
+  if ((await dialog.count()) > 0) return dialog.innerText();
+  return page.locator("body").innerText();
 }
 
 /** The same, from text already read. Reading twice is a race: see `review`. */
@@ -125,14 +144,16 @@ export async function review(page: Page): Promise<ReviewOutcome> {
         // ONE read per poll. Reading the body again for the error branch was a
         // race that reported the confirm screen as an error message: the first
         // read landed a frame before the verdict and the second a frame after.
-        const body = await page.locator("body").innerText();
-        if (body.includes("Sending to")) {
+        const body = await surfaceText(page);
+        // the label is authored in sentence case and displayed in caps, so the
+        // comparison is on the rendered text, case folded.
+        if (body.toLowerCase().includes("what this does")) {
           out = { stage: "confirm", text: body };
           return "done";
         }
         const said = beyond(body, COMPOSE_CHROME);
         // The named wait is a verdict in progress, not a verdict.
-        if (said && !said.includes("Checking the recipient")) {
+        if (said && !said.includes("Checking")) {
           out = { stage: "error", message: said };
           return "done";
         }
@@ -144,10 +165,38 @@ export async function review(page: Page): Promise<ReviewOutcome> {
   return out!;
 }
 
+/**
+ * Wait until the screen has stopped adding chrome of its own.
+ *
+ * Home fills in from several independent reads: the balance, the private
+ * pocket's state, the yield position. Each can add legitimate markup, so a
+ * baseline taken before they land counts one thing and the comparison counts
+ * another, and the difference looks like something was injected.
+ */
+export async function settled(page: Page): Promise<void> {
+  let last = -1;
+  let runs = 0;
+  await expect
+    .poll(
+      async () => {
+        const now = await page.evaluate(() => document.querySelectorAll("svg").length);
+        runs = now === last ? runs + 1 : 0;
+        last = now;
+        // three agreeing samples, not two: home fills in from several
+        // independent reads and two of them can land inside one interval.
+        return runs >= 2;
+      },
+      { timeout: SLOW, intervals: [600], message: "the screen never stopped changing" },
+    )
+    .toBe(true);
+}
+
 /** Back to home from wherever a verdict left us. */
 export async function closeSend(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Close" }).click();
-  await expect(page.getByText("PUBLIC POCKET")).toBeVisible();
+  // waits for the sheet to be GONE, not merely for home to be behind it: home
+  // is behind it the whole time.
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 }
 
 /**

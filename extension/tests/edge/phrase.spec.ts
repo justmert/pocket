@@ -32,22 +32,25 @@ const words = (p: string) => p.trim().split(/\s+/).filter(Boolean);
 
 const CHROME = new Set([
   "Pocket",
+  "Restore wallet",
+  "Enter your recovery phrase.",
   "Recovery phrase",
   "New password",
   "Import wallet",
-  "Importing…",
+  "Importing",
+  "Back",
   "Use at least eight characters.",
 ]);
 
 /** Open the import screen from the very first run. */
 async function openImport(page: Page): Promise<void> {
   await page.getByRole("button", { name: "I have a recovery phrase" }).click();
-  await expect(page.getByLabel("Recovery phrase")).toBeVisible();
+  await expect(page.getByLabel(/Recovery phrase/)).toBeVisible();
 }
 
 /** Fill the import form and press the button. Returns what the screen said. */
 async function tryImport(page: Page, phrase: string): Promise<string> {
-  await page.getByLabel("Recovery phrase").fill(phrase);
+  await page.getByLabel(/Recovery phrase/).fill(phrase);
   await page.getByLabel("New password", { exact: true }).fill(PASSWORD);
   const button = page.getByRole("button", { name: "Import wallet" });
   if (await button.isDisabled()) return "BUTTON DISABLED";
@@ -59,7 +62,7 @@ async function tryImport(page: Page, phrase: string): Promise<string> {
     .poll(
       async () => {
         const body = await page.locator("body").innerText();
-        if (body.includes("PUBLIC POCKET")) {
+        if (body.includes("Public pocket")) {
           said = "IMPORTED";
           return "done";
         }
@@ -67,7 +70,10 @@ async function tryImport(page: Page, phrase: string): Promise<string> {
           .split("\n")
           .map((l) => l.trim())
           .filter(Boolean)
-          .filter((l) => !CHROME.has(l))
+          // the phrase field labels itself with a live word count, so it is
+          // furniture whatever number it is carrying.
+          .filter((l) => !CHROME.has(l) && !/^Recovery phrase \(\d+ words?\)$/.test(l))
+          .filter((l) => l !== "12 or 24 words, separated by spaces")
           .join(" ");
         if (notice) {
           said = notice;
@@ -175,7 +181,7 @@ test("the erase-and-restore screen states the word count rule before the attempt
 }) => {
   const page = wallet.page;
   await onboard(page);
-  await page.getByRole("button", { name: "Lock" }).click();
+  await page.getByRole("button", { name: "Lock wallet" }).click();
   await page.getByRole("button", { name: "Forgot your password?" }).click();
   await page.getByRole("button", { name: "I understand, continue" }).click();
 
@@ -207,7 +213,7 @@ test("a phrase for a different wallet is refused, and this wallet survives", asy
   const page = wallet.page;
   const mine = await onboard(page);
   expect(words(mine)).toHaveLength(24);
-  await page.getByRole("button", { name: "Lock" }).click();
+  await page.getByRole("button", { name: "Lock wallet" }).click();
   await page.getByRole("button", { name: "Forgot your password?" }).click();
   await page.getByRole("button", { name: "I understand, continue" }).click();
 
@@ -228,5 +234,5 @@ test("a phrase for a different wallet is refused, and this wallet survives", asy
   await page.reload();
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Unlock" }).click();
-  await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
 });
