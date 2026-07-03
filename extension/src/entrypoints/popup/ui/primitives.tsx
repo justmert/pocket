@@ -2,7 +2,40 @@ import { useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { FRAME, fontSizes, leading, motion, radius, sans, space, text, type Theme } from "./theme";
 
+/**
+ * The frame's height ceiling, MEASURED. Never `vh`, and never a percentage.
+ *
+ * A toolbar popup has no size of its own. Chrome gives it a 25x25 minimum and
+ * an 800x600 maximum and then sizes it FROM the document, so the viewport is
+ * the popup and the popup is the content. `100vh` closes that loop: on the
+ * first layout it resolved against the 25px minimum, capped this frame at 25,
+ * and Chrome sized the popup to the frame it had just crushed. The wallet
+ * opened as a 3px sliver of its own header, with nothing in the console to say
+ * why, and it stayed that way because a crushed frame gives Chrome no reason to
+ * grow. Verified against Chrome's documented popup sizing, not inferred from
+ * the symptom.
+ *
+ * Every e2e test passed throughout, because all of them open popup.html as a
+ * TAB, where the viewport is the window, `100vh` is 600-plus and no cap ever
+ * bites. The action popup is a layout mode the suite had never entered.
+ *
+ * A resize is the platform saying it has settled on a size, so it is the only
+ * thing trusted here. Before the first one there is no cap at all, which is
+ * exactly what lets Chrome measure this frame at its natural height and size
+ * the popup to fit it.
+ */
+function usePopupHeightCap(): number | undefined {
+  const [cap, setCap] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const measure = () => setCap(window.innerHeight);
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+  return cap;
+}
+
 export function Frame({ t, children }: { t: Theme; children: ReactNode }) {
+  const cap = usePopupHeightCap();
   return (
     <div
       style={{
@@ -18,7 +51,7 @@ export function Frame({ t, children }: { t: Theme; children: ReactNode }) {
         // with it: scrolling to the button that signs a payment scrolled away
         // the title saying which screen you were on.
         height: FRAME.height,
-        maxHeight: "100vh",
+        maxHeight: cap,
         background: t.bg,
         color: t.text,
         fontFamily: sans,
