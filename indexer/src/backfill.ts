@@ -46,7 +46,8 @@ process.stdout.write(
 // So it is re-read per chunk and the start is clamped. Re-reading costs one
 // small call against a scan of ten thousand ledgers.
 let total = 0;
-for (let from = oldest; from <= latest; from += CHUNK) {
+let from = oldest;
+while (from <= latest) {
   const floor = (await server.getHealth()).oldestLedger;
   if (from < floor) {
     // The window slid past this chunk while earlier chunks were ingesting. The
@@ -65,9 +66,10 @@ for (let from = oldest; from <= latest; from += CHUNK) {
   // window. The authority on where the window starts is the RPC, and this is it
   // telling us: re-read, re-clamp, try again.
   let r: Awaited<ReturnType<typeof ingestRange>> | null = null;
+  let start = from;
   for (let attempt = 0; attempt < 5 && r === null; attempt++) {
     try {
-      r = await ingestRange(db, server, CONTRACT, from, to, HORIZON_URL);
+      r = await ingestRange(db, server, CONTRACT, start, to, HORIZON_URL);
     } catch (e) {
       const moved =
         typeof e === "object" &&
@@ -75,13 +77,23 @@ for (let from = oldest; from <= latest; from += CHUNK) {
         String((e as { message?: unknown }).message ?? e).includes("within the ledger range");
       if (!moved) throw e;
       const now = (await server.getHealth()).oldestLedger;
-      process.stdout.write(`  ${from}..${to}: window moved to ${now}, retrying\n`);
+      process.stdout.write(`  ${start}..${to}: window moved to ${now}, retrying\n`);
       if (now > to) break;
-      from = Math.max(from, now);
+      start = Math.max(start, now);
     }
   }
+
+  // The next chunk begins where THIS one ENDED, never at a fixed stride from
+  // where it began. A retry moves the start forward, and striding from a moved
+  // start skips exactly as many ledgers as it moved: one retry on the first
+  // chunk left ledger 3809400 uningested, a hole of a single ledger at the
+  // seam. That is not a rounding error here. `ingested_through` is the
+  // contiguous run from the earliest range, so one missing ledger reported the
+  // archive as 110,960 ledgers behind, and a wallet reads that as an archive
+  // too stale to recover from.
+  from = to + 1;
   if (r === null) continue;
   total += r.ingested;
-  process.stdout.write(`  ${from}..${to}: ${r.ingested} events\n`);
+  process.stdout.write(`  ${start}..${to}: ${r.ingested} events\n`);
 }
 process.stdout.write(`ingested ${total} events for ${CONTRACT}\n`);
