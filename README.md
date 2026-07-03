@@ -113,6 +113,8 @@ CONTRACT_ID=C... node --experimental-strip-types src/backfill.ts
 
 DB_PATH=archive.db CONTRACT_ID=C... node --experimental-strip-types indexer/src/backfill.ts
 DB_PATH=archive.db PORT=8787 node --experimental-strip-types indexer/src/server.ts
+# HORIZON_URL defaults to testnet. The backfill reads transfer payloads from it,
+# and without them received payments cannot be rebuilt.
 
 ./scripts/release-gate.sh                  # the six gates
 ```
@@ -139,14 +141,22 @@ broken or hostile archive cannot hand you a wrong balance; it can only fail to
 help. Recent transfers, inside the RPC window, are credited without any archive
 at all.
 
-**What rebuilding cannot do, and it is a real limit.** An account that has ever
-RECEIVED a confidential transfer cannot be rebuilt from history. Opening an
-inbound transfer needs the commitment `C_transfer`, and the contract passes it in
-the invocation payload without publishing it in the event, so the event stream
-carries nothing that can confirm a decrypted amount is the one committed. Pocket
-refuses rather than credit an amount it cannot verify, and says so. Deposits,
-merges, withdrawals and transfers you SENT replay normally. Closing this needs
-the commitment in the event, which is a contract change upstream, not ours.
+**Received payments rebuild too, and that took storing more than events.**
+Opening a transfer you received needs the commitment `C_transfer`: the event
+carries enough to DERIVE a candidate amount and nothing to CHECK it with, and
+nothing on chain marks an event as yours, so a wrong key yields a plausible
+number rather than an error. The contract passes `C_transfer` in the invocation
+and does not publish it in the event.
+
+It is still on chain, in the transaction. So the archive stores the invocation
+payload alongside the event for `transfer` and `spender_transfer`, read from
+Horizon, which keeps full history rather than the seven days Soroban RPC keeps.
+The wallet then verifies every credit as `commit(v, r) == C_transfer` and refuses
+anything that does not open, which is the same check the live path makes.
+
+Against an archive that has no payload for an event, the wallet refuses that
+event rather than guessing, exactly as before. Storing the payload is what turns
+a refusal into a recovery; it never turns a refusal into a guess.
 
 The wallet refuses to sync when an archive it was told about is unavailable.
 Falling back to recent-history-only would move the sync cursor past the gap and

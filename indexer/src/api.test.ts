@@ -240,3 +240,74 @@ describe("completeness is about the range that was asked for", () => {
     expect(page.complete).toBe(true);
   });
 });
+
+describe("the invocation payload, which is what makes a received transfer replayable", () => {
+  // A transfer event publishes no c_transfer, so a recipient can derive a
+  // candidate amount and has nothing to check it against. The commitment rides
+  // in the transaction instead. The archive stores it, and if it does not serve
+  // it back the wallet is exactly where it was: refusing to replay any payment
+  // its owner ever received.
+  function addWithPayload(id: string, ledger: number, payload: string | null) {
+    db.prepare(
+      `INSERT INTO events (id, contract_id, ledger_seq, close_time, tx_hash,
+         tx_application_order, event_index, event_type, topics_xdr, data_xdr, payload_xdr)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'transfer', '', '', ?)`,
+    ).run(id, C, ledger, 1700000000 + ledger, `tx${id}`, ledger, 0, payload);
+    db.prepare(`INSERT INTO attribution (event_id, account) VALUES (?, ?)`).run(id, ALICE);
+  }
+
+  it("is served back on the event that carries it", () => {
+    addWithPayload("p1", 10, "UEFZTE9BRA==");
+    recordRange(db, C, 1, 100);
+    const page = accountEvents(db, C, ALICE, { fromLedger: 1, toLedger: 100 });
+    expect(page.events).toHaveLength(1);
+    expect(page.events[0]!.payload_xdr).toBe("UEFZTE9BRA==");
+  });
+
+  it("is null, not absent, when the transaction could not be read", () => {
+    // An honest null. The wallet refuses that one event rather than crediting
+    // an amount it cannot verify, which is the behaviour it had before payloads
+    // existed at all.
+    addWithPayload("p2", 11, null);
+    recordRange(db, C, 1, 100);
+    const page = accountEvents(db, C, ALICE, { fromLedger: 1, toLedger: 100 });
+    expect(page.events[0]!.payload_xdr ?? null).toBeNull();
+  });
+
+  it("does not disturb the events that never needed one", () => {
+    addEvent("d1", 12, 12, "deposit", [ALICE]);
+    recordRange(db, C, 1, 100);
+    const page = accountEvents(db, C, ALICE, { fromLedger: 1, toLedger: 100 });
+    expect(page.events[0]!.event_type).toBe("deposit");
+    expect(page.events[0]!.payload_xdr ?? null).toBeNull();
+  });
+});
+
+describe("migrating an archive that predates the payload column", () => {
+  it("adds the column instead of failing at read time", async () => {
+    // The failure this prevents: `CREATE TABLE IF NOT EXISTS` does nothing to an
+    // existing table, so a deployed archive would keep a schema with no
+    // payload_xdr and every query naming it would error. Simulated by creating
+    // the table WITHOUT the column, exactly as an older build did.
+    const { migrate } = await import("./schema.ts");
+    const old = new Database(":memory:");
+    old.exec(`CREATE TABLE events (
+      id TEXT PRIMARY KEY, contract_id TEXT NOT NULL, ledger_seq INTEGER NOT NULL,
+      close_time INTEGER NOT NULL, tx_hash TEXT NOT NULL,
+      tx_application_order INTEGER NOT NULL, event_index INTEGER NOT NULL,
+      event_type TEXT NOT NULL, topics_xdr TEXT NOT NULL, data_xdr TEXT NOT NULL)`);
+    const before = (old.prepare(`PRAGMA table_info(events)`).all() as { name: string }[]).map(
+      (c) => c.name,
+    );
+    expect(before).not.toContain("payload_xdr");
+
+    migrate(old);
+    const after = (old.prepare(`PRAGMA table_info(events)`).all() as { name: string }[]).map(
+      (c) => c.name,
+    );
+    expect(after).toContain("payload_xdr");
+
+    // And running it again is safe, because it runs on every open.
+    expect(() => migrate(old)).not.toThrow();
+  });
+});

@@ -41,7 +41,8 @@
 import { credit, applyMerge, ZERO_OPENING } from "./private";
 import { encryptBalance, spendRandomness } from "./crypto/derive";
 import { fromBytesBE, isCanonicalFr, R } from "./crypto/field";
-import type { Point } from "./crypto/grumpkin";
+import { decodePoint, type Point } from "./crypto/grumpkin";
+import { decryptIncomingTransfer } from "./witness/transfer";
 import type { Opening } from "./witness/types";
 
 /**
@@ -93,6 +94,15 @@ export interface EventPosition {
 }
 
 export interface ConfidentialEvent extends EventPosition {
+  /**
+   * The invocation payload, when the source could supply it.
+   *
+   * Only the archive can: an RPC event stream has no route to the transaction's
+   * arguments. So this is set when replaying archived history and absent when
+   * scanning live RPC events, and the transfer case below branches on exactly
+   * that.
+   */
+  payload?: { cTransfer: Point } | undefined;
   /** (ledger, txHash, eventIndex). Same id whether served from RPC or archive. */
   id: string;
   type: ReplayEventType;
@@ -195,6 +205,25 @@ function scalarField(event: ConfidentialEvent, name: string): bigint {
   return x;
 }
 
+/**
+ * A curve point from the body.
+ *
+ * `decodePoint` validates: it refuses anything off the curve and anything
+ * non-canonical. That matters more here than for a scalar, because an off-curve
+ * point reaches scalar multiplication and noble returns a point rather than
+ * throwing, so a bad R_e would produce a shared secret that looks like one.
+ */
+function pointField(event: ConfidentialEvent, name: string): Point {
+  try {
+    return decodePoint(bytesField(event, name, 64));
+  } catch (cause) {
+    throw new MalformedEventError(
+      `${event.type} event ${event.id} field ${name} is not a valid curve point ` +
+        `(${cause instanceof Error ? cause.message : String(cause)})`,
+    );
+  }
+}
+
 /** A public i128 amount from the body. Negative amounts are a contract invariant violation. */
 function amountField(event: ConfidentialEvent, name: string): bigint {
   const value = event.data[name];
@@ -279,9 +308,34 @@ export function applyEvent(
       // topics: [from, to]
       const from = party(event, 0, "from");
       const to = party(event, 1, "to");
-      // Refuse before applying anything, so a self-transfer cannot leave the
-      // sender half applied.
-      if (to === me) throw inboundUnreadable(event, "sigma");
+      if (to === me) {
+        // A payment TO us. The event alone cannot be replayed, because the
+        // amount can be derived but not CHECKED: nothing on chain marks an
+        // event as ours, and a wrong key yields a plausible field element
+        // rather than an error. `c_transfer` settles it, and it rides in the
+        // invocation rather than the event.
+        //
+        // When the source could supply that payload, this is fully verifiable
+        // and gets credited. When it could not, we refuse exactly as before.
+        // Refusing is right; refusing when the answer was available was not.
+        if (!event.payload) throw inboundUnreadable(event, "sigma");
+        const opening = decryptIncomingTransfer(
+          keys.vk,
+          pointField(event, "r_e_point"),
+          scalarField(event, "v_tilde"),
+          scalarField(event, "sigma"),
+          event.payload.cTransfer,
+        );
+        // Null means the decryption did not open the published commitment: not
+        // ours, replayed, re-encoded, or corrupt. Refuse rather than credit.
+        if (!opening) throw inboundUnreadable(event, "sigma");
+        // Applied AFTER both refusals, so a self-transfer cannot leave the
+        // sender half applied.
+        const credited = { ...next, receiving: credit(state.receiving, opening) };
+        return from === me
+          ? { ...credited, spendable: openCheckpoint(event, keys.vk) }
+          : credited;
+      }
       if (from !== me) return next;
       return { ...next, spendable: openCheckpoint(event, keys.vk) };
     }

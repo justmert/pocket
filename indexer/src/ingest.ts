@@ -96,18 +96,77 @@ export interface IngestResult {
  * Storage is verbatim XDR. Decoding for queries is a read-side concern, and
  * storing decoded fields would couple the archive to a binding version.
  */
+
+/**
+ * Event types whose EVENT body cannot be replayed on its own.
+ *
+ * A recipient derives a candidate amount from the event, but the only thing
+ * that proves the decryption was real is that it opens `c_transfer`, and
+ * `c_transfer` travels in the invocation rather than the event. So for these
+ * two types the archive stores the invocation payload as well. Without it a
+ * wallet rebuilding from history must refuse every payment it ever received.
+ */
+const NEEDS_PAYLOAD = new Set(["transfer", "spender_transfer"]);
+
+/**
+ * The `data: Bytes` argument of the transaction that emitted an event.
+ *
+ * Horizon, not Soroban RPC: RPC drops transactions on the same retention clock
+ * that drops the events, and the whole point of the archive is to outlive it.
+ * Horizon full-history keeps envelopes indefinitely.
+ *
+ * Returns null rather than throwing on anything unexpected. A missing payload
+ * costs the recipient the ability to replay that one transfer, which is exactly
+ * where they were before; a throw would abort the ingest of a whole range and
+ * leave the archive claiming less history than it has.
+ */
+export async function fetchInvocationPayload(
+  horizonUrl: string,
+  txHash: string,
+): Promise<string | null> {
+  try {
+    const res = await fetch(`${horizonUrl}/transactions/${encodeURIComponent(txHash)}`);
+    if (!res.ok) return null;
+    const body = (await res.json()) as { envelope_xdr?: string };
+    if (!body.envelope_xdr) return null;
+    const env = xdr.TransactionEnvelope.fromXDR(body.envelope_xdr, "base64");
+    const tx = env.switch().name === "envelopeTypeTxV0" ? env.v0().tx() : env.v1().tx();
+    for (const op of tx.operations()) {
+      if (op.body().switch().name !== "invokeHostFunction") continue;
+      const fn = op.body().invokeHostFunctionOp().hostFunction();
+      if (fn.switch().name !== "hostFunctionTypeInvokeContract") continue;
+      const args = fn.invokeContract().args();
+      // (from, to, data) for confidential_transfer;
+      // (spender, from, to, data) for confidential_transfer_from. Taking the
+      // LAST Bytes argument rather than a fixed index, so the two shapes and
+      // any later argument are handled by the same line.
+      for (let i = args.length - 1; i >= 0; i--) {
+        const a = args[i]!;
+        if (a.switch().name === "scvBytes") return a.bytes().toString("base64");
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function ingestRange(
   db: Database.Database,
   server: rpc.Server,
   contractId: string,
   fromLedger: number,
   toLedger: number,
+  // Optional so every existing caller and test keeps working unchanged. Absent,
+  // transfer payloads are simply not stored and the wallet behaves exactly as it
+  // did before: it refuses to replay received transfers rather than guessing.
+  horizonUrl?: string,
 ): Promise<IngestResult> {
   const insertEvent = db.prepare(
     `INSERT OR IGNORE INTO events
        (id, contract_id, ledger_seq, close_time, tx_hash, tx_application_order,
-        event_index, event_type, topics_xdr, data_xdr)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        event_index, event_type, topics_xdr, data_xdr, payload_xdr)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const insertAttribution = db.prepare(
     `INSERT OR IGNORE INTO attribution (event_id, account) VALUES (?, ?)`,
@@ -131,6 +190,29 @@ export async function ingestRange(
     // would disagree. Stop at the bound instead: that disagreement is exactly
     // what the completeness signal exists to prevent.
     if (page.events[0]!.ledger > toLedger) break;
+
+    // Fetched BEFORE the transaction opens. better-sqlite3 transactions are
+    // synchronous, so there is nowhere inside `write` to await a network call.
+    //
+    // One request per transfer, in parallel, and only for transfers: a page of
+    // 200 deposits costs nothing extra. `fetchInvocationPayload` never throws,
+    // so a Horizon that is down degrades to "no payloads stored" rather than
+    // failing the range.
+    const payloads = new Map<string, string | null>();
+    if (horizonUrl) {
+      const needing = page.events.filter((e) => {
+        try {
+          return NEEDS_PAYLOAD.has(scValToNative(e.topic[0] as xdr.ScVal) as string);
+        } catch {
+          return false;
+        }
+      });
+      await Promise.all(
+        needing.map(async (e) => {
+          payloads.set(e.id, await fetchInvocationPayload(horizonUrl, e.txHash));
+        }),
+      );
+    }
 
     const write = db.transaction(() => {
       for (const e of page.events) {
@@ -170,6 +252,10 @@ export async function ingestRange(
           type,
           Buffer.concat(e.topic.map((t) => t.toXDR())).toString("base64"),
           e.value.toXDR("base64"),
+          // NULL for everything that does not need one, and for a transfer whose
+          // transaction could not be read. Null is the honest answer and the
+          // wallet already knows what to do with it.
+          payloads.get(id) ?? null,
         );
 
         // Deliberately NOT caught. An event we cannot attribute is an event

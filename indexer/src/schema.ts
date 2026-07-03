@@ -26,7 +26,21 @@ CREATE TABLE IF NOT EXISTS events (
   event_index         INTEGER NOT NULL,
   event_type          TEXT NOT NULL,
   topics_xdr          TEXT NOT NULL,
-  data_xdr            TEXT NOT NULL
+  data_xdr            TEXT NOT NULL,
+  -- The invocation payload, for the events whose EVENT body is not enough to
+  -- replay them. Base64 XDR of the "data: Bytes" argument, verbatim.
+  --
+  -- Only "transfer" and "spender_transfer" need it, and they need it badly: a
+  -- recipient can derive a candidate amount from the event, but the only thing
+  -- that proves the decryption was real is "commit(v, r) == c_transfer", and
+  -- "c_transfer" is passed in the invocation and NOT published in the event.
+  -- Without it a wallet rebuilding from history has to refuse every transfer it
+  -- ever received, which is most wallets that have been used.
+  --
+  -- NULL for every other event type, and NULL for a transfer whose transaction
+  -- could not be fetched. A NULL is honest: the wallet refuses that event
+  -- exactly as it did before, rather than crediting an unverifiable amount.
+  payload_xdr         TEXT
 );
 
 -- Attribution comes from event TOPICS, never from the transaction source
@@ -69,6 +83,8 @@ export interface StoredEvent {
   event_type: string;
   topics_xdr: string;
   data_xdr: string;
+  /** Base64 XDR of the invocation payload. Only set for transfer events. */
+  payload_xdr?: string | null;
 }
 
 export function open(path = "pocket-archive.db"): Database.Database {
@@ -76,6 +92,9 @@ export function open(path = "pocket-archive.db"): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+  // Every open, so an archive created before a column existed is brought up to
+  // date without an operator having to know a migration was needed.
+  migrate(db);
   return db;
 }
 
@@ -139,4 +158,20 @@ export function ingestedThrough(db: Database.Database, contractId: string): numb
     )
     .get(contractId) as { to_ledger: number } | undefined;
   return row?.to_ledger ?? null;
+}
+
+/**
+ * Bring an existing archive up to the current schema.
+ *
+ * `CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists, so
+ * a column added after an archive was created would be missing on every
+ * deployment that predates it, and the failure would be a query error at read
+ * time rather than at startup. Checked by name against the live table, so it is
+ * safe to run on every open and on a fresh database.
+ */
+export function migrate(db: Database.Database): void {
+  const columns = db.prepare(`PRAGMA table_info(events)`).all() as { name: string }[];
+  if (!columns.some((c) => c.name === "payload_xdr")) {
+    db.exec(`ALTER TABLE events ADD COLUMN payload_xdr TEXT`);
+  }
 }

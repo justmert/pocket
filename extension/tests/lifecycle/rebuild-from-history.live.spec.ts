@@ -11,6 +11,10 @@ import {
   TOKEN,
   waitForFunded,
 } from "./harness";
+import { launchWallet } from "../support/extension";
+import { Wallet, WAITS } from "../support/wallet";
+
+const PASSWORD = "a-strong-test-password";
 
 // Rebuild from history, end to end, against a real archive of the real chain.
 //
@@ -66,11 +70,7 @@ test("a wallet that lost its openings gets them back from the archive", async ()
   const openingsKey = `pocket.openings.${TOKEN}.${address}`;
 
   try {
-    // A fresh account, so its whole confidential history is register, deposit,
-    // merge. Deliberately no inbound transfer: a RECEIVED transfer cannot be
-    // rebuilt from events at all, because the contract passes C_transfer in the
-    // invocation payload and does not publish it in the event. That limit is
-    // real, is stated in the README, and is not what this test is about.
+    // A fresh account: register, deposit, merge.
     await openPocket(page);
     await expect(page.getByText(/Not set up yet/)).toBeVisible({ timeout: 120_000 });
     await page.getByRole("button", { name: "Set up the private pocket" }).click();
@@ -111,6 +111,84 @@ test("a wallet that lost its openings gets them back from the archive", async ()
       .toBe(25);
     const shielded = await pocket();
 
+    // THE CASE THAT USED TO BE IMPOSSIBLE.
+    //
+    // A second wallet pays this one privately. Until the archive stored
+    // invocation payloads, an account that had received a transfer could not be
+    // rebuilt AT ALL: the event carries enough to derive a candidate amount and
+    // nothing to check it against, so the replay refused at the first inbound
+    // transfer and every later event with it. That is the ordinary state of any
+    // wallet that has been paid, which made recovery useless for exactly the
+    // users who need it.
+    const other = await launchWallet();
+    let received = 0;
+    try {
+      const payer = new Wallet(other.popup);
+      await payer.createWallet(PASSWORD);
+      const payerAddress = await payer.revealAddress();
+      await fund(payerAddress);
+      await waitForFunded(payerAddress);
+      // Reopen and wait for home first: the balance read the private pocket
+      // entry point depends on has not happened on the freshly onboarded popup.
+      await payer.reopen();
+      await payer.waitForHome(WAITS.ledgerRead);
+      // The private-pocket button is not actionable while the balance is still
+      // being read, and `waitForHome` returns before that finishes.
+      await expect(payer.page.getByText(/Reading the ledger…/)).toHaveCount(0, {
+        timeout: WAITS.ledgerRead,
+      });
+      // Driven by the button's own name rather than the shared helper's
+      // /private pocket/i locator, which did not resolve against this page.
+      await payer.page.getByRole("button", { name: "Set up private pocket" }).click();
+      await expect(payer.page.getByText(/Not set up yet/)).toBeVisible({ timeout: 120_000 });
+      await payer.page.getByRole("button", { name: "Set up the private pocket" }).click();
+      await waitForReview(payer.page);
+      await payer.page.getByRole("button", { name: "Approve" }).click();
+      await expect(payer.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+        timeout: 300_000,
+      });
+      await expect(payer.page.getByText("SPENDABLE")).toBeVisible({ timeout: 180_000 });
+
+      await payer.page.getByRole("button", { name: "Move in" }).click();
+      await payer.page.getByRole("textbox", { name: "Amount" }).fill("30");
+      await payer.page.getByRole("button", { name: "Review" }).click();
+      await waitForReview(payer.page);
+      await payer.page.getByRole("button", { name: "Approve" }).click();
+      await expect(payer.page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: 600_000 });
+
+      // Reloaded: Home decides between "Set up" and "Open" from a status it
+      // read before this wallet had a private pocket, and coming back from the
+      // shield does not re-read it.
+      await payer.reopen();
+      await expect(payer.page.getByText(/Reading the ledger…/)).toHaveCount(0, {
+        timeout: WAITS.ledgerRead,
+      });
+      await payer.page.getByRole("button", { name: "Open private pocket" }).click();
+      await payer.page.getByRole("button", { name: "Send privately" }).click();
+      await payer.page.getByRole("textbox", { name: "To" }).fill(address);
+      await payer.page.getByRole("textbox", { name: "Amount" }).fill("12");
+      await payer.page.getByRole("button", { name: "Review" }).click();
+      await waitForReview(payer.page);
+      await payer.page.getByRole("button", { name: "Approve" }).click();
+      await expect(payer.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+        timeout: 600_000,
+      });
+      received = 12;
+    } finally {
+      await other.close();
+    }
+
+    // Credited live, from RPC, which has always worked. The point of this test
+    // is what happens after the openings are gone.
+    await expect
+      .poll(pocket, {
+        message: "the inbound transfer must reach this wallet",
+        timeout: 600_000,
+        intervals: [5_000],
+      })
+      .toBe(shielded + received);
+
+
     // Everything above is on chain now. Ingest it into a throwaway archive, the
     // same way an operator would, with the real backfill against real RPC.
     // Backfilled in a LOOP, until the archive actually holds the merge.
@@ -141,7 +219,11 @@ test("a wallet that lost its openings gets them back from the archive", async ()
         timeout: 300_000,
         intervals: [15_000],
       })
-      .toContain("merge");
+      // BOTH. The merge is not the last event any more: this wallet also
+      // received a payment, and that transfer arrives after it. Waiting only for
+      // the merge stopped while the transfer was still un-ingested, and the
+      // rebuild then correctly refused a history that was short by 12 XLM.
+      .toEqual(expect.arrayContaining(["merge", "transfer"]));
 
     // THE DESTRUCTIVE STEP. This is the situation the feature exists for: the
     // commitments are on chain, the openings are gone, and only a replay can
@@ -163,7 +245,12 @@ test("a wallet that lost its openings gets them back from the archive", async ()
     // agreed: `recoverOpenings` re-commits the replayed openings and refuses
     // unless they reproduce the commitments the contract holds. A wrong replay
     // cannot reach this line.
-    expect(total(rebuilt.data), "the rebuilt balance must equal what was shielded").toBe(shielded);
+    // Everything: what this wallet shielded itself AND what it was paid. The
+    // second half is the half that could not be rebuilt before.
+    expect(
+      total(rebuilt.data),
+      "the rebuilt balance must equal what was shielded plus what was received",
+    ).toBe(shielded + received);
 
     // And it must be on disk again, or the next read starts from nothing.
     expect(Object.keys(await storage(page))).toContain(openingsKey);

@@ -24,7 +24,10 @@ import {
   type ConfidentialEvent,
 } from "./sync";
 import { verifyAgainstChain } from "./private";
+import { decodeEnvelope } from "./witness/payload";
+import { decodePoint } from "./crypto/grumpkin";
 import type { ConfidentialAccount, Opening } from "./witness/types";
+import type { Point } from "./crypto/grumpkin";
 
 export class RecoveryUnavailableError extends Error {
   override readonly name = "RecoveryUnavailableError";
@@ -50,6 +53,32 @@ function readConcatenated(base64: string): xdr.ScVal[] {
   // before writing this, not inferred from the types.
   while (!reader.eof) out.push(xdr.ScVal.read(reader as unknown as Buffer));
   return out;
+}
+
+/**
+ * The transfer commitment out of a stored invocation payload.
+ *
+ * This is the number that makes a received payment replayable. The event body
+ * carries `r_e_point`, `v_tilde` and `sigma`, which are enough to DERIVE a
+ * candidate amount and blinding, and nothing that can check the candidate is
+ * real. `c_transfer` is that check, it rides in the invocation, and the archive
+ * stores the invocation for exactly these two event types.
+ *
+ * Returns undefined rather than throwing on anything malformed. A payload we
+ * cannot read leaves the event in the state it was in before the archive stored
+ * payloads at all: the replay refuses it, which is safe. Throwing here would let
+ * one unreadable row fail a whole recovery.
+ */
+function payloadOf(e: StoredEvent): { cTransfer: Point } | undefined {
+  if (!e.payload_xdr) return undefined;
+  try {
+    const { payload } = decodeEnvelope(Uint8Array.from(Buffer.from(e.payload_xdr, "base64")));
+    const raw = payload.c_transfer;
+    if (!raw) return undefined;
+    return { cTransfer: decodePoint(raw) };
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -83,6 +112,7 @@ function decodeStored(e: StoredEvent): ConfidentialEvent | null {
     eventIndex: e.event_index,
     topics,
     data: scValToNative(xdr.ScVal.fromXDR(e.data_xdr, "base64")) as Record<string, unknown>,
+    payload: payloadOf(e),
   };
 }
 
@@ -130,24 +160,27 @@ export async function recoverOpenings(
     .map(decodeStored)
     .filter((e): e is ConfidentialEvent => e !== null);
 
-  // An account that has ever RECEIVED a confidential transfer cannot be rebuilt
-  // from events, and this is where a user finds that out. The contract passes
-  // C_transfer in the invocation payload and does not publish it in the event,
-  // so the event stream carries no way to confirm a decrypted amount is the one
-  // that was actually committed. `replay` refuses rather than credit an
-  // unverifiable amount, which is right, and the refusal has to be readable:
-  // without this it reached the screen as "check your connection", sending
-  // someone to retry a network problem that does not exist and will not clear.
+  // A received transfer replays only when the archive kept the INVOCATION
+  // payload alongside the event: the event carries enough to derive a candidate
+  // amount and nothing to check it against, and the check is `commit(v, r) ==
+  // C_transfer`, which the contract passes in the invocation without publishing
+  // it in the event.
+  //
+  // So this is reached by an archive that predates payload storage, or one whose
+  // Horizon lookup failed for that transaction. `replay` refuses rather than
+  // credit an unverifiable amount, which is right, and the refusal has to be
+  // readable: without this it reached the screen as "check your connection",
+  // sending someone to retry a network problem that does not exist.
   let state;
   try {
     state = replay(INITIAL_STATE, events, { vk, address: account });
   } catch (e) {
     if (e instanceof UnreplayableEventError) {
       throw new RecoveryUnavailableError(
-        "This account has received a confidential transfer, and a received transfer cannot be " +
-          "rebuilt from history: the contract does not publish the commitment that would prove " +
-          "the amount is yours. Pocket will not credit an amount it cannot verify. Your funds " +
-          "are safe on chain.",
+        "The archive is missing the transaction details for a payment this account received, " +
+          "so Pocket cannot confirm the amount is yours and will not credit one it cannot " +
+          "verify. Your funds are safe on chain. An archive that has re-indexed this contract " +
+          "since it started keeping transaction details can rebuild this account.",
       );
     }
     throw e;
