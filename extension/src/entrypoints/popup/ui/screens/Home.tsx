@@ -271,7 +271,7 @@ export function Home() {
       <div style={{ display: "flex", alignItems: "center", gap: space.md, flexWrap: "wrap" }}>
         {status?.address ? <Avatar address={status.address} size={44} /> : <Skeleton width={44} height={44} />}
         <div style={{ minWidth: 0, flex: "1 1 90px" }}>
-          <div style={{ ...text.heading, color: t.text }}>Pocket</div>
+          <h1 style={{ ...text.heading, color: t.text, margin: 0 }}>Pocket</h1>
           {status?.address ? (
             <button
               type="button"
@@ -279,10 +279,12 @@ export function Home() {
               aria-label="Copy your address"
               style={{
                 all: "unset",
+                boxSizing: "border-box",
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 6,
+                minHeight: 28,
                 color: t.sub,
               }}
             >

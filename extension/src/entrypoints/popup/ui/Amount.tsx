@@ -251,9 +251,9 @@ export function HeroAmount({
       {value === null ? (
         // a shimmer says "not yet" to someone looking. it says nothing at all to
         // someone listening, so the same fact is spelled out for them.
-        <span role="status" aria-live="polite" style={{ display: "block", width: 190 }}>
+        <span role="status" aria-live="polite" style={{ display: "block", width: 190, maxWidth: "100%" }}>
           <span style={EXACT}>Reading the ledger</span>
-          <span aria-hidden className="pocket-skeleton" style={{ display: "block", width: 190, height: 38 }} />
+          <span aria-hidden className="pocket-skeleton" style={{ display: "block", width: "100%", height: 38 }} />
         </span>
       ) : (
         <Amount t={t} value={value} code={code} size="hero" treatment={treatment} animate />

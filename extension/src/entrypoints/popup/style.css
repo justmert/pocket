@@ -35,30 +35,33 @@ button {
 /* every tappable answers a press, wherever it was built. */
 button,
 [role="button"] {
-  transition: transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1) !important;
   -webkit-tap-highlight-color: transparent;
 }
 button:active:not(:disabled),
 [role="button"]:active {
-  transform: scale(0.96);
+  transform: scale(0.96) !important;
 }
 
-/* most tappables strip the native outline, so the ring is re-asserted here in
- * whichever accent the current pocket is wearing. */
+/* most tappables are built with `all: unset`, which is an inline declaration and
+ * so outranks anything here. the ring has to say `!important` or a keyboard user
+ * has nothing to follow. */
 :focus-visible,
 button:focus-visible,
 [role="button"]:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--pocket-accent, currentColor);
+  outline: 2px solid var(--pocket-accent, currentColor) !important;
   outline-offset: 2px;
   border-radius: 6px;
 }
 
+/* a text field gets the ring on real focus, not only keyboard focus: a caret
+ * alone is a weak signal for which field of a payment form you are in. */
 input:focus,
 textarea:focus {
-  outline: 2px solid var(--pocket-accent, currentColor);
+  outline: 2px solid var(--pocket-accent, currentColor) !important;
   outline-offset: 1px;
 }
 
@@ -233,6 +236,18 @@ textarea:focus {
     transition-duration: 0.001ms !important;
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
+  }
+
+  /* the press feedback is declared with `!important` because most tappables
+   * strip it through `all: unset`, so switching it off again needs the same
+   * selector rather than the universal one, which it outranks. */
+  button,
+  [role="button"] {
+    transition-duration: 0.001ms !important;
+  }
+  button:active:not(:disabled),
+  [role="button"]:active {
+    transform: none !important;
   }
 
   .pocket-spinner {

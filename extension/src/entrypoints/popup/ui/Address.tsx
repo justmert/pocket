@@ -87,10 +87,16 @@ export function AddressBlock({
           onClick={() => onCopy(address)}
           style={{
             all: "unset",
+            boxSizing: "border-box",
             cursor: "pointer",
             color: copied ? t.positive : t.sub,
             flex: "0 0 auto",
-            padding: 2,
+            // a target a finger can actually land on, not just the glyph.
+            minWidth: 28,
+            minHeight: 28,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
             borderRadius: radius.sm,
           }}
         >

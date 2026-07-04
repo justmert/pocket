@@ -135,7 +135,9 @@ export function Header({
     >
       {onBack && <CircleBtn t={t} icon="back" onClick={onBack} label="Back" />}
       {title ? (
-        <div style={{ ...text.screenTitle, color: t.text, minWidth: 0, flex: 1 }}>{title}</div>
+        <h1 style={{ ...text.screenTitle, color: t.text, minWidth: 0, flex: 1, margin: 0 }}>
+          {title}
+        </h1>
       ) : (
         <div style={{ flex: 1 }} />
       )}
@@ -384,7 +386,9 @@ export function Field({
     color: t.text,
     border: `1px solid ${invalid ? t.danger : "transparent"}`,
     fontFamily: mono ? fonts.mono : "inherit",
-    outline: "none",
+    // deliberately no `outline: none`. the stylesheet owns the focus ring, and
+    // an inline reset here beats it, which left a focused field with nothing to
+    // show for it.
     resize: "none",
   };
   const described = hint ? hintId : undefined;
@@ -683,7 +687,9 @@ export function Spinner({ size = 20, color }: { size?: number; color?: string })
  * on and it would be the wrong one.
  */
 export function Skeleton({ width, height = 16 }: { width: number | string; height?: number }) {
-  return <span className="pocket-skeleton" style={{ display: "block", width, height }} />;
+  return (
+    <span className="pocket-skeleton" style={{ display: "block", width, maxWidth: "100%", height }} />
+  );
 }
 
 export function Toast({ t, children }: { t: Theme; children: ReactNode }) {
@@ -789,6 +795,7 @@ export function Sheet({
   const [mounted, setMounted] = useState(open);
   const [closing, setClosing] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const panel = useRef<HTMLElement>(null);
   const drag = useDragDismiss(onClose);
 
   useEffect(() => {
@@ -806,6 +813,39 @@ export function Sheet({
     }
     return () => clearTimeout(timer.current);
   }, [open, mounted]);
+
+  // focus goes to the sheet's first field when it has one, so the next
+  // keystroke lands in the form rather than on the screen behind. a sheet with
+  // no field takes focus itself, which is what announces the dialog.
+  useEffect(() => {
+    if (!open || !mounted) return;
+    const root = panel.current;
+    if (!root) return;
+    const field = root.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled])");
+    (field ?? root).focus();
+  }, [open, mounted]);
+
+  const keepFocusInside = (e: React.KeyboardEvent) => {
+    if (e.key !== "Tab") return;
+    const root = panel.current;
+    if (!root) return;
+    const stops = Array.from(
+      root.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      ),
+    ).filter((el) => el.offsetParent !== null);
+    if (stops.length === 0) return;
+    const first = stops[0]!;
+    const last = stops[stops.length - 1]!;
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || active === root)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
 
   // escape closes whatever is on top, the same as pressing close.
   useEffect(() => {
@@ -834,9 +874,12 @@ export function Sheet({
         }}
       />
       <section
+        ref={panel}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        onKeyDown={keepFocusInside}
         className={closing ? "pocket-sheet-out" : "pocket-sheet-in"}
         style={{
           position: "absolute",
@@ -873,7 +916,9 @@ export function Sheet({
           )}
           <div style={{ display: "flex", alignItems: "center", gap: space.md, marginTop: space.md }}>
             {title ? (
-              <div style={{ ...text.screenTitle, color: t.text, flex: 1, minWidth: 0 }}>{title}</div>
+              <h2 style={{ ...text.screenTitle, color: t.text, flex: 1, minWidth: 0, margin: 0 }}>
+                {title}
+              </h2>
             ) : (
               <div style={{ flex: 1 }} />
             )}
