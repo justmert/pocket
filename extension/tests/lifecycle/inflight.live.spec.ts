@@ -313,7 +313,7 @@ test("reloading the popup mid-payment does not send it again", async () => {
     );
     const hash = (during["pocket.inflight"] as { hash: string }).hash;
 
-    // F5 in the middle of "Submitting and waiting for the ledger…". The popup's
+    // F5 in the middle of "Submit". The popup's
     // own state is gone; the transaction is not.
     await page.reload();
     await expect(page.getByText("Unfinished transaction")).toBeVisible({ timeout: 60_000 });

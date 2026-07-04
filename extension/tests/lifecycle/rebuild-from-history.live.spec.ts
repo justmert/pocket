@@ -12,7 +12,7 @@ import {
   waitForFunded,
 } from "./harness";
 import { launchWallet } from "../support/extension";
-import { Wallet, WAITS } from "../support/wallet";
+import { Wallet, WAITS, openMoveAction } from "../support/wallet";
 
 const PASSWORD = "a-strong-test-password";
 
@@ -72,12 +72,12 @@ test("a wallet that lost its openings gets them back from the archive", async ()
   try {
     // A fresh account: register, deposit, merge.
     await openPocket(page);
-    await expect(page.getByText(/Not set up yet/)).toBeVisible({ timeout: 120_000 });
-    await page.getByRole("button", { name: "Set up the private pocket" }).click();
+    await expect(page.getByText(/Private pocket not set up/)).toBeVisible({ timeout: 120_000 });
+    await openMoveAction(page, "Set up the private pocket");
     await waitForReview(page);
     await page.getByRole("button", { name: "Approve" }).click();
     await expect(page.getByText(/Confirmed in ledger/)).toBeVisible({ timeout: 300_000 });
-    await expect(page.getByText("SPENDABLE")).toBeVisible({ timeout: 180_000 });
+    await expect(page.getByRole("button", { name: "Private pocket" })).toBeVisible({ timeout: 180_000 });
 
     await page.getByRole("button", { name: "Move in" }).click();
     await page.getByRole("textbox", { name: "Amount" }).fill("25");
@@ -140,14 +140,14 @@ test("a wallet that lost its openings gets them back from the archive", async ()
       // Driven by the button's own name rather than the shared helper's
       // /private pocket/i locator, which did not resolve against this page.
       await payer.page.getByRole("button", { name: "Set up private pocket" }).click();
-      await expect(payer.page.getByText(/Not set up yet/)).toBeVisible({ timeout: 120_000 });
-      await payer.page.getByRole("button", { name: "Set up the private pocket" }).click();
+      await expect(payer.page.getByText(/Private pocket not set up/)).toBeVisible({ timeout: 120_000 });
+      await openMoveAction(payer.page, "Set up the private pocket");
       await waitForReview(payer.page);
       await payer.page.getByRole("button", { name: "Approve" }).click();
       await expect(payer.page.getByText(/Confirmed in ledger/)).toBeVisible({
         timeout: 300_000,
       });
-      await expect(payer.page.getByText("SPENDABLE")).toBeVisible({ timeout: 180_000 });
+      await expect(payer.page.getByRole("button", { name: "Private pocket" })).toBeVisible({ timeout: 180_000 });
 
       await payer.page.getByRole("button", { name: "Move in" }).click();
       await payer.page.getByRole("textbox", { name: "Amount" }).fill("30");
@@ -163,7 +163,7 @@ test("a wallet that lost its openings gets them back from the archive", async ()
       await expect(payer.page.getByText(/Reading the ledger/)).toHaveCount(0, {
         timeout: WAITS.ledgerRead,
       });
-      await payer.page.getByRole("button", { name: "Open private pocket" }).click();
+      await payer.page.getByRole("button", { name: "Private pocket" }).click();
       await payer.page.getByRole("button", { name: "Send privately" }).click();
       await payer.page.getByRole("textbox", { name: "To" }).fill(address);
       await payer.page.getByRole("textbox", { name: "Amount" }).fill("12");

@@ -76,14 +76,14 @@ export function Home() {
     }
     if (priv.state !== "ready") {
       return (
-        <div style={{ minHeight: Math.round(fontSizes.hero * 1.12), display: "flex", alignItems: "center" }}>
+        <div style={{ minHeight: Math.round(fontSizes.hero * 1.25), display: "flex", alignItems: "center" }}>
           <span style={{ ...text.display, color: t.faint }}>Not open yet</span>
         </div>
       );
     }
     if (!priv.spendable) {
       return (
-        <div style={{ minHeight: Math.round(fontSizes.hero * 1.12), display: "flex", alignItems: "center" }}>
+        <div style={{ minHeight: Math.round(fontSizes.hero * 1.25), display: "flex", alignItems: "center" }}>
           <span style={{ ...text.body, color: t.sub }}>
             Not reported. Close and reopen the wallet to read it again.
           </span>

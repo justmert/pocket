@@ -105,7 +105,7 @@ test("shows the receive address in full, never truncated", async () => {
     const page = await popup(ctx, id);
     await onboard(page);
     await page.getByRole("button", { name: "Receive" }).click();
-    await expect(page.getByText("Your address")).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Receive" })).toBeVisible();
 
     const shown = (await page.locator("div[style*='break-all']").innerText()).replace(/\s/g, "");
     // A G-address is 56 characters. Anything shorter means it was truncated,

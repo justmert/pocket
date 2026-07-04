@@ -52,7 +52,7 @@
 //   public send sheet in the same state.
 import { test, expect } from "../support/fixtures";
 import { launchWallet } from "../support/extension";
-import { ADDRESS_RE, Wallet, WAITS } from "../support/wallet";
+import { ADDRESS_RE, Wallet, WAITS, openMoveAction } from "../support/wallet";
 import * as ledger from "../support/testnet";
 import {
   amountBox,
@@ -160,7 +160,7 @@ test("the unfunded and unregistered pockets keep their copy and their button on 
   // The register review, reached without signing anything: the effects list is
   // written by the worker, so its height is the product's, not mine.
   await page.setViewportSize(FRAME);
-  await page.getByRole("button", { name: "Set up the private pocket" }).click();
+  await openMoveAction(page, "Set up the private pocket");
   await expect(page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
 
   for (const vp of VIEWPORTS) {

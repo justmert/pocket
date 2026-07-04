@@ -13,7 +13,7 @@
 // code, so a wallet that is wrong in the same way twice cannot pass.
 import { test, expect } from "../support/fixtures";
 import { launchWallet } from "../support/extension";
-import { Wallet, WAITS } from "../support/wallet";
+import { Wallet, WAITS, openMoveAction } from "../support/wallet";
 import * as ledger from "../support/testnet";
 import { intercept, restore, RPC_HOST } from "../support/stub";
 import {
@@ -317,7 +317,7 @@ test("money received privately is written to disk, not re-read from an event win
     await restore(second.context, RPC_HOST);
 
     // ------------------------------------------------------ make it spendable
-    await other.page.getByRole("button", { name: "Make spendable" }).click();
+    await openMoveAction(other.page, "Make spendable");
     await other.approve();
     await expect(other.page.getByText(/Confirmed in ledger/)).toBeVisible({
       timeout: WAITS.submission,

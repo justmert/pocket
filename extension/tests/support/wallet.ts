@@ -301,3 +301,20 @@ export class Wallet {
     await this.page.getByRole("button", { name: "Close" }).click();
   }
 }
+
+/**
+ * Reach one of the private pocket's actions.
+ *
+ * Setting up, reactivating, rebuilding and making spendable all live in the
+ * move sheet now, so a spec that clicks one has to open it first. Written as a
+ * free function because several specs drive a bare `Page` rather than a
+ * `Wallet`.
+ */
+export async function openMoveAction(page: Page, name: string): Promise<void> {
+  const dialog = page.getByRole("dialog");
+  if ((await dialog.count()) === 0) {
+    await page.getByRole("button", { name: "Move", exact: true }).click();
+    await expect(dialog).toBeVisible();
+  }
+  await dialog.getByRole("button", { name, exact: true }).click();
+}

@@ -54,7 +54,7 @@ async function launchWallet(): Promise<Wallet> {
 /** Register, shield and merge, so the wallet can send. */
 async function fundPrivate(w: Wallet, amount: string): Promise<void> {
   await w.page.getByRole("button", { name: /private pocket/i }).click();
-  await expect(w.page.getByText(/Not set up yet/)).toBeVisible({ timeout: 60_000 });
+  await expect(w.page.getByText(/Private pocket not set up/)).toBeVisible({ timeout: 60_000 });
   await w.page.getByRole("button", { name: "Set up the private pocket" }).click();
   await expect(w.page.getByText(/What this does/)).toBeVisible({ timeout: 180_000 });
   await w.page.getByRole("button", { name: "Approve" }).click();

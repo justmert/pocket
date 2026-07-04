@@ -179,7 +179,7 @@ test("no animation stands between a press and the screen it opens", async ({ wal
   // about 8ms away whatever the click did or did not do. A mutation that put a
   // 400ms delay in front of the navigation sailed through it. It now waits for
   // the frame that carries the Send screen's own label.
-  await installProbe(wallet.page, { ...WATCH, sendScreen: "Recipient" });
+  await installProbe(wallet.page, { ...WATCH, sendScreen: "Memo \\(optional\\)" });
   await wallet.page.bringToFront();
   await wallet.page.reload();
   await expect(wallet.splash()).toBeVisible({ timeout: WAITS.onboarding });

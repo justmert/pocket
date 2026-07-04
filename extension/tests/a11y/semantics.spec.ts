@@ -14,7 +14,7 @@
 // Sheets are `role="dialog"` over a screen that stays in the DOM, so nothing
 // here reads `body.innerText` any more: it would pick up the screen behind.
 import { test, expect } from "../support/fixtures";
-import { Wallet, WAITS } from "../support/wallet";
+import { Wallet, WAITS, openMoveAction } from "../support/wallet";
 import * as ledger from "../support/testnet";
 import { offline, hang, RPC_HOST } from "../support/stub";
 
@@ -67,7 +67,7 @@ const SHEETS: { title: string; open: (w: Wallet) => Promise<void> }[] = [
     title: "Rebuild from history",
     open: async (w) => {
       await w.nav("Settings").click();
-      await w.page.getByRole("button", { name: "Rebuild from history" }).click();
+      await openMoveAction(w.page, "Rebuild from history");
     },
   },
   {

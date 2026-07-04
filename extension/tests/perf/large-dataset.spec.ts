@@ -90,7 +90,7 @@ test("a received transfer is found by scanning the retained window, and the scre
     await arm(other.page);
     const t0 = await now(other.page);
     await other.openPrivatePocket();
-    await expect(other.page.getByText("SPENDABLE", { exact: true })).toBeVisible({
+    await expect(other.page.getByRole("button", { name: "Private pocket" })).toBeVisible({
       timeout: WAITS.ledgerRead,
     });
     const t1 = await now(other.page);

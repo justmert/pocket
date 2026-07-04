@@ -19,7 +19,7 @@
 // coin flip. Both operations really run, really submit and really land.
 import { test, expect } from "../support/fixtures";
 import { launchWallet } from "../support/extension";
-import { Wallet, WAITS } from "../support/wallet";
+import { Wallet, WAITS, openMoveAction } from "../support/wallet";
 import * as ledger from "../support/testnet";
 import { intercept, restore, RPC_HOST } from "../support/stub";
 import {
@@ -190,7 +190,7 @@ test("a merge landing while an inbound credit is still reading events must not l
         await tabA.waitForHome(WAITS.ledgerRead);
       }
     }
-    await tabA.page.getByRole("button", { name: "Make spendable" }).click();
+    await openMoveAction(tabA.page, "Make spendable");
     await tabA.approve();
     await expect(tabA.page.getByText(/Confirmed in ledger/)).toBeVisible({
       timeout: WAITS.submission,

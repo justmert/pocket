@@ -71,6 +71,7 @@ export function Amount({
         letterSpacing: big ? "-0.03em" : undefined,
         fontWeight: big ? 800 : 700,
         fontSize: px,
+        lineHeight: 1.1,
         minWidth: 0,
         ...tones[treatment],
       }}
@@ -242,7 +243,7 @@ export function HeroAmount({
   return (
     <div
       style={{
-        minHeight: Math.round(fontSizes.hero * 1.12),
+        minHeight: Math.round(fontSizes.hero * 1.25),
         display: "flex",
         alignItems: "center",
         marginBottom: space.xs,

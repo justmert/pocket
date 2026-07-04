@@ -19,6 +19,7 @@ import {
   waitForStorage,
   type Wallet,
 } from "./harness";
+import { openMoveAction } from "../support/wallet";
 
 // Not parallel WITHIN this file, and not for an ordering reason: every test here
 // builds its own wallet and reads nothing another wrote. Proving is CPU-bound and
@@ -105,8 +106,8 @@ async function waitForReview(page: Page, timeout = 240_000): Promise<void> {
 /** Register the confidential account and land on the balances view. */
 async function register(page: Page): Promise<void> {
   await openPocket(page);
-  await expect(page.getByText(/Not set up yet/)).toBeVisible({ timeout: 120_000 });
-  await page.getByRole("button", { name: "Set up the private pocket" }).click();
+  await expect(page.getByText(/Private pocket not set up/)).toBeVisible({ timeout: 120_000 });
+  await openMoveAction(page, "Set up the private pocket");
   await waitForReview(page);
   await page.getByRole("button", { name: "Approve" }).click();
   await expect(page.getByText(/Confirmed in ledger/)).toBeVisible({ timeout: 300_000 });
@@ -119,8 +120,8 @@ test("a register killed between submitting and persisting its openings loses not
     const blind = await blindConfirmationPolls(w);
 
     await openPocket(page);
-    await expect(page.getByText(/Not set up yet/)).toBeVisible({ timeout: 120_000 });
-    await page.getByRole("button", { name: "Set up the private pocket" }).click();
+    await expect(page.getByText(/Private pocket not set up/)).toBeVisible({ timeout: 120_000 });
+    await openMoveAction(page, "Set up the private pocket");
     await waitForReview(page);
     void page.getByRole("button", { name: "Approve" }).click();
 
@@ -201,8 +202,8 @@ test("a proof killed mid-flight stages nothing and does not orphan an auditor ke
   const { w, page, address, openingsKey } = await fundedWallet();
   try {
     await openPocket(page);
-    await expect(page.getByText(/Not set up yet/)).toBeVisible({ timeout: 120_000 });
-    void page.getByRole("button", { name: "Set up the private pocket" }).click();
+    await expect(page.getByText(/Private pocket not set up/)).toBeVisible({ timeout: 120_000 });
+    void openMoveAction(page, "Set up the private pocket");
 
     // The offscreen document only comes up when a proof starts, and the auditor
     // key is registered before that, so this is precisely "killed while
@@ -258,7 +259,7 @@ test("a shield killed after the deposit puts the money in receiving and says so"
   const { w, page, openingsKey } = await fundedWallet();
   try {
     await register(page);
-    await expect(page.getByText("SPENDABLE")).toBeVisible({ timeout: 180_000 });
+    await expect(page.getByRole("button", { name: "Private pocket" })).toBeVisible({ timeout: 180_000 });
     const beforeShield = JSON.stringify((await storage(page))[openingsKey]);
 
     await page.getByRole("button", { name: "Move in" }).click();
@@ -314,11 +315,11 @@ test("a shield killed after the deposit puts the money in receiving and says so"
     if (Number(pocket.data?.receiving) > 0) {
       expect(pocket.data?.mergeAvailable).toBe(true);
       await openPocket(reopened);
-      await expect(reopened.getByText("RECEIVING")).toBeVisible({ timeout: 180_000 });
+      await expect(reopened.getByText("Receiving", { exact: true })).toBeVisible({ timeout: 180_000 });
       await expect(
         reopened.getByText(/Received funds sit here until you make them spendable/),
       ).toBeVisible();
-      await reopened.getByRole("button", { name: "Make spendable" }).click();
+      await openMoveAction(reopened, "Make spendable");
       await waitForReview(reopened);
       await reopened.getByRole("button", { name: "Approve" }).click();
       try {
@@ -356,7 +357,7 @@ test("a shield whose merge never reaches the network says where the money is, an
   const { w, page, openingsKey } = await fundedWallet();
   try {
     await register(page);
-    await expect(page.getByText("SPENDABLE")).toBeVisible({ timeout: 180_000 });
+    await expect(page.getByRole("button", { name: "Private pocket" })).toBeVisible({ timeout: 180_000 });
     const beforeShield = JSON.stringify((await storage(page))[openingsKey]);
 
     // Let the deposit through and stop the merge at the network boundary. This
@@ -418,7 +419,7 @@ test("approving one private operation twice at once runs it once", async () => {
   const { w, page } = await fundedWallet();
   try {
     await register(page);
-    await expect(page.getByText("SPENDABLE")).toBeVisible({ timeout: 180_000 });
+    await expect(page.getByRole("button", { name: "Private pocket" })).toBeVisible({ timeout: 180_000 });
 
     const built = await send<{ handle: string }>(page, {
       type: "buildPrivateOp",
@@ -468,7 +469,7 @@ test("erase-and-restore takes the openings with it and says they cannot be rebui
     await waitForFunded(address);
 
     await register(page);
-    await expect(page.getByText("SPENDABLE")).toBeVisible({ timeout: 180_000 });
+    await expect(page.getByRole("button", { name: "Private pocket" })).toBeVisible({ timeout: 180_000 });
     expect(await storageKeys(page)).toContain(openingsKey);
 
     // The forgotten-password route. It is authorised by the phrase and it does
@@ -516,8 +517,8 @@ test("an auditor registration whose outcome is unknown is never resent", async (
     blind.on();
 
     await openPocket(page);
-    await expect(page.getByText(/Not set up yet/)).toBeVisible({ timeout: 120_000 });
-    await page.getByRole("button", { name: "Set up the private pocket" }).click();
+    await expect(page.getByText(/Private pocket not set up/)).toBeVisible({ timeout: 120_000 });
+    await openMoveAction(page, "Set up the private pocket");
     await expect(page.getByText(/Nothing was bound|did not succeed/)).toBeVisible({
       timeout: 600_000,
     });
@@ -561,7 +562,7 @@ test("a merge is refused while an unrelated transaction is still unresolved", as
   const { w, page, address } = await fundedWallet();
   try {
     await register(page);
-    await expect(page.getByText("SPENDABLE")).toBeVisible({ timeout: 180_000 });
+    await expect(page.getByRole("button", { name: "Private pocket" })).toBeVisible({ timeout: 180_000 });
 
     // A payment, submitted and left unresolved: the poll is blinded so the
     // worker never learns the outcome, which is the routine MV3 case.
@@ -602,8 +603,8 @@ test("the idle lock does not fire in the middle of a private operation", async (
   const { w, page, address, openingsKey } = await fundedWallet();
   try {
     await openPocket(page);
-    await expect(page.getByText(/Not set up yet/)).toBeVisible({ timeout: 120_000 });
-    await page.getByRole("button", { name: "Set up the private pocket" }).click();
+    await expect(page.getByText(/Private pocket not set up/)).toBeVisible({ timeout: 120_000 });
+    await openMoveAction(page, "Set up the private pocket");
     await waitForReview(page);
 
     // Make the operation OUTLAST the alarm, and be able to prove afterwards

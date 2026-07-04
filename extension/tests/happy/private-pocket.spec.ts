@@ -10,7 +10,7 @@
 // spec that owns its own.
 import { test, expect } from "../support/fixtures";
 import { launchWallet, askWorker } from "../support/extension";
-import { Wallet, WAITS } from "../support/wallet";
+import { Wallet, WAITS, openMoveAction } from "../support/wallet";
 import * as ledger from "../support/testnet";
 import { auditorOwner, DEPLOYMENT } from "../support/soroban";
 
@@ -31,7 +31,7 @@ test("a funded account that has not set up a private pocket says so, and states 
   await expect(wallet.page.getByText(/Hides amounts, never addresses/)).toBeVisible();
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Not set up yet")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({ timeout: WAITS.ledgerRead });
 
   // Facts that are permanent, public, or COSTLY, stated ABOVE the button that
   // commits to them and not in a confirmation afterwards.
@@ -97,10 +97,10 @@ test.describe("private pocket operations", () => {
       await wallet.reopen();
       await wallet.waitForHome(WAITS.ledgerRead);
       await wallet.openPrivatePocket();
-      await expect(wallet.page.getByText("Not set up yet")).toBeVisible({
+      await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
         timeout: WAITS.ledgerRead,
       });
-      await wallet.page.getByRole("button", { name: "Set up the private pocket" }).click();
+      await openMoveAction(wallet.page, "Set up the private pocket");
 
       // The approval screen enumerates every effect before anything is signed.
       await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
@@ -330,7 +330,7 @@ test.describe("private pocket operations", () => {
         other.page.getByText(/Received funds sit here until you make them spendable/),
       ).toBeVisible();
 
-      await other.page.getByRole("button", { name: "Make spendable" }).click();
+      await openMoveAction(other.page, "Make spendable");
       await expect(other.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
       await expect(
         other.page.getByText("Fold everything you have received into your spendable balance"),

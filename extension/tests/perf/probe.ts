@@ -147,7 +147,7 @@ export async function installProbe(
       const track = () => {
         const t = performance.now();
         for (const el of Array.from(document.querySelectorAll("button"))) {
-          const name = (el.textContent ?? "").trim();
+          const name = (el.getAttribute("aria-label") ?? el.textContent ?? "").trim();
           if (!tracked.includes(name)) continue;
           state.positions.push({ t, name, top: Math.round(el.getBoundingClientRect().top) });
         }

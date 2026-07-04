@@ -18,7 +18,7 @@
 //
 // The bounds are in `_test/T9.md` with the measured value beside each.
 import { test, expect } from "../support/fixtures";
-import { WAITS } from "../support/wallet";
+import { WAITS, openMoveAction } from "../support/wallet";
 import * as ledger from "../support/testnet";
 import { installProbe, arm, disarm, read, now, screens, longestStaticMs, WATCH, at } from "./probe";
 
@@ -49,12 +49,12 @@ const PROGRESS = new RegExp(
   [
     "Starting",
     "Reading the ledger",
-    "Building…",
+    "Prepare",
     "Proving\\. This takes a moment…",
     "Setting up\\. This takes a moment…",
     "Signing and submitting…",
     "Signing and submitting, then waiting for the ledger…",
-    "Submitting and waiting for the ledger…",
+    "Submit",
     "Checking the ledger…",
     "Checking",
     "Reactivating…",
@@ -102,10 +102,10 @@ test("the wallet never goes quiet during a private operation: something is alway
   await fundedWallet(wallet);
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Not set up yet")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({ timeout: WAITS.ledgerRead });
 
   await arm(wallet.page);
-  await wallet.page.getByRole("button", { name: "Set up the private pocket" }).click();
+  await openMoveAction(wallet.page, "Set up the private pocket");
   await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
   const build = await read(wallet.page);
   await disarm(wallet.page);
@@ -174,11 +174,11 @@ test("the build-and-prove wait does not leave the screen unchanged for seconds",
   await fundedWallet(wallet);
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Not set up yet")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({ timeout: WAITS.ledgerRead });
 
   await arm(wallet.page);
   const t0 = await now(wallet.page);
-  await wallet.page.getByRole("button", { name: "Set up the private pocket" }).click();
+  await openMoveAction(wallet.page, "Set up the private pocket");
   await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
   const t1 = await now(wallet.page);
   const p = await read(wallet.page);
@@ -205,8 +205,8 @@ test("the wait after Approve does not leave the screen unchanged for seconds", a
   await fundedWallet(wallet);
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Not set up yet")).toBeVisible({ timeout: WAITS.ledgerRead });
-  await wallet.page.getByRole("button", { name: "Set up the private pocket" }).click();
+  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await openMoveAction(wallet.page, "Set up the private pocket");
   await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
 
   await arm(wallet.page);
@@ -235,8 +235,8 @@ test("the wait after Approve says the wallet is waiting for the ledger", async (
   await fundedWallet(wallet);
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Not set up yet")).toBeVisible({ timeout: WAITS.ledgerRead });
-  await wallet.page.getByRole("button", { name: "Set up the private pocket" }).click();
+  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await openMoveAction(wallet.page, "Set up the private pocket");
   await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
 
   await arm(wallet.page);
@@ -249,7 +249,7 @@ test("the wait after Approve says the wallet is waiting for the ledger", async (
 
   // Most of this wait is polling for the transaction's outcome, not signing and
   // not submitting. The bar is the product's own: `Send` spends the same phase
-  // saying "Submitting and waiting for the ledger…", and the test below proves
+  // saying "Submit", and the test below proves
   // that bar is met somewhere, so this is not an invented standard.
   //
   // The assertion is on the WAIT LABEL, not on the screen containing it, and
@@ -299,7 +299,7 @@ test("the build wait does not sign and submit while it says it is only setting u
   const address = await fundedWallet(wallet);
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Not set up yet")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({ timeout: WAITS.ledgerRead });
 
   // Before the press, on the same screen as the button, in words that say a
   // transaction is sent and a fee is paid. Anything vaguer is not consent.
@@ -320,7 +320,7 @@ test("the build wait does not sign and submit while it says it is only setting u
     ledger.feesPaidBy(address, await ledger.transactions(address, 100)).toFixed(7);
   const before = await paidFor();
 
-  await wallet.page.getByRole("button", { name: "Set up the private pocket" }).click();
+  await openMoveAction(wallet.page, "Set up the private pocket");
   await expect(wallet.page.getByText(/Setting up\. This takes a moment…/)).toBeVisible();
   await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
 
@@ -412,7 +412,7 @@ test("the public send wait does say it is waiting for the ledger", async ({ wall
 
   const said = screens(p.samples).map((s) => s.text);
   expect(
-    said.some((t) => /Submitting and waiting for the ledger…/.test(t)),
+    said.some((t) => /Submit/.test(t)),
     "the public send flow already names the ledger poll: this is the bar, met",
   ).toBe(true);
 });

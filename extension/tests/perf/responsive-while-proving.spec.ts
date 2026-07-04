@@ -28,7 +28,7 @@
 // whole tree is contention, not a finding, and should be re-run alone before it
 // is believed.
 import { test, expect } from "../support/fixtures";
-import { WAITS } from "../support/wallet";
+import { WAITS, openMoveAction } from "../support/wallet";
 import * as ledger from "../support/testnet";
 import { installProbe, read, now, framesBetween, longestFrameGap } from "./probe";
 
@@ -65,7 +65,7 @@ async function fundedPocket(wallet: import("../support/wallet").Wallet): Promise
   await wallet.page.reload();
   await wallet.waitForHome(WAITS.ledgerRead);
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Not set up yet")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({ timeout: WAITS.ledgerRead });
 }
 
 test("the popup keeps painting while a proof runs in the offscreen document", async ({
@@ -82,7 +82,7 @@ test("the popup keeps painting while a proof runs in the offscreen document", as
   await fundedPocket(wallet);
 
   const t0 = await now(wallet.page);
-  await wallet.page.getByRole("button", { name: "Set up the private pocket" }).click();
+  await openMoveAction(wallet.page, "Set up the private pocket");
   // The wait must be on screen, or what follows is not measuring a proof.
   await expect(wallet.page.getByText(/Setting up\. This takes a moment…/)).toBeVisible();
   await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
@@ -118,7 +118,7 @@ test("the popup still obeys a click while a proof runs", async ({ wallet }) => {
   await wallet.page.bringToFront();
   await fundedPocket(wallet);
 
-  await wallet.page.getByRole("button", { name: "Set up the private pocket" }).click();
+  await openMoveAction(wallet.page, "Set up the private pocket");
   await expect(wallet.page.getByText(/Setting up\. This takes a moment…/)).toBeVisible();
 
   // Nothing is signed yet, so leaving is a real thing a bored user does, and it

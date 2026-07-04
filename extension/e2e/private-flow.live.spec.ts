@@ -71,7 +71,7 @@ test("registers a confidential account with a real proof", async () => {
 
   // A funded, unregistered account. The three permanent facts must be stated
   // before the button that commits to them.
-  await expect(page.getByText(/Not set up yet/)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(/Private pocket not set up/)).toBeVisible({ timeout: 60_000 });
   // Stated twice on purpose: once in the summary, once in the list above the
   // button. Assert the list item, which is the one adjacent to the commitment.
   // The D8 promise, stated where the user commits to it permanently.

@@ -114,7 +114,7 @@ test("no data arrival moves a control the user can press", async ({ harness, wal
 
   const movedButtons = p.shifts
     .flatMap((s) => s.sources)
-    .filter((s) => /^(Send|Receive|SendReceive|Set up the private pocket|Open private pocket)/.test(s.text));
+    .filter((s) => /^(Send|Receive|SendReceive|Set up the private pocket)/.test(s.text));
 
   const cls = p.shifts.reduce((t, s) => t + s.value, 0);
   console.log(`  CLS ${cls.toFixed(4)} over ${p.shifts.length} shift(s); moved controls: ${JSON.stringify(movedButtons)}`);
