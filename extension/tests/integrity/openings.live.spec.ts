@@ -153,7 +153,7 @@ test("every private balance the screen shows is money the record on disk can act
   await wallet.openOp("Move out");
   await wallet.submitOp({ amount: "10" });
   await wallet.approve();
-  await expect(wallet.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+  await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
     timeout: WAITS.submission,
   });
   await expect(wallet.spendableMoney()).toHaveText(/^15\.0000000\s*XLM$/, {
@@ -233,7 +233,7 @@ test("money received privately is written to disk, not re-read from an event win
     await wallet.openOp("Send privately");
     await wallet.submitOp({ amount: "5", to: recipient });
     await wallet.approve();
-    await expect(wallet.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+    await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
       timeout: WAITS.submission,
     });
     console.log("  sent 5 XLM privately");
@@ -319,7 +319,7 @@ test("money received privately is written to disk, not re-read from an event win
     // ------------------------------------------------------ make it spendable
     await other.page.getByRole("button", { name: "Make spendable" }).click();
     await other.approve();
-    await expect(other.page.getByText(/Confirmed on the ledger/)).toBeVisible({
+    await expect(other.page.getByText(/Confirmed in ledger/)).toBeVisible({
       timeout: WAITS.submission,
     });
     await expect(other.spendableMoney()).toHaveText(/^5\.0000000\s*XLM$/, {

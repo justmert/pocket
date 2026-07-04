@@ -29,21 +29,26 @@ export const fontSizes = {
  * text roles. each carries size and weight together so the same kind of text
  * matches everywhere without anyone picking a weight by hand.
  */
+// every prose role can break inside a word. chrome zooms to 500%, which leaves
+// the popup 160px wide, and a title that refuses to break is a title that is
+// simply cut off with nothing to scroll to.
+const BREAKS = { overflowWrap: "anywhere" } as const;
+
 export const text = {
   hero: { fontSize: fontSizes.hero, fontWeight: 800, letterSpacing: "-0.035em" },
   display: { fontSize: fontSizes.display, fontWeight: 800, letterSpacing: "-0.03em" },
-  screenTitle: { fontSize: fontSizes.title, fontWeight: 800, letterSpacing: "-0.02em" },
-  heading: { fontSize: fontSizes.heading, fontWeight: 800, letterSpacing: "-0.01em" },
-  overline: { fontSize: fontSizes.caption, fontWeight: 800, letterSpacing: "0.08em" },
-  rowTitle: { fontSize: fontSizes.body, fontWeight: 700 },
-  rowSub: { fontSize: fontSizes.small, fontWeight: 600 },
-  button: { fontSize: fontSizes.body, fontWeight: 800 },
-  value: { fontSize: fontSizes.body, fontWeight: 700, fontVariantNumeric: "tabular-nums" },
-  chip: { fontSize: fontSizes.small, fontWeight: 700 },
-  label: { fontSize: fontSizes.small, fontWeight: 700 },
+  screenTitle: { fontSize: fontSizes.title, fontWeight: 800, letterSpacing: "-0.02em", ...BREAKS },
+  heading: { fontSize: fontSizes.heading, fontWeight: 800, letterSpacing: "-0.01em", ...BREAKS },
+  overline: { fontSize: fontSizes.caption, fontWeight: 800, letterSpacing: "0.08em", ...BREAKS },
+  rowTitle: { fontSize: fontSizes.body, fontWeight: 700, ...BREAKS },
+  rowSub: { fontSize: fontSizes.small, fontWeight: 600, ...BREAKS },
+  button: { fontSize: fontSizes.body, fontWeight: 800, ...BREAKS },
+  value: { fontSize: fontSizes.body, fontWeight: 700, fontVariantNumeric: "tabular-nums", ...BREAKS },
+  chip: { fontSize: fontSizes.small, fontWeight: 700, ...BREAKS },
+  label: { fontSize: fontSizes.small, fontWeight: 700, ...BREAKS },
   input: { fontSize: fontSizes.body, fontWeight: 600 },
-  body: { fontSize: fontSizes.small, fontWeight: 600 },
-  caption: { fontSize: fontSizes.caption, fontWeight: 600 },
+  body: { fontSize: fontSizes.small, fontWeight: 600, ...BREAKS },
+  caption: { fontSize: fontSizes.caption, fontWeight: 600, ...BREAKS },
 } as const;
 
 export const space = {

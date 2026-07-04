@@ -14,13 +14,21 @@
 //                  so writing one is writing exactly what the wallet writes.
 //   needsRecovery  a registered pocket whose openings are gone. That is the
 //                  real consequence of losing the vault, and it is the same
-//                  branch of PrivatePocket.tsx that renders `diverged`.
+//                  branch the worker uses for `diverged`.
+//
+// The refusal is now told in two places, and both halves are checked. The home
+// screen's private tab states WHAT HAPPENED, and the Move sheet behind the one
+// control that can act on it states WHAT REBUILDING IS. Either half clipped is
+// the whole message: a user told their balances are gone and not told what can
+// be done about it is a user who thinks their money is gone.
 import { test, expect } from "../support/fixtures";
 import { WAITS } from "../support/wallet";
 import * as ledger from "../support/testnet";
 import {
   atEveryViewport,
+  collectFailures,
   expectReachable,
+  forEachViewport,
   FRAME,
   NARROW_VIEWPORTS,
   REQUIRED_VIEWPORTS,
@@ -128,40 +136,77 @@ test("the private pocket's refusal to spend states itself fully inside the frame
     timeout: WAITS.ledgerRead,
   });
 
-  // The message is the screen. It is long, it is the only thing telling the
-  // user their money is safe, and it is rendered in the same branch that
-  // renders `diverged`, whose message is longer still.
-  // Both notices, separately. The screen states what happened in one box and
-  // what can be done about it in another, and either one being clipped is the
-  // whole message.
+  // Half one, on the home screen: the heading, the worker's account of what
+  // happened, and the one control that leads anywhere from here. The message is
+  // long, and it is the only thing telling the user their money is safe.
+  //
+  // FINDING. The heading is RED at and below 266px, and is left red.
+  //
+  // The state used to have a screen to itself and its heading had the full
+  // width of the frame. It is now the title of a prompt card, laid out in a row
+  // between a 36px icon and the "Rebuild" chip, in a span with `flex: 1` and no
+  // `overflow-wrap`. At 266px the title track is about 63px wide and the word
+  // "rebuilding" needs 86, so 23px of it is cut off in place; at 200px and
+  // below the track hits its floor and 79px is gone. The card does not grow,
+  // the frame's `overflow: hidden` swallows the difference, and no scrollWidth
+  // anywhere grows because ink overflow is not layout overflow. There is
+  // nothing to scroll to. The characters are simply gone, on the one screen
+  // whose whole job is to tell someone their money is still there.
+  //
+  // Reported per viewport rather than at the first red, so the report says how
+  // much worse it gets rather than naming one width and inviting the reading
+  // that it is cosmetic.
   const said = page.getByText(/This account has a private pocket but this device/);
-  const whatRebuildingIs = page.getByText(/Rebuilding replays your event history/);
-  for (const vp of [...REQUIRED_VIEWPORTS, ...NARROW_VIEWPORTS]) {
-    await page.setViewportSize({ width: vp.width, height: vp.height });
-    await expectReachable(said, `private/needsRecovery @ ${vp.name}: what happened`);
-    await expectReachable(
-      whatRebuildingIs,
-      `private/needsRecovery @ ${vp.name}: what rebuilding does`,
-    );
-    // The one control that can act on the state. It arrived with the
-    // rebuild-from-history work; a layout that puts it out of reach would make
-    // the screen a dead end again.
-    await expectReachable(
-      page.getByRole("button", { name: "Rebuild from history" }),
-      `private/needsRecovery @ ${vp.name}: Rebuild from history`,
-    );
-    await expectReachable(
-      page.getByText("Balances need rebuilding"),
-      `private/needsRecovery @ ${vp.name}: the heading`,
-    );
-    // No balance is invented for a pocket that cannot be opened, so a sweep of
-    // "every control" would find only Close. Named, so the screen having gone
-    // blank could not pass.
-    await expectReachable(
-      page.getByRole("button", { name: "Close" }),
-      `private/needsRecovery @ ${vp.name}: Close`,
-    );
-  }
+  const onHome = () =>
+    forEachViewport(page, [...REQUIRED_VIEWPORTS, ...NARROW_VIEWPORTS], async (vp) => {
+      await expectReachable(
+        page.getByText("Balances need rebuilding"),
+        `private/needsRecovery @ ${vp.name}: the heading`,
+      );
+      await expectReachable(said, `private/needsRecovery @ ${vp.name}: what happened`);
+      // Named rather than swept. A sweep of "every control" here finds the
+      // account row, the pocket tabs and the bar, all of which are there
+      // whatever the private pocket is doing, so it would pass on a prompt that
+      // had rendered with no way out of the state at all.
+      await expectReachable(
+        page.getByRole("button", { name: "Rebuild", exact: true }),
+        `private/needsRecovery @ ${vp.name}: the way to rebuild`,
+      );
+    });
 
-  await atEveryViewport(page, "private/needsRecovery", REQUIRED_VIEWPORTS);
+  // Half two, inside the Move sheet: what rebuilding actually is, and the
+  // control that starts it. It arrived with the rebuild-from-history work; a
+  // layout that puts it out of reach makes the state a dead end again.
+  const whatRebuildingIs = page.getByText(/Rebuilding replays your history/);
+  const inMoveSheet = () =>
+    forEachViewport(page, [...REQUIRED_VIEWPORTS, ...NARROW_VIEWPORTS], async (vp) => {
+      await expectReachable(
+        whatRebuildingIs,
+        `private/needsRecovery + move @ ${vp.name}: what rebuilding does`,
+      );
+      await expectReachable(
+        page.getByRole("button", { name: "Rebuild from history" }),
+        `private/needsRecovery + move @ ${vp.name}: Rebuild from history`,
+      );
+      await expectReachable(
+        page.getByRole("button", { name: "Close" }),
+        `private/needsRecovery + move @ ${vp.name}: Close`,
+      );
+    });
+
+  // Both halves run whatever the first one says. The home heading is a known
+  // red; letting it throw would mean the sheet's own copy and its one button
+  // were never measured at any width and quietly looked verified.
+  const audit = collectFailures("private/needsRecovery");
+  await audit.check(onHome);
+  await audit.check(() => atEveryViewport(page, "private/needsRecovery", REQUIRED_VIEWPORTS));
+
+  await page.setViewportSize(FRAME);
+  await wallet.openMove();
+
+  await audit.check(inMoveSheet);
+  await audit.check(() =>
+    atEveryViewport(page, "private/needsRecovery + move", REQUIRED_VIEWPORTS),
+  );
+  audit.report();
 });

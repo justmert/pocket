@@ -505,12 +505,18 @@ export function Row({
             alignItems: "center",
             justifyContent: "center",
             flex: "0 0 auto",
+            // a mark can never be the thing that overflows a row.
+            overflow: "hidden",
           }}
         >
           {icon}
         </span>
       )}
-      <span style={{ minWidth: 0, textAlign: "left", flex: 1 }}>
+      {/* a basis, not just a grow factor. with only `flex: 1` a long value on
+          the right squeezed the title to twelve pixels, which is narrower than
+          one of its own letters, so the title was cut off rather than the value
+          wrapping onto its own line. */}
+      <span style={{ minWidth: 0, textAlign: "left", flex: "1 1 90px" }}>
         <span
           style={{ ...text.rowTitle, color: tone === "danger" ? t.danger : t.text, display: "block" }}
         >
@@ -521,7 +527,7 @@ export function Row({
         )}
       </span>
       {(value || valueSub) && (
-        <span style={{ textAlign: "right", minWidth: 0 }}>
+        <span style={{ textAlign: "right", minWidth: 0, flex: "0 1 auto", overflowWrap: "anywhere" }}>
           {value && <span style={{ ...text.value, color: t.text, display: "block" }}>{value}</span>}
           {valueSub && (
             <span style={{ ...text.rowSub, color: t.sub, display: "block" }}>{valueSub}</span>
@@ -538,6 +544,7 @@ export function Row({
     width: "100%",
     padding: `${space.sm}px 0`,
     minWidth: 0,
+    flexWrap: "wrap",
     animationDelay: index != null ? `${index * 45}ms` : undefined,
   };
 

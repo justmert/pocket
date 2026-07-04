@@ -22,7 +22,7 @@ export function Home() {
       <div style={{ position: "relative", padding: `${space.gutter}px ${space.gutter}px ${NAV_SPACE}px` }}>
         <AccountRow />
 
-        <div style={{ display: "flex", gap: space.lg, marginTop: space.lg }}>
+        <div style={{ display: "flex", gap: space.lg, marginTop: space.lg, flexWrap: "wrap" }}>
           <PocketTab pocket="public" label="Public pocket" />
           {status?.privateAvailable && <PocketTab pocket="private" label="Private pocket" />}
         </div>
@@ -150,8 +150,8 @@ export function Home() {
         {priv.receiving && Number(priv.receiving) > 0 && (
           <div style={{ marginTop: space.gutter }}>
             <Card t={t} tone="accent">
-              <div style={{ display: "flex", alignItems: "center", gap: space.md }}>
-                <span style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: space.md, flexWrap: "wrap" }}>
+                <span style={{ minWidth: 0, flex: "1 1 120px" }}>
                   <span style={{ ...text.rowSub, color: t.sub, display: "block" }}>Receiving</span>
                   <Amount t={t} value={priv.receiving} code="XLM" size="row" />
                 </span>
@@ -202,7 +202,7 @@ export function Home() {
     const action = PROMPT_ACTION[priv.state];
     return (
       <Card t={t} tone="accent">
-        <div style={{ display: "flex", alignItems: "center", gap: space.md, marginBottom: priv.message ? space.sm : 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: space.md, flexWrap: "wrap", marginBottom: priv.message ? space.sm : 0 }}>
           <span
             style={{
               width: 36,
@@ -268,9 +268,9 @@ export function Home() {
 
   function AccountRow() {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: space.md }}>
+      <div style={{ display: "flex", alignItems: "center", gap: space.md, flexWrap: "wrap" }}>
         {status?.address ? <Avatar address={status.address} size={44} /> : <Skeleton width={44} height={44} />}
-        <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ minWidth: 0, flex: "1 1 90px" }}>
           <div style={{ ...text.heading, color: t.text }}>Pocket</div>
           {status?.address ? (
             <button
@@ -346,10 +346,24 @@ const PROMPT_ACTION: Record<PrivatePocket["state"], string | null> = {
   ready: null,
 };
 
+/**
+ * one letter, not the whole code.
+ *
+ * the row already says the code and its name. three letters in the mark is the
+ * same word twice, and at 500% zoom it is the same word twice overflowing a
+ * 40px box.
+ */
 function AssetMark({ t, code }: { t: Theme; code: string }) {
   return (
-    <span style={{ ...text.rowSub, fontWeight: 800, color: t.dark ? t.accent : t.text }}>
-      {code.slice(0, 3)}
+    <span
+      style={{
+        ...text.rowTitle,
+        fontWeight: 800,
+        color: t.dark ? t.accent : t.text,
+        lineHeight: 1,
+      }}
+    >
+      {code.slice(0, 1)}
     </span>
   );
 }

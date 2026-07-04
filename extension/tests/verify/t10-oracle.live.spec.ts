@@ -57,7 +57,7 @@ async function shieldedWallet() {
   await w.openOp("Move in");
   await w.submitOp({ amount: "25" });
   await w.approve();
-  await expect(h.popup.getByText(/Confirmed on the ledger/)).toBeVisible({ timeout: 300_000 });
+  await expect(h.popup.getByText(/Confirmed in ledger/)).toBeVisible({ timeout: 300_000 });
   return { h, w, address };
 }
 
@@ -201,7 +201,7 @@ test("the oracle's second generator is exercised, not short-circuited past", asy
     await w.openOp("Move out");
     await w.submitOp({ amount: "5" });
     await w.approve();
-    await expect(h.popup.getByText(/Confirmed on the ledger/)).toBeVisible({ timeout: 300_000 });
+    await expect(h.popup.getByText(/Confirmed in ledger/)).toBeVisible({ timeout: 300_000 });
 
     const after = await storedOpenings(h, address);
     const chain = await chainAccount(address);

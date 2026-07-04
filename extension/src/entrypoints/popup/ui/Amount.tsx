@@ -65,6 +65,7 @@ export function Amount({
       style={{
         display: "inline-flex",
         alignItems: "baseline",
+        flexWrap: "wrap",
         gap: Math.round(px * 0.14),
         fontVariantNumeric: "tabular-nums",
         letterSpacing: big ? "-0.03em" : undefined,

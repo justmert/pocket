@@ -1,20 +1,67 @@
 // The private pocket, at the popup ceiling.
 //
-// The review screen is the most content this wallet ever puts on one screen: a
-// section label, an amount, a full untruncated 56-character address, a list of
-// effects the worker wrote, and two buttons. It is also the screen where a
-// clipped button is worst, because the clipped one would be Approve and the
-// user has already read everything above it.
+// The review step is the most content this wallet ever puts on one surface: a
+// heading, an amount, a full untruncated 56-character address, a list of
+// effects the worker wrote, and two buttons. It is also where a clipped button
+// is worst, because the clipped one would be the one that signs and the user has
+// already read everything above it.
 //
 // Nothing here is a snapshot or a prop. The pockets are registered on chain and
-// the amounts are shielded for real, because the review screen's height is a
+// the amounts are shielded for real, because the review step's height is a
 // function of how many effects the WORKER decided to state, and a fixture would
 // be measuring a string this file made up.
+//
+// What the rebuild moved:
+//
+//   The private pocket has no screen of its own. It is a tab on home, and every
+//   operation lives in the Move sheet except spending, which is the bar's own
+//   send action in both pockets. So a state's copy and the button that acts on
+//   it are now in two different places, and both are checked.
+//
+//   `SPENDABLE` and `RECEIVING` are gone as labels. The spendable figure is the
+//   hero and carries no label at all; the receiving figure is stated in a card
+//   labelled `Receiving`, and only when there IS one. The old test asserted both
+//   labels on a pocket that had just been registered, where the receiving
+//   balance is zero and the card does not exist. The pairing it was really
+//   about, a spendable balance shown without the receiving one underneath it,
+//   is checked on the RECIPIENT after a real transfer lands, which is the only
+//   place the two exist together.
+//
+// FINDING. Two stages below are red at EVERY viewport, both for one cause, and
+// both are left red. Once a pocket has been switched, opening the send sheet
+// leaves the whole popup scrolled 394px above its own window with no way to
+// scroll it back.
+//
+//   `ui/App.tsx` renders the pocket-switch wash whenever `pocketFlip > 0`, and
+//   `.pocket-wash` in `style.css` ends on `transform: scale(1.8)` with
+//   `animation-fill-mode: forwards`. The element is never unmounted and the fill
+//   holds the final frame, so from the first pocket switch onwards an invisible
+//   1080x691 box sits inside a 600x384 frame whose overflow is `hidden`.
+//   Measured: the frame's scrollHeight becomes 994 against a 600 clientHeight
+//   and its scrollWidth 538 against 384.
+//
+//   `overflow: hidden` means no scrollbar, no wheel and no drag, but it does NOT
+//   mean no scrolling: the browser still scrolls that box to reveal a focused
+//   element. The send sheet autofocuses its `To` field, so opening it scrolls
+//   the frame to its new maximum and every pixel of the sheet, the home screen
+//   and the bar goes with it. Measured directly: frame scrollTop 0 before the
+//   sheet, 394 after, and a wheel gesture over it changes nothing.
+//
+//   It is not confined to the private pocket. `pocketFlip` never returns to
+//   zero, so switching back to the public pocket leaves the wash mounted and the
+//   public send sheet in the same state.
 import { test, expect } from "../support/fixtures";
 import { launchWallet } from "../support/extension";
 import { ADDRESS_RE, Wallet, WAITS } from "../support/wallet";
 import * as ledger from "../support/testnet";
-import { expectLayoutHolds, expectReachable, FRAME, REQUIRED_VIEWPORTS } from "./audit";
+import {
+  amountBox,
+  collectFailures,
+  expectLayoutHolds,
+  expectReachable,
+  FRAME,
+  REQUIRED_VIEWPORTS,
+} from "./audit";
 
 const PASSWORD = "a-strong-test-password";
 
@@ -32,13 +79,36 @@ async function atEveryViewport(
   }
 }
 
+/**
+ * Open one of the operations that live in the Move sheet.
+ *
+ * `Wallet.openOp()` is not used, and this is the one place in this tier that
+ * departs from the page object. It looks the row up with `exact: true`, and a
+ * `Row` renders its subtitle inside the same button, so the accessible name of
+ * the Move-in row is "Move in Public pocket to private" and an exact match finds
+ * nothing. Reported; the substring match below is the same intent spelled
+ * against what the row now renders.
+ */
+async function openMoveOp(wallet: Wallet, name: "Move in" | "Move out"): Promise<void> {
+  await wallet.openMove();
+  await wallet.page.getByRole("button", { name }).click();
+}
+
+/** Put a sheet away and wait for it to be gone, not merely on its way out. */
+async function closeSheet(wallet: Wallet): Promise<void> {
+  await wallet.close();
+  await expect(wallet.page.getByRole("dialog")).toHaveCount(0);
+}
+
 test("the unfunded and unregistered pockets keep their copy and their button on screen", async ({
   wallet,
 }) => {
-  test.setTimeout(6 * 60_000);
+  test.setTimeout(8 * 60_000);
   const page = wallet.page;
   await wallet.createWallet(PASSWORD);
   const address = await wallet.revealAddress();
+  // The receive sheet is modal, and the pocket tabs are behind it.
+  await closeSheet(wallet);
 
   // Unfunded first: a state that costs nothing to reach and that a real user
   // meets before anything else.
@@ -54,21 +124,26 @@ test("the unfunded and unregistered pockets keep their copy and their button on 
   await wallet.reopen();
   await wallet.waitForHome(WAITS.ledgerRead);
   await wallet.openPrivatePocket();
-  await expect(page.getByText("Not set up yet")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await expect(page.getByText("Private pocket not set up")).toBeVisible({
+    timeout: WAITS.ledgerRead,
+  });
 
   // The facts that are permanent, public or COSTLY are stated ABOVE the button
   // that commits to them. That only protects anyone if they are on screen at the
-  // same time as the button, which is precisely a layout property.
+  // same time as the button, which is precisely a layout property. They live in
+  // the Move sheet now, with the button, so the pairing survived the rebuild.
   //
-  // The cost sentence is the longest copy on this screen and it was added after
-  // this test was written, so it is the one most likely to push the button off a
-  // 384x600 frame. That is exactly why it belongs here.
+  // One of the old five is missing from this list on purpose. "It also pays a
+  // network fee" is no longer part of the set-up copy; the fee is stated by the
+  // worker as an effect, so it is asserted on the review step below, where it
+  // now is.
+  await page.setViewportSize(FRAME);
+  await wallet.openMove();
   const bullets = [
     /sends the first one straight away/,
-    /pays a network fee/,
     /Setting up is public/,
     /Only amounts are hidden/,
-    /cannot be changed later/,
+    /bound permanently/,
   ];
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
@@ -82,8 +157,8 @@ test("the unfunded and unregistered pockets keep their copy and their button on 
     );
   }
 
-  // The register review screen, reached without signing anything: the effects
-  // list is written by the worker, so its height is the product's, not mine.
+  // The register review, reached without signing anything: the effects list is
+  // written by the worker, so its height is the product's, not mine.
   await page.setViewportSize(FRAME);
   await page.getByRole("button", { name: "Set up the private pocket" }).click();
   await expect(page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
@@ -99,13 +174,19 @@ test("the unfunded and unregistered pockets keep their copy and their button on 
     for (let i = 0; i < n; i++) {
       await expectReachable(effects.nth(i), `private/review (register) @ ${vp.name}: effect ${i}`);
     }
+    // The cost, in the place it moved to. What is being paid for is permanent,
+    // so what it costs has to be legible next to the button that agrees to it.
+    await expectReachable(
+      page.getByText(/Pay a network fee/),
+      `private/review (register) @ ${vp.name}: the network fee`,
+    );
     await expectReachable(
       page.getByRole("button", { name: "Approve" }),
       `private/review (register) @ ${vp.name}: Approve`,
     );
     await expectReachable(
-      page.getByRole("button", { name: "Cancel" }),
-      `private/review (register) @ ${vp.name}: Cancel`,
+      page.getByRole("button", { name: "Back" }),
+      `private/review (register) @ ${vp.name}: Back`,
     );
   }
 });
@@ -113,20 +194,23 @@ test("the unfunded and unregistered pockets keep their copy and their button on 
 test("a ready pocket, its three op forms and the transfer review all fit the popup", async ({
   wallet,
 }) => {
-  test.setTimeout(20 * 60_000);
+  test.setTimeout(30 * 60_000);
   const page = wallet.page;
 
   await wallet.createWallet(PASSWORD);
   const sender = await wallet.revealAddress();
+  await closeSheet(wallet);
   await ledger.fund(sender);
 
-  // A confidential transfer needs a REGISTERED recipient, so the review screen
+  // A confidential transfer needs a REGISTERED recipient, so the review step
   // that carries a 56-character address cannot be reached with one wallet.
   const second = await launchWallet();
   try {
     const other = new Wallet(second.popup);
+    const otherPage = second.popup;
     await other.createWallet(PASSWORD);
     const recipient = await other.revealAddress();
+    await closeSheet(other);
     await ledger.fund(recipient);
     expect(recipient).toMatch(ADDRESS_RE);
 
@@ -140,119 +224,189 @@ test("a ready pocket, its three op forms and the transfer review all fit the pop
     await other.openPrivatePocket();
     await other.registerPrivatePocket();
 
-    // ------------------------------------------------------- ready, both balances
+    // Every stage below records what it found and the flow carries on regardless.
+    // Two pockets were registered on chain to get here and real money is about
+    // to be shielded and sent, so abandoning the last four stages because an
+    // earlier one is a known defect throws away most of what the run paid for.
+    const audit = collectFailures("private pocket");
+
+    // ------------------------------------------------------------- ready, the hero
     await expect(wallet.spendableMoney()).toHaveText(/^0\.0000000\s*XLM$/, {
       timeout: WAITS.ledgerRead,
     });
-    for (const vp of VIEWPORTS) {
-      await page.setViewportSize({ width: vp.width, height: vp.height });
-      await expectLayoutHolds(page, `private/ready @ ${vp.name}`);
-      // Both balances, and the labels that distinguish them. A spendable
-      // balance shown without the receiving one underneath is the exact
-      // confusion the two-balance layout exists to prevent, so it is not enough
-      // for the numbers to be "visible": both have to be on screen.
-      await expectReachable(
-        page.getByText("SPENDABLE", { exact: true }),
-        `private/ready @ ${vp.name}: SPENDABLE`,
-      );
-      await expectReachable(wallet.spendableMoney(), `private/ready @ ${vp.name}: spendable`);
-      await expectReachable(
-        page.getByText("RECEIVING", { exact: true }),
-        `private/ready @ ${vp.name}: RECEIVING`,
-      );
-      await expectReachable(wallet.receivingMoney(), `private/ready @ ${vp.name}: receiving`);
-    }
-
-    // ------------------------------------------------------------- the three forms
-    for (const [op, heading] of [
-      ["Move in", "Move into the private pocket"],
-      ["Move out", "Move back to the public pocket"],
-      ["Send privately", "Send privately"],
-    ] as const) {
-      await page.setViewportSize(FRAME);
-      await wallet.openOp(op);
-      await expect(page.getByText(heading, { exact: true })).toBeVisible();
-      // The transfer form is the tall one: an address field on top of the
-      // amount field, under two balances that stay on screen while it is open.
-      if (op === "Send privately") await page.getByLabel("To", { exact: true }).fill(recipient);
-      await page.getByLabel("Amount (XLM)").fill("25");
-
+    await audit.check(async () => {
       for (const vp of VIEWPORTS) {
         await page.setViewportSize({ width: vp.width, height: vp.height });
-        await expectLayoutHolds(page, `private/form ${op} @ ${vp.name}`);
+        await expectLayoutHolds(page, `private/ready @ ${vp.name}`);
+        // Measured on the rendering, not on the figure the text match finds: the
+        // exact ungrouped number lives in a visually hidden span and the thing a
+        // person reads is its parent.
         await expectReachable(
-          page.getByRole("button", { name: "Review" }),
-          `private/form ${op} @ ${vp.name}: Review`,
+          amountBox(wallet.spendableMoney()),
+          `private/ready @ ${vp.name}: spendable`,
         );
-        await expectReachable(
-          page.getByRole("button", { name: "Cancel" }),
-          `private/form ${op} @ ${vp.name}: Cancel`,
-        );
+        // And nothing is receiving, so nothing claims to be. Asserted rather than
+        // assumed: "no card" and "a card reading zero" are different statements
+        // about someone's money and only one of them is true here.
+        await expect(
+          page.getByText("Receiving", { exact: true }),
+          `private/ready @ ${vp.name}: nothing has arrived, so no receiving card`,
+        ).toHaveCount(0);
       }
+    });
+
+    // --------------------------------------------------------------- the three forms
+    //
+    // The way out differs by sheet and both are checked as the way out: the Move
+    // sheet's forms step back to its menu, and the send sheet's only way out is
+    // the sheet's own Close. A form with no way out is the same defect either
+    // way, which is why it is named rather than swept.
+    for (const [op, title, wayOut] of [
+      ["Move in", "Moving in", "Back"],
+      ["Move out", "Moving out", "Back"],
+      ["Send privately", "Send privately", "Close"],
+    ] as const) {
       await page.setViewportSize(FRAME);
-      await page.getByRole("button", { name: "Cancel" }).click();
+      if (op === "Send privately") {
+        await wallet.nav("Send privately").click();
+        await expect(page.getByLabel("To", { exact: true })).toBeVisible();
+        await page.getByLabel("To", { exact: true }).fill(recipient);
+      } else {
+        await openMoveOp(wallet, op);
+      }
+      await expect(page.getByRole("dialog", { name: title })).toBeVisible();
+      await page.getByLabel("Amount (XLM)").fill("25");
+
+      await audit.check(async () => {
+        for (const vp of VIEWPORTS) {
+          await page.setViewportSize({ width: vp.width, height: vp.height });
+          await expectLayoutHolds(page, `private/form ${op} @ ${vp.name}`);
+          await expectReachable(
+            page.getByRole("button", { name: "Review" }),
+            `private/form ${op} @ ${vp.name}: Review`,
+          );
+          await expectReachable(
+            page.getByRole("button", { name: wayOut, exact: true }),
+            `private/form ${op} @ ${vp.name}: ${wayOut}`,
+          );
+        }
+      });
+      await page.setViewportSize(FRAME);
+      await closeSheet(wallet);
     }
 
-    // ------------------------------------------------------------- shield, for real
-    await wallet.openOp("Move in");
+    // --------------------------------------------------------------- shield, for real
+    await openMoveOp(wallet, "Move in");
     await wallet.submitOp({ amount: "25" });
     await wallet.approve();
-    await expect(page.getByText(/Confirmed on the ledger/)).toBeVisible({
-      timeout: WAITS.submission,
+    await expect(wallet.receipt()).toBeVisible({ timeout: WAITS.submission });
+
+    // The receipt, in the sheet it happened in: the confirmation line, a
+    // 64-character hash and the way out, which is the busiest that sheet gets.
+    await audit.check(async () => {
+      for (const vp of VIEWPORTS) {
+        await page.setViewportSize({ width: vp.width, height: vp.height });
+        await expectLayoutHolds(page, `private/receipt @ ${vp.name}`);
+        await expectReachable(wallet.receipt(), `private/receipt @ ${vp.name}: the confirmation`);
+        await expectReachable(
+          page.getByText(/^[0-9a-f]{64}$/),
+          `private/receipt @ ${vp.name}: the transaction hash`,
+        );
+        await expectReachable(
+          page.getByRole("button", { name: "Done" }),
+          `private/receipt @ ${vp.name}: Done`,
+        );
+      }
     });
+
+    await page.setViewportSize(FRAME);
+    await page.getByRole("button", { name: "Done" }).click();
     await expect(wallet.spendableMoney()).toHaveText(/^25\.0000000\s*XLM$/, {
       timeout: WAITS.ledgerRead,
     });
 
-    // A receipt notice, a 64-character hash block and the two balances all on
-    // screen at once, which is the busiest the ready state gets.
-    for (const vp of VIEWPORTS) {
-      await page.setViewportSize({ width: vp.width, height: vp.height });
-      await expectLayoutHolds(page, `private/ready + receipt @ ${vp.name}`);
-      await expectReachable(
-        page.getByText(/^[0-9a-f]{64}$/),
-        `private/ready + receipt @ ${vp.name}: the transaction hash`,
-      );
-    }
-
-    // ------------------------------------ THE review screen: address + effects + 2
+    // ----------------------------------- THE review step: address + effects + 2
     await page.setViewportSize(FRAME);
-    await wallet.openOp("Send privately");
+    await wallet.nav("Send privately").click();
+    await expect(page.getByLabel("To", { exact: true })).toBeVisible();
     await wallet.submitOp({ to: recipient, amount: "5" });
     await expect(page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
 
-    for (const vp of VIEWPORTS) {
-      await page.setViewportSize({ width: vp.width, height: vp.height });
-      await expectLayoutHolds(page, `private/review (transfer) @ ${vp.name}`);
+    await audit.check(async () => {
+      for (const vp of VIEWPORTS) {
+        await page.setViewportSize({ width: vp.width, height: vp.height });
+        await expectLayoutHolds(page, `private/review (transfer) @ ${vp.name}`);
 
-      // The address is the reason this screen exists. It is never truncated by
-      // design, so at every viewport it must WRAP inside the frame and still
-      // read back as all 56 characters.
-      const shown = page.getByText(ADDRESS_RE).first();
-      await expectReachable(shown, `private/review (transfer) @ ${vp.name}: the address`);
-      expect(
-        (await shown.innerText()).replace(/\s/g, ""),
-        `private/review (transfer) @ ${vp.name}: all 56 characters, unclipped`,
-      ).toBe(recipient);
+        // The address is the reason this step exists. It is never truncated by
+        // design, so at every viewport it must WRAP inside the frame and still
+        // read back as all 56 characters.
+        const shown = page.getByText(ADDRESS_RE).first();
+        await expectReachable(shown, `private/review (transfer) @ ${vp.name}: the address`);
+        expect(
+          (await shown.innerText()).replace(/\s/g, ""),
+          `private/review (transfer) @ ${vp.name}: all 56 characters, unclipped`,
+        ).toBe(recipient);
 
-      const effects = page.locator("li");
-      const n = await effects.count();
-      expect(n, `private/review (transfer) @ ${vp.name}: effects stated`).toBeGreaterThan(0);
-      for (let i = 0; i < n; i++) {
+        const effects = page.locator("li");
+        const n = await effects.count();
+        expect(n, `private/review (transfer) @ ${vp.name}: effects stated`).toBeGreaterThan(0);
+        for (let i = 0; i < n; i++) {
+          await expectReachable(
+            effects.nth(i),
+            `private/review (transfer) @ ${vp.name}: effect ${i}`,
+          );
+        }
         await expectReachable(
-          effects.nth(i),
-          `private/review (transfer) @ ${vp.name}: effect ${i}`,
+          page.getByRole("button", { name: "Confirm and send" }),
+          `private/review (transfer) @ ${vp.name}: Confirm and send`,
+        );
+        await expectReachable(
+          page.getByRole("button", { name: "Back" }),
+          `private/review (transfer) @ ${vp.name}: Back`,
         );
       }
-      await expectReachable(
-        page.getByRole("button", { name: "Approve" }),
-        `private/review (transfer) @ ${vp.name}: Approve`,
-      );
-      await expectReachable(
-        page.getByRole("button", { name: "Cancel" }),
-        `private/review (transfer) @ ${vp.name}: Cancel`,
-      );
-    }
+    });
+
+    // ------------------------------------------------ the two balances, together
+    //
+    // Sent for real, because this is the only way to produce the state the
+    // two-balance layout exists for. Money that has ARRIVED is not money that
+    // can be sent until it is merged, and a spendable figure shown without the
+    // receiving one underneath it is exactly the "why can't I send my own
+    // money" that separating them prevents. So both have to be on screen at
+    // once, which is a layout property, and it is checked on the recipient
+    // because the recipient is who has both.
+    await page.setViewportSize(FRAME);
+    await page.getByRole("button", { name: "Confirm and send" }).click();
+    await expect(wallet.receipt()).toBeVisible({ timeout: WAITS.submission });
+
+    await other.reopen();
+    await other.waitForHome(WAITS.ledgerRead);
+    await other.openPrivatePocket();
+    await expect(otherPage.getByText("Receiving", { exact: true })).toBeVisible({
+      timeout: WAITS.ledgerRead,
+    });
+
+    await audit.check(async () => {
+      for (const vp of VIEWPORTS) {
+        await otherPage.setViewportSize({ width: vp.width, height: vp.height });
+        await expectLayoutHolds(otherPage, `private/receiving @ ${vp.name}`);
+        await expectReachable(
+          amountBox(other.spendableMoney()),
+          `private/receiving @ ${vp.name}: spendable`,
+        );
+        await expectReachable(
+          otherPage.getByText("Receiving", { exact: true }),
+          `private/receiving @ ${vp.name}: the Receiving label`,
+        );
+        await expectReachable(
+          amountBox(other.receivingMoney()),
+          `private/receiving @ ${vp.name}: receiving`,
+        );
+      }
+    });
+
+    audit.report();
   } finally {
     await second.close();
   }

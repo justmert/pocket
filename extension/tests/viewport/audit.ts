@@ -22,15 +22,42 @@
 //                      and only the first produces a scrollbar.
 //   reachable          after scrolling as far as the popup allows, the whole
 //                      control is inside the window and unclipped.
-//   user-scrollable    every container that had to scroll to get there is one
-//                      a person could have scrolled. `overflow: hidden` is
-//                      still scriptable, so this is the difference between
-//                      "the browser can reach it" and "the user can".
+//   user-scrollable    only the scrolls a person could have performed count.
+//                      `overflow: hidden` is still scriptable, so a container
+//                      the audit's own `scrollIntoView` moved but nobody else
+//                      can is PUT BACK before anything is measured, and named
+//                      in the failure if the control is off screen without it.
+//                      That is the difference between "the browser can reach
+//                      it" and "the user can".
 //   hittable           the topmost element at the control's own centre is the
 //                      control. Reachable but covered is still unusable.
 //
 // Every one of these has been observed red; which mutation did it, and the
 // three that could not be reddened, are recorded in _test/T8.md section 4.
+//
+// Four things the rebuilt popup added, and why each is a carve-out rather than
+// a softening. Each one exists because the check would otherwise say something
+// FALSE, and a red test that explains itself wrongly is worse than no test:
+//
+//   the modal layer     sheets are `aria-modal` dialogs over a backdrop, so the
+//                       screen behind one is inert on purpose and the backdrop
+//                       is what a press lands on. Sweeping through it would
+//                       report the modal WORKING as a covered control.
+//   the exact figure    every amount carries a visually hidden span holding the
+//                       ungrouped number for a screen reader. It is 1px wide and
+//                       clipped away by design, so measuring how far its text
+//                       runs past that 1px says nothing about anyone's screen.
+//                       Only the exact `inset(50%)` idiom is exempt, and the
+//                       rendering beside it is measured as normal.
+//   decoration          an element that is transparent AND inert AND
+//                       `aria-hidden` is not content, and content is the only
+//                       thing the horizontal checks are about. All three
+//                       together, so the fade over the bar and the dark
+//                       pocket's glow are still measured.
+//   settling            sheets slide, pages scale in, and the frame's ceiling is
+//                       measured from a resize handler rather than resolved in
+//                       CSS, so a measurement taken too early is taken somewhere
+//                       the layout will not be a frame later.
 import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
@@ -117,6 +144,40 @@ export async function forEachViewport(
   expect(failures.join("\n"), "layout failures, one per viewport").toBe("");
 }
 
+/**
+ * Collect the layout failures of a whole flow and report every one of them.
+ *
+ * `forEachViewport` does this across one matrix; this does it one level up,
+ * across the stages of a flow. Same reason, and it matters most when one stage
+ * is a known finding: a red stage throws, everything after it never runs, and
+ * assertions that only bite later sit unexercised looking verified. In a spec
+ * that registers two pockets on chain and shields real money to get where it is
+ * going, throwing away the last four stages because the second one is a known
+ * defect is throwing away most of what the run paid for.
+ *
+ * Only the CHECKS go inside `check()`. The navigation between stages stays
+ * outside it, so a stage that fails its assertions still leaves the wallet where
+ * the next stage expects to find it.
+ */
+export function collectFailures(where: string): {
+  check(fn: () => Promise<void>): Promise<void>;
+  report(): void;
+} {
+  const failures: string[] = [];
+  return {
+    async check(fn) {
+      try {
+        await fn();
+      } catch (e) {
+        failures.push(e instanceof Error ? e.message : String(e));
+      }
+    },
+    report() {
+      expect(failures.join("\n\n"), `${where}: every part that did not hold`).toBe("");
+    },
+  };
+}
+
 /** Run one screen's layout contract at every viewport in a matrix. */
 export async function atEveryViewport(
   page: Page,
@@ -129,6 +190,22 @@ export async function atEveryViewport(
     if (settle) await settle();
     await expectLayoutHolds(page, `${screen} @ ${vp.name}`);
   }
+}
+
+/**
+ * Open the erase-and-restore flow from the unlock screen.
+ *
+ * The one page-object helper this tier had to spell for itself, and it is
+ * reported rather than left as a local habit. `Wallet.openRecover()` waits for a
+ * `heading` named "Erase and restore", and the rebuilt screen sets its title
+ * through `Header`, which renders a styled div carrying no heading role, so the
+ * helper never returns. Waited on the acknowledgement button instead: it is the
+ * control the warning page exists to gate, so it cannot be present on any other
+ * screen.
+ */
+export async function openRecover(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Forgot your password?" }).click();
+  await expect(page.getByRole("button", { name: "I understand, continue" })).toBeVisible();
 }
 
 export interface Geometry {
@@ -164,6 +241,20 @@ export async function geometry(page: Page): Promise<Geometry> {
     for (const el of Array.from(document.body.querySelectorAll("*")) as HTMLElement[]) {
       const r = el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) continue;
+      // An element that is fully transparent, inert AND hidden from assistive
+      // technology is not content, and content is the only thing these two
+      // lists are about. Nothing can be lost off the edge of a box nobody can
+      // see, click or hear. All three conditions together, so the wash a pocket
+      // switch leaves behind is exempt while the fade over the bottom bar and
+      // the dark pocket's glow, which are both visible, are not.
+      const s = getComputedStyle(el);
+      if (
+        el.getAttribute("aria-hidden") === "true" &&
+        s.pointerEvents === "none" &&
+        Number(s.opacity) === 0
+      ) {
+        continue;
+      }
       // Round out sub-pixel layout: a 0.4px overhang is a rounding artefact,
       // not a control the user cannot reach.
       if (Math.round(r.right) > limit) {
@@ -173,19 +264,53 @@ export async function geometry(page: Page): Promise<Geometry> {
           right: Math.round(r.right),
         });
       }
-      const s = getComputedStyle(el);
       // An input scrolls its own value by design and a deliberate scroller is
       // not an overflow, so neither is a finding. Everything else that is wider
       // than its box is losing content off the right-hand side.
       const scrolls = s.overflowX === "auto" || s.overflowX === "scroll";
       const isField = el.tagName === "INPUT" || el.tagName === "TEXTAREA";
-      if (!scrolls && !isField && el.scrollWidth > el.clientWidth + 1) {
-        overflowingContent.push({
-          tag: el.tagName,
-          text: (el.textContent ?? "").trim().slice(0, 60),
-          scrollWidth: el.scrollWidth,
-          clientWidth: el.clientWidth,
-        });
+      // The screen-reader-only idiom: a 1px box with its content clipped away,
+      // which is what every amount uses to carry its exact ungrouped figure.
+      // Nothing about it is on screen, so nothing about it can be cut off on
+      // one. Matched on the clip itself rather than on a size, so an element
+      // that is merely small is still measured. Repeated inside MEASURE_VISIBLE,
+      // because each of these runs in the page as its own serialised function.
+      const srOnly = s.clipPath.startsWith("inset(50%") || s.clip === "rect(0px, 0px, 0px, 0px)";
+      if (!scrolls && !isField && !srOnly && el.scrollWidth > el.clientWidth + 1) {
+        // Report it only when what runs over is something a person could have
+        // read. `scrollWidth` counts every descendant, decorations included, and
+        // this popup mounts one that is deliberately bigger than the frame: the
+        // pocket switch leaves a `scale(1.8)` wash behind it. Saying that the
+        // frame's CONTENT is "cut off with no way to scroll to it" because of
+        // that overlay would be a false sentence, and a red test that explains
+        // itself wrongly is worse than no test.
+        //
+        // Text overflow puts no element past the edge at all, so a box that
+        // spills only its own words has an empty list here and is still
+        // reported. That is the memo case and the long-heading case, which are
+        // the two this check exists for.
+        const edge = r.left + el.clientLeft + el.clientWidth;
+        const past = (Array.from(el.querySelectorAll("*")) as HTMLElement[]).filter(
+          (d) => d.getBoundingClientRect().right > edge + 1,
+        );
+        const decoration =
+          past.length > 0 &&
+          past.every((d) => {
+            const ds = getComputedStyle(d);
+            return (
+              d.getAttribute("aria-hidden") === "true" &&
+              ds.pointerEvents === "none" &&
+              Number(ds.opacity) === 0
+            );
+          });
+        if (!decoration) {
+          overflowingContent.push({
+            tag: el.tagName,
+            text: (el.textContent ?? "").trim().slice(0, 60),
+            scrollWidth: el.scrollWidth,
+            clientWidth: el.clientWidth,
+          });
+        }
       }
     }
     return {
@@ -203,6 +328,74 @@ export async function geometry(page: Page): Promise<Geometry> {
 }
 
 /**
+ * Let the popup's entrance motion finish before anything is measured.
+ *
+ * Sheets slide up, pages settle in, rows stagger and the pocket switch washes a
+ * scaled overlay across the whole frame. Every one of those is a TRANSFORM, and
+ * a transformed box counts towards its scroller's overflow, so a frame that is
+ * `overflow: hidden` and perfectly full becomes momentarily scrollable while a
+ * sheet is still on its way up. Measured mid-slide, the audit duly reports a
+ * button in that sheet as "only reached by scrolling a container the user cannot
+ * scroll" -- a true statement about a frame 160px into an animation and nothing
+ * at all about the layout.
+ *
+ * Only FINITE animations are waited on. The spinner, the skeleton shimmer and
+ * the progress pulse run forever on purpose, and an audit that waited for those
+ * would simply hang. Anything still overflowing once the finite ones are done is
+ * a real finding and is reported as one.
+ */
+export async function settle(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => Number.isFinite(a.effect?.getTiming().iterations ?? 1))
+        // A cancelled animation rejects, and an element that left the page
+        // mid-motion is not something to fail a layout audit over.
+        .map((a) => a.finished.catch(() => undefined)),
+    );
+
+    // And then wait for the layout itself to stop moving.
+    //
+    // A resize is not the end of the story in this popup. The frame's ceiling
+    // is MEASURED from `window.innerHeight` in a resize handler, so it lands one
+    // render after the window changes, and in that gap the frame is still its
+    // old height, the document is briefly scrollable, and a control measured
+    // there is measured somewhere it will not be a frame later. That produced a
+    // control reported as reachable and then, one evaluate afterwards, as
+    // hitting nothing: the re-render had clamped the scroll out from under it.
+    //
+    // Two identical frames in a row, on a bounded number of ticks, with a timer
+    // racing each one so a page that is not painting can never hang this.
+    const tick = () =>
+      new Promise<void>((r) => {
+        requestAnimationFrame(() => r());
+        setTimeout(r, 50);
+      });
+    const snapshot = () => {
+      const se = document.scrollingElement as HTMLElement;
+      const frame = document.querySelector("#root > div") as HTMLElement | null;
+      const box = frame ? frame.getBoundingClientRect() : null;
+      return [
+        se.scrollWidth,
+        se.scrollHeight,
+        se.clientWidth,
+        se.clientHeight,
+        box ? Math.round(box.width) : 0,
+        box ? Math.round(box.height) : 0,
+      ].join(",");
+    };
+    let previous = snapshot();
+    for (let i = 0; i < 30; i++) {
+      await tick();
+      const now = snapshot();
+      if (now === previous) return;
+      previous = now;
+    }
+  });
+}
+
+/**
  * No horizontal scrolling, nothing hanging off the right edge, and no text cut
  * off inside a box that fits.
  *
@@ -214,20 +407,27 @@ export async function geometry(page: Page): Promise<Geometry> {
  *   content wider than its own box     clipped with the geometry still tidy
  */
 export async function expectNoHorizontalScroll(page: Page, where: string): Promise<void> {
+  await settle(page);
   const g = await geometry(page);
   expect(
     g.document.scrollWidth,
     `${where}: the document is ${g.document.scrollWidth}px wide in a ${g.document.clientWidth}px window, so it scrolls sideways`,
   ).toBeLessThanOrEqual(g.document.clientWidth);
+  // Both lists are spelled into the MESSAGE as well as compared, because the
+  // message is the only part `forEachViewport` keeps: it holds one line per
+  // viewport so a finding can say how much worse it gets, and a line reading
+  // "content too wide for its box" with the box unnamed is not a report.
+  const spilling = g.spillingRight.map((s) => `${s.tag} right=${s.right} "${s.text}"`);
   expect(
-    g.spillingRight.map((s) => `${s.tag} right=${s.right} "${s.text}"`),
-    `${where}: content past the right edge of a ${g.document.clientWidth}px window`,
+    spilling,
+    `${where}: content past the right edge of a ${g.document.clientWidth}px window: ${spilling.join(" | ")}`,
   ).toEqual([]);
+  const overflowing = g.overflowingContent.map(
+    (s) => `${s.tag} needs ${s.scrollWidth}px, has ${s.clientWidth}px "${s.text}"`,
+  );
   expect(
-    g.overflowingContent.map(
-      (s) => `${s.tag} needs ${s.scrollWidth}px, has ${s.clientWidth}px "${s.text}"`,
-    ),
-    `${where}: content too wide for the box it was given, so it is cut off with no way to scroll to it`,
+    overflowing,
+    `${where}: content too wide for the box it was given, so it is cut off with no way to scroll to it: ${overflowing.join(" | ")}`,
   ).toEqual([]);
 }
 
@@ -260,8 +460,24 @@ const MEASURE_VISIBLE = (el: Element) => {
   // column into `overflow: hidden` and fourteen tests stayed green because of
   // exactly this.
   //
-  // So: scroll, then look at WHICH containers moved, and refuse any scroll the
-  // user could not have performed.
+  // So: scroll, then PUT BACK every container the user could not have scrolled,
+  // and measure where the element sits with only the scrolls a person could
+  // have performed still applied.
+  //
+  // Putting it back rather than failing on the movement itself is the fix for a
+  // false positive that arrived with the rebuilt popup. `scrollIntoView` centres
+  // its target, so it moves any ancestor with slack whether or not the element
+  // needed it, and this frame now has slack it never asked for: the pocket
+  // switch leaves a `scale(1.8)` wash mounted, which gives an `overflow: hidden`
+  // 600px frame a 994px scroll height. A control sitting perfectly on screen was
+  // therefore reported as unreachable because the audit's own scroll shifted the
+  // frame under it. Restoring the offset asks the honest question instead: with
+  // the frame back where the user's copy of it is, is the control on screen?
+  //
+  // Nothing is softened. Mutation S1's `overflow: hidden` column still reddens,
+  // because a control below the fold is still below the fold once the scroll is
+  // undone, and `forced` rides along into the failure message so the report
+  // still names the container that stands in the way.
   const watched: [Element, number, number][] = [];
   for (let p = el.parentElement; p; p = p.parentElement) {
     watched.push([p, p.scrollTop, p.scrollLeft]);
@@ -278,13 +494,15 @@ const MEASURE_VISIBLE = (el: Element) => {
     const blocked = (axis: string) => axis === "hidden" || axis === "clip";
     if (p.scrollTop !== top && blocked(s.overflowY) && !(isRoot && !blocked(s.overflowY))) {
       forced.push(
-        `${p.tagName} scrolled ${p.scrollTop - top}px vertically with overflow-y: ${s.overflowY}`,
+        `${p.tagName} would have to scroll ${p.scrollTop - top}px vertically and its overflow-y is ${s.overflowY}`,
       );
+      p.scrollTop = top;
     }
     if (p.scrollLeft !== left && blocked(s.overflowX)) {
       forced.push(
-        `${p.tagName} scrolled ${p.scrollLeft - left}px horizontally with overflow-x: ${s.overflowX}`,
+        `${p.tagName} would have to scroll ${p.scrollLeft - left}px horizontally and its overflow-x is ${s.overflowX}`,
       );
+      p.scrollLeft = left;
     }
   }
 
@@ -318,7 +536,12 @@ const MEASURE_VISIBLE = (el: Element) => {
   const style = getComputedStyle(el);
   const ownScroller = style.overflowX === "auto" || style.overflowX === "scroll";
   const isField = el.tagName === "INPUT" || el.tagName === "TEXTAREA";
-  const spilled = ownScroller || isField ? 0 : Math.max(0, el.scrollWidth - el.clientWidth);
+  // And the screen-reader-only idiom, for the reason `geometry` gives: a box
+  // clipped to nothing on purpose loses nothing a person could have read.
+  const srOnly =
+    style.clipPath.startsWith("inset(50%") || style.clip === "rect(0px, 0px, 0px, 0px)";
+  const spilled =
+    ownScroller || isField || srOnly ? 0 : Math.max(0, el.scrollWidth - el.clientWidth);
 
   return {
     full: { width: full.width, height: full.height, top: full.top, bottom: full.bottom },
@@ -345,19 +568,22 @@ const SLIVER = 1;
  */
 export async function expectReachable(control: Locator, name: string): Promise<void> {
   await expect(control, `${name}: not attached`).toBeAttached();
+  await settle(control.page());
   const m = await control.evaluate(MEASURE_VISIBLE);
 
-  expect(
-    m.forced,
-    `${name}: only reached by scrolling a container the user cannot scroll, so on screen it is simply not there`,
-  ).toEqual([]);
+  // Named when there was one, because "it is off screen" and "it is off screen
+  // and the only thing that could have brought it back is a container nobody
+  // can scroll" are the same pixels and very different bugs.
+  const blocking = m.forced.length
+    ? `, and it can only be reached by a scroll the user cannot perform (${m.forced.join("; ")})`
+    : "";
   expect(
     m.hiddenY,
-    `${name}: ${m.hiddenY.toFixed(1)}px of its ${m.full.height.toFixed(0)}px height is off screen or clipped, after scrolling as far as the popup allows (box ${m.full.top.toFixed(0)}..${m.full.bottom.toFixed(0)} in a ${m.viewport.height}px window)`,
+    `${name}: ${m.hiddenY.toFixed(1)}px of its ${m.full.height.toFixed(0)}px height is off screen or clipped, after scrolling as far as the popup allows (box ${m.full.top.toFixed(0)}..${m.full.bottom.toFixed(0)} in a ${m.viewport.height}px window)${blocking}`,
   ).toBeLessThanOrEqual(SLIVER);
   expect(
     m.hiddenX,
-    `${name}: ${m.hiddenX.toFixed(1)}px of its ${m.full.width.toFixed(0)}px width is off screen or clipped, in a ${m.viewport.width}px window`,
+    `${name}: ${m.hiddenX.toFixed(1)}px of its ${m.full.width.toFixed(0)}px width is off screen or clipped, in a ${m.viewport.width}px window${blocking}`,
   ).toBeLessThanOrEqual(SLIVER);
 
   expect(
@@ -374,9 +600,52 @@ export async function expectReachable(control: Locator, name: string): Promise<v
       ok: !!top && (top === el || el.contains(top) || top.contains(el)),
       at: top ? `${top.tagName}.${(top as HTMLElement).className}` : "nothing",
       point: { x: Math.round(x), y: Math.round(y) },
+      box: `${Math.round(r.width)}x${Math.round(r.height)} at ${Math.round(r.left)},${Math.round(r.top)}`,
     };
   });
-  expect(hit.ok, `${name}: its own centre ${JSON.stringify(hit.point)} hits ${hit.at}`).toBe(true);
+  expect(
+    hit.ok,
+    `${name}: its own centre ${JSON.stringify(hit.point)} hits ${hit.at} (its box is ${hit.box})`,
+  ).toBe(true);
+}
+
+/**
+ * The layer a press can actually land on.
+ *
+ * The popup reaches Receive, Send, Move and every settings action through
+ * `aria-modal` sheets. While one is up, the screen underneath is inert by
+ * design and the sheet's backdrop is the topmost thing at any control behind
+ * it, so sweeping the whole document would report a working modal as a screenful
+ * of covered buttons. The sweep is therefore scoped to the frontmost live
+ * dialog, and to the page when there is none.
+ *
+ * "Live" rather than "present": a sheet stays mounted through its exit
+ * animation, and that copy is `pointer-events: none` precisely because it no
+ * longer takes a press. Read off the computed style rather than off the class
+ * that sets it, so a renamed animation cannot silently pick the wrong layer.
+ */
+async function activeLayer(page: Page): Promise<Locator> {
+  const dialogs = page.locator("[role='dialog']");
+  for (let i = (await dialogs.count()) - 1; i >= 0; i--) {
+    const live = await dialogs
+      .nth(i)
+      .evaluate((el) => getComputedStyle(el).pointerEvents !== "none");
+    if (live) return dialogs.nth(i);
+  }
+  return page.locator("body");
+}
+
+/**
+ * The box a reader of an amount actually sees.
+ *
+ * `Wallet.money()` matches the visually hidden span carrying the exact ungrouped
+ * figure, which is the only place that form of the number exists and so the only
+ * thing a text match can find. That span is 1x1 and clipped away, so it is the
+ * wrong thing to measure: what is on screen is its parent, which holds the
+ * grouped whole, the fraction and the code.
+ */
+export function amountBox(money: Locator): Locator {
+  return money.locator("xpath=..");
 }
 
 /**
@@ -387,7 +656,8 @@ export async function expectReachable(control: Locator, name: string): Promise<v
  * the most likely way to get there.
  */
 export async function expectEveryControlReachable(page: Page, where: string): Promise<string[]> {
-  const controls = page.locator("button:visible, a:visible, input:visible, textarea:visible");
+  const layer = await activeLayer(page);
+  const controls = layer.locator("button:visible, a:visible, input:visible, textarea:visible");
   const n = await controls.count();
   const names: string[] = [];
   for (let i = 0; i < n; i++) {

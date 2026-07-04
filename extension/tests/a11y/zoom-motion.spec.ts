@@ -11,16 +11,38 @@ import { hang, RPC_HOST } from "../support/stub";
 
 const PASSWORD = "a-strong-test-password";
 
+/**
+ * Every button on screen that is smaller than the minimum target, named.
+ *
+ * Named by `aria-label` first: the bar, the header and every close control are
+ * icon-only, so `innerText` is empty for exactly the controls most likely to be
+ * too small, and a report of `(unnamed) 17x17` is one nobody can act on.
+ */
+async function undersizedControls(page: import("@playwright/test").Page): Promise<string[]> {
+  const small: string[] = [];
+  for (const b of await page.getByRole("button").all()) {
+    const box = await b.boundingBox();
+    if (!box) continue;
+    if (box.width >= MIN_TARGET_PX && box.height >= MIN_TARGET_PX) continue;
+    const name =
+      (await b.getAttribute("aria-label")) || (await b.innerText()).trim() || "(unnamed)";
+    small.push(`"${name}" ${Math.round(box.width)}x${Math.round(box.height)}`);
+  }
+  return small;
+}
+
 test.describe("reduced motion", () => {
   test("transitions stop but the spinner keeps turning, slower", async ({ harness, wallet }) => {
     await wallet.page.emulateMedia({ reducedMotion: "reduce" });
     await wallet.createWallet(PASSWORD);
 
-    // Hold the ledger read open so there is a spinner to measure.
+    // Hold the ledger read open so there is a spinner to measure. The refresh
+    // control spins for as long as the read is outstanding, which is the one
+    // spinner reachable on the home screen.
     await hang(harness.context, RPC_HOST);
     await wallet.reopen();
-    const spinner = wallet.page.locator(".pocket-spinner");
-    await expect(spinner).toBeVisible();
+    const spinner = wallet.page.locator(".pocket-spinner").first();
+    await expect(spinner).toBeVisible({ timeout: WAITS.ledgerRead });
 
     const anim = await computed(spinner, ["animation-duration", "animation-name"]);
     // NOT 0.001ms. A frozen spinner is indistinguishable from a hung wallet,
@@ -30,7 +52,7 @@ test.describe("reduced motion", () => {
     expect(px(anim, "animation-duration")).toBeLessThan(5);
 
     // Everything else really does stop.
-    const button = await computed(wallet.page.getByRole("button", { name: "Lock" }), [
+    const button = await computed(wallet.page.getByRole("button", { name: "Lock wallet" }), [
       "transition-duration",
     ]);
     expect(px(button, "transition-duration")).toBeLessThan(0.01);
@@ -43,8 +65,8 @@ test.describe("reduced motion", () => {
     await wallet.createWallet(PASSWORD);
     await hang(harness.context, RPC_HOST);
     await wallet.reopen();
-    const spinner = wallet.page.locator(".pocket-spinner");
-    await expect(spinner).toBeVisible();
+    const spinner = wallet.page.locator(".pocket-spinner").first();
+    await expect(spinner).toBeVisible({ timeout: WAITS.ledgerRead });
 
     const angle = async () => (await computed(spinner, ["transform"])).transform;
     const first = await angle();
@@ -58,15 +80,18 @@ test.describe("reduced motion", () => {
     await wallet.createWallet(PASSWORD);
     await hang(harness.context, RPC_HOST);
     await wallet.reopen();
-    const spinner = wallet.page.locator(".pocket-spinner");
-    await expect(spinner).toBeVisible();
+    const spinner = wallet.page.locator(".pocket-spinner").first();
+    await expect(spinner).toBeVisible({ timeout: WAITS.ledgerRead });
 
     const anim = await computed(spinner, ["animation-duration"]);
     expect(px(anim, "animation-duration")).toBeCloseTo(0.7, 2);
-    const button = await computed(wallet.page.getByRole("button", { name: "Lock" }), [
+    // 140ms, from the press transition `style.css` puts on the element
+    // selector so that every button answers a press, not only the ones built
+    // out of the Button primitive.
+    const button = await computed(wallet.page.getByRole("button", { name: "Lock wallet" }), [
       "transition-duration",
     ]);
-    expect(px(button, "transition-duration")).toBeCloseTo(0.09, 2);
+    expect(px(button, "transition-duration")).toBeCloseTo(0.14, 2);
   });
 });
 
@@ -86,9 +111,8 @@ test.describe("zoom", () => {
     await wallet.reopen();
     await wallet.waitForHome(WAITS.ledgerRead);
 
-    // FAILING: finding 5 in `_test/T6-T7.md`. WCAG 1.4.4 asks for 200% without
-    // loss of content. The frame is `overflow: hidden`, so what does not fit is
-    // not scrolled to, it is gone.
+    // WCAG 1.4.4 asks for 200% without loss of content. The frame is
+    // `overflow: hidden`, so what does not fit is not scrolled to, it is gone.
     const overflow = await horizontalOverflow(wallet.page);
     expect(
       overflow,
@@ -98,8 +122,8 @@ test.describe("zoom", () => {
 
     // Vertically it is allowed to scroll, but every action must still be
     // reachable by scrolling the content column.
-    for (const name of ["Send", "Receive"]) {
-      const control = wallet.page.getByRole("button", { name, exact: true });
+    for (const name of ["Send", "Receive"] as const) {
+      const control = wallet.nav(name);
       await control.scrollIntoViewIfNeeded();
       await expect(control).toBeInViewport();
     }
@@ -112,8 +136,11 @@ test.describe("zoom", () => {
     await wallet.waitForHome(WAITS.ledgerRead);
     await wallet.openSend();
 
-    for (const label of ["Recipient", "Amount (XLM)", "Memo (optional)"]) {
-      const field = wallet.page.getByLabel(label);
+    // Scoped to the sheet: the home screen stays mounted behind it, and an
+    // unscoped `getByLabel` would happily resolve against something underneath.
+    const sheet = wallet.page.getByRole("dialog", { name: "Send" });
+    for (const label of ["To", "Amount (XLM)", "Memo (optional)"]) {
+      const field = sheet.getByLabel(label, { exact: true });
       await field.scrollIntoViewIfNeeded();
       await expect(field).toBeInViewport();
     }
@@ -125,15 +152,12 @@ test("every control on every reachable screen meets the minimum target size", as
   wallet,
 }) => {
   test.setTimeout(4 * 60_000);
-  const small: string[] = [];
+  const small = new Map<string, string>();
   const check = async (where: string) => {
-    for (const b of await wallet.page.getByRole("button").all()) {
-      const box = await b.boundingBox();
-      if (!box) continue;
-      if (box.width < MIN_TARGET_PX || box.height < MIN_TARGET_PX) {
-        const name = (await b.innerText()).trim() || "(unnamed)";
-        small.push(`${where}: "${name}" ${Math.round(box.width)}x${Math.round(box.height)}`);
-      }
+    for (const control of await undersizedControls(wallet.page)) {
+      // Keyed on the control, so a button that appears on four screens is one
+      // finding rather than four lines of the same thing.
+      if (!small.has(control)) small.set(control, `${where}: ${control}`);
     }
   };
 
@@ -142,15 +166,30 @@ test("every control on every reachable screen meets the minimum target size", as
   await wallet.createWallet(PASSWORD);
   await wallet.waitForHome(WAITS.ledgerRead);
   await check("home");
+  await wallet.nav("Settings").click();
+  await expect(wallet.page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await check("settings");
+  await wallet.nav("Home").click();
   await wallet.openSend();
-  await check("send");
-  await wallet.page.getByRole("button", { name: "Close" }).click();
+  await check("send sheet");
+  await wallet.page.keyboard.press("Escape");
+  await wallet.nav("Receive").click();
+  await expect(wallet.page.getByRole("dialog", { name: "Receive" })).toBeVisible();
+  await check("receive sheet");
+  await wallet.page.keyboard.press("Escape");
+  await wallet.nav("Home").click();
   await wallet.lock();
   await check("unlock");
-  await wallet.openRecover();
+  // Not `Wallet.openRecover`: it waits for a heading the recover screen does
+  // not have, which is reported as its own finding in `semantics.spec.ts`.
+  await wallet.page.getByRole("button", { name: "Forgot your password?" }).click();
+  await expect(wallet.page.getByText("This erases the wallet on this device.")).toBeVisible();
   await check("recover");
 
-  // WCAG 2.2 SC 2.5.8 asks for 24x24 CSS px. The header's text buttons are the
-  // ones at risk: they are 12px captions with a 6px pad.
-  expect(small, `controls under ${MIN_TARGET_PX}px:\n  ${small.join("\n  ")}`).toEqual([]);
+  // WCAG 2.2 SC 2.5.8 asks for 24x24 CSS px. The icon-only controls are the
+  // ones at risk: they carry no text to give them height.
+  expect(
+    [...small.values()],
+    `controls under ${MIN_TARGET_PX}px:\n  ${[...small.values()].join("\n  ")}`,
+  ).toEqual([]);
 });

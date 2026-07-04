@@ -10,7 +10,13 @@
 // `narrow.spec.ts`, which is where they turned into findings.
 import { test, expect } from "../support/fixtures";
 import { WAITS } from "../support/wallet";
-import { expectLayoutHolds, expectReachable, FRAME, REQUIRED_VIEWPORTS } from "./audit";
+import {
+  expectLayoutHolds,
+  expectReachable,
+  openRecover,
+  FRAME,
+  REQUIRED_VIEWPORTS,
+} from "./audit";
 
 const PASSWORD = "a-strong-test-password";
 
@@ -77,6 +83,24 @@ test("the create form stays reachable with both of its rules on screen", async (
   });
 });
 
+/**
+ * FINDING. Red at 360x600, the brief's floor, and left red.
+ *
+ * The word grid is `repeat(auto-fit, minmax(88px, 1fr))` with a 6px gap. At
+ * 384px of frame that resolves to three tracks of about 103px and at 360px to
+ * three of about 95px. A cell is a flex row of an unselectable ordinal and the
+ * word, in 14px monospace with no `overflow-wrap`, so a two-digit ordinal plus
+ * an eight-letter word needs about 98px. At 384 it fits. At 360 it does not,
+ * and the frame clips what hangs over: measured, 3px of the last glyph of
+ * "10.dinosaur" simply gone.
+ *
+ * WHICH words is luck, and that is the worst part of it rather than a reason to
+ * discount it. The phrase is random, so this screen is legible for one user and
+ * shaved for the next, and the same run of this test is green or red depending
+ * on the phrase the wallet just generated. It is the one screen shown ONCE, the
+ * words on it are the only way back into the wallet, and a character lost here
+ * is not discovered until the day it is needed.
+ */
 test("all 24 backup words and both buttons are reachable at every viewport", async ({ wallet }) => {
   const page = wallet.page;
   await expect(wallet.splash()).toBeVisible({ timeout: WAITS.onboarding });
@@ -134,10 +158,11 @@ test("the unlock screen keeps its field and both ways forward reachable", async 
   await page.setViewportSize(FRAME);
   await page.getByLabel("Password", { exact: true }).fill("not-the-password");
   await page.getByRole("button", { name: "Unlock" }).click();
-  const error = page
-    .locator("div")
-    .filter({ hasText: /password/i })
-    .last();
+  // The refusal is the screen's one `role="alert"`. Located that way rather
+  // than by hunting a div containing the word "password": the screen also
+  // carries a password field and a "Forgot your password?" button, so that
+  // hunt could land on either and pass while the error was nowhere on screen.
+  const error = page.getByRole("alert");
   await expect(error).toBeVisible();
   await atEveryViewport(page, "unlock (wrong password)", async () => {
     await expect(page.getByRole("button", { name: "Unlock" })).toBeAttached();
@@ -150,7 +175,7 @@ test("the erase warning page and its form both keep their buttons reachable", as
   const page = wallet.page;
   await wallet.createWallet(PASSWORD);
   await wallet.lock();
-  await wallet.openRecover();
+  await openRecover(page);
 
   // The warning page: three bullets, two notices, two buttons. The most copy
   // the wallet shows before it has any money in it.

@@ -141,18 +141,26 @@ function Shell() {
       {/* the pocket switch. keyed on the flip count so it replays every time,
           and it rides over the frame's own background crossfade. */}
       {w.pocketFlip > 0 && (
+        // the wash scales past the frame on purpose, and a transformed
+        // descendant counts toward its ancestor's scrollable area. without this
+        // clip the frame itself became scrollable, and the first thing that
+        // scrolled an input into view took the bottom bar and the open sheet off
+        // screen with it.
         <div
-          key={w.pocketFlip}
           aria-hidden
-          className="pocket-wash"
-          style={{
-            position: "absolute",
-            inset: 0,
-            zIndex: 70,
-            pointerEvents: "none",
-            background: `radial-gradient(circle at 50% 18%, ${t.accent}55, transparent 58%)`,
-          }}
-        />
+          style={{ position: "absolute", inset: 0, overflow: "hidden", zIndex: 70, pointerEvents: "none" }}
+        >
+          <div
+            key={w.pocketFlip}
+            aria-hidden
+            className="pocket-wash"
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: `radial-gradient(circle at 50% 18%, ${t.accent}55, transparent 58%)`,
+            }}
+          />
+        </div>
       )}
     </Frame>
   );

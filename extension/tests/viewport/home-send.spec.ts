@@ -1,10 +1,16 @@
 // Home and Send, with real money on a real ledger, at the popup ceiling.
 //
-// Send's confirm screen is the second-most content the wallet ever shows at
-// once: a full untruncated 56-character address, an amount, a memo block, a
-// list of effects and two buttons. Confirm is also the screen where a control
-// out of reach is worst, because the two buttons are "Confirm and send" and
-// "Back" and the user has already decided.
+// Send's confirm step is the second-most content the wallet ever shows at once:
+// a full untruncated 56-character address, an amount, a memo block, a list of
+// effects and two buttons. Confirm is also the place where a control out of
+// reach is worst, because the two buttons are "Confirm and send" and "Back" and
+// the user has already decided.
+//
+// Send and Receive are now the bottom bar's, and what they open is a sheet over
+// the home screen rather than a screen that replaces it. The bar floats, so the
+// thing this file is really watching for is a control that ends up UNDER it:
+// screens reserve `NAV_SPACE` at their foot, and a control the bar covers fails
+// the hit test rather than being quietly tolerated.
 import { test, expect } from "../support/fixtures";
 import { ADDRESS_RE, WAITS } from "../support/wallet";
 import { fund } from "../support/testnet";
@@ -34,7 +40,7 @@ async function atEveryViewport(
   }
 }
 
-test("a funded home keeps both actions, the reserve line and the private section on screen", async ({
+test("a funded home keeps both actions, the reserve line and both pockets on screen", async ({
   wallet,
 }) => {
   const page = wallet.page;
@@ -45,27 +51,31 @@ test("a funded home keeps both actions, the reserve line and the private section
   await wallet.reopen();
   await wallet.waitForHome();
 
-  // The loaded home: hero balance, the reserve caption, Send and Receive, and
-  // the private pocket section underneath it.
+  // The loaded home: hero balance, the reserve caption, the bar's Send and
+  // Receive, and the two pocket tabs. The tabs are what replaced the private
+  // section: choosing one is what shows the private pocket now, so a tab off
+  // screen is a private pocket with no way in.
   await expect(page.getByText(/locked by the network as a reserve/)).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
-  await expect(page.getByText("PRIVATE POCKET", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Private pocket" })).toBeVisible();
 
   await atEveryViewport(page, "home/loaded", async () => {
-    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeAttached();
+    await expect(wallet.nav("Send")).toBeAttached();
+    await expect(wallet.nav("Receive")).toBeAttached();
   });
 
-  // With the receive address expanded, which is the tallest the home screen
-  // gets: a 56-character address block pushes the private pocket section down.
+  // With the receive sheet up, which is the most the wallet shows over the home
+  // screen at once: a QR, a 56-character address block and two ways to copy it,
+  // in a sheet that is capped at the frame and has to scroll inside it.
   await page.setViewportSize(FRAME);
-  await page.getByRole("button", { name: "Receive" }).click();
-  await expect(page.getByText("Your address")).toBeVisible();
+  await wallet.nav("Receive").click();
+  await expect(page.getByRole("dialog", { name: "Receive" })).toBeVisible();
 
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
     await expectLayoutHolds(page, `home/loaded + receive @ ${vp.name}`);
-    // The address is the point of the screen. Truncating it is not an option
+    // The address is the point of the sheet. Truncating it is not an option
     // here by design, so it has to WRAP inside the frame rather than run past
     // it, and every character has to be legible.
     const block = page.getByText(ADDRESS_RE).first();
@@ -77,7 +87,7 @@ test("a funded home keeps both actions, the reserve line and the private section
   }
 });
 
-test("the confirm screen shows a full address, the longest memo and both buttons, all reachable", async ({
+test("the confirm step shows a full address, the longest memo and both buttons, all reachable", async ({
   wallet,
 }) => {
   const page = wallet.page;
@@ -89,14 +99,16 @@ test("the confirm screen shows a full address, the longest memo and both buttons
 
   await wallet.openSend();
   await atEveryViewport(page, "send/compose", async () => {
-    await expect(page.getByLabel("Recipient")).toBeAttached();
+    await expect(page.getByLabel("To", { exact: true })).toBeAttached();
   });
 
   await page.setViewportSize(FRAME);
   // Paying itself: a real, valid, funded 56-character destination, without a
   // second browser and without moving money anywhere it cannot be checked.
   await wallet.composePayment({ to: address, amount: "1.5", memo: LONGEST_MEMO });
-  await expect(page.getByText("Sending to")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await expect(page.getByText("Sending", { exact: true })).toBeVisible({
+    timeout: WAITS.ledgerRead,
+  });
 
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
@@ -141,24 +153,37 @@ test("the submitting wait stays on screen at every viewport", async ({ wallet, h
   await wallet.waitForHome();
   await wallet.openSend();
   await wallet.composePayment({ to: address, amount: "1.5" });
-  await expect(page.getByText("Sending to")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await expect(page.getByText("Sending", { exact: true })).toBeVisible({
+    timeout: WAITS.ledgerRead,
+  });
 
   // Held open at the network boundary rather than raced against a real
   // submission: the request is never dispatched, so nothing is signed onto the
   // ledger and the screen sits in the state under test for as long as needed.
   await hang(harness.context, RPC_HOST);
   await page.getByRole("button", { name: "Confirm and send" }).click();
-  await expect(page.getByText("Submitting and waiting for the ledger…")).toBeVisible();
+
+  // One sentence became four named steps and the worker's own phase text. All
+  // four names have to stay on screen, not just whichever one is lit: the point
+  // of naming them is that a user can see how much is left, and a step scrolled
+  // out of the frame takes that away.
+  const progress = page.getByRole("status").filter({ hasText: "Prepare" });
+  await expect(progress).toBeVisible();
 
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
-    const label = page.getByText("Submitting and waiting for the ledger…");
-    await expectReachable(label, `send/sending @ ${vp.name}: the wait label`);
+    await expectReachable(progress, `send/sending @ ${vp.name}: the progress`);
+    for (const step of ["Prepare", "Prove", "Submit", "Confirm"]) {
+      await expectReachable(
+        progress.getByText(step, { exact: true }),
+        `send/sending @ ${vp.name}: the ${step} step`,
+      );
+    }
     await expectLayoutHolds(page, `send/sending @ ${vp.name}`);
   }
 });
 
-test("home reports a loading wait and an honest error inside the frame", async ({
+test("home reports an unread balance and an honest error inside the frame", async ({
   wallet,
   harness,
 }) => {
@@ -172,19 +197,21 @@ test("home reports a loading wait and an honest error inside the frame", async (
   await hang(harness.context, RPC_HOST);
   await wallet.reopen();
   await wallet.waitForHome();
-  await expect(page.getByText("Reading the ledger…")).toBeVisible();
+
+  // The sentence that used to say the wallet was reading is gone; a shimmer
+  // stands in its place and it carries no words to find it by. What is worth
+  // asserting is what the sentence was really promising: while the read is
+  // outstanding, the screen holds its shape and NO figure is shown. A zero here
+  // would be a number the user could act on, and it would be the wrong one.
+  await expect(wallet.money(), "no balance may be invented while the read is open").toHaveCount(0);
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
-    await expectReachable(
-      page.getByText("Reading the ledger…"),
-      `home/loading @ ${vp.name}: the wait label`,
-    );
     await expectLayoutHolds(page, `home/loading @ ${vp.name}`);
   }
 
   // Error: refused outright, so the wallet reports what happened instead of a
-  // fabricated zero. That notice is multi-line and it is what pushes the two
-  // buttons down the screen.
+  // fabricated zero. That notice is multi-line and it is what pushes the hero
+  // and everything under it down the screen.
   await offline(harness.context, RPC_HOST);
   await page.setViewportSize(FRAME);
   await wallet.reopen();
@@ -196,9 +223,6 @@ test("home reports a loading wait and an honest error inside the frame", async (
     await page.setViewportSize({ width: vp.width, height: vp.height });
     await expectLayoutHolds(page, `home/error @ ${vp.name}`);
     await expectReachable(notice, `home/error @ ${vp.name}: the error notice`);
-    await expectReachable(
-      page.getByRole("button", { name: "Send", exact: true }),
-      `home/error @ ${vp.name}: Send`,
-    );
+    await expectReachable(wallet.nav("Send"), `home/error @ ${vp.name}: Send`);
   }
 });
