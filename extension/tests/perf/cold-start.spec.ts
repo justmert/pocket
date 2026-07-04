@@ -140,7 +140,7 @@ test("a slow ledger does not hold up the screen it is going to land on", async (
     timeout: WAITS.ledgerRead,
   });
   // Feedback while it waits, not a blank space and not a fabricated zero.
-  await expect(wallet.page.getByText("Reading the ledger…")).toBeVisible();
+  await expect(wallet.page.getByText("Reading the ledger")).toBeVisible();
   await expect(wallet.money()).toHaveCount(0);
 
   const early = await read(wallet.page);

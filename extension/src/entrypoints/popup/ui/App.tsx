@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { WalletProvider, useWallet } from "./WalletProvider";
 import { Button, ButtonStack, Frame, Notice, Spinner, Toast } from "./primitives";
-import { Brand } from "./Brand";
+import { BrandRow } from "./Brand";
 import { BottomNav } from "./BottomNav";
 import { Home } from "./screens/Home";
 import { Settings } from "./screens/Settings";
@@ -44,7 +44,7 @@ function Root() {
             background: t.canvas,
           }}
         >
-          <Brand t={t} size={64} />
+          <BrandRow t={t} size={56} />
           {w.bootError ? (
             <div style={{ marginTop: space.lg, width: "100%" }}>
               <Notice t={t} tone="danger">

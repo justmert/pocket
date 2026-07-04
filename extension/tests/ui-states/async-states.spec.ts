@@ -10,7 +10,7 @@
 // wrong.
 //
 // The rebuild changed how "loading" LOOKS but not what it must promise. There
-// is no "Reading the ledger…" sentence any more; a value that has not arrived
+// is no "Reading the ledger" sentence any more; a value that has not arrived
 // is a shimmer, with the same fact spelled out for a screen reader beside it.
 // A shimmer is still not a number, which is the whole point.
 import { test, expect } from "../support/fixtures";

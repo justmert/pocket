@@ -55,7 +55,7 @@ test("with reduced motion asked for, the wait spinner is slowed and NOT frozen",
   await wallet.page.reload();
   await expect(wallet.splash()).toBeVisible({ timeout: WAITS.onboarding });
   await wallet.createWallet(PASSWORD);
-  await expect(wallet.page.getByText("Reading the ledger…")).toBeVisible({
+  await expect(wallet.page.getByText("Reading the ledger")).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
   const spinner = wallet.page.locator(SPINNER).first();

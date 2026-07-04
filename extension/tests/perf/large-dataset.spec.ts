@@ -8,7 +8,7 @@
 // covering the retained window against the live deployment, and it carries a
 // 200-page budget as its only other exit.
 //
-// That scan runs INSIDE the "Reading the ledger…" wait on the private pocket
+// That scan runs INSIDE the "Reading the ledger" wait on the private pocket
 // screen, so it is both the biggest read in the wallet and one of its longest
 // waits. It only happens when there is actually something to find: the wallet
 // short-circuits when its local record already agrees with the chain
@@ -34,7 +34,7 @@ const PASSWORD = "a-strong-test-password";
 const MAX_SCAN_MS = 45_000;
 
 /** The two waits this screen can show, spelled exactly as the user reads them. */
-const PROGRESS = /(Reading the ledger…|Starting…)/;
+const PROGRESS = /(Reading the ledger|Starting…)/;
 
 test("a received transfer is found by scanning the retained window, and the screen says so throughout", async ({
   wallet,

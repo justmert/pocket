@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { call } from "../rpc";
 import { Button, Field, Frame, Notice, ScrollArea, TextButton } from "../primitives";
-import { Brand } from "../Brand";
+import { BrandRow } from "../Brand";
 import { space, text, type Theme } from "../theme";
 
 export function Unlock({
@@ -49,7 +49,7 @@ export function Unlock({
           }}
         >
           <div style={{ textAlign: "center", marginTop: space.xl }}>
-            <Brand t={t} size={72} />
+            <BrandRow t={t} size={56} />
             <h1
               style={{ ...text.screenTitle, color: t.text, margin: `${space.gutter}px 0 ${space.xs}px` }}
             >

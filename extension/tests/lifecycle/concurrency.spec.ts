@@ -269,7 +269,7 @@ test("closing the popup mid-compose loses the draft and nothing else", async () 
 
     await page.getByRole("button", { name: "Send" }).click();
     await page
-      .getByRole("textbox", { name: "Recipient" })
+      .getByRole("textbox", { name: "To", exact: true })
       .fill("GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7");
     await page.getByRole("textbox", { name: "Amount (XLM)" }).fill("3");
     await page.getByRole("textbox", { name: "Memo (optional)" }).fill("draft");
@@ -282,7 +282,7 @@ test("closing the popup mid-compose loses the draft and nothing else", async () 
     expect(await storageKeys(reopened)).toEqual(before);
 
     await reopened.getByRole("button", { name: "Send" }).click();
-    await expect(reopened.getByRole("textbox", { name: "Recipient" })).toHaveValue("");
+    await expect(reopened.getByRole("textbox", { name: "To", exact: true })).toHaveValue("");
     await expect(reopened.getByRole("textbox", { name: "Memo (optional)" })).toHaveValue("");
   } finally {
     await w.close();

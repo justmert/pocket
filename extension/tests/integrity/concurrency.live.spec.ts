@@ -232,7 +232,7 @@ test("a merge landing while an inbound credit is still reading events must not l
     await other.reopen();
     await other.waitForHome(WAITS.ledgerRead);
     await other.openPrivatePocket();
-    // Wait for the read to settle, not for a duration: "Reading the ledger…" is
+    // Wait for the read to settle, not for a duration: "Reading the ledger" is
     // the loading state and capturing it says nothing about what the user ends
     // up looking at.
     await expect(other.page.getByText(/Reading the ledger/)).toHaveCount(0, {

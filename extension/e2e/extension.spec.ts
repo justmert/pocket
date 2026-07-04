@@ -130,7 +130,7 @@ test("rejects a bad recipient before building anything", async () => {
     // Right shape, wrong checksum: must be caught, and named as a checksum
     // failure rather than lumped in with junk.
     await page
-      .getByRole("textbox", { name: "Recipient" })
+      .getByRole("textbox", { name: "To", exact: true })
       .fill("GB43MNLS6IA77FIZHOBLYILQIQP5MPQVF77O5JOAYCSWX3TUHAL6Z3F7");
     await page.getByRole("textbox", { name: "Amount (XLM)" }).fill("1");
     await page.getByRole("button", { name: "Review" }).click();
@@ -140,7 +140,7 @@ test("rejects a bad recipient before building anything", async () => {
     // And a value that is not base32 at all is reported differently, because a
     // bad checksum suggests a typo or tampering while junk suggests the wrong
     // kind of string entirely.
-    await page.getByRole("textbox", { name: "Recipient" }).fill("not-an-address");
+    await page.getByRole("textbox", { name: "To", exact: true }).fill("not-an-address");
     await page.getByRole("button", { name: "Review" }).click();
     await expect(page.getByText(/does not look like a Stellar address/i)).toBeVisible({
       timeout: 30_000,

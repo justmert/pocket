@@ -48,7 +48,7 @@ const MAX_STATIC_MS = 3_000;
 const PROGRESS = new RegExp(
   [
     "Starting",
-    "Reading the ledger…",
+    "Reading the ledger",
     "Building…",
     "Proving\\. This takes a moment…",
     "Setting up\\. This takes a moment…",

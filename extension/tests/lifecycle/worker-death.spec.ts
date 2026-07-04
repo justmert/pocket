@@ -157,7 +157,7 @@ test("a second tab left on Home after the first locked cannot spend", async () =
     // not survivable is a stale tab still being able to act.
     await b.getByRole("button", { name: "Send" }).click();
     await b
-      .getByRole("textbox", { name: "Recipient" })
+      .getByRole("textbox", { name: "To", exact: true })
       .fill("GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7");
     await b.getByRole("textbox", { name: "Amount (XLM)" }).fill("1");
     await b.getByRole("button", { name: "Review" }).click();
@@ -244,7 +244,7 @@ test("the keep-alive check is not pushed further away by every worker start", as
  * silently replaced by a 15-minute one and the test would measure nothing.
  */
 async function armIdleLock(page: import("@playwright/test").Page): Promise<void> {
-  await expect(page.getByText("Reading the ledger…")).toHaveCount(0, { timeout: 60_000 });
+  await expect(page.getByText("Reading the ledger")).toHaveCount(0, { timeout: 60_000 });
   for (let attempt = 0; attempt < 5; attempt++) {
     await page.waitForTimeout(750);
     await page.evaluate(() => chrome.alarms.create("pocket.autolock", { delayInMinutes: 0.5 }));

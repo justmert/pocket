@@ -40,7 +40,7 @@ async function fundedWallet(): Promise<{ w: Wallet; page: Page; address: string 
 /** Compose and review a payment, stopping on the confirm screen. */
 async function review(page: Page, to: string, amount = AMOUNT): Promise<void> {
   await page.getByRole("button", { name: "Send" }).click();
-  await page.getByRole("textbox", { name: "Recipient" }).fill(to);
+  await page.getByRole("textbox", { name: "To", exact: true }).fill(to);
   await page.getByRole("textbox", { name: "Amount (XLM)" }).fill(amount);
   await page.getByRole("button", { name: "Review" }).click();
   await expect(page.getByRole("button", { name: "Confirm and send" })).toBeVisible({

@@ -134,7 +134,7 @@ test("a wallet that lost its openings gets them back from the archive", async ()
       await payer.waitForHome(WAITS.ledgerRead);
       // The private-pocket button is not actionable while the balance is still
       // being read, and `waitForHome` returns before that finishes.
-      await expect(payer.page.getByText(/Reading the ledger…/)).toHaveCount(0, {
+      await expect(payer.page.getByText(/Reading the ledger/)).toHaveCount(0, {
         timeout: WAITS.ledgerRead,
       });
       // Driven by the button's own name rather than the shared helper's
@@ -160,7 +160,7 @@ test("a wallet that lost its openings gets them back from the archive", async ()
       // read before this wallet had a private pocket, and coming back from the
       // shield does not re-read it.
       await payer.reopen();
-      await expect(payer.page.getByText(/Reading the ledger…/)).toHaveCount(0, {
+      await expect(payer.page.getByText(/Reading the ledger/)).toHaveCount(0, {
         timeout: WAITS.ledgerRead,
       });
       await payer.page.getByRole("button", { name: "Open private pocket" }).click();

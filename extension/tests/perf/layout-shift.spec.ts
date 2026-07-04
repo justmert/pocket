@@ -55,7 +55,7 @@ test("the balance arriving does not move the Send button under the user's finger
   await expect(wallet.page.getByRole("button", { name: "Send", exact: true })).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
-  await expect(wallet.page.getByText("Reading the ledger…")).toBeVisible();
+  await expect(wallet.page.getByText("Reading the ledger")).toBeVisible();
 
   await expect(wallet.money().first()).toBeVisible({ timeout: WAITS.ledgerRead });
   const p = await read(wallet.page);
