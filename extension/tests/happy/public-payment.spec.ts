@@ -66,7 +66,7 @@ test("a payment leaves one wallet, arrives in another, and the ledger agrees", a
     expect(confirmed).toBe(recipient);
     expect(confirmed).toHaveLength(56);
 
-    await expect(wallet.page.getByText("Sending to")).toBeVisible();
+    await expect(wallet.page.getByText("To", { exact: true })).toBeVisible();
     // The amount, as money rather than as prose. The effects list says it too,
     // a few lines further down, and both have to be right.
     await expect(wallet.money().first()).toHaveText(/^100\.0000000\s*XLM$/);

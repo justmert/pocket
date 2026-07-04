@@ -168,8 +168,8 @@ function Backup({ t, mnemonic, onDone }: { t: Theme; mnemonic: string; onDone: (
         Write this down
       </h1>
       <Notice t={t} tone="exposed">
-        These {words.length} words are the only way back in. Anyone who has them owns your funds.
-        Pocket cannot show them again.
+        These {words.length} words are the only way to recover this wallet. Anyone who has them owns
+        your funds. Pocket cannot show them again.
       </Notice>
 
       <div

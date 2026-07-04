@@ -328,7 +328,7 @@ test("the build wait does not sign and submit while it says it is only setting u
   const before = await paidFor();
 
   await openMoveAction(wallet.page, "Set up the private pocket");
-  await expect(wallet.page.getByText(/Setting up\. This takes a moment…/)).toBeVisible();
+  await expect(wallet.page.getByText(/Building/)).toBeVisible();
   await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
 
   // The review screen is up and nothing has been approved. Give Horizon time to
@@ -411,7 +411,7 @@ test("the public send wait does say it is waiting for the ledger", async ({ wall
 
   await arm(wallet.page);
   await wallet.page.getByRole("button", { name: "Confirm and send" }).click();
-  await expect(wallet.page.getByText("Sent", { exact: true })).toBeVisible({
+  await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
     timeout: WAITS.submission,
   });
   const p = await read(wallet.page);
@@ -447,7 +447,7 @@ test("the public send wait does not leave the screen unchanged for seconds eithe
   await arm(wallet.page);
   const t0 = await now(wallet.page);
   await wallet.page.getByRole("button", { name: "Confirm and send" }).click();
-  await expect(wallet.page.getByText("Sent", { exact: true })).toBeVisible({
+  await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
     timeout: WAITS.submission,
   });
   const t1 = await now(wallet.page);

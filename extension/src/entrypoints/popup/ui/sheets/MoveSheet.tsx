@@ -54,7 +54,13 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
   // when the sheet is reopened, and it then wipes what was just typed.
   const wasOpen = useRef(open);
   useEffect(() => {
-    if (open && !wasOpen.current) reset();
+    if (open && !wasOpen.current) {
+      reset();
+      // the menu is entirely a function of a state the ledger owns, so opening
+      // the sheet re-reads it rather than showing whatever was true when the
+      // popup opened.
+      void w.refresh();
+    }
     wasOpen.current = open;
   });
 

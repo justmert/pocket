@@ -147,7 +147,7 @@ export function Home() {
     }
     return (
       <>
-        {priv.receiving && Number(priv.receiving) > 0 && (
+        {priv.receiving !== undefined && (
           <div style={{ marginTop: space.gutter }}>
             <Card t={t} tone="accent">
               <div style={{ display: "flex", alignItems: "center", gap: space.md, flexWrap: "wrap" }}>
@@ -242,6 +242,9 @@ export function Home() {
         {priv.message && (
           <div style={{ ...text.body, color: t.sub, lineHeight: 1.5 }}>{priv.message}</div>
         )}
+        <div style={{ ...text.caption, color: t.faint, marginTop: space.xs }}>
+          Hides amounts, never addresses. Who you pay stays public on the ledger.
+        </div>
       </Card>
     );
   }

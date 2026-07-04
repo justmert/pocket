@@ -199,7 +199,6 @@ test("a ready pocket, its three op forms and the transfer review all fit the pop
 
   await wallet.createWallet(PASSWORD);
   const sender = await wallet.revealAddress();
-  await closeSheet(wallet);
   await ledger.fund(sender);
 
   // A confidential transfer needs a REGISTERED recipient, so the review step
@@ -210,7 +209,6 @@ test("a ready pocket, its three op forms and the transfer review all fit the pop
     const otherPage = second.popup;
     await other.createWallet(PASSWORD);
     const recipient = await other.revealAddress();
-    await closeSheet(other);
     await ledger.fund(recipient);
     expect(recipient).toMatch(ADDRESS_RE);
 
@@ -245,13 +243,14 @@ test("a ready pocket, its three op forms and the transfer review all fit the pop
           amountBox(wallet.spendableMoney()),
           `private/ready @ ${vp.name}: spendable`,
         );
-        // And nothing is receiving, so nothing claims to be. Asserted rather than
-        // assumed: "no card" and "a card reading zero" are different statements
-        // about someone's money and only one of them is true here.
+        // The receiving figure is stated whether or not anything is in it.
+        // Money that has arrived is not money that can be sent until it is made
+        // spendable, and a screen that only names the second bucket once the
+        // first is non-empty teaches that distinction at the worst moment.
         await expect(
           page.getByText("Receiving", { exact: true }),
-          `private/ready @ ${vp.name}: nothing has arrived, so no receiving card`,
-        ).toHaveCount(0);
+          `private/ready @ ${vp.name}: the receiving balance is always stated`,
+        ).toHaveCount(1);
       }
     });
 

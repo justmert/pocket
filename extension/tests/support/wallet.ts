@@ -145,11 +145,20 @@ export class Wallet {
     await this.page.getByRole("button", { name: which }).click();
   }
 
-  /** Open the receive sheet and read the address back in full. */
+  /**
+   * Open the receive sheet, read the address in full, and put the sheet away.
+   *
+   * It closes because a sheet is modal: left open it covers the header, and
+   * every spec that read an address and then reached for a control behind it
+   * was clicking on a backdrop.
+   */
   async revealAddress(): Promise<string> {
     await this.nav("Receive").click();
     await expect(this.page.getByRole("dialog", { name: "Receive" })).toBeVisible();
-    return this.readAddress();
+    const address = await this.readAddress();
+    await this.close();
+    await expect(this.page.getByRole("dialog")).toHaveCount(0);
+    return address;
   }
 
   /** The address exactly as rendered. Never truncated anywhere it is read. */
