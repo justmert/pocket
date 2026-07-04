@@ -224,7 +224,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     }
 
     if (building) {
-      return <Progress t={t} phase={phase} label="Building" />;
+      return <Progress t={t} phase={phase} label="Building" fallback="Checking this against the ledger." />;
     }
 
     const body = () => {
@@ -248,8 +248,9 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
                 }}
               >
                 <li style={{ marginBottom: 6 }}>
-                  Setting up takes two transactions, and pressing this sends the first one straight
-                  away. You will review the second.
+                  Setting up takes TWO transactions, and pressing this sends the first one straight
+                  away: it registers your auditor key and pays a network fee. You will review the
+                  second before anything else is signed.
                 </li>
                 <li style={{ marginBottom: 6 }}>
                   Setting up is public. Anyone can see this account has a private pocket.

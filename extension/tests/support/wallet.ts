@@ -249,10 +249,13 @@ export class Wallet {
       await expect(this.page.getByLabel("To", { exact: true })).toBeVisible();
       return;
     }
-    if ((await this.page.getByRole("button", { name: kind, exact: true }).count()) === 0) {
-      await this.openMove();
-    }
-    await this.page.getByRole("button", { name: kind, exact: true }).click();
+    const action = this.page.getByRole("button", { name: kind, exact: true });
+    if ((await action.count()) === 0) await this.openMove();
+    // the sheet shows what the pocket's state allows, and that state arrives
+    // from the ledger. right after registering it is still catching up, so this
+    // waits for the action rather than assuming it is already offered.
+    await expect(action).toBeVisible({ timeout: WAITS.ledgerRead });
+    await action.click();
   }
 
   /** The spendable figure: the private pocket's hero. */

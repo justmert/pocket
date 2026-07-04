@@ -58,6 +58,10 @@ const PROGRESS = new RegExp(
     "Checking the ledger…",
     "Checking",
     "Reactivating…",
+    // the line the progress shows for the stretches where the worker names no
+    // phase of its own. it is the operation's own description, not a guess.
+    "Signing and submitting, then waiting for the ledger to confirm\\.",
+    "Checking this against the ledger\\.",
     // The WORKER's phases. None of them were here, so this list could only ever
     // see the static labels the popup sets before its first phase poll comes
     // back, and "no label mentioned the ledger" was partly a statement about
@@ -96,7 +100,7 @@ test("the wallet never goes quiet during a private operation: something is alway
   // page when the wait began instead of guessing.
   await installProbe(wallet.page, {
     ...WATCH,
-    busy: "Setting up\\. This takes a moment…",
+    busy: "Building",
     review: "What this does",
   });
   await fundedWallet(wallet);
@@ -259,8 +263,7 @@ test("the wait after Approve says the wallet is waiting for the ledger", async (
   // passing on the receipt for the wait it was supposed to be judging.
   const labels = new Set<string>();
   for (const s of screens(p.samples)) {
-    const m = s.text.match(PROGRESS);
-    if (m) labels.add(m[0]);
+    for (const m of s.text.matchAll(new RegExp(PROGRESS.source, "g"))) labels.add(m[0]);
   }
   console.log(`  labels during the approve wait: ${[...labels].join(" | ")}`);
 
@@ -300,6 +303,10 @@ test("the build wait does not sign and submit while it says it is only setting u
 
   await wallet.openPrivatePocket();
   await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({ timeout: WAITS.ledgerRead });
+
+  // the disclosure lives with the button, and the button lives in the move
+  // sheet, so the sheet is what has to be open for either to be judged.
+  await wallet.openMove();
 
   // Before the press, on the same screen as the button, in words that say a
   // transaction is sent and a fee is paid. Anything vaguer is not consent.

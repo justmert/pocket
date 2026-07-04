@@ -84,7 +84,7 @@ test("the popup keeps painting while a proof runs in the offscreen document", as
   const t0 = await now(wallet.page);
   await openMoveAction(wallet.page, "Set up the private pocket");
   // The wait must be on screen, or what follows is not measuring a proof.
-  await expect(wallet.page.getByText(/Setting up\. This takes a moment…/)).toBeVisible();
+  await expect(wallet.page.getByText(/Building/)).toBeVisible();
   await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
   const t1 = await now(wallet.page);
   const p = await read(wallet.page);
@@ -119,7 +119,7 @@ test("the popup still obeys a click while a proof runs", async ({ wallet }) => {
   await fundedPocket(wallet);
 
   await openMoveAction(wallet.page, "Set up the private pocket");
-  await expect(wallet.page.getByText(/Setting up\. This takes a moment…/)).toBeVisible();
+  await expect(wallet.page.getByText(/Building/)).toBeVisible();
 
   // Nothing is signed yet, so leaving is a real thing a bored user does, and it
   // is the only control the screen offers while it is busy. Timed from inside

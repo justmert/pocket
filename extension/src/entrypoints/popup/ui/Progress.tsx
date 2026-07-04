@@ -31,12 +31,19 @@ export function Progress({
   t,
   phase,
   label,
+  fallback,
 }: {
   t: Theme;
   /** the worker's current phase, or null before it reports one. */
   phase: string | null;
   /** what is being done, in the words the previous screen used. */
   label: string;
+  /**
+   * what this operation does, for the stretches where the worker publishes no
+   * phase. without it the screen showed four step names and never mentioned the
+   * ledger it was waiting on, which is the longest part of the wait.
+   */
+  fallback: string;
 }) {
   const step = stepOf(phase);
   const elapsed = useElapsed();
@@ -51,37 +58,44 @@ export function Progress({
         </span>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
-        {STEPS.map((name, i) => (
-          <div key={name}>
-            <div
-              className={i === step ? "pocket-pulse" : undefined}
-              style={{
-                height: 3,
-                borderRadius: radius.pill,
-                background: i <= step ? t.accent : t.line,
-                transition: "background 300ms ease",
-              }}
-            />
-            <div
-              style={{
-                ...text.caption,
-                fontSize: 10,
-                marginTop: 5,
-                color: i === step ? (t.dark ? t.accent : t.text) : t.faint,
-              }}
-            >
-              {name}
+      {/* the four steps only appear once the worker is naming them. a stepper
+          stuck on its first step for a minute is a worse claim than no stepper. */}
+      {phase ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+          {STEPS.map((name, i) => (
+            <div key={name}>
+              <div
+                className={i === step ? "pocket-pulse" : undefined}
+                style={{
+                  height: 3,
+                  borderRadius: radius.pill,
+                  background: i <= step ? t.accent : t.line,
+                  transition: "background 300ms ease",
+                }}
+              />
+              <div
+                style={{
+                  ...text.caption,
+                  fontSize: 10,
+                  marginTop: 5,
+                  color: i === step ? (t.dark ? t.accent : t.text) : t.faint,
+                }}
+              >
+                {name}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-
-      {phase && (
-        <div style={{ ...text.body, color: t.sub, marginTop: space.md, lineHeight: 1.45 }}>
-          {phase}
+          ))}
         </div>
+      ) : (
+        <div
+          className="pocket-pulse"
+          style={{ height: 3, borderRadius: radius.pill, background: t.accent }}
+        />
       )}
+
+      <div style={{ ...text.body, color: t.sub, marginTop: space.md, lineHeight: 1.45 }}>
+        {phase ?? fallback}
+      </div>
     </div>
   );
 }

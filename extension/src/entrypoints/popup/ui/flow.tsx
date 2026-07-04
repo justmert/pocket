@@ -79,6 +79,7 @@ export function ReviewPanel({
   busy,
   phase,
   approveLabel,
+  waitDescription = "Signing and submitting, then waiting for the ledger to confirm.",
   onApprove,
   onCancel,
 }: {
@@ -98,6 +99,8 @@ export function ReviewPanel({
   busy: boolean;
   phase: string | null;
   approveLabel: string;
+  /** what the worker will do, for the stretches where it names no phase. */
+  waitDescription?: string;
   onApprove: () => void;
   onCancel: () => void;
 }) {
@@ -168,7 +171,7 @@ export function ReviewPanel({
 
       {busy ? (
         <div style={{ marginTop: space.gutter }}>
-          <Progress t={t} phase={phase} label={approveLabel} />
+          <Progress t={t} phase={phase} label={approveLabel} fallback={waitDescription} />
         </div>
       ) : (
         <ButtonRow>
