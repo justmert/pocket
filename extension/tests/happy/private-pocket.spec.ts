@@ -331,9 +331,11 @@ test.describe("private pocket operations", () => {
       // The receiving side is where an inbound private payment lands, and the
       // word "pending" is deliberately not used for it: it resolves by signing,
       // not by waiting.
-      await expect(other.receivingMoney()).toHaveText(/^5\.0000000\s*XLM$/, {
-        timeout: WAITS.ledgerRead,
-      });
+      await expect(
+        other.receivingMoney(),
+        `the recipient's screen says: ${(await other.page.locator("body").innerText()).replace(/\n/g, " | ")}`,
+        // a retained-window scan, not a balance read: this is the slow one.
+      ).toHaveText(/^5\.0000000\s*XLM$/, { timeout: WAITS.proving });
       await expect(other.spendableMoney()).toHaveText(/^0\.0000000\s*XLM$/);
       await expect(
         other.page.getByText(/Received funds sit here until you make them spendable/),

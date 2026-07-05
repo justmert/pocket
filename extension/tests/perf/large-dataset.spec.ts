@@ -69,6 +69,10 @@ test("a received transfer is found by scanning the retained window, and the scre
     await wallet.page.getByLabel("Amount (XLM)").fill("25");
     await wallet.page.getByRole("button", { name: "Review" }).click();
     await wallet.approve();
+    // the receipt is a sheet, and the bar it covers is how the next operation
+    // is reached, so it is acknowledged before moving on.
+    await expect(wallet.receipt()).toBeVisible({ timeout: WAITS.submission });
+    await wallet.dismissReceipt();
     await expect(wallet.spendableMoney()).toHaveText(/^25\.0000000\s*XLM$/, {
       timeout: WAITS.submission,
     });
@@ -81,6 +85,7 @@ test("a received transfer is found by scanning the retained window, and the scre
     await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
       timeout: WAITS.submission,
     });
+    await wallet.dismissReceipt();
 
     // Now the expensive read. The recipient's local record still says zero, so
     // the wallet has to go and find the transfer across the whole window.
@@ -100,7 +105,8 @@ test("a received transfer is found by scanning the retained window, and the scre
     // The scan actually found the money. Without this the timing below would be
     // a measurement of the wallet giving up quickly.
     await expect(other.receivingMoney()).toHaveText(/^5\.0000000\s*XLM$/, {
-      timeout: WAITS.ledgerRead,
+      // a retained-window scan, not a balance read.
+      timeout: WAITS.proving,
     });
 
     console.log(`  inbound scan of the retained window: ${(t1 - t0).toFixed(0)}ms`);

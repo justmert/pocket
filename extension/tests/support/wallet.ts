@@ -140,9 +140,16 @@ export class Wallet {
     return this.page.getByRole("button", { name, exact: true });
   }
 
-  /** Choose which pocket the home screen is showing. */
+  /**
+   * Choose which pocket the home screen is showing, and wait for it to be
+   * showing it. The tab only exists once the worker has said the private pocket
+   * is available, and a click that lands before then changes nothing.
+   */
   async openPocket(which: "Public pocket" | "Private pocket"): Promise<void> {
-    await this.page.getByRole("button", { name: which }).click();
+    const tab = this.page.getByRole("button", { name: which });
+    await expect(tab).toBeVisible({ timeout: WAITS.ledgerRead });
+    await tab.click();
+    await expect(tab).toHaveAttribute("aria-pressed", "true");
   }
 
   /**

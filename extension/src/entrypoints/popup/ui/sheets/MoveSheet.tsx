@@ -331,7 +331,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
               {priv.mergeAvailable && (
                 <>
                   <Notice t={t}>
-                    Received funds sit aside until you make them spendable. One signature.
+                    Received funds sit here until you make them spendable. One signature, no fee beyond the network's.
                   </Notice>
                   <ButtonStack>
                     <Button t={t} onClick={onMerge}>

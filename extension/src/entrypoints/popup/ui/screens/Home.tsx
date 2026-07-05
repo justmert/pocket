@@ -72,7 +72,17 @@ export function Home() {
       );
     }
     if (!priv) {
-      return <HeroAmount t={t} value={null} code="XLM" />;
+      // reading this pocket means scanning the retained event window for
+      // payments that arrived while the wallet was closed, and that can take
+      // minutes. a shimmer alone says "wait" without saying what for.
+      return (
+        <>
+          <HeroAmount t={t} value={null} code="XLM" />
+          <div style={{ ...text.caption, color: t.faint, minHeight: 16 }}>
+            Looking for payments you have received.
+          </div>
+        </>
+      );
     }
     if (priv.state !== "ready") {
       return (
