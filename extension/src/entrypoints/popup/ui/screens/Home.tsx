@@ -181,6 +181,10 @@ export function Home() {
                   Make spendable
                 </button>
               </div>
+              <div style={{ ...text.caption, color: t.sub, marginTop: space.xs, lineHeight: 1.45 }}>
+                Received funds sit here until you make them spendable. One signature, no fee beyond
+                the network's.
+              </div>
             </Card>
           </div>
         )}
