@@ -255,7 +255,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const openSheet = useCallback((id: SheetId) => setSheets((s) => [...s, id]), []);
+  // opening the sheet that is already on top is not a second sheet. it used to
+  // be, and then one close left the same sheet still open.
+  const openSheet = useCallback(
+    (id: SheetId) => setSheets((s) => (s[s.length - 1] === id ? s : [...s, id])),
+    [],
+  );
   const closeSheet = useCallback(() => setSheets((s) => s.slice(0, -1)), []);
   const closeAllSheets = useCallback(() => setSheets([]), []);
 

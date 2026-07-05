@@ -194,7 +194,7 @@ test.describe("private pocket operations", () => {
       ).toBeVisible();
       // Never truncated at a confirm step.
       expect(await wallet.readAddress()).toBe(recipient);
-      await wallet.page.getByRole("button", { name: "Approve" }).click();
+      await wallet.page.getByRole("button", { name: "Confirm and send" }).click();
       await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
         timeout: WAITS.submission,
       });

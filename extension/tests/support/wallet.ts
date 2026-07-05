@@ -272,10 +272,25 @@ export class Wallet {
     await expect(this.page.getByRole("dialog")).toHaveCount(0);
   }
 
-  /** Wait for the review step, check nothing, and approve it. */
-  async approve(label: "Approve" | "Confirm and send" = "Approve"): Promise<void> {
+  /**
+   * Wait for the review step, check nothing, and take its affirmative control.
+   *
+   * A send says "Confirm and send" and a move says "Approve", so the control is
+   * found by which one the review is offering rather than by a caller having to
+   * know which flow it is in.
+   */
+  async approve(label?: "Approve" | "Confirm and send"): Promise<void> {
     await expect(this.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
-    await this.page.getByRole("button", { name: label }).click();
+    if (label) {
+      await this.page.getByRole("button", { name: label }).click();
+      return;
+    }
+    const send = this.page.getByRole("button", { name: "Confirm and send" });
+    if ((await send.count()) > 0) {
+      await send.click();
+      return;
+    }
+    await this.page.getByRole("button", { name: "Approve" }).click();
   }
 
   /**
@@ -355,9 +370,22 @@ export class Wallet {
     };
   }
 
+  /**
+   * Put every open sheet away.
+   *
+   * Sheets stack, so one close is not always the last one, and a spec that
+   * reaches for the bar with a sheet still up is clicking a backdrop.
+   */
   async close(): Promise<void> {
-    await this.page.getByRole("button", { name: "Close" }).click();
-    await expect(this.page.getByRole("dialog")).toHaveCount(0);
+    const dialogs = this.page.getByRole("dialog");
+    for (let i = 0; i < 4 && (await dialogs.count()) > 0; i++) {
+      await this.page.getByRole("button", { name: "Close" }).last().click();
+      await this.page.waitForTimeout(300);
+    }
+    if ((await dialogs.count()) > 0) {
+      const said = await dialogs.last().innerText();
+      throw new Error(`a sheet would not close. It says: ${said.replace(/\n/g, " | ")}`);
+    }
   }
 }
 

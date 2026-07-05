@@ -103,6 +103,8 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     try {
       const r = await call({ type: "confirmPrivateOp", handle });
       setResult(r);
+      // the work is over, so the sheet stops refusing to close.
+      setBusy(false);
       setStage("done");
       void w.refresh();
     } catch (e) {

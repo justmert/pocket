@@ -93,6 +93,10 @@ export function SendSheet({ open, onClose }: { open: boolean; onClose: () => voi
         ? await call({ type: "confirmPrivateOp", handle })
         : await call({ type: "confirmPayment", handle });
       setResult({ hash: r.hash, ledger: r.ledger });
+      // the work is over, so the sheet stops refusing to close. leaving this set
+      // left a receipt whose only way out was one button, with the header's
+      // close, the backdrop and escape all dead.
+      setBusy(false);
       setStage("done");
       void w.refresh();
     } catch (e) {

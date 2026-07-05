@@ -212,19 +212,16 @@ test("scrolling a screen taller than the popup stays smooth", async ({ wallet })
   await wallet.page.reload();
   await expect(wallet.splash()).toBeVisible({ timeout: WAITS.onboarding });
 
-  // Almost nothing in this wallet overflows its 600px frame. Measured across
-  // every screen, exactly two do: the erase-and-restore acknowledgement by 36px
-  // and the private pocket carrying a receipt with an operation form open, by
-  // 193px. The second is the only surface in the product where scrolling is a
-  // real interaction rather than a nudge, so that is the one measured.
+  // Most of this wallet fits its 600px frame. Settings does not: four groups
+  // ending on the erase row, so it is the surface where a scroll is a real
+  // interaction rather than a nudge, and it is reachable without spending
+  // twenty minutes registering a pocket to get to it.
   await wallet.createWallet(PASSWORD);
   const address = await wallet.revealAddress();
   await ledger.fund(address);
   await wallet.page.reload();
   await wallet.waitForHome(WAITS.ledgerRead);
-  await wallet.openPrivatePocket();
-  await wallet.registerPrivatePocket();
-  await wallet.openOp("Send privately");
+  await wallet.nav("Settings").click();
 
   // Scoped to the sheet, because a sheet is modal: the screen behind it also
   // overflows and a wheel over it reaches nothing, so measuring that one would
