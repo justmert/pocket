@@ -243,10 +243,18 @@ export class Wallet {
     await this.openPocket("Private pocket");
   }
 
-  /** The sheet that carries every private-pocket operation. */
+  /**
+   * Open the move sheet on its menu.
+   *
+   * If another sheet is already up, it is put away first: the bar is behind it,
+   * so clicking through would land on a backdrop.
+   */
   async openMove(): Promise<void> {
+    const menu = this.page.getByRole("dialog", { name: "Move" });
+    if ((await menu.count()) > 0) return;
+    if ((await this.page.getByRole("dialog").count()) > 0) await this.close();
     await this.nav("Move").click();
-    await expect(this.page.getByRole("dialog")).toBeVisible();
+    await expect(menu).toBeVisible();
   }
 
   /** Register: the one-time, permanent set-up. Returns once it has confirmed. */
@@ -279,6 +287,7 @@ export class Wallet {
    */
   async openOp(kind: "Move in" | "Move out" | "Make spendable" | "Send privately"): Promise<void> {
     if (kind === "Send privately") {
+      if ((await this.page.getByRole("dialog").count()) > 0) await this.close();
       await this.nav("Send privately").click();
       await expect(this.page.getByLabel("To", { exact: true })).toBeVisible();
       return;
@@ -287,8 +296,20 @@ export class Wallet {
     if ((await action.count()) === 0) await this.openMove();
     // the sheet shows what the pocket's state allows, and that state arrives
     // from the ledger. right after registering it is still catching up, so this
-    // waits for the action rather than assuming it is already offered.
-    await expect(action).toBeVisible({ timeout: WAITS.ledgerRead });
+    // waits for the action rather than assuming it is already offered. the
+    // sheet's own text goes into the failure, because "a button was not there"
+    // is not a report and this used to fail as one.
+    try {
+      await expect(action).toBeVisible({ timeout: WAITS.ledgerRead });
+    } catch (e) {
+      const said = await this.page
+        .getByRole("dialog")
+        .innerText()
+        .catch(() => "no sheet is open");
+      throw new Error(`"${kind}" never appeared. The sheet says: ${said.replace(/\n/g, " | ")}`, {
+        cause: e,
+      });
+    }
     await action.click();
   }
 

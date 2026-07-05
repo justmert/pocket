@@ -66,6 +66,19 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
 
   const close = () => onClose();
 
+  useEffect(() => {
+    if (!open || stage !== "menu" || priv?.state === "ready") return;
+    let left = 15;
+    const id = setInterval(() => {
+      if (left-- <= 0) {
+        clearInterval(id);
+        return;
+      }
+      void w.refresh();
+    }, 2000);
+    return () => clearInterval(id);
+  }, [open, stage, priv?.state, w]);
+
   const build = async (op: PrivateOpRequest) => {
     setKind(op.kind);
     setError(null);

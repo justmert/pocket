@@ -168,6 +168,7 @@ test.describe("private pocket operations", () => {
       await expect(wallet.page.getByText(/Made spendable in a second transaction/)).toBeVisible({
         timeout: WAITS.submission,
       });
+      await wallet.dismissReceipt();
       await expect(wallet.spendableMoney()).toHaveText(/^25\.0000000\s*XLM$/, {
         timeout: WAITS.ledgerRead,
       });

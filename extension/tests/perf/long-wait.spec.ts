@@ -419,7 +419,7 @@ test("the public send wait does say it is waiting for the ledger", async ({ wall
 
   const said = screens(p.samples).map((s) => s.text);
   expect(
-    said.some((t) => /Submit/.test(t)),
+    said.some((t) => /ledger/i.test(t)),
     "the public send flow already names the ledger poll: this is the bar, met",
   ).toBe(true);
 });

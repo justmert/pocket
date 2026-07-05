@@ -495,6 +495,11 @@ export function Row({
   /** staggers the entrance so a list arrives instead of appearing. */
   index?: number;
 }) {
+  // a row's name is its title. the subtitle describes it, and folding both into
+  // one accessible name gave every control a name nobody would ever call it by.
+  const id = useId();
+  const titleId = `${id}-title`;
+  const subId = `${id}-sub`;
   const inner = (
     <>
       {icon && (
@@ -522,12 +527,15 @@ export function Row({
           wrapping onto its own line. */}
       <span style={{ minWidth: 0, textAlign: "left", flex: "1 1 90px" }}>
         <span
+          id={titleId}
           style={{ ...text.rowTitle, color: tone === "danger" ? t.danger : t.text, display: "block" }}
         >
           {title}
         </span>
         {sub && (
-          <span style={{ ...text.rowSub, color: t.sub, display: "block", marginTop: 1 }}>{sub}</span>
+          <span id={subId} style={{ ...text.rowSub, color: t.sub, display: "block", marginTop: 1 }}>
+            {sub}
+          </span>
         )}
       </span>
       {(value || valueSub) && (
@@ -563,6 +571,8 @@ export function Row({
     <button
       type="button"
       onClick={onClick}
+      aria-labelledby={titleId}
+      aria-describedby={sub ? subId : undefined}
       className={index != null ? "pocket-row-in" : undefined}
       style={{ all: "unset", cursor: "pointer", boxSizing: "border-box", ...style }}
     >

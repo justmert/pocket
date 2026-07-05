@@ -226,19 +226,33 @@ test("scrolling a screen taller than the popup stays smooth", async ({ wallet })
   await wallet.registerPrivatePocket();
   await wallet.openOp("Send privately");
 
-  const before = await wallet.page.evaluate(() => {
-    const el = [...document.querySelectorAll("div")].find((d) => d.scrollHeight > d.clientHeight + 8);
-    return el ? { top: el.scrollTop, h: el.scrollHeight, c: el.clientHeight } : null;
-  });
+  // Scoped to the sheet, because a sheet is modal: the screen behind it also
+  // overflows and a wheel over it reaches nothing, so measuring that one would
+  // measure a scroll the user cannot perform.
+  const scroller = () =>
+    wallet.page.evaluate(() => {
+      const root = document.querySelector("[role='dialog']") ?? document.body;
+      const el = [...root.querySelectorAll("div")].find(
+        (d) => d.scrollHeight > d.clientHeight + 8,
+      );
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return {
+        top: el.scrollTop,
+        h: el.scrollHeight,
+        c: el.clientHeight,
+        x: Math.round(r.left + r.width / 2),
+        y: Math.round(r.top + r.height / 2),
+      };
+    });
+
+  const before = await scroller();
   expect(before, "this screen must actually overflow, or the test measures nothing").not.toBeNull();
 
   const t0 = await now(wallet.page);
-  await wallet.page.mouse.move(180, 300);
+  await wallet.page.mouse.move(before!.x, before!.y);
   for (let i = 0; i < 12; i++) await wallet.page.mouse.wheel(0, 40);
-  const after = await wallet.page.evaluate(() => {
-    const el = [...document.querySelectorAll("div")].find((d) => d.scrollHeight > d.clientHeight + 8);
-    return el ? el.scrollTop : -1;
-  });
+  const after = (await scroller())?.top ?? -1;
   const t1 = await now(wallet.page);
 
   expect(after, "the wheel must have actually scrolled something").toBeGreaterThan(0);
