@@ -82,7 +82,7 @@ test("a payment leaves one wallet, arrives in another, and the ledger agrees", a
 
     const hash = await wallet.confirmPayment();
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
-    await expect(wallet.page.getByText(/Included in ledger \d+/)).toBeVisible();
+    await expect(wallet.page.getByText(/Confirmed in ledger \d+/)).toBeVisible();
 
     // "Sent" on a screen is a claim. This is the evidence.
     const tx = await ledger.waitForTransaction(hash);

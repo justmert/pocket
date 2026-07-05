@@ -163,14 +163,25 @@ export class Wallet {
 
   /** The address exactly as rendered. Never truncated anywhere it is read. */
   async readAddress(): Promise<string> {
-    const block = this.page.getByText(ADDRESS_RE).first();
+    const block = this.surface().getByText(ADDRESS_RE).first();
     await expect(block).toBeVisible({ timeout: WAITS.ledgerRead });
     return (await block.innerText()).replace(/\s/g, "");
   }
 
+  /**
+   * The surface a reader is actually on.
+   *
+   * A sheet is modal, and the screen behind it is still in the document. Read
+   * from the body while one is open and the first amount on the page is the
+   * home balance, not the amount being confirmed.
+   */
+  surface(): Locator {
+    return this.page.locator("[role='dialog']:visible, body").last();
+  }
+
   /** Any amount, read from the exact figure rather than the split rendering. */
   money(): Locator {
-    return this.page.getByText(MONEY_RE);
+    return this.surface().getByText(MONEY_RE);
   }
 
   /** The public XLM figure on the home screen, as a number. */
@@ -207,9 +218,20 @@ export class Wallet {
     return this.page.getByText(/^Confirmed in ledger \d+\.$/);
   }
 
+  /**
+   * Acknowledge a receipt and return to the screen behind it.
+   *
+   * A receipt is a sheet, so until it is dismissed the home screen is behind a
+   * modal and nothing on it is what the user is looking at.
+   */
+  async dismissReceipt(): Promise<void> {
+    await this.page.getByRole("button", { name: "Done" }).click();
+    await expect(this.page.getByRole("dialog")).toHaveCount(0);
+  }
+
   /** A 64-character transaction hash from a receipt. */
   async readHash(): Promise<string> {
-    const block = this.page.getByText(/^[0-9a-f]{64}$/);
+    const block = this.surface().getByText(/^[0-9a-f]{64}$/);
     await expect(block.first()).toBeVisible({ timeout: WAITS.submission });
     return (await block.first().innerText()).replace(/\s/g, "");
   }
@@ -237,6 +259,9 @@ export class Wallet {
     await this.approve();
     await expect(this.receipt()).toBeVisible({ timeout: WAITS.submission });
     await this.page.getByRole("button", { name: "Done" }).click();
+    // a sheet is on screen for the length of its exit, and anything read while
+    // it is still there is read from the sheet rather than from the screen.
+    await expect(this.page.getByRole("dialog")).toHaveCount(0);
   }
 
   /** Wait for the review step, check nothing, and approve it. */
@@ -311,6 +336,7 @@ export class Wallet {
 
   async close(): Promise<void> {
     await this.page.getByRole("button", { name: "Close" }).click();
+    await expect(this.page.getByRole("dialog")).toHaveCount(0);
   }
 }
 

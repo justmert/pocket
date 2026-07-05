@@ -265,8 +265,8 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
                   Your address stays public on every private payment. Only amounts are hidden.
                 </li>
                 <li>
-                  Your auditor key comes from your recovery phrase, so only you can read your
-                  amounts. It is bound permanently.
+                  Your auditor key is derived from your recovery phrase, so only you can read your
+                  amounts. It is bound permanently and cannot be changed later.
                 </li>
               </ul>
               <ButtonStack>

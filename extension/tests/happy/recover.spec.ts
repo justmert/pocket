@@ -28,7 +28,15 @@ test("the erase screen states what comes back and what does not, and offers the 
   // The fact that costs money if it is missing: a phrase restores KEYS, not the
   // openings that make confidential commitments spendable.
   await expect(wallet.page.getByText(/private pocket balances do not/)).toBeVisible();
-  await expect(wallet.page.getByText(/cannot be rebuilt yet/)).toBeVisible();
+  // Whether the private balances can come back depends on this build having an
+  // archive configured, and the screen has to say which it is. Both sentences
+  // are accepted; silence is not, and neither is saying both.
+  const rebuildable = wallet.page.getByText(/can be rebuilt afterwards by replaying your history/);
+  const notRebuildable = wallet.page.getByText(/cannot be rebuilt yet/);
+  expect(
+    (await rebuildable.count()) + (await notRebuildable.count()),
+    "the erase screen must state exactly one thing about whether private balances come back",
+  ).toBe(1);
   await expect(
     wallet.page.getByText(/If your private pocket holds funds, do not continue/),
   ).toBeVisible();

@@ -77,7 +77,7 @@ export function Recover({
           <li>
             {archived
               ? "They can be rebuilt afterwards by replaying your history from the archive."
-              : "Rebuilding them needs a durable archive. This build has none configured, so they cannot be rebuilt."}
+              : "Rebuilding them needs a durable archive. This build has none configured, so they cannot be rebuilt yet."}
           </li>
         </ul>
 

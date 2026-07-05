@@ -33,6 +33,10 @@ test("a funded account that has not set up a private pocket says so, and states 
   await wallet.openPrivatePocket();
   await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({ timeout: WAITS.ledgerRead });
 
+  // The disclosure lives with the button that commits to it, and that button
+  // lives in the move sheet, so the sheet is what has to be open.
+  await wallet.openMove();
+
   // Facts that are permanent, public, or COSTLY, stated ABOVE the button that
   // commits to them and not in a confirmation afterwards.
   //
@@ -114,6 +118,7 @@ test.describe("private pocket operations", () => {
       await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
         timeout: WAITS.submission,
       });
+      await wallet.dismissReceipt();
       console.log("  registered");
 
       // A pocket that has just been created holds nothing, and says so with real
@@ -192,6 +197,7 @@ test.describe("private pocket operations", () => {
       await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
         timeout: WAITS.submission,
       });
+      await wallet.dismissReceipt();
       await expect(wallet.spendableMoney()).toHaveText(/^20\.0000000\s*XLM$/, {
         timeout: WAITS.ledgerRead,
       });
@@ -214,6 +220,7 @@ test.describe("private pocket operations", () => {
       await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
         timeout: WAITS.submission,
       });
+      await wallet.dismissReceipt();
       await expect(wallet.spendableMoney()).toHaveText(/^10\.0000000\s*XLM$/, {
         timeout: WAITS.ledgerRead,
       });
@@ -307,6 +314,7 @@ test.describe("private pocket operations", () => {
       await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
         timeout: WAITS.submission,
       });
+      await wallet.dismissReceipt();
       // The sender's own spendable balance really did fall by five, so the money
       // has left. It is now somewhere, and the rest of this test is about whether
       // the person it was sent to can reach it.
@@ -339,6 +347,7 @@ test.describe("private pocket operations", () => {
       await expect(other.page.getByText(/Confirmed in ledger/)).toBeVisible({
         timeout: WAITS.submission,
       });
+      await other.dismissReceipt();
 
       await expect(other.spendableMoney()).toHaveText(/^5\.0000000\s*XLM$/, {
         timeout: WAITS.ledgerRead,
@@ -354,6 +363,7 @@ test.describe("private pocket operations", () => {
       await expect(other.page.getByText(/Confirmed in ledger/)).toBeVisible({
         timeout: WAITS.submission,
       });
+      await other.dismissReceipt();
     } finally {
       await second.close();
     }
