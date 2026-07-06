@@ -109,6 +109,7 @@ test("all 24 backup words and both buttons are reachable at every viewport", asy
   await page.getByLabel("Confirm password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: WAITS.onboarding });
+  await page.getByRole("button", { name: "Show the phrase" }).click();
 
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });

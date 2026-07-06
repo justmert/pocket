@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { StrKey, xdr } from "@stellar/stellar-sdk/base";
 import { FaultServer, rpcOk, type Fault, type RecordedRequest } from "./_harness/faults";
 import { accountKey, accountEntry, entryFor, entriesResult } from "./_harness/ledger";
+import { answerBackupCheck } from "../support/wallet";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const EXT = resolve(here, "../../.output/chrome-mv3");
@@ -81,7 +82,14 @@ async function onboard(page: Page): Promise<void> {
   await page.getByRole("textbox", { name: "Confirm password" }).fill(PASSWORD);
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Show the phrase" }).click();
+    const shownWords = await page
+    .locator("span")
+    .filter({ hasText: /^\d+\.\s\w+\s*$/ })
+    .allInnerTexts();
+  const shownPhraseText = shownWords.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
+  await answerBackupCheck(page, shownPhraseText);
   await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
 }
 

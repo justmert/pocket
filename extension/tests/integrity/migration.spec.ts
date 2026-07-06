@@ -84,7 +84,7 @@ async function createWalletOnOldUi(page: Page, password: string): Promise<string
     .filter({ hasText: /^\d+\.\s\w+\s*$/ })
     .allInnerTexts();
   const phrase = cells.map((c: string) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
-  await page.getByRole("button", { name: "I have written it down" }).click();
+    await page.getByRole("button", { name: "I have written it down" }).click();
   await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: WAITS.onboarding });
   return phrase;
 }
@@ -179,7 +179,7 @@ test("a clean install of the current build writes only the keys this version doc
   const install = await launch();
   try {
     const page = await install.popup();
-    await createWalletOnOldUi(page, PASSWORD);
+    await new Wallet(page).createWallet(PASSWORD);
     const keys = Object.keys(await storage(page)).sort();
     expect(keys, "a fresh install holds exactly the vault, its state and the address").toEqual([
       ADDRESS_KEY,

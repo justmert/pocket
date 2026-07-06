@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { answerBackupCheck } from "../tests/support/wallet";
 
 // Recovery from the durable archive: the thing the README says `indexer/`
 // exists for and that nothing could actually do until now.
@@ -54,11 +55,17 @@ test("a funded private pocket whose openings are gone rebuilds from the archive"
   await page.getByRole("textbox", { name: "Confirm password" }).fill(PASSWORD);
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
+    const shownWords = await page
+    .locator("span")
+    .filter({ hasText: /^\d+\.\s\w+\s*$/ })
+    .allInnerTexts();
+  const shownPhraseText = shownWords.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
+  await answerBackupCheck(page, shownPhraseText);
   await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
 
   await page.getByRole("button", { name: "Receive" }).click();
-  address = (await page.locator("div[style*='break-all']").innerText()).replace(/\s/g, "");
+  address = (await page.getByText(/^G[A-Z2-7]{55}$/).first().innerText()).replace(/\s/g, "");
   expect((await fetch(`${FRIENDBOT}?addr=${address}`)).ok).toBe(true);
   await page.reload();
 

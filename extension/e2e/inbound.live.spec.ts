@@ -43,7 +43,7 @@ async function launchWallet(): Promise<Wallet> {
   await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
 
   await page.getByRole("button", { name: "Receive" }).click();
-  const address = (await page.locator("div[style*='break-all']").innerText()).replace(/\s/g, "");
+  const address = (await page.getByText(/^G[A-Z2-7]{55}$/).first().innerText()).replace(/\s/g, "");
   const funded = await fetch(`${FRIENDBOT}?addr=${address}`);
   expect(funded.ok, `friendbot must fund ${address}`).toBe(true);
   await page.reload();

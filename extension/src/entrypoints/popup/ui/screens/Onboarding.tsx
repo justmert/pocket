@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { call } from "../rpc";
 import { Button, ButtonStack, Field, Notice, Screen, TextButton } from "../primitives";
+import { Eye } from "../icons";
 import { Brand } from "../Brand";
 import { fonts, radius, space, text, type Theme } from "../theme";
 
@@ -149,10 +150,27 @@ function Create({
 /**
  * the one time the phrase is ever on screen.
  *
+ * three things guard it, and each closes a way the phrase was being lost:
+ *
+ * the words start hidden, because they appeared unannounced in whatever room
+ * the user was in and could not be shown again, so the user had to leave them
+ * up for a minute rather than choose the moment;
+ *
+ * the acknowledgement is a question, not a press. it used to be a plain primary
+ * button in the same screen position as the previous screen's primary button,
+ * which meant a double press on a slow vault creation consumed it and the
+ * phrase was gone;
+ *
+ * and the copy says the true lifecycle fact. "cannot show them again" reads as
+ * "after you continue". the truth is that clicking anything outside this window
+ * closes it, and closing it is the same as continuing.
+ *
  * the ordinal is unselectable and each word carries a trailing space, so a drag
  * selection and the copy button both produce a phrase that restores.
  */
 function Backup({ t, mnemonic, onDone }: { t: Theme; mnemonic: string; onDone: () => void }) {
+  const [shown, setShown] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [copy, setCopy] = useState<"idle" | "done" | "failed">("idle");
   const words = mnemonic.split(" ");
 
@@ -162,36 +180,86 @@ function Backup({ t, mnemonic, onDone }: { t: Theme; mnemonic: string; onDone: (
     return () => clearTimeout(id);
   }, [copy]);
 
+  if (checking) {
+    return (
+      <Verify
+        t={t}
+        words={words}
+        onBack={() => setChecking(false)}
+        onDone={onDone}
+      />
+    );
+  }
+
   return (
-    <Screen t={t}>
+    <Screen t={t} still>
       <h1 style={{ ...text.screenTitle, color: t.text, margin: `${space.sm}px 0 ${space.sm}px` }}>
         Write this down
       </h1>
       <Notice t={t} tone="exposed">
         These {words.length} words are the only way to recover this wallet. Anyone who has them owns
-        your funds. Pocket cannot show them to you again.
+        your funds. Pocket cannot show them to you again, and this window closes the moment you
+        click anything outside it.
       </Notice>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(88px, 1fr))",
-          gap: space.xs,
-          background: t.field,
-          padding: space.md,
-          borderRadius: radius.lg,
-          marginBottom: space.md,
-        }}
-      >
-        {words.map((word, i) => (
-          <span
-            key={i}
-            style={{ ...text.body, fontFamily: fonts.mono, color: t.text, display: "flex", gap: 6 }}
+      <div style={{ position: "relative", marginBottom: space.md }}>
+        <div
+          aria-hidden={!shown}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(88px, 1fr))",
+            gap: space.xs,
+            background: t.field,
+            padding: space.md,
+            borderRadius: radius.lg,
+            filter: shown ? undefined : "blur(7px)",
+            userSelect: shown ? undefined : "none",
+          }}
+        >
+          {words.map((word, i) => (
+            <span
+              key={i}
+              style={{ ...text.body, fontFamily: fonts.mono, color: t.text, display: "flex", gap: 6 }}
+            >
+              <span style={{ color: t.faint, userSelect: "none" }}>{i + 1}.</span>{" "}
+              {word}{" "}
+            </span>
+          ))}
+        </div>
+
+        {!shown && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
-            <span style={{ color: t.faint, userSelect: "none" }}>{i + 1}.</span>{" "}
-            {word}{" "}
-          </span>
-        ))}
+            <button
+              type="button"
+              onClick={() => setShown(true)}
+              style={{
+                ...text.button,
+                boxSizing: "border-box",
+                cursor: "pointer",
+                border: `1px solid ${t.line}`,
+                background: t.surface,
+                color: t.text,
+                borderRadius: radius.pill,
+                padding: `12px ${space.gutter}px`,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: space.sm,
+                fontFamily: "inherit",
+              }}
+            >
+              <Eye size={18} />
+              Show the phrase
+            </button>
+          </div>
+        )}
       </div>
 
       {copy === "failed" && (
@@ -204,6 +272,7 @@ function Backup({ t, mnemonic, onDone }: { t: Theme; mnemonic: string; onDone: (
         <Button
           t={t}
           variant="quiet"
+          disabled={!shown}
           onClick={() =>
             void navigator.clipboard.writeText(mnemonic).then(
               () => setCopy("done"),
@@ -213,12 +282,92 @@ function Backup({ t, mnemonic, onDone }: { t: Theme; mnemonic: string; onDone: (
         >
           {copy === "done" ? "Copied" : "Copy the phrase"}
         </Button>
-        <Button t={t} onClick={onDone}>
+        <Button t={t} disabled={!shown} onClick={() => setChecking(true)}>
           I have written it down
         </Button>
       </ButtonStack>
     </Screen>
   );
+}
+
+/**
+ * the acknowledgement, asked rather than pressed.
+ *
+ * three ordinals chosen once per mount. the phrase is already in this
+ * component's parent, so nothing crosses the trust boundary and nothing is
+ * asked of the worker.
+ */
+function Verify({
+  t,
+  words,
+  onBack,
+  onDone,
+}: {
+  t: Theme;
+  words: string[];
+  onBack: () => void;
+  onDone: () => void;
+}) {
+  const [asked] = useState(() => pickThree(words.length));
+  const [given, setGiven] = useState<string[]>(["", "", ""]);
+  const [wrong, setWrong] = useState(false);
+
+  const correct = asked.every((n, i) => given[i]!.trim().toLowerCase() === words[n]);
+
+  return (
+    <Screen t={t} still>
+      <h1 style={{ ...text.screenTitle, color: t.text, margin: `${space.sm}px 0 ${space.sm}px` }}>
+        Check what you wrote
+      </h1>
+      <p style={{ ...text.body, color: t.sub, margin: `0 0 ${space.gutter}px`, lineHeight: 1.5 }}>
+        Three words from the phrase you just wrote down. This is the last time Pocket can tell you
+        whether it is right.
+      </p>
+
+      {asked.map((n, i) => (
+        <Field
+          key={n}
+          t={t}
+          label={`Word ${n + 1}`}
+          value={given[i]!}
+          mono
+          autoFocus={i === 0}
+          onChange={(v) => {
+            setWrong(false);
+            setGiven((g) => g.map((old, j) => (j === i ? v : old)));
+          }}
+        />
+      ))}
+
+      {wrong && (
+        <Notice t={t} tone="danger">
+          That does not match what Pocket generated. Go back and read the phrase again.
+        </Notice>
+      )}
+
+      <ButtonStack>
+        <Button
+          t={t}
+          onClick={() => {
+            if (correct) onDone();
+            else setWrong(true);
+          }}
+        >
+          Confirm
+        </Button>
+        <Button t={t} variant="quiet" onClick={onBack}>
+          Show me the phrase again
+        </Button>
+      </ButtonStack>
+    </Screen>
+  );
+}
+
+/** three distinct ordinals, in order, from a phrase of `n` words. */
+function pickThree(n: number): number[] {
+  const out = new Set<number>();
+  while (out.size < 3) out.add(Math.floor(Math.random() * n));
+  return [...out].sort((a, b) => a - b);
 }
 
 function Import({ t, onDone, onCancel }: { t: Theme; onDone: () => void; onCancel: () => void }) {

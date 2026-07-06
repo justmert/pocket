@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { mnemonicToSeedSync, validateMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { deriveEd25519 } from "../src/core/keys/sep5";
+import { answerBackupCheck } from "../tests/support/wallet";
 
 // Screen behaviour that a screenshot cannot catch: what a button submits, and
 // what the one-and-only showing of the recovery phrase actually puts on the
@@ -58,6 +59,7 @@ test("the phrase the backup step hands over is one that restores the wallet", as
     await page.getByRole("textbox", { name: "Confirm password" }).fill(PASSWORD);
     await page.getByRole("button", { name: "Create wallet" }).click();
     await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "Show the phrase" }).click();
 
     // Watch what the copy button hands to the clipboard. Reading the OS
     // clipboard back needs a permission this extension deliberately does not
@@ -87,7 +89,13 @@ test("the phrase the backup step hands over is one that restores the wallet", as
 
     // And it is not merely well-formed: it derives the account this wallet is
     // about to use. Same derivation the extension itself uses.
+    const shownWords = await page
+      .locator("span")
+      .filter({ hasText: /^\d+\.\s\w+\s*$/ })
+      .allInnerTexts();
+    const shownPhraseText = shownWords.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
     await page.getByRole("button", { name: "I have written it down" }).click();
+    await answerBackupCheck(page, shownPhraseText);
     await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: "Receive" }).click();
     const shown = (await page.getByText(/^G[A-Z2-7]{55}$/).first().innerText()).replace(/\s/g, "");
@@ -108,7 +116,14 @@ test("cancel never submits a form, and the submit button still does", async () =
     await page.getByRole("textbox", { name: "Confirm password" }).fill(PASSWORD);
     await page.getByRole("button", { name: "Create wallet" }).click();
     await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "Show the phrase" }).click();
+    const shownWords = await page
+      .locator("span")
+      .filter({ hasText: /^\d+\.\s\w+\s*$/ })
+      .allInnerTexts();
+    const shownPhraseText = shownWords.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
     await page.getByRole("button", { name: "I have written it down" }).click();
+    await answerBackupCheck(page, shownPhraseText);
     await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: "Lock wallet" }).click();
 
@@ -161,18 +176,31 @@ test("the private pocket's actions are reachable in a 600px popup", async () => 
     await page.getByRole("textbox", { name: "Confirm password" }).fill(PASSWORD);
     await page.getByRole("button", { name: "Create wallet" }).click();
     await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "Show the phrase" }).click();
 
     // The backup step is the tallest screen in onboarding.
     await expect(page.getByRole("button", { name: "I have written it down" })).toBeInViewport();
+    const shownWords = await page
+      .locator("span")
+      .filter({ hasText: /^\d+\.\s\w+\s*$/ })
+      .allInnerTexts();
+    const shownPhraseText = shownWords.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
     await page.getByRole("button", { name: "I have written it down" }).click();
+    await answerBackupCheck(page, shownPhraseText);
     await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
 
-    await expect(page.getByRole("button", { name: "Send" })).toBeInViewport();
-    await expect(page.getByRole("button", { name: "Set up private pocket" })).toBeInViewport();
+    // The bar carries every action now, and it is pinned rather than scrolled,
+    // so what has to be in view is the bar's controls and the pocket tabs that
+    // switch between the two balances.
+    await expect(page.getByRole("button", { name: "Send", exact: true })).toBeInViewport();
+    await expect(page.getByRole("button", { name: "Move", exact: true })).toBeInViewport();
+    await expect(page.getByRole("button", { name: "Private pocket" })).toBeInViewport();
 
-    // Receive expands the home screen by a full address block.
-    await page.getByRole("button", { name: "Receive" }).click();
-    await expect(page.getByRole("button", { name: "Set up private pocket" })).toBeInViewport();
+    // Receive is a sheet over the home screen, and the bar stays reachable
+    // underneath it because closing is how you get back.
+    await page.getByRole("button", { name: "Receive", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Receive" })).toBeInViewport();
+    await expect(page.getByRole("button", { name: "Close" })).toBeInViewport();
   } finally {
     await ctx.close();
     rmSync(dir, { recursive: true, force: true });

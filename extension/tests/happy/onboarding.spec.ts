@@ -32,6 +32,20 @@ test("creating a wallet shows 24 words once, then opens the home screen", async 
   await expect(wallet.page.getByText("Write this down")).toBeVisible({
     timeout: WAITS.onboarding,
   });
+
+  // The words start hidden. Someone creating a wallet in an open-plan office or
+  // on a screen share chooses the moment they appear, because they cannot be
+  // shown again and so must stay up long enough to transcribe.
+  await expect(
+    wallet.page.getByRole("button", { name: "Show the phrase" }),
+    "the phrase must not appear unannounced",
+  ).toBeVisible();
+  await expect(
+    wallet.page.getByRole("button", { name: "I have written it down" }),
+    "there is nothing to acknowledge until the words have been seen",
+  ).toBeDisabled();
+  await wallet.showPhrase();
+
   // 256 bits of entropy is 24 words. A 12-word phrase here would be a silent
   // halving of the security of every account the wallet ever derives.
   await expect(wallet.backupWordCells()).toHaveCount(24);
@@ -40,8 +54,28 @@ test("creating a wallet shows 24 words once, then opens the home screen", async 
   // on screen.
   await expect(wallet.page.getByText(/only way to recover/i)).toBeVisible();
   await expect(wallet.page.getByText(/cannot show them to you again/i)).toBeVisible();
+  // The lifecycle fact that used to be missing: the window closing is the same
+  // as continuing, and someone who switches to a password manager to record the
+  // words loses them.
+  await expect(wallet.page.getByText(/this window closes the moment you click anything outside it/i)).toBeVisible();
 
+  const phrase = await wallet.readBackupPhrase();
   await wallet.page.getByRole("button", { name: "I have written it down" }).click();
+
+  // The acknowledgement is a question, not a press. A wrong answer does not
+  // open the wallet, because the whole point is that the phrase was recorded.
+  await expect(wallet.page.getByText("Check what you wrote")).toBeVisible();
+  const fields = wallet.page.getByLabel(/^Word \d+$/);
+  await expect(fields, "three words, chosen at random from the phrase").toHaveCount(3);
+  await fields.first().fill("wrong");
+  await wallet.page.getByRole("button", { name: "Confirm", exact: true }).click();
+  await expect(
+    wallet.page.getByText(/does not match what Pocket generated/i),
+    "a wrong answer must be refused, or the check is decoration",
+  ).toBeVisible();
+  await expect(wallet.homeMarker()).toHaveCount(0);
+
+  await wallet.answerBackupCheck(phrase);
   await wallet.waitForHome();
 
   const address = await wallet.revealAddress();

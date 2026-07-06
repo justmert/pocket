@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { answerBackupCheck } from "../support/wallet";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -216,12 +217,14 @@ export async function onboard(page: Page, password = PASSWORD): Promise<string> 
   await page.getByRole("textbox", { name: "Confirm password" }).fill(password);
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Show the phrase" }).click();
   const cells = await page
     .locator("span")
     .filter({ hasText: /^\d+\.\s\w+\s*$/ })
     .allInnerTexts();
   const phrase = cells.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
+  await answerBackupCheck(page, phrase);
   await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
   return phrase;
 }

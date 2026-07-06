@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { answerBackupCheck } from "../tests/support/wallet";
 
 // The whole private pocket, driven the way a user drives it: clicks in the
 // popup, real proving in the offscreen document, real transactions on testnet.
@@ -49,7 +50,13 @@ test("creates a wallet and funds it", async () => {
   await page.getByRole("textbox", { name: "Confirm password" }).fill(PASSWORD);
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
+    const shownWords = await page
+    .locator("span")
+    .filter({ hasText: /^\d+\.\s\w+\s*$/ })
+    .allInnerTexts();
+  const shownPhraseText = shownWords.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
+  await answerBackupCheck(page, shownPhraseText);
   await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
 
   // Read the address the wallet actually derived, from its own receive view.

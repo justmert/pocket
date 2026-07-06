@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { answerBackupCheck } from "../tests/support/wallet";
 
 // Loads the REAL built extension into a real Chrome and drives the popup.
 // Nothing is stubbed: the service worker runs, the vault encrypts with scrypt,
@@ -35,7 +36,14 @@ async function onboard(page: Page): Promise<void> {
   await page.getByRole("textbox", { name: "Confirm password" }).fill(PASSWORD);
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Show the phrase" }).click();
+  const cells = await page
+    .locator("span")
+    .filter({ hasText: /^\d+\.\s\w+\s*$/ })
+    .allInnerTexts();
+  const phrase = cells.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
+  await answerBackupCheck(page, phrase);
   await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 15_000 });
 }
 
@@ -63,6 +71,7 @@ test("onboarding creates a wallet and shows exactly 24 words", async () => {
     await page.getByRole("button", { name: "Create wallet" }).click();
 
     await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "Show the phrase" }).click();
     const words = await page
       .locator("span")
       .filter({ hasText: /^\d+\.\s\w+\s*$/ })
@@ -107,7 +116,7 @@ test("shows the receive address in full, never truncated", async () => {
     await page.getByRole("button", { name: "Receive" }).click();
     await expect(page.getByRole("dialog", { name: "Receive" })).toBeVisible();
 
-    const shown = (await page.locator("div[style*='break-all']").innerText()).replace(/\s/g, "");
+    const shown = (await page.getByText(/^G[A-Z2-7]{55}$/).first().innerText()).replace(/\s/g, "");
     // A G-address is 56 characters. Anything shorter means it was truncated,
     // which is exactly what the address layer exists to prevent: matching the
     // first and last four costs about an hour on a laptop.
@@ -174,12 +183,12 @@ test("states what registration costs before offering the button", async () => {
   try {
     const page = await popup(ctx, id);
     await onboard(page);
-    await page.getByRole("button", { name: "Set up private pocket" }).click();
+    await page.getByRole("button", { name: "Private pocket" }).click();
 
     // A brand-new wallet is unfunded, which is a state and not a crash.
-    await expect(page.getByText(/Fund this account first|Not set up yet/)).toBeVisible({
-      timeout: 30_000,
-    });
+    await expect(
+      page.getByText(/Fund this account first|Private pocket not set up/),
+    ).toBeVisible({ timeout: 30_000 });
     // Whatever the state, no balance may be invented for it.
     await expect(page.getByText(/^0\.0000000$/)).toHaveCount(0);
   } finally {
@@ -200,11 +209,13 @@ test("an imported phrase reproduces the same address", async () => {
     await page.getByRole("textbox", { name: "Confirm password" }).fill(PASSWORD);
     await page.getByRole("button", { name: "Create wallet" }).click();
     await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "Show the phrase" }).click();
     const words = await page.locator("span").filter({ hasText: /^\d+\.\s\w+\s*$/ }).allInnerTexts();
     const phrase = words.map((w) => w.replace(/^\d+\.\s*/, "").trim()).join(" ");
     await page.getByRole("button", { name: "I have written it down" }).click();
+    await answerBackupCheck(page, phrase);
     await page.getByRole("button", { name: "Receive" }).click();
-    const expected = (await page.locator("div[style*='break-all']").innerText()).replace(/\s/g, "");
+    const expected = (await page.getByText(/^G[A-Z2-7]{55}$/).first().innerText()).replace(/\s/g, "");
 
     await ctx.close();
     rmSync(dir, { recursive: true, force: true });
@@ -222,7 +233,7 @@ test("an imported phrase reproduces the same address", async () => {
 
       await expect(p2.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
       await p2.getByRole("button", { name: "Receive" }).click();
-      const restored = (await p2.locator("div[style*='break-all']").innerText()).replace(/\s/g, "");
+      const restored = (await p2.getByText(/^G[A-Z2-7]{55}$/).first().innerText()).replace(/\s/g, "");
       expect(restored).toBe(expected);
     } finally {
       await second.ctx.close();

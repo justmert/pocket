@@ -92,14 +92,20 @@ export function Screen({
   t,
   children,
   background,
+  /** nothing moves while someone is reading the thing they are confirming. */
+  still = false,
 }: {
   t: Theme;
   children: ReactNode;
   background?: string;
+  still?: boolean;
 }) {
   return (
     <Frame t={t}>
-      <ScrollArea className="pocket-page" background={background ?? t.canvas}>
+      <ScrollArea
+        className={still ? "pocket-still" : "pocket-page"}
+        background={background ?? t.canvas}
+      >
         <div style={{ padding: `${space.gutter}px ${space.gutter}px ${space.xl}px` }}>
           {children}
         </div>

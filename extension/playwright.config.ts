@@ -10,6 +10,10 @@ export default defineConfig({
   // so they must run in order in a single worker.
   workers: 1,
   fullyParallel: false,
-  timeout: 60_000,
+  // Each of these creates a wallet from scratch, which is scrypt plus a
+  // three-word check the backup step now asks before it opens. The budget is
+  // the flow's, not a round number: 60s covered onboarding before that gate
+  // existed and no longer does.
+  timeout: 120_000,
   reporter: "list",
 });

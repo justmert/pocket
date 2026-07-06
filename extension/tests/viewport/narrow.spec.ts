@@ -99,6 +99,7 @@ test("the 24 backup words stay legible at every width Chrome can zoom to", async
   await page.getByLabel("Confirm password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: WAITS.onboarding });
+  await page.getByRole("button", { name: "Show the phrase" }).click();
 
   // A grid of monospace words is the layout most likely to give way first, and
   // this is the one screen in the wallet that is shown ONCE.

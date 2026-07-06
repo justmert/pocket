@@ -8,6 +8,7 @@
 // or normalised opens a vault its owner cannot reproduce from memory.
 import { test, expect, SLOW } from "./edge";
 import type { Page } from "@playwright/test";
+import { answerBackupCheck } from "../support/wallet";
 
 // Every action gets a bound. Playwright's default `actionTimeout` is 0, meaning
 // "wait until the test times out", so a `fill()` on a field that never appears
@@ -35,7 +36,14 @@ async function createWith(page: Page, password: string): Promise<void> {
   await fillCreate(page, password);
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: SLOW });
+  await page.getByRole("button", { name: "Show the phrase" }).click();
+    const shownWords = await page
+    .locator("span")
+    .filter({ hasText: /^\d+\.\s\w+\s*$/ })
+    .allInnerTexts();
+  const shownPhraseText = shownWords.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
+  await answerBackupCheck(page, shownPhraseText);
   await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
 }
 

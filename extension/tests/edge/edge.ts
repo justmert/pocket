@@ -12,6 +12,7 @@
 // and hands it back verbatim. That is how three inherited tests turned out to
 // be red for a real reason rather than green for a comfortable one.
 import { expect, type Page } from "@playwright/test";
+import { answerBackupCheck } from "../support/wallet";
 
 export { test, expect, Wallet } from "../support/fixtures";
 export { fund, account, nativeBalance, payments, transactions, waitFor } from "../support/testnet";
@@ -39,12 +40,14 @@ export async function onboard(page: Page, password = PASSWORD): Promise<string> 
   await page.getByLabel("Confirm password").fill(password);
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: SLOW });
+  await page.getByRole("button", { name: "Show the phrase" }).click();
   const cells = await page
     .locator("span")
     .filter({ hasText: /^\d+\.\s\w+\s*$/ })
     .allInnerTexts();
   const phrase = cells.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
+  await answerBackupCheck(page, phrase);
   await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
   return phrase;
 }

@@ -240,6 +240,7 @@ const POCKETLESS: Shot[] = [
       await w.page.getByLabel("Confirm password").fill(PASSWORD);
       await w.page.getByRole("button", { name: "Create wallet" }).click();
       await expect(w.page.getByText("Write this down")).toBeVisible({ timeout: WAITS.onboarding });
+  await w.page.getByRole("button", { name: "Show the phrase" }).click();
       await expect(wordCells(w)).toHaveCount(24);
     },
     mask: (w) => [wordCells(w)],

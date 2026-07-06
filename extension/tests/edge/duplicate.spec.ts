@@ -25,6 +25,7 @@ import {
   SLOW,
   surfaceText,
 } from "./edge";
+import { answerBackupCheck } from "../support/wallet";
 
 // Every action gets a bound. Playwright's default `actionTimeout` is 0, meaning
 // "wait until the test times out", so a `fill()` on a field that never appears
@@ -57,6 +58,7 @@ test("creating a wallet twice in one gesture leaves one wallet, and the phrase o
   expect(clicks.dispatched, `second click landed on a live button: ${clicks.secondLanded}`).toBe(2);
 
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: SLOW });
+  await page.getByRole("button", { name: "Show the phrase" }).click();
   const cells = page.locator("span").filter({ hasText: /^\d+\.\s\w+\s*$/ });
   // Not 48, and not 12: two creations racing could leave either.
   await expect(cells).toHaveCount(24);
@@ -64,7 +66,13 @@ test("creating a wallet twice in one gesture leaves one wallet, and the phrase o
     .map((c) => c.replace(/^\d+\.\s*/, "").trim())
     .join(" ");
 
+    const shownWords = await page
+    .locator("span")
+    .filter({ hasText: /^\d+\.\s\w+\s*$/ })
+    .allInnerTexts();
+  const shownPhraseText = shownWords.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
+  await answerBackupCheck(page, shownPhraseText);
   await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
   const address = await receiveAddress(page);
 

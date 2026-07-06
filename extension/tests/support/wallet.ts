@@ -61,10 +61,40 @@ export class Wallet {
     await expect(this.page.getByText("Write this down")).toBeVisible({
       timeout: WAITS.onboarding,
     });
+    await this.showPhrase();
     const phrase = await this.readBackupPhrase();
     await this.page.getByRole("button", { name: "I have written it down" }).click();
+    await this.answerBackupCheck(phrase);
     await this.waitForHome();
     return phrase;
+  }
+
+  /** The words start hidden so the user chooses the moment they appear. */
+  async showPhrase(): Promise<void> {
+    const reveal = this.page.getByRole("button", { name: "Show the phrase" });
+    if ((await reveal.count()) > 0) await reveal.click();
+  }
+
+  /**
+   * Answer the three-word check that stands between the phrase and the wallet.
+   *
+   * The ordinals are chosen at random per run, so they are read off the labels
+   * rather than assumed. A test that hardcoded them would pass by luck.
+   */
+  async answerBackupCheck(phrase: string): Promise<void> {
+    const words = phrase.split(" ");
+    const fields = this.page.getByLabel(/^Word \d+$/);
+    const n = await fields.count();
+    for (let i = 0; i < n; i++) {
+      const field = fields.nth(i);
+      const label = await field.evaluate((el) => {
+        const id = el.getAttribute("id");
+        return id ? (document.querySelector(`label[for="${id}"]`)?.textContent ?? "") : "";
+      });
+      const ordinal = Number(label.replace(/\D+/g, ""));
+      await field.fill(words[ordinal - 1] ?? "");
+    }
+    await this.page.getByRole("button", { name: "Confirm", exact: true }).click();
   }
 
   /** The numbered word cells on the backup screen. */
@@ -411,4 +441,26 @@ export async function openMoveAction(page: Page, name: string): Promise<void> {
     await expect(dialog).toBeVisible();
   }
   await dialog.getByRole("button", { name, exact: true }).click();
+}
+
+/**
+ * Answer the three-word check on the backup screen, for a spec driving a bare
+ * `Page` rather than a `Wallet`.
+ *
+ * The ordinals are random per run and are read off the labels, so a spec cannot
+ * pass by luck.
+ */
+export async function answerBackupCheck(page: Page, phrase: string): Promise<void> {
+  const words = phrase.split(" ");
+  const fields = page.getByLabel(/^Word \d+$/);
+  const n = await fields.count();
+  for (let i = 0; i < n; i++) {
+    const field = fields.nth(i);
+    const label = await field.evaluate((el) => {
+      const id = el.getAttribute("id");
+      return id ? (document.querySelector(`label[for="${id}"]`)?.textContent ?? "") : "";
+    });
+    await field.fill(words[Number(label.replace(/\D+/g, "")) - 1] ?? "");
+  }
+  await page.getByRole("button", { name: "Confirm", exact: true }).click();
 }

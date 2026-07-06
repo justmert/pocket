@@ -45,8 +45,19 @@ test("a wallet can be created with the keyboard alone", async ({ wallet }) => {
     timeout: WAITS.onboarding,
   });
 
+  // The words start hidden, so the keyboard path has to reach the reveal first.
+  // That is the point of the check: nothing can be acknowledged unseen.
+  expect(await tabTo(wallet.page, "Show the phrase")).toBe(true);
+  await wallet.page.keyboard.press("Enter");
+  const phrase = await wallet.readBackupPhrase();
+
   expect(await tabTo(wallet.page, "I have written it down")).toBe(true);
   await wallet.page.keyboard.press("Enter");
+
+  // And the three-word check is answerable without a pointer.
+  await expect(wallet.page.getByText("Check what you wrote")).toBeVisible();
+  expect((await focused(wallet.page)).tag, "the first word field must take focus").toBe("INPUT");
+  await wallet.answerBackupCheck(phrase);
   await wallet.waitForHome(WAITS.ledgerRead);
 });
 

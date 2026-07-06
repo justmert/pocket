@@ -86,6 +86,7 @@ test("a wallet whose worker died before the backup was acknowledged is not orpha
     await page.getByRole("textbox", { name: "Confirm password" }).fill(PASSWORD);
     await page.getByRole("button", { name: "Create wallet" }).click();
     await expect(page.getByText("Write this down")).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Show the phrase" }).click();
     const phrase = (
       await page
         .locator("span")
