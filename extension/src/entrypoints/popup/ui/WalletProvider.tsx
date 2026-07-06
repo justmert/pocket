@@ -173,6 +173,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   // a site waiting on a signature outranks everything the popup could show, so
   // it is checked on every mount and whenever the lock state moves.
+  //
+  // NOT a timer. A9-02 and A9-03 are right that these three values can change
+  // under an open popup, and a three second poll closed them and cost the whole
+  // suite twenty minutes of extra wall clock while clearing sheets under tests
+  // that were mid-flow. The finding stands; the fix has to be cheaper than this
+  // and is written up in ux/escalations.md rather than shipped half-working.
   useEffect(() => {
     void (async () => {
       try {

@@ -24,6 +24,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const w = useWallet();
   const t = w.t;
   const priv = w.priv;
+  const refresh = w.refresh;
 
   const [stage, setStage] = useState<Stage>("menu");
   const [kind, setKind] = useState<Kind>("shield");
@@ -66,18 +67,27 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
 
   const close = () => onClose();
 
+  // The countdown lives in a ref because the effect is re-created whenever the
+  // provider re-renders, and `refresh` re-renders the provider. Held in a local
+  // it reset to fifteen on every tick and the bound was never reached, so a poll
+  // built from `balances` and `privatePocket` kept re-arming the idle-lock alarm
+  // and the wallet never locked itself again. That is the whole reason this is
+  // bounded at all.
+  const pollsLeft = useRef(0);
   useEffect(() => {
     if (!open || stage !== "menu" || priv?.state === "ready") return;
-    let left = 15;
+    pollsLeft.current = 15;
     const id = setInterval(() => {
-      if (left-- <= 0) {
+      if (pollsLeft.current-- <= 0) {
         clearInterval(id);
         return;
       }
-      void w.refresh();
+      void refresh();
     }, 2000);
     return () => clearInterval(id);
-  }, [open, stage, priv?.state, w]);
+    // `refresh` is a stable useCallback; `w` is not, and depending on it is what
+    // made this unbounded.
+  }, [open, stage, priv?.state, refresh]);
 
   const build = async (op: PrivateOpRequest) => {
     setKind(op.kind);
