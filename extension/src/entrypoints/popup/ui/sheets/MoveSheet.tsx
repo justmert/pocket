@@ -132,7 +132,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     stage === "menu" ? "Move" : stage === "done" ? HEADING[kind] : HEADING[kind];
 
   return (
-    <Sheet t={t} open={open} onClose={busy ? () => undefined : close} title={title} full={stage === "review" || stage === "done"}>
+    <Sheet t={t} open={open} onClose={busy ? () => undefined : close} title={title} full={stage === "review" || stage === "done"} focusKey={stage} still={stage === "review"}>
       {stage === "menu" &&
         menu({
           priv,

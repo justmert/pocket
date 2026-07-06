@@ -117,6 +117,8 @@ export function SendSheet({ open, onClose }: { open: boolean; onClose: () => voi
       onClose={busy ? () => undefined : close}
       title={isPrivate ? "Send privately" : "Send"}
       full={stage !== "compose"}
+      focusKey={stage}
+      still={stage === "review"}
     >
       {stage === "compose" && (
         <>

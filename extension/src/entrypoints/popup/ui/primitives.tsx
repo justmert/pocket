@@ -133,7 +133,7 @@ export function Header({
         marginBottom: space.gutter,
       }}
     >
-      {onBack && <CircleBtn t={t} icon="back" onClick={onBack} label="Back" />}
+      {onBack && <IconButton t={t} glyph="back" onClick={onBack} label="Back" />}
       {title ? (
         <h1 style={{ ...text.screenTitle, color: t.text, minWidth: 0, flex: 1, margin: 0 }}>
           {title}
@@ -142,26 +142,33 @@ export function Header({
         <div style={{ flex: 1 }} />
       )}
       {right}
-      {onClose && <CircleBtn t={t} icon="close" onClick={onClose} label="Close" />}
+      {onClose && <IconButton t={t} glyph="close" onClick={onClose} label="Close" />}
     </div>
   );
 }
 
-export function CircleBtn({
+/**
+ * every round icon control in the product.
+ *
+ * this was two components with the same job and different defaults, which is
+ * the taxonomy defect the audit named: same job, one implementation, variants.
+ */
+export function IconButton({
   t,
-  icon,
+  glyph,
   label,
   size = 38,
   children,
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   t: Theme;
-  icon?: "back" | "close";
+  /** the two the product ships. anything else comes in as children. */
+  glyph?: "back" | "close";
   label: string;
   size?: number;
   children?: ReactNode;
 }) {
-  const glyph = Math.round(size * 0.5);
+  const inner = Math.round(size * 0.5);
   return (
     <button
       {...rest}
@@ -182,47 +189,9 @@ export function CircleBtn({
         flex: "0 0 auto",
       }}
     >
-      {icon === "back" && <BackIcon size={glyph} sw={2.4} />}
-      {icon === "close" && <CloseIcon size={glyph} sw={2.4} />}
-      {!icon && children}
-    </button>
-  );
-}
-
-/** a round icon button that carries its own glyph. */
-export function IconCircle({
-  t,
-  label,
-  size = 40,
-  children,
-  ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & {
-  t: Theme;
-  label: string;
-  size?: number;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      {...rest}
-      type="button"
-      aria-label={label}
-      style={{
-        all: "unset",
-        boxSizing: "border-box",
-        cursor: "pointer",
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        background: t.accentSoft,
-        color: t.dark ? t.accent : t.text,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flex: "0 0 auto",
-      }}
-    >
-      {children}
+      {glyph === "back" && <BackIcon size={inner} sw={2.4} />}
+      {glyph === "close" && <CloseIcon size={inner} sw={2.4} />}
+      {!glyph && children}
     </button>
   );
 }
@@ -244,6 +213,11 @@ export function Button({
   busy?: boolean;
   children: ReactNode;
 }) {
+  // busy is not disabled. "you cannot do this" and "this is happening" are
+  // different facts, and only the first should take the control out of the tab
+  // order. a focused button that becomes `disabled` drops the keyboard user to
+  // the document body, which is exactly where they were left every time they
+  // pressed the button that starts the slow work.
   const off = disabled || busy;
   const fills: Record<string, CSSProperties> = {
     primary: {
@@ -258,8 +232,10 @@ export function Button({
     <button
       {...rest}
       type={type}
-      disabled={off}
+      disabled={disabled && !busy}
+      aria-disabled={off || undefined}
       aria-busy={busy || undefined}
+      onClick={off ? undefined : rest.onClick}
       style={{
         ...text.button,
         boxSizing: "border-box",
@@ -392,6 +368,18 @@ export function Field({
     resize: "none",
   };
   const described = hint ? hintId : undefined;
+  // `mono` means "this is a value, not prose", and the only multiline mono field
+  // in the product is the recovery phrase. chrome's enhanced spell check sends
+  // the contents of a text field away to be checked, so nothing here is offered
+  // to it, to autofill, to autocorrect or to autocapitalise.
+  const verbatim = mono
+    ? ({
+        spellCheck: false,
+        autoComplete: "off",
+        autoCorrect: "off",
+        autoCapitalize: "off",
+      } as const)
+    : {};
   return (
     <div style={{ marginBottom: space.md }}>
       {/* the hint sits OUTSIDE the label and is pointed at instead. inside it,
@@ -402,6 +390,7 @@ export function Field({
       </label>
       {multiline ? (
         <textarea
+          {...verbatim}
           id={id}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -414,6 +403,7 @@ export function Field({
         />
       ) : (
         <input
+          {...verbatim}
           id={id}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -794,6 +784,13 @@ export function Sheet({
   children,
   /** fills the frame, for a step that needs the room. */
   full = false,
+  /**
+   * changes when the sheet swaps what it is showing. focus follows it, because
+   * a panel replaced under a keyboard user drops focus to the document body.
+   */
+  focusKey,
+  /** nothing moves while someone is reading the thing they are confirming. */
+  still = false,
 }: {
   t: Theme;
   open: boolean;
@@ -801,6 +798,8 @@ export function Sheet({
   title?: string;
   children: ReactNode;
   full?: boolean;
+  focusKey?: string;
+  still?: boolean;
 }) {
   const [mounted, setMounted] = useState(open);
   const [closing, setClosing] = useState(false);
@@ -833,7 +832,7 @@ export function Sheet({
     if (!root) return;
     const field = root.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled])");
     (field ?? root).focus();
-  }, [open, mounted]);
+  }, [open, mounted, focusKey]);
 
   const keepFocusInside = (e: React.KeyboardEvent) => {
     if (e.key !== "Tab") return;
@@ -890,7 +889,7 @@ export function Sheet({
         aria-modal="true"
         aria-label={title}
         onKeyDown={keepFocusInside}
-        className={closing ? "pocket-sheet-out" : "pocket-sheet-in"}
+        className={`${closing ? "pocket-sheet-out" : "pocket-sheet-in"}${still ? " pocket-still" : ""}`}
         style={{
           position: "absolute",
           left: 0,
@@ -932,7 +931,7 @@ export function Sheet({
             ) : (
               <div style={{ flex: 1 }} />
             )}
-            <CircleBtn t={t} icon="close" onClick={onClose} label="Close" />
+            <IconButton t={t} glyph="close" onClick={onClose} label="Close" />
           </div>
         </div>
         <div

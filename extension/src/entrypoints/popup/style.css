@@ -1,3 +1,22 @@
+/* the values below are written by WalletProvider from theme.ts. the fallbacks
+ * are only for the frame between the document parsing and react mounting. */
+:root {
+  --pocket-enter: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --pocket-exit: cubic-bezier(0.4, 0, 1, 1);
+  --pocket-wash-ease: cubic-bezier(0.33, 0, 0.2, 1);
+  --pocket-instant: 140ms;
+  --pocket-quick: 200ms;
+  --pocket-page: 260ms;
+  --pocket-page-out: 200ms;
+  --pocket-sheet: 280ms;
+  --pocket-sheet-out: 240ms;
+  --pocket-settle: 320ms;
+  --pocket-pocket: 620ms;
+  --pocket-ambient: 1300ms;
+  --pocket-ambient-slow: 1500ms;
+  --pocket-spin: 700ms;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -35,7 +54,7 @@ button {
 /* every tappable answers a press, wherever it was built. */
 button,
 [role="button"] {
-  transition: transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+  transition: transform var(--pocket-instant) var(--pocket-enter) !important;
   -webkit-tap-highlight-color: transparent;
 }
 button:active:not(:disabled),
@@ -52,7 +71,7 @@ button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--pocket-accent, currentColor) !important;
+  outline: 2px solid var(--pocket-ring, currentColor) !important;
   outline-offset: 2px;
   border-radius: 6px;
 }
@@ -61,7 +80,7 @@ textarea:focus-visible,
  * alone is a weak signal for which field of a payment form you are in. */
 input:focus,
 textarea:focus {
-  outline: 2px solid var(--pocket-accent, currentColor) !important;
+  outline: 2px solid var(--pocket-ring, currentColor) !important;
   outline-offset: 1px;
 }
 
@@ -179,39 +198,39 @@ textarea:focus {
 }
 
 .pocket-page {
-  animation: pocket-page-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: pocket-page-in var(--pocket-page) var(--pocket-enter);
 }
 .pocket-page-out {
-  animation: pocket-page-out 200ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  animation: pocket-page-out var(--pocket-page-out) var(--pocket-exit) forwards;
   pointer-events: none;
 }
 .pocket-sheet-in {
-  animation: pocket-sheet-up 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: pocket-sheet-up var(--pocket-sheet) var(--pocket-enter);
 }
 .pocket-sheet-out {
-  animation: pocket-sheet-down 240ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  animation: pocket-sheet-down var(--pocket-sheet-out) var(--pocket-exit) forwards;
   pointer-events: none;
 }
 .pocket-fade-in {
-  animation: pocket-fade-in 200ms ease;
+  animation: pocket-fade-in var(--pocket-quick) ease;
 }
 .pocket-fade-out {
-  animation: pocket-fade-out 200ms ease forwards;
+  animation: pocket-fade-out var(--pocket-quick) ease forwards;
   pointer-events: none;
 }
 .pocket-row-in {
-  animation: pocket-row-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: pocket-row-in var(--pocket-settle) var(--pocket-enter) both;
 }
 .pocket-wash {
-  animation: pocket-wash 620ms cubic-bezier(0.33, 0, 0.2, 1) forwards;
+  animation: pocket-wash var(--pocket-pocket) var(--pocket-wash-ease) forwards;
   pointer-events: none;
   transform-origin: 50% 18%;
 }
 .pocket-spinner {
-  animation: pocket-spin 700ms linear infinite;
+  animation: pocket-spin var(--pocket-spin) linear infinite;
 }
 .pocket-pulse {
-  animation: pocket-pulse 1300ms ease-in-out infinite;
+  animation: pocket-pulse var(--pocket-ambient) ease-in-out infinite;
 }
 
 /* a balance that has not arrived is a shimmer, never a zero. */
@@ -223,8 +242,16 @@ textarea:focus {
     rgba(140, 140, 150, 0.09) 63%
   );
   background-size: 200% 100%;
-  animation: pocket-shimmer 1500ms ease-in-out infinite;
+  animation: pocket-shimmer var(--pocket-ambient-slow) ease-in-out infinite;
   border-radius: 8px;
+}
+
+/* nothing moves while someone is reading the thing they are about to make
+ * permanent. applied to the phrase step, the review steps and the erase sheets. */
+.pocket-still,
+.pocket-still * {
+  animation: none !important;
+  transition: none !important;
 }
 
 /* a reader who asked for less motion still needs the spinner: it is the only

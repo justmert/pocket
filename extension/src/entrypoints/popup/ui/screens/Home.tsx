@@ -3,7 +3,7 @@ import { nativeOf, useWallet } from "../WalletProvider";
 import { NAV_SPACE } from "../BottomNav";
 import { Amount, HeroAmount } from "../Amount";
 import { Avatar, shortAddress } from "../Address";
-import { Card, IconCircle, Notice, Overline, Row, ScrollArea, Skeleton } from "../primitives";
+import { Card, IconButton, Notice, Overline, Row, ScrollArea, Skeleton } from "../primitives";
 import { Check, Copy, Lock, Refresh, Shield } from "../icons";
 import { fontSizes, radius, space, text, type Pocket, type Theme } from "../theme";
 import type { PrivatePocket } from "../../../../core/messages";
@@ -317,12 +317,12 @@ export function Home() {
             <Skeleton width={120} height={13} />
           )}
         </div>
-        <IconCircle t={t} label="Refresh" onClick={() => void w.refresh()}>
+        <IconButton t={t} size={40} label="Refresh" onClick={() => void w.refresh()}>
           <Refresh size={18} className={w.refreshing ? "pocket-spinner" : undefined} />
-        </IconCircle>
-        <IconCircle t={t} label="Lock wallet" onClick={() => void w.lock()}>
+        </IconButton>
+        <IconButton t={t} size={40} label="Lock wallet" onClick={() => void w.lock()}>
           <Lock size={18} />
-        </IconCircle>
+        </IconButton>
       </div>
     );
   }

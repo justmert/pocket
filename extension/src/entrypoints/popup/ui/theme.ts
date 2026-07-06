@@ -70,19 +70,50 @@ export const radius = {
 } as const;
 
 /**
- * one easing for anything entering, one for anything leaving. durations are
- * short enough that a fast user never waits on them.
+ * motion, tokenized like colour.
+ *
+ * two easings and no more: one for anything arriving or settling, one for
+ * anything leaving. every duration below has a stated job, and nothing in the
+ * product animates on a value that is not here. the stylesheet reads these
+ * through custom properties rather than repeating them, because a duration
+ * declared in two places is a duration that will disagree with itself.
  */
 export const motion = {
+  /** anything arriving or settling. */
   enter: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+  /** anything leaving. */
   exit: "cubic-bezier(0.4, 0, 1, 1)",
-  press: "140ms",
+  /** the pocket wash, and nothing else. the one expressive moment. */
+  wash: "cubic-bezier(0.33, 0, 0.2, 1)",
+  /** a number that eases like a panel reads as a panel. */
+  odometer: "cubic-bezier(0.2, 0.85, 0.25, 1)",
+
+  /** did my input register. */
+  instant: "140ms",
+  /** a layer arrived or left. */
   quick: "200ms",
-  sheet: "280ms",
+  /** a screen settles into place. */
   page: "260ms",
-  /** the pocket switch is the one deliberately slower moment in the product. */
-  pocket: "450ms",
+  /** a screen leaves. */
+  pageOut: "200ms",
+  /** a sheet comes up. */
+  sheet: "280ms",
+  /** a sheet goes away. */
+  sheetOut: "240ms",
+  /** a list arrives, plus 45ms per row. */
+  settle: "320ms",
+  /** a number moves rather than jumps. */
+  roll: "560ms",
+  /** crossing between the two pockets. */
+  pocket: "620ms",
+  /** still working. */
+  ambient: "1300ms",
+  /** this is not a number yet. */
+  ambientSlow: "1500ms",
 } as const;
+
+/** the stagger between one row and the next. */
+export const ROW_STAGGER_MS = 45;
 
 export const fonts = {
   sans: "'Plus Jakarta Sans Variable', system-ui, sans-serif",
@@ -128,6 +159,14 @@ export interface Theme {
   /** an amount that is public or is about to become public. never decorative. */
   exposed: string;
   exposedSoft: string;
+  /**
+   * the focus indicator.
+   *
+   * NOT the accent. yellow on a near-white surface cannot reach the 3:1 a focus
+   * indicator needs, and every control here is built with `all: unset`, so the
+   * ring is the only focus signal there is.
+   */
+  ring: string;
 }
 
 export function theme(pocket: Pocket): Theme {
@@ -161,6 +200,7 @@ const PUBLIC: Theme = {
   positiveSoft: "rgba(23,105,63,0.10)",
   exposed: "#8A5000",
   exposedSoft: "rgba(160,94,0,0.11)",
+  ring: "#14151A",
 };
 
 const PRIVATE: Theme = {
@@ -188,4 +228,5 @@ const PRIVATE: Theme = {
   positiveSoft: "rgba(95,211,154,0.13)",
   exposed: "#F0B45C",
   exposedSoft: "rgba(240,180,92,0.14)",
+  ring: "#B8ADE8",
 };

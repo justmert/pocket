@@ -32,6 +32,16 @@ type PocketName = (typeof POCKETS)[number];
 const ACCENT = { public: "rgb(254, 217, 36)", private: "rgb(184, 173, 232)" } as const;
 
 /**
+ * The focus ring, which is deliberately NOT the accent in the public pocket.
+ *
+ * Yellow on a near-white surface cannot reach the 3:1 WCAG 1.4.11 asks of a
+ * non-text indicator, and every control here is built with `all: unset`, so the
+ * ring is the only focus signal there is. The private pocket's lilac clears it
+ * against its own dark surfaces and keeps it.
+ */
+const RING = { public: "rgb(20, 21, 26)", private: "rgb(184, 173, 232)" } as const;
+
+/**
  * The two stops of each pocket's primary fill.
  *
  * A primary button is a gradient, so the thing to assert is the gradient. Both
@@ -142,7 +152,7 @@ test.describe("disabled", () => {
 
 test.describe("focus", () => {
   for (const pocket of POCKETS) {
-    test(`keyboard focus in the ${pocket} pocket is the accent rather than Chrome's blue`, async ({
+    test(`keyboard focus in the ${pocket} pocket is the product's ring rather than Chrome's blue`, async ({
       wallet,
     }) => {
       test.setTimeout(4 * 60_000);
@@ -172,10 +182,10 @@ test.describe("focus", () => {
       const ring = await computed(target, ["outline-color", "outline-style", "outline-width"]);
       expect(ring["outline-style"]).toBe("solid");
       expect(px(ring, "outline-width")).toBeGreaterThanOrEqual(2);
-      // The only blue in this product would be Chrome's default ring. The
-      // accent is handed to CSS by `WalletProvider` precisely so it is never
-      // used, and it follows the pocket.
-      expect(ring["outline-color"]).toBe(ACCENT[pocket]);
+      // The only blue in this product would be Chrome's default ring. The ring
+      // colour is handed to CSS by `WalletProvider` precisely so the default is
+      // never used, and it follows the pocket.
+      expect(ring["outline-color"]).toBe(RING[pocket]);
     });
   }
 
@@ -238,7 +248,7 @@ test.describe("focus", () => {
     const ring = await computed(recipient, ["outline-style", "outline-width", "outline-color"]);
     expect(ring["outline-style"]).toBe("solid");
     expect(px(ring, "outline-width")).toBeGreaterThanOrEqual(2);
-    expect(ring["outline-color"]).toBe(ACCENT.public);
+    expect(ring["outline-color"]).toBe(RING.public);
   });
 
   test("keyboard focus on a text input is visible at all", async ({ wallet }) => {

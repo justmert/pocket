@@ -8,7 +8,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { call } from "./rpc";
-import { theme, type Pocket, type Theme } from "./theme";
+import { motion, theme, type Pocket, type Theme } from "./theme";
 import type {
   PrivatePocket,
   PublicBalance,
@@ -221,9 +221,23 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     document.body.style.margin = "0";
     document.body.style.background = t.bg;
     const root = document.documentElement;
-    // the stylesheet needs the accent for the focus ring and the accent is
-    // chosen here, so it is handed over rather than duplicated as a hex.
+    // the stylesheet cannot import typescript, so the tokens are handed to it
+    // once rather than written out twice and left to drift.
     root.style.setProperty("--pocket-accent", t.accent);
+    root.style.setProperty("--pocket-ring", t.ring);
+    root.style.setProperty("--pocket-enter", motion.enter);
+    root.style.setProperty("--pocket-exit", motion.exit);
+    root.style.setProperty("--pocket-wash-ease", motion.wash);
+    root.style.setProperty("--pocket-instant", motion.instant);
+    root.style.setProperty("--pocket-quick", motion.quick);
+    root.style.setProperty("--pocket-page", motion.page);
+    root.style.setProperty("--pocket-page-out", motion.pageOut);
+    root.style.setProperty("--pocket-sheet", motion.sheet);
+    root.style.setProperty("--pocket-sheet-out", motion.sheetOut);
+    root.style.setProperty("--pocket-settle", motion.settle);
+    root.style.setProperty("--pocket-pocket", motion.pocket);
+    root.style.setProperty("--pocket-ambient", motion.ambient);
+    root.style.setProperty("--pocket-ambient-slow", motion.ambientSlow);
     root.style.colorScheme = t.dark ? "dark" : "light";
   }, [t]);
 
