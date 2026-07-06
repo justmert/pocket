@@ -67,7 +67,7 @@ const SHEETS: { title: string; open: (w: Wallet) => Promise<void> }[] = [
     title: "Rebuild from history",
     open: async (w) => {
       await w.nav("Settings").click();
-      await openMoveAction(w.page, "Rebuild from history");
+      await w.page.getByRole("button", { name: "Rebuild from history" }).click();
     },
   },
   {

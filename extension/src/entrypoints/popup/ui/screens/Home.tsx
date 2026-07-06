@@ -20,23 +20,23 @@ export function Home() {
     <ScrollArea background={t.canvas}>
       {t.dark && <div aria-hidden style={glow(t)} />}
       <div style={{ position: "relative", padding: `${space.gutter}px ${space.gutter}px ${NAV_SPACE}px` }}>
-        <AccountRow />
+        {accountRow()}
 
         <div style={{ display: "flex", gap: space.lg, marginTop: space.lg, flexWrap: "wrap" }}>
-          <PocketTab pocket="public" label="Public pocket" />
-          {status?.privateAvailable && <PocketTab pocket="private" label="Private pocket" />}
+          {pocketTab("public", "Public pocket")}
+          {status?.privateAvailable && pocketTab("private", "Private pocket")}
         </div>
 
         <div style={{ marginTop: space.sm }}>
-          {isPrivate ? <PrivateHero /> : <PublicHero />}
+          {isPrivate ? privateHero() : publicHero()}
         </div>
 
-        {isPrivate ? <PrivateBody /> : <PublicBody />}
+        {isPrivate ? privateBody() : publicBody()}
       </div>
     </ScrollArea>
   );
 
-  function PublicHero() {
+  function publicHero() {
     if (w.balanceError && !native) {
       return (
         <Notice t={t} tone="danger">
@@ -63,7 +63,7 @@ export function Home() {
     );
   }
 
-  function PrivateHero() {
+  function privateHero() {
     if (w.privError && !priv) {
       return (
         <Notice t={t} tone="danger">
@@ -110,12 +110,12 @@ export function Home() {
     );
   }
 
-  function PublicBody() {
+  function publicBody() {
     return (
       <>
         {status?.privateAvailable && priv && priv.state !== "ready" && (
           <div style={{ marginTop: space.gutter }}>
-            <PrivatePrompt priv={priv} />
+            {privatePrompt(priv)}
           </div>
         )}
 
@@ -141,17 +141,17 @@ export function Home() {
           )}
         </div>
 
-        <YieldRow />
+        {yieldRow()}
       </>
     );
   }
 
-  function PrivateBody() {
+  function privateBody() {
     if (!priv) return null;
     if (priv.state !== "ready") {
       return (
         <div style={{ marginTop: space.gutter }}>
-          <PrivatePrompt priv={priv} />
+          {privatePrompt(priv)}
         </div>
       );
     }
@@ -211,7 +211,7 @@ export function Home() {
     );
   }
 
-  function PrivatePrompt({ priv }: { priv: PrivatePocket }) {
+  function privatePrompt(priv: PrivatePocket) {
     const open = () => w.openSheet("move");
     const action = PROMPT_ACTION[priv.state];
     return (
@@ -256,14 +256,17 @@ export function Home() {
         {priv.message && (
           <div style={{ ...text.body, color: t.sub, lineHeight: 1.5 }}>{priv.message}</div>
         )}
-        <div style={{ ...text.caption, color: t.faint, marginTop: space.xs }}>
+        {/* measured, not chosen: faint on this card is 3.67:1 in the private
+            pocket, and this line is the product's honesty statement rather than
+            decoration. */}
+        <div style={{ ...text.caption, color: t.sub, marginTop: space.xs }}>
           Hides amounts, never addresses. Who you pay stays public on the ledger.
         </div>
       </Card>
     );
   }
 
-  function YieldRow() {
+  function yieldRow() {
     const y = w.yieldPosition;
     if (!y) return null;
     return (
@@ -283,7 +286,7 @@ export function Home() {
     );
   }
 
-  function AccountRow() {
+  function accountRow() {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: space.md, flexWrap: "wrap" }}>
         {status?.address ? <Avatar address={status.address} size={44} /> : <Skeleton width={44} height={44} />}
@@ -324,7 +327,7 @@ export function Home() {
     );
   }
 
-  function PocketTab({ pocket, label }: { pocket: Pocket; label: string }) {
+  function pocketTab(pocket: Pocket, label: string) {
     const on = w.pocket === pocket;
     const style: CSSProperties = {
       all: "unset",

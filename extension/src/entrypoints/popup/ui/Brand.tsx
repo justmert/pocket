@@ -41,7 +41,18 @@ export function Brand({ t, size = 56 }: { t: Theme; size?: number }) {
 /** the wordmark and the mark together, for a screen that has no other header. */
 export function BrandRow({ t, size = 40 }: { t: Theme; size?: number }) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 10,
+        // at 500% zoom the popup is 160px wide, and a mark plus a wordmark on
+        // one line is wider than that.
+        flexWrap: "wrap",
+        maxWidth: "100%",
+      }}
+    >
       <Brand t={t} size={size} />
       <span
         style={{
@@ -49,6 +60,8 @@ export function BrandRow({ t, size = 40 }: { t: Theme; size?: number }) {
           fontWeight: 800,
           letterSpacing: "-0.03em",
           color: t.text,
+          overflowWrap: "anywhere",
+          minWidth: 0,
         }}
       >
         Pocket

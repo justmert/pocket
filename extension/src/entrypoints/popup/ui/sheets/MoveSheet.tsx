@@ -133,25 +133,24 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
 
   return (
     <Sheet t={t} open={open} onClose={busy ? () => undefined : close} title={title} full={stage === "review" || stage === "done"}>
-      {stage === "menu" && (
-        <Menu
-          priv={priv}
-          building={building}
-          error={error}
-          onShield={() => {
+      {stage === "menu" &&
+        menu({
+          priv,
+          building,
+          error,
+          onShield: () => {
             setKind("shield");
             setStage("form");
-          }}
-          onUnshield={() => {
+          },
+          onUnshield: () => {
             setKind("unshield");
             setStage("form");
-          }}
-          onMerge={() => void build({ kind: "merge" })}
-          onRegister={() => void build({ kind: "register" })}
-          onRebuild={() => void rebuild()}
-          rebuilding={busy}
-        />
-      )}
+          },
+          onMerge: () => void build({ kind: "merge" }),
+          onRegister: () => void build({ kind: "register" }),
+          onRebuild: () => void rebuild(),
+          rebuilding: busy,
+        })}
 
       {stage === "form" && (
         <>
@@ -219,7 +218,9 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     </Sheet>
   );
 
-  function Menu({
+  // called rather than mounted: declared here it would be a new component type
+  // on every render, and react would tear down and rebuild the whole menu.
+  function menu({
     priv,
     building,
     error,

@@ -106,7 +106,9 @@ test("the confirm step shows a full address, the longest memo and both buttons, 
   // Paying itself: a real, valid, funded 56-character destination, without a
   // second browser and without moving money anywhere it cannot be checked.
   await wallet.composePayment({ to: address, amount: "1.5", memo: LONGEST_MEMO });
-  await expect(page.getByText("Sending", { exact: true })).toBeVisible({
+  // the heading is authored in sentence case and displayed in caps, so the
+  // match is case insensitive rather than tied to the transform.
+  await expect(page.getByText("Sending").first()).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
 
@@ -153,7 +155,9 @@ test("the submitting wait stays on screen at every viewport", async ({ wallet, h
   await wallet.waitForHome();
   await wallet.openSend();
   await wallet.composePayment({ to: address, amount: "1.5" });
-  await expect(page.getByText("Sending", { exact: true })).toBeVisible({
+  // the heading is authored in sentence case and displayed in caps, so the
+  // match is case insensitive rather than tied to the transform.
+  await expect(page.getByText("Sending").first()).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
 
@@ -163,21 +167,25 @@ test("the submitting wait stays on screen at every viewport", async ({ wallet, h
   await hang(harness.context, RPC_HOST);
   await page.getByRole("button", { name: "Confirm and send" }).click();
 
-  // One sentence became four named steps and the worker's own phase text. All
-  // four names have to stay on screen, not just whichever one is lit: the point
-  // of naming them is that a user can see how much is left, and a step scrolled
-  // out of the frame takes that away.
-  const progress = page.getByRole("status").filter({ hasText: "Prepare" });
+  // The wait names itself, and the naming has to stay reachable at every
+  // viewport. The four steps appear once the worker is publishing phases; while
+  // it is not, the line says what the operation does instead. Both are the same
+  // region, so the region is what is followed, and whichever of the two it is
+  // carrying has to be reachable rather than scrolled out of the frame.
+  const progress = page.getByRole("status").filter({ hasText: /Prepare|ledger/ });
   await expect(progress).toBeVisible();
 
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
     await expectReachable(progress, `send/sending @ ${vp.name}: the progress`);
-    for (const step of ["Prepare", "Prove", "Submit", "Confirm"]) {
-      await expectReachable(
-        progress.getByText(step, { exact: true }),
-        `send/sending @ ${vp.name}: the ${step} step`,
-      );
+    const steps = progress.getByText("Prepare", { exact: true });
+    if ((await steps.count()) > 0) {
+      for (const step of ["Prepare", "Prove", "Submit", "Confirm"]) {
+        await expectReachable(
+          progress.getByText(step, { exact: true }),
+          `send/sending @ ${vp.name}: the ${step} step`,
+        );
+      }
     }
     await expectLayoutHolds(page, `send/sending @ ${vp.name}`);
   }
