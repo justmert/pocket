@@ -12,7 +12,7 @@
 // The bar, from the brief and worth restating: an install carrying records from
 // before a schema change must still open them, or say plainly that it cannot.
 // Silence or a wrong balance is the failure.
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { Wallet, WAITS } from "../support/wallet";
 import * as ledger from "../support/testnet";
 import {
@@ -64,6 +64,31 @@ function requireBuild(path: string, how: string): void {
   if (!existsSync(path)) throw new Error(`no build at ${path}. Build it with: ${how}`);
 }
 
+
+/**
+ * Onboard the PREVIOUS build, in the previous build's own words.
+ *
+ * The shared page object speaks the current UI. This test is the one place that
+ * drives an older one, so the two vocabularies cannot be the same object, and a
+ * page object that tried to speak both would be a page object that describes
+ * neither.
+ */
+async function createWalletOnOldUi(page: Page, password: string): Promise<string> {
+  await page.getByRole("button", { name: "Create a new wallet" }).click();
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByLabel("Confirm password").fill(password);
+  await page.getByRole("button", { name: "Create wallet" }).click();
+  await expect(page.getByText("Write this down")).toBeVisible({ timeout: WAITS.onboarding });
+  const cells = await page
+    .locator("span")
+    .filter({ hasText: /^\d+\.\s\w+\s*$/ })
+    .allInnerTexts();
+  const phrase = cells.map((c: string) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
+  await page.getByRole("button", { name: "I have written it down" }).click();
+  await expect(page.getByText("PUBLIC POCKET")).toBeVisible({ timeout: WAITS.onboarding });
+  return phrase;
+}
+
 test("a wallet created before pocket.address existed still opens, and the upgrade back-fills it", async ({}, testInfo) => {
   test.setTimeout(6 * 60_000);
   requireBuild(PRE_ADDRESS_BUILD, "./tests/integrity/build-old.sh 9087fea .output-t10-preaddr");
@@ -76,7 +101,7 @@ test("a wallet created before pocket.address existed still opens, and the upgrad
     installBuild(PRE_ADDRESS_BUILD, at, OLD_VERSION);
     install = await open(dir, at);
     const page = await install.popup();
-    const phrase = await new Wallet(page).createWallet(PASSWORD);
+    const phrase = await createWalletOnOldUi(page, PASSWORD);
     const expected = await addressFromMnemonic(phrase);
 
     const oldKeys = Object.keys(await storage(page)).sort();
@@ -154,7 +179,7 @@ test("a clean install of the current build writes only the keys this version doc
   const install = await launch();
   try {
     const page = await install.popup();
-    await new Wallet(page).createWallet(PASSWORD);
+    await createWalletOnOldUi(page, PASSWORD);
     const keys = Object.keys(await storage(page)).sort();
     expect(keys, "a fresh install holds exactly the vault, its state and the address").toEqual([
       ADDRESS_KEY,

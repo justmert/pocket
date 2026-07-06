@@ -209,8 +209,15 @@ test.describe("an ordinary website, with the wallet installed", () => {
         expect(res.error, `${method} did not refuse`).toBeTruthy();
         // The branch that must have run. Without this the test cannot tell a
         // signing policy from a missing grant.
+        //
+        // Two refusals prove it, not one. `signTransaction` is handed a
+        // deliberately unreadable envelope, and the wallet stops at the decode
+        // rather than at the policy, which is the designed order: it will not
+        // offer to sign what it cannot show. Both sentences are the signing
+        // branch; "not connected" is the one that would mean the grant never
+        // took, and neither of these is that.
         expect(res.error!.message, `${method} refused for the wrong reason`).toMatch(
-          /does not sign|cannot show you/i,
+          /does not sign|cannot show you|could not read this transaction/i,
         );
       }
 

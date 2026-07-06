@@ -178,10 +178,13 @@ test("confirming a payment twice in one gesture sends it once and shows the rece
     .poll(
       async () => {
         const body = await surfaceText(page);
-        // the four step progress is what the screen shows while the worker is
-        // working, and its first step label is the one word that only appears
-        // there.
-        return body.includes("Prepare") ? "working" : "settled";
+        // the progress region is what the screen shows while the worker is
+        // working. it carries the four step names once the worker is naming
+        // phases and the operation's own description while it is not, so both
+        // are what "still working" looks like.
+        const working =
+          body.includes("Prepare") || body.includes("Signing and submitting");
+        return working ? "working" : "settled";
       },
       { timeout: SLOW * 5, message: "the wallet never finished submitting" },
     )
