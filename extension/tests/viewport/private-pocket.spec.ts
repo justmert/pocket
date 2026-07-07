@@ -184,9 +184,11 @@ test("the unfunded and unregistered pockets keep their copy and their button on 
       page.getByRole("button", { name: "Approve" }),
       `private/review (register) @ ${vp.name}: Approve`,
     );
+    // not "Back": the first of the two transactions is already on the ledger by
+    // the time this step renders, so the way out is a defer and not a cancel.
     await expectReachable(
-      page.getByRole("button", { name: "Back" }),
-      `private/review (register) @ ${vp.name}: Back`,
+      page.getByRole("button", { name: "Leave this for now" }),
+      `private/review (register) @ ${vp.name}: the way out`,
     );
   }
 });

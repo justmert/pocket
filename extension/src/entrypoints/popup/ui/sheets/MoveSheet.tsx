@@ -39,6 +39,10 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
   );
   const once = useOnce();
   const phase = usePhase(busy);
+  // set the moment a register build returns, because by then its first
+  // transaction is on the ledger and the disclosure below must stop describing
+  // it in the future tense.
+  const [registerStarted, setRegisterStarted] = useState(false);
 
   const reset = () => {
     setStage("menu");
@@ -95,6 +99,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setBuilding(true);
     try {
       const r = await call({ type: "buildPrivateOp", op });
+      if (op.kind === "register") setRegisterStarted(true);
       setHandle(r.handle);
       setSummary(r.summary);
       setStage("review");
@@ -207,6 +212,12 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
           treatment={summary.kind === "shield" || summary.kind === "unshield" ? "exposed" : "sealed"}
           to={summary.to}
           effects={summary.effects}
+          alreadyDone={
+            summary.kind === "register"
+              ? "Your auditor key is already registered on the ledger, and the fee for it is paid. This step creates the confidential account."
+              : undefined
+          }
+          cancelLabel={summary.kind === "register" ? "Leave this for now" : "Back"}
           error={error}
           busy={busy}
           phase={phase}
@@ -280,9 +291,9 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
                 }}
               >
                 <li style={{ marginBottom: 6 }}>
-                  Setting up takes TWO transactions, and pressing this sends the first one straight
-                  away: it registers your auditor key and pays a network fee. You will review the
-                  second before anything else is signed.
+                  {registerStarted
+                    ? "The first of the two transactions has already been sent: your auditor key is registered and its fee is paid. Pressing this creates the confidential account."
+                    : "Setting up takes TWO transactions, and pressing this sends the first one straight away: it registers your auditor key and pays a network fee. You will review the second before anything else is signed."}
                 </li>
                 <li style={{ marginBottom: 6 }}>
                   Setting up is public. Anyone can see this account has a private pocket.
@@ -297,7 +308,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
               </ul>
               <ButtonStack>
                 <Button t={t} onClick={onRegister}>
-                  Set up the private pocket
+                  {registerStarted ? "Finish setting up" : "Set up the private pocket"}
                 </Button>
               </ButtonStack>
             </>
@@ -307,9 +318,20 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
           return (
             <>
               {priv.message && <Notice t={t} tone="exposed">{priv.message}</Notice>}
+              {/* a dormant entry may need its ledger footprint restored before
+                  it can be read at all, and this build cannot do that. so the
+                  other route out is shown here rather than left for someone to
+                  find after reactivating has failed. */}
+              <Notice t={t}>
+                If reactivating does not work, this device's record of the balances can be rebuilt
+                from your history instead.
+              </Notice>
               <ButtonStack>
                 <Button t={t} onClick={onMerge}>
                   Reactivate
+                </Button>
+                <Button t={t} variant="quiet" busy={rebuilding} onClick={onRebuild}>
+                  {rebuilding ? "Replaying your history" : "Rebuild from history"}
                 </Button>
               </ButtonStack>
             </>

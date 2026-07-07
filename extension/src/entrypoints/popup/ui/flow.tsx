@@ -79,6 +79,8 @@ export function ReviewPanel({
   busy,
   phase,
   approveLabel,
+  cancelLabel = "Back",
+  alreadyDone,
   waitDescription = "Signing and submitting, then waiting for the ledger to confirm.",
   onApprove,
   onCancel,
@@ -99,6 +101,16 @@ export function ReviewPanel({
   busy: boolean;
   phase: string | null;
   approveLabel: string;
+  /**
+   * what the way out is called.
+   *
+   * "Back" is a lie on a step that has already spent something irreversible,
+   * and the register step has: its first transaction is submitted before this
+   * screen exists.
+   */
+  cancelLabel?: string;
+  /** what has ALREADY happened by the time this review is on screen. */
+  alreadyDone?: string;
   /** what the worker will do, for the stretches where it names no phase. */
   waitDescription?: string;
   onApprove: () => void;
@@ -153,6 +165,7 @@ export function ReviewPanel({
         ))}
       </ul>
 
+      {alreadyDone && <Notice t={t} tone="exposed">{alreadyDone}</Notice>}
       {warning && (
         <Notice t={t} tone="danger">
           {warning}
@@ -176,7 +189,7 @@ export function ReviewPanel({
       ) : (
         <ButtonRow>
           <Button t={t} variant="quiet" onClick={onCancel}>
-            Back
+            {cancelLabel}
           </Button>
           <Button t={t} disabled={Boolean(blocked)} onClick={onApprove}>
             {approveLabel}
