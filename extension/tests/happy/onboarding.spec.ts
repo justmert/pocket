@@ -54,10 +54,16 @@ test("creating a wallet shows 24 words once, then opens the home screen", async 
   // on screen.
   await expect(wallet.page.getByText(/only way to recover/i)).toBeVisible();
   await expect(wallet.page.getByText(/cannot show them to you again/i)).toBeVisible();
-  // The lifecycle fact that used to be missing: the window closing is the same
-  // as continuing, and someone who switches to a password manager to record the
-  // words loses them.
-  await expect(wallet.page.getByText(/this window closes the moment you click anything outside it/i)).toBeVisible();
+  // The lifecycle fact, which the flow now answers rather than warns about:
+  // onboarding moves itself to a tab before it paints, and a tab survives the
+  // user switching to a password manager to record the words. The screen may
+  // only make this promise where it is true, so the warning it replaced must be
+  // gone from the same screen.
+  await expect(wallet.page.getByText(/this page stays open while you write them down/i)).toBeVisible();
+  await expect(
+    wallet.page.getByText(/this window closes the moment/i),
+    "a tab told the user it was about to close",
+  ).toHaveCount(0);
 
   const phrase = await wallet.readBackupPhrase();
   await wallet.page.getByRole("button", { name: "I have written it down" }).click();

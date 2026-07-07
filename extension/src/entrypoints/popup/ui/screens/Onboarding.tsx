@@ -7,11 +7,26 @@ import { fonts, radius, space, text, type Theme } from "../theme";
 
 type Step = "choose" | "create" | "backup" | "import";
 
-export function Onboarding({ t, onDone }: { t: Theme; onDone: () => void }) {
+export function Onboarding({
+  t,
+  onDone,
+  /**
+   * true when this flow is running somewhere that closes on blur.
+   *
+   * onboarding normally moves itself to a tab first, so this is false. it is not
+   * cosmetic when it is true: it changes what the phrase screen promises.
+   */
+  ephemeral = false,
+}: {
+  t: Theme;
+  onDone: () => void;
+  ephemeral?: boolean;
+}) {
   const [step, setStep] = useState<Step>("choose");
   const [mnemonic, setMnemonic] = useState("");
 
-  if (step === "backup") return <Backup t={t} mnemonic={mnemonic} onDone={onDone} />;
+  if (step === "backup")
+    return <Backup t={t} mnemonic={mnemonic} onDone={onDone} ephemeral={ephemeral} />;
 
   return (
     <Screen t={t}>
@@ -168,7 +183,17 @@ function Create({
  * the ordinal is unselectable and each word carries a trailing space, so a drag
  * selection and the copy button both produce a phrase that restores.
  */
-function Backup({ t, mnemonic, onDone }: { t: Theme; mnemonic: string; onDone: () => void }) {
+function Backup({
+  t,
+  mnemonic,
+  onDone,
+  ephemeral,
+}: {
+  t: Theme;
+  mnemonic: string;
+  onDone: () => void;
+  ephemeral: boolean;
+}) {
   const [shown, setShown] = useState(false);
   const [checking, setChecking] = useState(false);
   const [copy, setCopy] = useState<"idle" | "done" | "failed">("idle");
@@ -198,8 +223,12 @@ function Backup({ t, mnemonic, onDone }: { t: Theme; mnemonic: string; onDone: (
       </h1>
       <Notice t={t} tone="exposed">
         These {words.length} words are the only way to recover this wallet. Anyone who has them owns
-        your funds. Pocket cannot show them to you again, and this window closes the moment you
-        click anything outside it.
+        your funds. Pocket cannot show them to you again
+        {/* the flow runs in a tab precisely so this is not true. saying it
+            anyway would be the screen describing a window it is not in. */}
+        {ephemeral
+          ? ", and this window closes the moment you click anything outside it."
+          : ". This page stays open while you write them down."}
       </Notice>
 
       <div style={{ position: "relative", marginBottom: space.md }}>

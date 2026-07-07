@@ -38,6 +38,27 @@ body {
   display: flex;
 }
 
+/* onboarding runs in a tab rather than the toolbar popup, because chrome
+ * dismisses a popup the moment it loses focus and the recovery phrase is shown
+ * there. a tab is far wider than the 384px frame, so the frame is centred
+ * instead of sitting in the corner of an empty page.
+ *
+ * 800px is chrome's maximum popup width, so nothing this rule matches can be a
+ * popup, and no viewport any spec sets comes close to it. */
+@media (min-width: 801px) {
+  body {
+    min-height: 100vh;
+    /* no literal fallback: a colour written here would be a second source for a
+     * value theme.ts owns. until react mounts there is no frame to sit on this
+     * page either, so there is nothing for it to fall back behind. */
+    background: var(--pocket-bg);
+  }
+  #root {
+    min-height: 100vh;
+    align-items: center;
+    justify-content: center;
+  }
+}
 
 button {
   font-family: inherit;

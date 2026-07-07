@@ -230,6 +230,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     // the stylesheet cannot import typescript, so the tokens are handed to it
     // once rather than written out twice and left to drift.
     root.style.setProperty("--pocket-accent", t.accent);
+    // read only by the wide-page rule in style.css, where the document is wider
+    // than the frame and the space around it would otherwise be browser white.
+    root.style.setProperty("--pocket-bg", t.bg);
     root.style.setProperty("--pocket-ring", t.ring);
     root.style.setProperty("--pocket-enter", motion.enter);
     root.style.setProperty("--pocket-exit", motion.exit);

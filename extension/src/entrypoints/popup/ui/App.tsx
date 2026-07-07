@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { WalletProvider, useWallet } from "./WalletProvider";
 import { Button, ButtonStack, Frame, Notice, Spinner, Toast } from "./primitives";
 import { BrandRow } from "./Brand";
@@ -14,7 +15,8 @@ import { ReceiveSheet } from "./sheets/ReceiveSheet";
 import { SendSheet } from "./sheets/SendSheet";
 import { MoveSheet } from "./sheets/MoveSheet";
 import { ConnectionsSheet, EraseSheet, NetworkSheet, RebuildSheet } from "./sheets/SettingsSheets";
-import { space, text } from "./theme";
+import { placeOnboarding, type Placement } from "./onboardingTab";
+import { space, text, type Theme } from "./theme";
 
 export function App() {
   return (
@@ -24,54 +26,93 @@ export function App() {
   );
 }
 
+/** the brand, centred, with whatever the wallet has to say under it. */
+function Boot({ t, children }: { t: Theme; children: ReactNode }) {
+  return (
+    <Frame t={t}>
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: space.gutter,
+          background: t.canvas,
+        }}
+      >
+        <BrandRow t={t} size={56} />
+        {children}
+      </div>
+    </Frame>
+  );
+}
+
+/** nothing has gone wrong; the wallet has not finished answering yet. */
+function Starting({ t }: { t: Theme }) {
+  return (
+    <Boot t={t}>
+      <div
+        role="status"
+        aria-live="polite"
+        style={{ marginTop: space.lg, display: "flex", alignItems: "center", gap: space.sm }}
+      >
+        <Spinner size={18} color={t.accent} />
+        <span style={{ ...text.body, color: t.sub }}>Starting</span>
+      </div>
+    </Boot>
+  );
+}
+
+/**
+ * onboarding, in a window that does not close when the user looks away.
+ *
+ * where it runs is settled before the flow is painted, because a phrase that
+ * flashes up in a window already closing is the loss this exists to prevent.
+ */
+function OnboardingGate({ t, onDone }: { t: Theme; onDone: () => void }) {
+  const [place, setPlace] = useState<Placement | null>(null);
+  useEffect(() => {
+    let live = true;
+    void placeOnboarding().then((where) => {
+      if (live) setPlace(where);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  // null is "still deciding" and handedOff is "this window is closing". neither
+  // is a window to start onboarding in.
+  if (place === null || place === "handedOff") return <Starting t={t} />;
+  return <Onboarding t={t} onDone={onDone} ephemeral={place === "stuck"} />;
+}
+
 function Root() {
   const w = useWallet();
   const t = w.t;
   const [recovering, setRecovering] = useState(false);
 
   if (!w.status) {
-    return (
-      <Frame t={t}>
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: space.gutter,
-            background: t.canvas,
-          }}
-        >
-          <BrandRow t={t} size={56} />
-          {w.bootError ? (
-            <div style={{ marginTop: space.lg, width: "100%" }}>
-              <Notice t={t} tone="danger">
-                {w.bootError}
-              </Notice>
-              <ButtonStack>
-                <Button t={t} onClick={() => void w.refresh()}>
-                  Try again
-                </Button>
-              </ButtonStack>
-            </div>
-          ) : (
-            <div
-              role="status"
-              aria-live="polite"
-              style={{ marginTop: space.lg, display: "flex", alignItems: "center", gap: space.sm }}
-            >
-              <Spinner size={18} color={t.accent} />
-              <span style={{ ...text.body, color: t.sub }}>Starting</span>
-            </div>
-          )}
+    return w.bootError ? (
+      <Boot t={t}>
+        <div style={{ marginTop: space.lg, width: "100%" }}>
+          <Notice t={t} tone="danger">
+            {w.bootError}
+          </Notice>
+          <ButtonStack>
+            <Button t={t} onClick={() => void w.refresh()}>
+              Try again
+            </Button>
+          </ButtonStack>
         </div>
-      </Frame>
+      </Boot>
+    ) : (
+      <Starting t={t} />
     );
   }
 
-  if (!w.status.initialised) return <Onboarding t={t} onDone={() => void w.refresh()} />;
+  if (!w.status.initialised) return <OnboardingGate t={t} onDone={() => void w.refresh()} />;
 
   if (w.status.locked) {
     return recovering ? (
