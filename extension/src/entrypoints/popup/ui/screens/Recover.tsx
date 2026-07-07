@@ -2,8 +2,8 @@ import { useState } from "react";
 import { call } from "../rpc";
 import { Button, ButtonStack, Field, Header, Notice, Screen } from "../primitives";
 import { space, text, type Theme } from "../theme";
-import { NETWORKS } from "../../../../core/config";
 import type { NetworkId } from "../../../../core/config";
+import { privateLossAfterErase } from "../copy";
 
 /**
  * the only way past a forgotten password, and it destroys the device's copy of
@@ -29,7 +29,6 @@ export function Recover({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const archived = Boolean(NETWORKS[network].archiveUrl);
   const words = phrase.trim() ? phrase.trim().split(/\s+/).length : 0;
   const countOk = words === 12 || words === 24;
   const short = password.length > 0 && password.length < 8;
@@ -74,11 +73,7 @@ export function Recover({
             Your <strong>private pocket balances do not</strong>. The chain holds commitments; only
             this device knew what opens them.
           </li>
-          <li>
-            {archived
-              ? "They can be rebuilt afterwards by replaying your history from the archive."
-              : "Rebuilding them needs a durable archive. This build has none configured, so they cannot be rebuilt yet."}
-          </li>
+          <li>{privateLossAfterErase(network)}</li>
         </ul>
 
         <Notice t={t} tone="exposed">
@@ -141,6 +136,7 @@ export function Recover({
           invalid={mismatch}
           hint={mismatch ? "The two passwords do not match." : undefined}
         />
+        <Notice t={t}>This password unlocks this device. It is not a backup.</Notice>
         {error && (
           <Notice t={t} tone="danger">
             {error}

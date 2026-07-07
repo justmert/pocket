@@ -4,6 +4,7 @@ import { call } from "../rpc";
 import { Button, ButtonStack, Field, Label, Notice, Row, Sheet, Skeleton } from "../primitives";
 import { Check, External, Trash } from "../icons";
 import { space, text } from "../theme";
+import { privateLossAfterErase } from "../copy";
 import type { NetworkId } from "../../../../core/config";
 
 const NETWORKS: { id: NetworkId; label: string; sub: string }[] = [
@@ -172,6 +173,9 @@ export function RebuildSheet({ open, onClose }: { open: boolean; onClose: () => 
 export function EraseSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const w = useWallet();
   const t = w.t;
+  // the same sentence the locked screen's erase door says, read from the same
+  // place, because these two doors reach the same irreversible act.
+  const network = w.status?.network ?? "testnet";
   const [password, setPassword] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -212,10 +216,7 @@ export function EraseSheet({ open, onClose }: { open: boolean; onClose: () => vo
             <li style={{ marginBottom: 6 }}>
               Your public balance is on the ledger. The phrase brings it back.
             </li>
-            <li>
-              Your private balances are opened by keys held only here. Rebuilding them needs your
-              history from an archive.
-            </li>
+            <li>{privateLossAfterErase(network)}</li>
           </ul>
           <ButtonStack>
             <Button t={t} variant="quiet" onClick={onClose}>

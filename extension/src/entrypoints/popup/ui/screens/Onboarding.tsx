@@ -418,6 +418,7 @@ function Import({ t, onDone, onCancel }: { t: Theme; onDone: () => void; onCance
         hint={short ? "Use at least eight characters." : undefined}
         onSubmit={() => void submit()}
       />
+      <Notice t={t}>This password unlocks this device. It is not a backup.</Notice>
       {error && (
         <Notice t={t} tone="danger">
           {error}

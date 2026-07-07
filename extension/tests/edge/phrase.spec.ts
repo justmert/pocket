@@ -40,6 +40,9 @@ const CHROME = new Set([
   "Importing",
   "Back",
   "Use at least eight characters.",
+  // permanent on this screen, and permanent text is furniture however important
+  // it is: what these tests read out of the body is the REFUSAL.
+  "This password unlocks this device. It is not a backup.",
 ]);
 
 /** Open the import screen from the very first run. */
