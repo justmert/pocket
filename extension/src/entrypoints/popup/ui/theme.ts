@@ -100,7 +100,7 @@ export const motion = {
   sheet: "280ms",
   /** a sheet goes away. */
   sheetOut: "240ms",
-  /** a list arrives, plus 45ms per row. */
+  /** a list arrives, plus `ROW_STAGGER_MS` per row. */
   settle: "320ms",
   /** a number moves rather than jumps. */
   roll: "560ms",
@@ -108,6 +108,12 @@ export const motion = {
   pocket: "620ms",
   /** still working. */
   ambient: "1300ms",
+  /** one turn of a spinner. */
+  spin: "700ms",
+  /** the same spinner for someone who asked for less motion. */
+  spinCalm: "1600ms",
+  /** one pass of a skeleton's shimmer, calmed to match. */
+  shimmerCalm: "2400ms",
   /** this is not a number yet. */
   ambientSlow: "1500ms",
 } as const;

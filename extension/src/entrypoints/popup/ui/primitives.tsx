@@ -7,7 +7,7 @@ import type {
   PointerEvent as ReactPointerEvent,
   ReactNode,
 } from "react";
-import { FRAME, fonts, motion, radius, space, text, type Theme } from "./theme";
+import { FRAME, fonts, motion, radius, ROW_STAGGER_MS, space, text, type Theme } from "./theme";
 import { Back as BackIcon, Close as CloseIcon } from "./icons";
 
 /* ---------------------------------------------------------------- frame -- */
@@ -565,7 +565,7 @@ export function Row({
     padding: `${space.sm}px 0`,
     minWidth: 0,
     flexWrap: "wrap",
-    animationDelay: index != null ? `${index * 45}ms` : undefined,
+    animationDelay: index != null ? `${index * ROW_STAGGER_MS}ms` : undefined,
   };
 
   if (!onClick) {

@@ -244,6 +244,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     root.style.setProperty("--pocket-pocket", motion.pocket);
     root.style.setProperty("--pocket-ambient", motion.ambient);
     root.style.setProperty("--pocket-ambient-slow", motion.ambientSlow);
+    root.style.setProperty("--pocket-spin", motion.spin);
+    root.style.setProperty("--pocket-spin-calm", motion.spinCalm);
+    root.style.setProperty("--pocket-shimmer-calm", motion.shimmerCalm);
     root.style.colorScheme = t.dark ? "dark" : "light";
   }, [t]);
 

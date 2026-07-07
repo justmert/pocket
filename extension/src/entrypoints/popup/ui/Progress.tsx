@@ -5,7 +5,7 @@
 // is worse than no number at all. the elapsed clock is real and is what tells
 // someone the wallet has not hung.
 import { useEffect, useRef, useState } from "react";
-import { radius, space, text, type Theme } from "./theme";
+import { motion, radius, space, text, type Theme } from "./theme";
 import { Spinner } from "./primitives";
 
 const STEPS = ["Prepare", "Prove", "Submit", "Confirm"] as const;
@@ -70,7 +70,7 @@ export function Progress({
                   height: 3,
                   borderRadius: radius.pill,
                   background: i <= step ? t.accent : t.line,
-                  transition: "background 300ms ease",
+                  transition: `background ${motion.quick} ${motion.enter}`,
                 }}
               />
               <div

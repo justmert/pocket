@@ -15,7 +15,11 @@ const DEFAULT_SW = 2;
 
 type Node = [string, Record<string, string | number>];
 
-const G: Record<string, Node[]> = {
+// `satisfies` rather than an annotation, so the table is the only list of what
+// exists. annotated as Record<string, Node[]> every key typechecks, and an icon
+// whose paths were deleted still compiles and then throws on the screen that
+// draws it.
+const G = {
   copy: [
     [
       "path",
@@ -40,16 +44,6 @@ const G: Record<string, Node[]> = {
     ],
     ["path", { d: "M15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15C13.6569 15 15 13.6569 15 12Z" }],
   ],
-  eyeOff: [
-    [
-      "path",
-      {
-        d: "M19.439 15.439C20.3636 14.5212 21.0775 13.6091 21.544 12.955C21.848 12.5287 22 12.3155 22 12C22 11.6845 21.848 11.4713 21.544 11.045C20.1779 9.12944 16.6892 5 12 5C11.0922 5 10.2294 5.15476 9.41827 5.41827M6.74742 6.74742C4.73118 8.1072 3.24215 9.94266 2.45604 11.045C2.15201 11.4713 2 11.6845 2 12C2 12.3155 2.15201 12.5287 2.45604 12.955C3.8221 14.8706 7.31078 19 12 19C13.9908 19 15.7651 18.2557 17.2526 17.2526",
-      },
-    ],
-    ["path", { d: "M9.85786 10C9.32783 10.53 9 11.2623 9 12.0711C9 13.6887 10.3113 15 11.9289 15C12.7377 15 13.47 14.6722 14 14.1421" }],
-    ["path", { d: "M3 3L21 21" }],
-  ],
   arrowDown: [["path", { d: "M18 9.00005C18 9.00005 13.5811 15 12 15C10.4188 15 6 9 6 9" }]],
   arrowUp: [["path", { d: "M17.9998 15C17.9998 15 13.5809 9.00001 11.9998 9C10.4187 8.99999 5.99985 15 5.99985 15" }]],
   refresh: [
@@ -59,7 +53,6 @@ const G: Record<string, Node[]> = {
     ["path", { d: "M5.49998 16C5.49998 16 3.00001 17.8412 3 18.5C2.99999 19.1588 5.5 21 5.5 21" }],
   ],
   chevronRight: [["path", { d: "M9.00005 6C9.00005 6 15 10.4189 15 12C15 13.5812 9 18 9 18" }]],
-  chevronDown: [["path", { d: "M18 9.00005C18 9.00005 13.5811 15 12 15C10.4188 15 6 9 6 9" }]],
   close: [["path", { d: "M18 6L6.00081 17.9992M17.9992 18L6 6.00085" }]],
   back: [["path", { d: "M15 18L9 12L15 6" }]],
   plus: [["path", { d: "M12 4V20M20 12H4" }]],
@@ -141,10 +134,6 @@ const G: Record<string, Node[]> = {
       },
     ],
   ],
-  clock: [
-    ["circle", { cx: "12", cy: "12", r: "10" }],
-    ["path", { d: "M12 8V12L14 14" }],
-  ],
   gear: [
     [
       "path",
@@ -179,10 +168,10 @@ const G: Record<string, Node[]> = {
     ["path", { d: "M20 4L11 13" }],
     ["path", { d: "M19 14.5V17C19 19.2091 17.2091 21 15 21H7C4.79086 21 3 19.2091 3 17V9C3 6.79086 4.79086 5 7 5H9.5" }],
   ],
-};
+} satisfies Record<string, Node[]>;
 
-function make(key: string) {
-  const nodes = G[key]!;
+function make(key: keyof typeof G) {
+  const nodes: Node[] = G[key];
   return function Icon({ size = 22, sw, style, className }: IconProps) {
     return (
       <svg
@@ -207,12 +196,10 @@ function make(key: string) {
 export const Copy = make("copy");
 export const Check = make("check");
 export const Eye = make("eye");
-export const EyeOff = make("eyeOff");
 export const ArrowDown = make("arrowDown");
 export const ArrowUp = make("arrowUp");
 export const Refresh = make("refresh");
 export const ChevronRight = make("chevronRight");
-export const ChevronDown = make("chevronDown");
 export const Close = make("close");
 export const Back = make("back");
 export const Plus = make("plus");
@@ -222,7 +209,6 @@ export const Shield = make("shield");
 export const Key = make("key");
 export const Trash = make("trash");
 export const QrIcon = make("qr");
-export const Clock = make("clock");
 export const Gear = make("gear");
 export const Lock = make("lock");
 export const Alert = make("alert");
@@ -246,35 +232,6 @@ export function Unshield({ size = 22, sw, style, className }: IconProps) {
       aria-hidden
     >
       {UNSHIELD.map(([tag, attrs], i) => createElement(tag, { key: i, ...attrs }))}
-    </svg>
-  );
-}
-
-/** a "more" affordance reads better filled than outlined. */
-const DOTS: Node[] = [
-  [
-    "path",
-    {
-      d: "M11.9967 12.5V12M11.9967 6.5V6M11.9967 18.5V18M12.9967 12.5C12.9967 11.9477 12.549 11.5 11.9967 11.5C11.4444 11.5 10.9967 11.9477 10.9967 12.5C10.9967 13.0523 11.4444 13.5 11.9967 13.5C12.549 13.5 12.9967 13.0523 12.9967 12.5ZM12.9967 6.5C12.9967 5.94772 12.549 5.5 11.9967 5.5C11.4444 5.5 10.9967 5.94772 10.9967 6.5C10.9967 7.05228 11.4444 7.5 11.9967 7.5C12.549 7.5 12.9967 7.05228 12.9967 6.5ZM12.9967 18.5C12.9967 17.9477 12.549 17.5 11.9967 17.5C11.4444 17.5 10.9967 17.9477 10.9967 18.5C10.9967 19.0523 11.4444 19.5 11.9967 19.5C12.549 19.5 12.9967 19.0523 12.9967 18.5Z",
-    },
-  ],
-];
-export function DotsV({ size = 19, sw, style, className }: IconProps) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={sw ?? DEFAULT_SW}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={style}
-      className={className}
-      aria-hidden
-    >
-      {DOTS.map(([tag, attrs], i) => createElement(tag, { key: i, ...attrs }))}
     </svg>
   );
 }
