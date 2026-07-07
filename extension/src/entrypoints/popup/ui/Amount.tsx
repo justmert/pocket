@@ -1,12 +1,13 @@
 // amounts.
 //
 // stellar carries seven decimals, so a balance is long and the interesting part
-// is at the front. the whole number is set at full size and the fraction sits
-// under it in the same tabular figures at a smaller size: the value is complete,
-// and it is still readable at a glance.
+// is usually at the front. the whole number is set at full size and the fraction
+// sits under it in the same tabular figures at a smaller size: the value is
+// complete, and it is still readable at a glance. below one that rule inverts,
+// because then the front carries nothing, so the figure is set as one run.
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { fontSizes, motion, radius, space, type Theme } from "./theme";
+import { FRAME, fontSizes, motion, radius, space, type Theme } from "./theme";
 
 export type Treatment = "plain" | "sealed" | "exposed";
 
@@ -16,6 +17,21 @@ const SIZES = {
   row: fontSizes.body,
   inline: fontSizes.small,
 } as const;
+
+/** the popup's content column: the frame, less the gutter on either side. */
+const COLUMN = FRAME.width - space.gutter * 2;
+/** tabular figures at weight 800 measure close to this fraction of their size. */
+const DIGIT_EM = 0.62;
+
+/**
+ * the largest size at which a run of digits still fits the column.
+ *
+ * used only where the figure is set as one run, so that a long sub-one amount
+ * steps down instead of wrapping in the middle of a number.
+ */
+function fit(px: number, chars: number): number {
+  return Math.max(fontSizes.small, Math.min(px, Math.floor(COLUMN / (chars * DIGIT_EM))));
+}
 
 /**
  * split a decimal string into a grouped whole part and its fraction.
@@ -51,8 +67,19 @@ export function Amount({
   animate?: boolean;
 }) {
   const { whole, fraction } = splitAmount(value);
-  const px = SIZES[size];
   const big = size === "hero" || size === "display";
+
+  /*
+   * a figure below one keeps everything that matters after the point, and the
+   * split that demotes the fraction puts a meaningless "0" at full size with
+   * the number itself at half of it and six tenths of the opacity. under one,
+   * the figure is not split at all: it runs at a single size, stepped down to
+   * whatever the column takes rather than left to wrap mid-number.
+   */
+  const oneRun = big && fraction !== "" && (whole === "0" || whole === "-0");
+  const px = oneRun
+    ? fit(SIZES[size], whole.length + 1 + fraction.length + (code ? code.length * 0.5 + 1 : 0))
+    : SIZES[size];
 
   const tones: Record<Treatment, CSSProperties> = {
     plain: { color: t.text },
@@ -83,11 +110,17 @@ export function Amount({
           can match. */}
       <span style={EXACT}>{code ? `${value} ${code}` : value}</span>
       <span aria-hidden style={{ display: "inline-flex", alignItems: "baseline" }}>
-        {animate ? <Rolling value={whole} /> : whole}
-        {fraction && (
-          <span style={{ fontSize: Math.round(px * (big ? 0.5 : 0.85)), opacity: 0.62 }}>
-            .{fraction}
-          </span>
+        {oneRun ? (
+          animate ? <Rolling value={`${whole}.${fraction}`} /> : `${whole}.${fraction}`
+        ) : (
+          <>
+            {animate ? <Rolling value={whole} /> : whole}
+            {fraction && (
+              <span style={{ fontSize: Math.round(px * (big ? 0.5 : 0.85)), opacity: 0.62 }}>
+                .{fraction}
+              </span>
+            )}
+          </>
         )}
       </span>
       {code && (

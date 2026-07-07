@@ -4,7 +4,7 @@
 // to the thing that copies it. a confirm step always gets the full string:
 // matching the first and last few characters of a stellar address is cheap to
 // forge, so a shortened address is never what someone approves.
-import { fonts, radius, space, text, type Theme } from "./theme";
+import { fontSizes, fonts, radius, space, text, type Theme } from "./theme";
 import { Check, Copy } from "./icons";
 
 /** first and last six, which is enough to recognise and not enough to approve. */
@@ -70,7 +70,11 @@ export function AddressBlock({
       <span
         style={{
           fontFamily: fonts.mono,
-          fontSize: 13,
+          // the scale, not a hand-picked 13. this is the string someone checks
+          // character by character before an irreversible act, and it was set
+          // smaller than the transaction hash on the receipt that follows.
+          fontSize: fontSizes.body,
+          fontWeight: 600,
           lineHeight: 1.55,
           color: t.text,
           wordBreak: "break-all",
