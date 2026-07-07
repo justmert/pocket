@@ -7,9 +7,9 @@
 // because then the front carries nothing, so the figure is set as one run.
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { FRAME, fontSizes, motion, radius, space, type Theme } from "./theme";
+import { FRAME, fontSizes, motion, space, type Theme } from "./theme";
 
-export type Treatment = "plain" | "sealed" | "exposed";
+export type Treatment = "plain" | "exposed";
 
 const SIZES = {
   hero: fontSizes.hero,
@@ -83,7 +83,6 @@ export function Amount({
 
   const tones: Record<Treatment, CSSProperties> = {
     plain: { color: t.text },
-    sealed: { color: t.text },
     exposed: { color: t.exposed },
   };
 
@@ -148,55 +147,6 @@ const EXACT: CSSProperties = {
   whiteSpace: "nowrap",
   border: 0,
 };
-
-/** a confidential amount, marked as one wherever it is shown. */
-export function SealedAmount({
-  t,
-  value,
-  code,
-  size = "row",
-  animate = false,
-}: {
-  t: Theme;
-  value: string;
-  code?: string;
-  size?: keyof typeof SIZES;
-  animate?: boolean;
-}) {
-  return <Amount t={t} value={value} code={code} size={size} treatment="sealed" animate={animate} />;
-}
-
-/**
- * an amount that is public, or is about to become one.
- *
- * the tint is reserved for exactly that and appears nowhere else, so it stays a
- * signal rather than decoration.
- */
-export function ExposedAmount({
-  t,
-  value,
-  code,
-  size = "row",
-}: {
-  t: Theme;
-  value: string;
-  code?: string;
-  size?: keyof typeof SIZES;
-}) {
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: `2px ${space.xs}px`,
-        borderRadius: radius.sm,
-        background: t.exposedSoft,
-      }}
-    >
-      <Amount t={t} value={value} code={code} size={size} treatment="exposed" />
-    </span>
-  );
-}
 
 /* --------------------------------------------------------------------- */
 

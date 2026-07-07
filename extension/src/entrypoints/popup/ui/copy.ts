@@ -24,3 +24,11 @@ export function privateLossAfterErase(network: NetworkId): string {
     : "Your private balances are opened by keys held only here. Rebuilding them needs a durable archive, and this build has none configured, so they cannot be rebuilt yet.";
 }
 
+/**
+ * what an absent memo means.
+ *
+ * the wallet's own review said this and the screen that authorises a site's
+ * transaction said only "None.", which is the same fact with the consequence
+ * removed on the screen where the wallet knows least about what it is signing.
+ */
+export const NO_MEMO = "None. Exchanges usually require one; a deposit without it can be lost.";

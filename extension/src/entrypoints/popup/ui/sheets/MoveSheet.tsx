@@ -207,9 +207,8 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
       {stage === "review" && summary && (
         <ReviewPanel
           t={t}
-          heading={HEADING[summary.kind]}
           amount={summary.amount}
-          treatment={summary.kind === "shield" || summary.kind === "unshield" ? "exposed" : "sealed"}
+          treatment={summary.kind === "shield" || summary.kind === "unshield" ? "exposed" : "plain"}
           to={summary.to}
           effects={summary.effects}
           alreadyDone={
@@ -223,7 +222,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
           phase={phase}
           approveLabel="Approve"
           onApprove={() => void approve()}
-          onCancel={() => setStage("menu")}
+          onCancel={() => setStage(summary.kind === "register" ? "menu" : "form")}
         />
       )}
 
@@ -394,6 +393,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
                   icon={<Check size={19} />}
                   title="Make spendable"
                   sub="Nothing is waiting right now"
+                  tone="inert"
                   onClick={undefined}
                 />
               )}

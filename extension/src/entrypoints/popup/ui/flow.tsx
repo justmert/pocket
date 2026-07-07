@@ -9,6 +9,7 @@ import { Amount, type Treatment } from "./Amount";
 import { AddressBlock, MonoBlock } from "./Address";
 import { Button, ButtonRow, ButtonStack, Label, Notice, Overline } from "./primitives";
 import { Progress } from "./Progress";
+import { NO_MEMO } from "./copy";
 import { space, text, type Theme } from "./theme";
 
 /**
@@ -86,7 +87,14 @@ export function ReviewPanel({
   onCancel,
 }: {
   t: Theme;
-  heading: string;
+  /**
+   * omitted where the surface around the review already names the operation.
+   *
+   * the move sheet titles itself "Moving in" at 24px and used to repeat it
+   * immediately below at 12px uppercase, which is the same word twice with
+   * nothing between them.
+   */
+  heading?: string;
   amount?: string;
   code?: string;
   treatment?: Treatment;
@@ -118,7 +126,7 @@ export function ReviewPanel({
 }) {
   return (
     <>
-      <Overline t={t}>{heading}</Overline>
+      {heading && <Overline t={t}>{heading}</Overline>}
 
       {amount && (
         <div style={{ marginBottom: space.gutter }}>
@@ -139,9 +147,7 @@ export function ReviewPanel({
           {memo.value ? (
             <MonoBlock t={t}>{memo.value}</MonoBlock>
           ) : (
-            <div style={{ ...text.body, color: t.sub }}>
-              None. Exchanges usually require one; a deposit without it can be lost.
-            </div>
+            <div style={{ ...text.body, color: t.sub }}>{NO_MEMO}</div>
           )}
         </div>
       )}

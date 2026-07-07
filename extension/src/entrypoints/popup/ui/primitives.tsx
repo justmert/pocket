@@ -487,7 +487,14 @@ export function Row({
   value?: ReactNode;
   valueSub?: ReactNode;
   onClick?: () => void;
-  tone?: "plain" | "danger";
+  /**
+   * `inert` is a row that is present but cannot be pressed.
+   *
+   * without it the unavailable row carried the same title weight and the same
+   * accent-filled mark as the live rows beside it, so the only signal that it
+   * did nothing was pressing it and watching nothing happen.
+   */
+  tone?: "plain" | "danger" | "inert";
   /** staggers the entrance so a list arrives instead of appearing. */
   index?: number;
 }) {
@@ -504,8 +511,9 @@ export function Row({
             width: 40,
             height: 40,
             borderRadius: radius.md,
-            background: tone === "danger" ? t.dangerSoft : t.accentSoft,
-            color: tone === "danger" ? t.danger : t.dark ? t.accent : t.text,
+            background:
+              tone === "danger" ? t.dangerSoft : tone === "inert" ? t.field : t.accentSoft,
+            color: tone === "danger" ? t.danger : tone === "inert" ? t.faint : t.dark ? t.accent : t.text,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -524,7 +532,11 @@ export function Row({
       <span style={{ minWidth: 0, textAlign: "left", flex: "1 1 90px" }}>
         <span
           id={titleId}
-          style={{ ...text.rowTitle, color: tone === "danger" ? t.danger : t.text, display: "block" }}
+          style={{
+            ...text.rowTitle,
+            color: tone === "danger" ? t.danger : tone === "inert" ? t.faint : t.text,
+            display: "block",
+          }}
         >
           {title}
         </span>

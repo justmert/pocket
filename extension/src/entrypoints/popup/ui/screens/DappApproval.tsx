@@ -4,6 +4,7 @@ import { MonoBlock } from "../Address";
 import { Amount } from "../Amount";
 import { Button, ButtonRow, ButtonStack, Header, Label, Notice, Screen } from "../primitives";
 import { useOnce } from "../flow";
+import { NO_MEMO } from "../copy";
 import { space, text, type Theme } from "../theme";
 import type { TxSummary } from "../../../../core/provider/describe-tx";
 
@@ -105,7 +106,7 @@ export function DappApproval({
           {summary.memo ? (
             <MonoBlock t={t}>{summary.memo}</MonoBlock>
           ) : (
-            <div style={{ ...text.body, color: t.sub }}>None.</div>
+            <div style={{ ...text.body, color: t.sub }}>{NO_MEMO}</div>
           )}
 
           <div style={{ marginTop: space.gutter }}>

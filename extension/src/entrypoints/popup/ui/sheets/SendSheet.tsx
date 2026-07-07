@@ -188,7 +188,6 @@ export function SendSheet({ open, onClose }: { open: boolean; onClose: () => voi
           t={t}
           heading="Sending privately"
           amount={privateSummary.amount}
-          treatment="sealed"
           to={privateSummary.to}
           effects={privateSummary.effects}
           error={error}
