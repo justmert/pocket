@@ -15,6 +15,7 @@
 import { test, expect } from "../support/fixtures";
 import { Wallet, WAITS } from "../support/wallet";
 import { computed, measure, AA } from "../support/a11y";
+import { stubReadyPrivatePocket } from "../support/private-pocket";
 
 const PASSWORD = "a-strong-test-password";
 const FRAME = { width: 384, height: 600 };
@@ -274,7 +275,12 @@ const POCKETLESS: Shot[] = [
 ];
 
 /** Screens that live inside a pocket, photographed in both. */
-const POCKETED: { name: string; open: (w: Wallet, pocket: PocketName) => Promise<void> }[] = [
+const POCKETED: {
+  name: string;
+  /** the private half of this screen only exists once the pocket is open. */
+  needsOpenPrivatePocket?: boolean;
+  open: (w: Wallet, pocket: PocketName) => Promise<void>;
+}[] = [
   { name: "home", open: async () => {} },
   {
     name: "settings",
@@ -292,6 +298,10 @@ const POCKETED: { name: string; open: (w: Wallet, pocket: PocketName) => Promise
   },
   {
     name: "send-compose",
+    // the private compose form exists only for a pocket that is open, so this
+    // screen arranges one. before D-002 it was reachable without, which is the
+    // path that let someone fill in a payment for an account that did not exist.
+    needsOpenPrivatePocket: true,
     open: async (w, pocket) => {
       await w.nav(pocket === "private" ? "Send privately" : "Send").click();
       await expect(w.page.getByLabel("To", { exact: true })).toBeVisible();
@@ -351,7 +361,11 @@ for (const screen of POCKETED) {
     test(`${screen.name} renders in the ${pocket} pocket`, async ({ wallet }) => {
       test.setTimeout(4 * 60_000);
       await wallet.page.setViewportSize(FRAME);
+      const needsPocket =
+        pocket === "private" && "needsOpenPrivatePocket" in screen && screen.needsOpenPrivatePocket;
+      if (needsPocket) await stubReadyPrivatePocket(wallet.page);
       await wallet.importPhrase(PHRASE, PASSWORD);
+      if (needsPocket) await wallet.page.reload();
       await wallet.waitForHome(WAITS.ledgerRead);
       if (pocket === "private") await wallet.openPrivatePocket();
       await screen.open(wallet, pocket);

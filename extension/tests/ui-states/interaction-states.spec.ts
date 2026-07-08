@@ -23,6 +23,7 @@ import { test, expect } from "../support/fixtures";
 import { Wallet, WAITS } from "../support/wallet";
 import * as ledger from "../support/testnet";
 import { computed, focused, measure, px, tabTo, AA, MIN_TARGET_PX } from "../support/a11y";
+import { stubReadyPrivatePocket } from "../support/private-pocket";
 
 const PASSWORD = "a-strong-test-password";
 const POCKETS = ["public", "private"] as const;
@@ -88,7 +89,12 @@ async function disabledPrimary(
       },
     };
   }
+  // the private compose form only exists for a pocket that is open. before
+  // D-002 this screen was reachable without one, which is the path that let a
+  // user fill in a payment for an account that did not exist.
+  await stubReadyPrivatePocket(w.page);
   await w.createWallet(PASSWORD);
+  await w.page.reload();
   await w.waitForHome(WAITS.ledgerRead);
   await w.openPrivatePocket();
   await w.nav("Send privately").click();
@@ -166,7 +172,10 @@ test.describe("focus", () => {
         await wallet.page.keyboard.press("Tab");
         target = wallet.page.getByRole("button", { name: "Create a new wallet" });
       } else {
+        // as above: the compose form belongs to an open pocket.
+        await stubReadyPrivatePocket(wallet.page);
         await wallet.createWallet(PASSWORD);
+        await wallet.page.reload();
         await wallet.waitForHome(WAITS.ledgerRead);
         await wallet.openPrivatePocket();
         await wallet.nav("Send privately").click();

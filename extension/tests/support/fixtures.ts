@@ -7,12 +7,21 @@
 import { test as base } from "@playwright/test";
 import { launchWallet, type Harness } from "./extension";
 import { Wallet } from "./wallet";
+import { Ambient } from "./ambient";
 
 export interface PocketFixtures {
   /** The browser context, the extension id and the service worker. */
   harness: Harness;
   /** The popup, driven the way a person drives it. */
   wallet: Wallet;
+  /**
+   * Everything that must not happen, watched whether or not a test looks.
+   *
+   * Attached to every test in every tier by construction rather than by
+   * remembering to opt in: a console error or a request to an unexpected host
+   * is a defect in whichever test happens to be running when it appears.
+   */
+  ambient: Ambient;
 }
 
 export const test = base.extend<PocketFixtures>({
@@ -26,6 +35,23 @@ export const test = base.extend<PocketFixtures>({
       await harness.close();
     }
   },
+
+  ambient: [
+    async ({ harness }, use, testInfo) => {
+      const ambient = new Ambient(harness.context);
+      ambient.watchPage(harness.popup);
+      harness.context.on("page", (p) => ambient.watchPage(p));
+      try {
+        await use(ambient);
+      } finally {
+        // Only judge a test that was otherwise passing. A test that already
+        // failed has its own, better, explanation and does not need a second
+        // one stacked on top of it.
+        if (testInfo.status === testInfo.expectedStatus) ambient.report(testInfo.title);
+      }
+    },
+    { auto: true },
+  ],
 
   wallet: async ({ harness }, use) => {
     await use(new Wallet(harness.popup));

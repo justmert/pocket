@@ -8,6 +8,23 @@ import type { PrivateOpSummary, TransferSummary } from "../../../../core/message
 type Stage = "compose" | "review" | "done";
 
 /**
+ * why there is nothing to send yet, in the words the rest of the product uses.
+ *
+ * one sentence per state rather than one for all of them: "you cannot send" is
+ * true everywhere and useful nowhere, and the state is what tells someone which
+ * of these is one press from fixed and which is not.
+ */
+const PRIVATE_NOT_READY: Record<string, string> = {
+  unavailable: "This network has no private pocket, so there is nothing to send from.",
+  unfunded: "This account does not exist on the network yet. Receive some XLM first, then you can open a private pocket.",
+  unregistered: "The private pocket is not open yet. Setting it up takes two transactions, and you review the second one.",
+  archived: "The private pocket went dormant from not being used. Reactivate it before sending.",
+  needsRecovery: "This device's record of the private balances has to be rebuilt before anything can be sent.",
+  diverged: "This device disagrees with the contract about the private balances, so it refuses to spend until that is rebuilt.",
+  ready: "",
+};
+
+/**
  * one send, two pockets.
  *
  * the public pocket pays openly and the private one pays with the amount
@@ -120,7 +137,36 @@ export function SendSheet({ open, onClose }: { open: boolean; onClose: () => voi
       focusKey={stage}
       still={stage === "review"}
     >
-      {stage === "compose" && (
+      {/* there is nothing to send from a private pocket that has not been
+          opened, and the screen behind this sheet says so: "Not open yet",
+          "Fund this account first". offering a compose form anyway let someone
+          type a destination and an amount for an account that does not exist,
+          wait, and be told to check their connection.
+
+          the sheet still opens, because a control that does nothing when
+          pressed is its own small dead end. it answers instead. */}
+      {stage === "compose" && isPrivate && w.priv?.state !== "ready" ? (
+        <>
+          <Notice t={t}>
+            {w.priv
+              ? PRIVATE_NOT_READY[w.priv.state]
+              : "Pocket is still reading this account. Try again in a moment."}
+          </Notice>
+          <ButtonStack>
+            <Button
+              t={t}
+              onClick={() => {
+                onClose();
+                w.openSheet("move");
+              }}
+            >
+              Open the private pocket
+            </Button>
+          </ButtonStack>
+        </>
+      ) : null}
+
+      {stage === "compose" && !(isPrivate && w.priv?.state !== "ready") && (
         <>
           <Field
             t={t}

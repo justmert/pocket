@@ -56,7 +56,12 @@ export function Home() {
       <>
         <HeroAmount t={t} value={native ? native.amount : null} code="XLM" />
         <div style={{ ...text.caption, color: t.faint, minHeight: 16 }}>
-          {native?.reserved && Number(native.reserved) > 0
+          {/* not `Number(reserved) > 0`. a balance is an int64 of stroops as a
+              decimal string, and putting it through a float to ask "is it more
+              than nothing" is the one place a float was still touching the value
+              path. asking the string whether it contains a non-zero digit is
+              exact, and it cannot be wrong at any magnitude. */}
+          {native?.reserved && /[1-9]/.test(native.reserved)
             ? `Plus ${native.reserved} XLM locked by the network as a reserve.`
             : " "}
         </div>

@@ -24,6 +24,7 @@ import * as ledger from "../support/testnet";
 import { measure, AA } from "../support/a11y";
 import { contrastFailures } from "./paint";
 import { offline, RPC_HOST } from "../support/stub";
+import { stubReadyPrivatePocket } from "../support/private-pocket";
 
 const PASSWORD = "a-strong-test-password";
 
@@ -126,7 +127,12 @@ const POCKETLESS: { name: string; open: (w: Wallet) => Promise<void> }[] = [
  * privately` in the private one, and the private pocket's home is a different
  * body entirely.
  */
-const POCKETED: { name: string; open: (w: Wallet, pocket: PocketName) => Promise<void> }[] = [
+const POCKETED: {
+  name: string;
+  /** the private half of this screen only exists once the pocket is open. */
+  needsOpenPrivatePocket?: boolean;
+  open: (w: Wallet, pocket: PocketName) => Promise<void>;
+}[] = [
   { name: "home", open: async () => {} },
   {
     name: "home-funded",
@@ -156,6 +162,9 @@ const POCKETED: { name: string; open: (w: Wallet, pocket: PocketName) => Promise
   },
   {
     name: "send-refusal",
+    // a refusal from the compose form needs a compose form, and the private one
+    // exists only for an open pocket. before D-002 this was reachable without.
+    needsOpenPrivatePocket: true,
     open: async (w, pocket) => {
       await w.nav(pocket === "private" ? "Send privately" : "Send").click();
       await w.composePayment({ to: "not-an-address", amount: "1" });
@@ -231,7 +240,11 @@ for (const screen of POCKETED) {
   for (const pocket of POCKETS) {
     test(`${screen.name} meets AA contrast in the ${pocket} pocket`, async ({ wallet }) => {
       test.setTimeout(4 * 60_000);
+      const needsPocket =
+        pocket === "private" && "needsOpenPrivatePocket" in screen && screen.needsOpenPrivatePocket;
+      if (needsPocket) await stubReadyPrivatePocket(wallet.page);
       await wallet.createWallet(PASSWORD);
+      if (needsPocket) await wallet.page.reload();
       await enter(wallet, pocket);
       await screen.open(wallet, pocket);
 

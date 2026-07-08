@@ -224,6 +224,11 @@ const SAFE_MESSAGES = new Set([
   "wallet is locked",
   "no wallet to unlock",
   "a wallet already exists on this device",
+  // the network sheet offers Mainnet, and this build refuses it. without this
+  // line the refusal fell through to the generic branch and told the user to
+  // check their connection — for a refusal that is a permanent property of the
+  // build, so the only action that message suggests can never work.
+  "Pocket is testnet-only in this build.",
 ]);
 
 export function describeError(e: unknown): string {
