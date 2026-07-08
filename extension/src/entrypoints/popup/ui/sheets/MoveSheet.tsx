@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, ButtonStack, Field, Label, Notice, Row, Sheet } from "../primitives";
+import { Held } from "../Held";
 import { Receipt, ReviewPanel, useOnce, usePhase } from "../flow";
 import { Progress } from "../Progress";
 import { ArrowDown, ArrowUp, Check } from "../icons";
@@ -313,48 +314,53 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
             </>
           );
 
+        // the three states below are the same fact about the user's money —
+        // it is there and it is not spendable yet — so they are one shape.
+        // see ui/Held.tsx.
         case "archived":
           return (
-            <>
+            <Held
+              t={t}
+              label="Dormant"
+              amount={priv.spendable}
+              code="XLM"
+              // a dormant entry may need its ledger footprint restored before it
+              // can be read at all, and this build cannot do that. so the other
+              // route out is named here rather than left for someone to find
+              // after reactivating has failed.
+              holding="This pocket went dormant from not being used. Reactivating wakes it. If that does not work, this device's record of the balances can be rebuilt from your history instead."
+              action={{ label: "Reactivate", onClick: onMerge }}
+              secondary={{
+                label: rebuilding ? "Replaying your history" : "Rebuild from history",
+                onClick: onRebuild,
+                busy: rebuilding,
+              }}
+            >
               {priv.message && <Notice t={t} tone="exposed">{priv.message}</Notice>}
-              {/* a dormant entry may need its ledger footprint restored before
-                  it can be read at all, and this build cannot do that. so the
-                  other route out is shown here rather than left for someone to
-                  find after reactivating has failed. */}
-              <Notice t={t}>
-                If reactivating does not work, this device's record of the balances can be rebuilt
-                from your history instead.
-              </Notice>
-              <ButtonStack>
-                <Button t={t} onClick={onMerge}>
-                  Reactivate
-                </Button>
-                <Button t={t} variant="quiet" busy={rebuilding} onClick={onRebuild}>
-                  {rebuilding ? "Replaying your history" : "Rebuild from history"}
-                </Button>
-              </ButtonStack>
-            </>
+            </Held>
           );
 
         case "needsRecovery":
         case "diverged":
           return (
-            <>
+            <Held
+              t={t}
+              label={priv.state === "diverged" ? "Out of step" : "Needs rebuilding"}
+              amount={priv.spendable}
+              code="XLM"
+              holding="Rebuilding replays your history and checks the result against what the contract holds, so an incomplete history is refused rather than accepted."
+              action={{
+                label: rebuilding ? "Replaying your history" : "Rebuild from history",
+                onClick: onRebuild,
+                busy: rebuilding,
+              }}
+            >
               {priv.message && (
                 <Notice t={t} tone={priv.state === "diverged" ? "danger" : "exposed"}>
                   {priv.message}
                 </Notice>
               )}
-              <Notice t={t}>
-                Rebuilding replays your history and checks the result against what the contract
-                holds, so an incomplete history is refused rather than accepted.
-              </Notice>
-              <ButtonStack>
-                <Button t={t} busy={rebuilding} onClick={onRebuild}>
-                  {rebuilding ? "Replaying your history" : "Rebuild from history"}
-                </Button>
-              </ButtonStack>
-            </>
+            </Held>
           );
 
         case "ready":

@@ -4,6 +4,7 @@ import { NAV_SPACE } from "../BottomNav";
 import { Amount, HeroAmount } from "../Amount";
 import { Avatar, shortAddress } from "../Address";
 import { Card, IconButton, Notice, Overline, Row, ScrollArea, Skeleton } from "../primitives";
+import { Held } from "../Held";
 import { Check, Copy, Lock, Refresh, Shield } from "../icons";
 import { fontSizes, radius, space, text, type Pocket, type Theme } from "../theme";
 import type { PrivatePocket } from "../../../../core/messages";
@@ -159,33 +160,14 @@ export function Home() {
       <>
         {priv.receiving !== undefined && (
           <div style={{ marginTop: space.gutter }}>
-            <Card t={t} tone="accent">
-              <div style={{ display: "flex", alignItems: "center", gap: space.md, flexWrap: "wrap" }}>
-                <span style={{ minWidth: 0, flex: "1 1 120px" }}>
-                  <span style={{ ...text.rowSub, color: t.sub, display: "block" }}>Receiving</span>
-                  <Amount t={t} value={priv.receiving} code="XLM" size="row" />
-                </span>
-                <button
-                  type="button"
-                  onClick={() => w.openSheet("move")}
-                  style={{
-                    all: "unset",
-                    cursor: "pointer",
-                    ...text.chip,
-                    color: t.dark ? t.accent : t.text,
-                    background: t.field,
-                    padding: `8px ${space.md}px`,
-                    borderRadius: radius.pill,
-                  }}
-                >
-                  Make spendable
-                </button>
-              </div>
-              <div style={{ ...text.caption, color: t.sub, marginTop: space.xs, lineHeight: 1.45 }}>
-                Received funds sit here until you make them spendable. One signature, no fee beyond
-                the network's.
-              </div>
-            </Card>
+            <Held
+              t={t}
+              label="Receiving"
+              amount={priv.receiving}
+              code="XLM"
+              holding="Received funds sit here until you make them spendable. One signature, no fee beyond the network's."
+              action={{ label: "Make spendable", onClick: () => w.openSheet("move") }}
+            />
           </div>
         )}
 
