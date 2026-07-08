@@ -197,9 +197,10 @@ test("no component times itself with a number of its own", async ({ wallet }) =>
       "--pocket-shimmer-calm",
     ];
     const ok = new Set(["0s", "0.001s", ...names.map((n) => seconds(root.getPropertyValue(n)))]);
-    // the odometer rolls each digit from a number typed into the component
-    // rather than from a token, which is a finding of its own and is fixed in a
-    // later batch. named here so this test reports the durations it is about.
+    // the odometer reads `motion.roll` in javascript rather than through a
+    // custom property, so its value cannot be collected from the root the way
+    // the others are. it is a token; this is the one place its value is
+    // repeated, and it is repeated in a test rather than in a component.
     ok.add("0.56s");
 
     const rogue: { text: string; value: string; kind: string }[] = [];

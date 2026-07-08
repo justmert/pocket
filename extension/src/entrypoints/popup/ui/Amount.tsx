@@ -22,15 +22,27 @@ const SIZES = {
 const COLUMN = FRAME.width - space.gutter * 2;
 /** tabular figures at weight 800 measure close to this fraction of their size. */
 const DIGIT_EM = 0.62;
+/** the flex gap between the figure and its code, as a fraction of the size. */
+const GAP_EM = 0.14;
 
 /**
- * the largest size at which a run of digits still fits the column.
+ * the largest size at which this figure still fits the column.
  *
- * used only where the figure is set as one run, so that a long sub-one amount
- * steps down instead of wrapping in the middle of a number.
+ * `units` is measured in whole-part characters rather than in characters,
+ * because the three runs are set at three sizes: a fraction at half the base
+ * costs half the room per digit, and the code at four tenths costs four tenths.
+ * so a figure is priced by adding up what each run costs in units of the base,
+ * and the base is then whatever divides into the column.
+ *
+ * this applies to every amount, not only the sub-one ones it was written for.
+ * the largest balance stellar can hold is 922,337,203,685.4775807, and its whole
+ * part alone is fifteen characters: at the hero's own size that is 390px of
+ * digits in a 348px column, which is a number that runs off the side of the one
+ * screen whose whole job is to state it.
  */
-function fit(px: number, chars: number): number {
-  return Math.max(fontSizes.small, Math.min(px, Math.floor(COLUMN / (chars * DIGIT_EM))));
+function fit(px: number, units: number, gaps: number): number {
+  const per = units * DIGIT_EM + gaps * GAP_EM;
+  return Math.max(fontSizes.small, Math.min(px, Math.floor(COLUMN / per)));
 }
 
 /**
@@ -77,9 +89,16 @@ export function Amount({
    * whatever the column takes rather than left to wrap mid-number.
    */
   const oneRun = big && fraction !== "" && (whole === "0" || whole === "-0");
-  const px = oneRun
-    ? fit(SIZES[size], whole.length + 1 + fraction.length + (code ? code.length * 0.5 + 1 : 0))
-    : SIZES[size];
+
+  // the two demoted runs, as fractions of the base size. read once here so the
+  // measurement below and the rendering further down cannot drift apart.
+  const fractionOf = big ? 0.5 : 0.85;
+  const codeOf = big ? 0.4 : 0.85;
+  const units =
+    (oneRun ? whole.length + 1 + fraction.length : whole.length) +
+    (!oneRun && fraction ? (fraction.length + 1) * fractionOf : 0) +
+    (code ? code.length * codeOf : 0);
+  const px = fit(SIZES[size], units, code ? 1 : 0);
 
   const tones: Record<Treatment, CSSProperties> = {
     plain: { color: t.text },
@@ -92,7 +111,7 @@ export function Amount({
         display: "inline-flex",
         alignItems: "baseline",
         flexWrap: "wrap",
-        gap: Math.round(px * 0.14),
+        gap: Math.round(px * GAP_EM),
         fontVariantNumeric: "tabular-nums",
         letterSpacing: big ? "-0.03em" : undefined,
         fontWeight: big ? 800 : 700,
@@ -115,7 +134,7 @@ export function Amount({
           <>
             {animate ? <Rolling value={whole} /> : whole}
             {fraction && (
-              <span style={{ fontSize: Math.round(px * (big ? 0.5 : 0.85)), opacity: 0.62 }}>
+              <span style={{ fontSize: Math.round(px * fractionOf), opacity: 0.62 }}>
                 .{fraction}
               </span>
             )}
@@ -125,7 +144,7 @@ export function Amount({
       {code && (
         <span
           aria-hidden
-          style={{ fontSize: Math.round(px * (big ? 0.4 : 0.85)), fontWeight: 700, color: t.sub }}
+          style={{ fontSize: Math.round(px * codeOf), fontWeight: 700, color: t.sub }}
         >
           {code}
         </span>
@@ -186,8 +205,11 @@ function RollDigit({ digit }: { digit: number }) {
     return () => cancelAnimationFrame(r);
   }, [digit]);
 
+  // one gesture, so the travel and the blur settling out of it share a duration
+  // and a curve. `motion.roll` is that duration; neither number is chosen here.
   const transition =
-    `transform 560ms ${motion.enter}` + (settling ? ", filter 560ms ease-out" : "");
+    `transform ${motion.roll} ${motion.enter}` +
+    (settling ? `, filter ${motion.roll} ${motion.enter}` : "");
 
   return (
     <span style={{ display: "inline-block", height: "1em", overflow: "hidden", verticalAlign: "bottom" }}>
