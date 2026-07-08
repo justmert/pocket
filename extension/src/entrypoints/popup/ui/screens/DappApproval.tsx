@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { call } from "../rpc";
-import { MonoBlock } from "../Address";
+import { MonoBlock, OriginBlock } from "../Address";
 import { Amount } from "../Amount";
 import { Button, ButtonRow, ButtonStack, Header, Label, Notice, Screen } from "../primitives";
 import { useOnce } from "../flow";
@@ -52,7 +52,7 @@ export function DappApproval({
       <Header t={t} title="Signature request" />
 
       <Label t={t}>This site is asking</Label>
-      <MonoBlock t={t}>{request.origin}</MonoBlock>
+      <OriginBlock t={t} origin={request.origin} />
 
       {!summary.decoded ? (
         <>

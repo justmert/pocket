@@ -44,9 +44,23 @@ export function Qr({ t, value, size = 214 }: { t: Theme; value: string; size?: n
         padding: 12,
         display: "inline-block",
         lineHeight: 0,
+        // at 200% zoom and above the frame is narrower than the code's natural
+        // 214px, and a truncated qr is not a qr: a scanner cannot decode it, and
+        // the failure looks like the sender's camera being bad rather than the
+        // wallet drawing something impossible. so the box gives way and the svg
+        // scales with it.
+        maxWidth: "100%",
+        boxSizing: "border-box",
       }}
     >
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label="Your address as a QR code">
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        role="img"
+        aria-label="Your address as a QR code"
+        style={{ maxWidth: "100%", height: "auto", display: "block" }}
+      >
         <path d={dots.join(" ")} fill="#14151A" />
         {finders.map(([row, col], i) => {
           const x = (col + margin) * cell;

@@ -88,7 +88,7 @@ export function Home() {
     if (priv.state !== "ready") {
       return (
         <div style={{ minHeight: Math.round(fontSizes.hero * 1.25), display: "flex", alignItems: "center" }}>
-          <span style={{ ...text.display, color: t.faint }}>Not open yet</span>
+          <span style={{ ...text.display, color: t.faint }}>{HERO_STATE[priv.state]}</span>
         </div>
       );
     }
@@ -329,6 +329,28 @@ export function Home() {
     );
   }
 }
+
+/**
+ * what stands in the balance slot when there is no number to put there.
+ *
+ * two groups, not one. a pocket that was never opened and a pocket whose balance
+ * this device cannot currently read are different facts about the user's money,
+ * and "Not open yet" is false for the second: the money is there, and saying it
+ * was never opened is the most frightening available reading of a state that is
+ * usually one press from fixed.
+ *
+ * the words are `Held`'s labels, so the hero and the sheet that fixes it call the
+ * same state by the same name.
+ */
+const HERO_STATE: Record<PrivatePocket["state"], string> = {
+  unavailable: "Not open yet",
+  unfunded: "Not open yet",
+  unregistered: "Not open yet",
+  archived: "Dormant",
+  needsRecovery: "Needs rebuilding",
+  diverged: "Out of step",
+  ready: "",
+};
 
 const PROMPT_TITLE: Record<PrivatePocket["state"], string> = {
   unavailable: "No private pocket on this network",

@@ -263,6 +263,21 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     rebuilding: boolean;
   }) {
     if (!priv) {
+      // three different reasons produce a null pocket and they are not the same
+      // fact. a deployment with no confidential wrapper will never have one, so
+      // "reading the ledger" is a claim about work that is not happening and
+      // never will; a failed read has an error the worker already worded; and
+      // only the third is actually still reading.
+      if (w.privError) {
+        return (
+          <Notice t={t} tone="danger">
+            {w.privError}
+          </Notice>
+        );
+      }
+      if (w.status && !w.status.privateAvailable) {
+        return <Notice t={t}>This network has no private pocket. Nothing to move.</Notice>;
+      }
       return <Notice t={t}>Reading the ledger.</Notice>;
     }
 

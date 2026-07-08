@@ -503,6 +503,7 @@ export function Row({
   const id = useId();
   const titleId = `${id}-title`;
   const subId = `${id}-sub`;
+  const valueId = `${id}-value`;
   const inner = (
     <>
       {icon && (
@@ -548,7 +549,11 @@ export function Row({
       </span>
       {(value || valueSub) && (
         <span style={{ textAlign: "right", minWidth: 0, flex: "0 1 auto", overflowWrap: "anywhere" }}>
-          {value && <span style={{ ...text.value, color: t.text, display: "block" }}>{value}</span>}
+          {value && (
+            <span id={valueId} style={{ ...text.value, color: t.text, display: "block" }}>
+              {value}
+            </span>
+          )}
           {valueSub && (
             <span style={{ ...text.rowSub, color: t.sub, display: "block" }}>{valueSub}</span>
           )}
@@ -579,7 +584,12 @@ export function Row({
     <button
       type="button"
       onClick={onClick}
-      aria-labelledby={titleId}
+      // the value is part of the NAME, not the description. a settings row
+      // reading "Network, button" with its current value only in a description
+      // leaves a screen-reader user unable to tell which network is selected
+      // without moving focus again, which is the one thing the row exists to
+      // say. named, it reads "Network Testnet, button".
+      aria-labelledby={value ? `${titleId} ${valueId}` : titleId}
       aria-describedby={sub ? subId : undefined}
       className={index != null ? "pocket-row-in" : undefined}
       style={{ all: "unset", cursor: "pointer", boxSizing: "border-box", ...style }}
@@ -657,9 +667,18 @@ export function Notice({
     exposed: { bg: t.exposedSoft, fg: t.exposed },
   };
   const c = tones[tone]!;
+  // a refusal interrupts, because it has to. an outcome is announced without
+  // interrupting, because it arrives while someone may still be listening to
+  // the step that produced it. what must not happen is the third case that used
+  // to exist: a confirmation, a ledger number and a hash appearing with no
+  // announcement at all, so a screen-reader user who pressed "Confirm and send"
+  // hears the progress phases and then silence, and cannot tell a sent payment
+  // from a stuck one.
+  const live = tone === "danger" ? "alert" : tone === "positive" || tone === "exposed" ? "status" : undefined;
   return (
     <div
-      role={tone === "danger" ? "alert" : undefined}
+      role={live}
+      aria-live={live === "status" ? "polite" : undefined}
       style={{
         ...text.body,
         background: c.bg,

@@ -130,3 +130,49 @@ export function MonoBlock({ t, children }: { t: Theme; children: React.ReactNode
     </div>
   );
 }
+
+/**
+ * the origin asking for a signature.
+ *
+ * not a `MonoBlock`. a memo and a transaction hash can wrap wherever they like,
+ * because nobody is deceived by where a hash breaks. a hostname is different:
+ * the break point is a function of length, so an attacker who chooses the
+ * hostname also chooses where it wraps, and can build one whose first line ends
+ * in something that reads as the real domain. `wordBreak: break-all` handed that
+ * choice over.
+ *
+ * so it does not wrap. one line, scrolled rather than broken, with the scheme
+ * dimmed because it is never the part under attack and it is the part that eats
+ * the width. nothing is truncated: the whole string is reachable.
+ */
+export function OriginBlock({ t, origin }: { t: Theme; origin: string }) {
+  const split = origin.match(/^([a-z][a-z0-9+.-]*:\/\/)(.*)$/i);
+  const scheme = split?.[1] ?? "";
+  const rest = split?.[2] ?? origin;
+  return (
+    <div
+      style={{
+        background: t.field,
+        borderRadius: radius.md,
+        padding: space.md,
+        // a deliberate scroller, which is also what keeps the layout audit
+        // honest about it: content that scrolls is not content that is lost.
+        overflowX: "auto",
+        whiteSpace: "nowrap",
+        lineHeight: 1.55,
+      }}
+    >
+      <span style={{ ...text.body, fontFamily: fonts.mono, color: t.sub }}>{scheme}</span>
+      <span
+        style={{
+          ...text.rowTitle,
+          fontFamily: fonts.mono,
+          fontSize: fontSizes.heading,
+          color: t.text,
+        }}
+      >
+        {rest}
+      </span>
+    </div>
+  );
+}
