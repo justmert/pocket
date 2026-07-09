@@ -57,6 +57,26 @@ async function connected() {
   return { c, address };
 }
 
+/**
+ * Wait for the worker to have parked the request, rather than guessing how long
+ * that takes.
+ *
+ * This was `await new Promise((r) => setTimeout(r, 20))`, which is not a
+ * synchronisation primitive: it is a bet that the parking path finishes inside
+ * 20ms. On a loaded machine it does not, and the test then reports the queue as
+ * broken when it is merely slow. Caught while running the suite alongside a
+ * build; it passed five times in a row on its own.
+ */
+async function parked(c: { pendingDappRequest: () => unknown }, within = 5_000) {
+  const deadline = Date.now() + within;
+  for (;;) {
+    const req = c.pendingDappRequest();
+    if (req) return req;
+    if (Date.now() > deadline) throw new Error(`no request was parked within ${within}ms`);
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
 describe("a site cannot get a signature without a person answering", () => {
   beforeEach(() => store.clear());
 
@@ -67,8 +87,7 @@ describe("a site cannot get a signature without a person answering", () => {
     const pending = c.sep43("https://app.example", "signTransaction", [xdr]);
     // The worker has NOT signed. It is waiting, and the popup has something
     // to render.
-    await new Promise((r) => setTimeout(r, 20));
-    const req = c.pendingDappRequest();
+    const req = (await parked(c)) as ReturnType<typeof c.pendingDappRequest>;
     expect(req, "the popup must be able to see the request").not.toBeNull();
     expect(req!.origin).toBe("https://app.example");
     expect(req!.summary.decoded).toBe(true);
@@ -86,7 +105,7 @@ describe("a site cannot get a signature without a person answering", () => {
   it("a refusal is a refusal, and nothing is signed", async () => {
     const { c, address } = await connected();
     const pending = c.sep43("https://app.example", "signTransaction", [await envelope(address)]);
-    await new Promise((r) => setTimeout(r, 20));
+    await parked(c);
     const req = c.pendingDappRequest()!;
     c.resolveDappRequest(req.id, false);
 

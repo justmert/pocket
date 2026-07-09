@@ -55,9 +55,38 @@ function describeOperation(op: DecodedOp, index: number): string {
     case "pathPaymentStrictReceive":
       return `${n} Send up to ${op.sendMax} ${op.sendAsset.getCode()} so ${op.destination} receives ${op.destAmount} ${op.destAsset.getCode()}`;
     default:
+      // unreachable while DESCRIBED and this switch agree, which `describeTx`
+      // enforces before ever calling here. kept as a total function rather than
+      // a throw so a mismatch degrades to a refusal rather than a crash.
       return `${n} ${op.type}`;
   }
 }
+
+/**
+ * every operation this file can put into words.
+ *
+ * anything outside it is refused, not summarised. the previous behaviour was to
+ * fall through to the bare type name and still hand back `decoded: true`, so a
+ * site could ask for a `createClaimableBalance` of the whole account balance to
+ * an address of its choosing and the approval screen would show one line —
+ * "1. createClaimableBalance" — with the amount and the beneficiary nowhere on
+ * it, and an enabled Approve beneath. That is blind signing wearing the costume
+ * of a description, and this file's own header says it must be impossible.
+ *
+ * the list is the switch above. adding a case means adding it here, and the
+ * order of that pair is what keeps the refusal honest: an operation is
+ * describable only once someone has written the sentence for it.
+ */
+const DESCRIBED = new Set([
+  "payment",
+  "createAccount",
+  "changeTrust",
+  "setOptions",
+  "accountMerge",
+  "pathPaymentStrictSend",
+  "pathPaymentStrictReceive",
+  "invokeHostFunction",
+]);
 
 /** Operations that hand away control and must be called out, not listed. */
 const ALARMING = new Set(["setOptions", "accountMerge"]);
@@ -95,6 +124,26 @@ export function describeTransaction(xdr: string, networkPassphrase: string): TxS
       network: networkPassphrase,
       effects: [],
       warning: "This is a fee-bump transaction. Pocket does not sign these for sites.",
+    };
+  }
+
+  // an operation nobody has written a sentence for cannot be consented to, so
+  // the envelope is refused whole rather than partly described. refusing whole
+  // is deliberate: a list where four lines are real and the fifth is a type name
+  // reads as a complete description, and the one line that is not is the one
+  // carrying the operation nobody reviewed.
+  const undescribable = tx.operations.filter((o) => !DESCRIBED.has(o.type));
+  if (undescribable.length > 0) {
+    const names = [...new Set(undescribable.map((o) => o.type))].join(", ");
+    return {
+      decoded: false,
+      source: tx.source,
+      fee: tx.fee,
+      network: networkPassphrase,
+      effects: [],
+      warning:
+        `This transaction contains an operation Pocket cannot describe (${names}), ` +
+        "so it will not offer to sign it. Nothing has been sent.",
     };
   }
 
