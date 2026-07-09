@@ -3,6 +3,7 @@ import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, ButtonStack, Field, Label, Notice, Row, Sheet } from "../primitives";
 import { Held } from "../Held";
+import { canRebuild } from "../copy";
 import { Receipt, ReviewPanel, useOnce, usePhase } from "../flow";
 import { Progress } from "../Progress";
 import { ArrowDown, ArrowUp, Check } from "../icons";
@@ -334,22 +335,29 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
         // see ui/Held.tsx.
         case "archived":
           return (
+            // no rebuild route here, and the absence is the fix.
+            //
+            // an earlier batch added one, on the reasoning that someone whose
+            // reactivation cannot succeed should not be at a dead end. it does
+            // not work and it cannot: `rebuildFromHistory` reads the account
+            // before it reads any archive (controller.ts, `readOwnAccount`),
+            // and for an archived entry `readConfidentialAccount` answers null
+            // — which is the very thing that makes the state `archived`. so the
+            // button threw "This account has no private pocket yet." at a user
+            // who is holding a private balance and looking at it.
+            //
+            // that is worse than the dead end it was meant to close: a dead end
+            // is silence, and this was the wallet denying the pocket exists.
+            // restoring the ledger footprint is a transaction this build cannot
+            // construct, so there is no second route to offer, and offering one
+            // that answers with a denial is not honesty.
             <Held
               t={t}
               label="Dormant"
               amount={priv.spendable}
               code="XLM"
-              // a dormant entry may need its ledger footprint restored before it
-              // can be read at all, and this build cannot do that. so the other
-              // route out is named here rather than left for someone to find
-              // after reactivating has failed.
-              holding="This pocket went dormant from not being used. Reactivating wakes it. If that does not work, this device's record of the balances can be rebuilt from your history instead."
+              holding="This pocket went dormant from not being used. Reactivating wakes it up. Your balance is on the ledger either way; it is this device's access to it that has lapsed."
               action={{ label: "Reactivate", onClick: onMerge }}
-              secondary={{
-                label: rebuilding ? "Replaying your history" : "Rebuild from history",
-                onClick: onRebuild,
-                busy: rebuilding,
-              }}
             >
               {priv.message && <Notice t={t} tone="exposed">{priv.message}</Notice>}
             </Held>
@@ -363,12 +371,24 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
               label={priv.state === "diverged" ? "Out of step" : "Needs rebuilding"}
               amount={priv.spendable}
               code="XLM"
-              holding="Rebuilding replays your history and checks the result against what the contract holds, so an incomplete history is refused rather than accepted."
-              action={{
-                label: rebuilding ? "Replaying your history" : "Rebuild from history",
-                onClick: onRebuild,
-                busy: rebuilding,
-              }}
+              holding={
+                canRebuild(w.status?.network ?? "testnet")
+                  ? "Rebuilding replays your history and checks the result against what the contract holds, so an incomplete history is refused rather than accepted."
+                  : "Rebuilding would replay your history from a durable archive, and this build has none configured. Your balance is on the ledger and is not lost; this device cannot reach it until a build with an archive does the replay."
+              }
+              // no button where there is no archive. the worker refuses with the
+              // right words, but a primary control three lines under a sentence
+              // saying it cannot be done is the product arguing with itself, and
+              // the user can only find out which half is true by pressing it.
+              action={
+                canRebuild(w.status?.network ?? "testnet")
+                  ? {
+                      label: rebuilding ? "Replaying your history" : "Rebuild from history",
+                      onClick: onRebuild,
+                      busy: rebuilding,
+                    }
+                  : undefined
+              }
             >
               {priv.message && (
                 <Notice t={t} tone={priv.state === "diverged" ? "danger" : "exposed"}>

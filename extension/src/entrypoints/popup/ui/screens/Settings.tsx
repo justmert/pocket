@@ -1,8 +1,9 @@
 import { useWallet } from "../WalletProvider";
 import { NAV_SPACE } from "../BottomNav";
 import { Overline, Row, ScrollArea } from "../primitives";
+import { canRebuild } from "../copy";
 import { Chip } from "../primitives";
-import { Alert, ChevronRight, External, Key, Lock, Shield, Trash } from "../icons";
+import { Alert, ChevronRight, External, Key, Lock, Refresh, Trash } from "../icons";
 import { space, text } from "../theme";
 
 export function Settings() {
@@ -40,15 +41,20 @@ export function Settings() {
           />
         </div>
 
-        {w.status?.privateAvailable && (
+        {/* offered only where it can actually run. this build has no archive, so
+            on every artifact a user can install this row is absent rather than
+            present-and-refusing. it was shown to every user, gated only on the
+            network having a confidential deployment, which is always true on
+            testnet — including to wallets with no private pocket at all. */}
+        {w.status?.privateAvailable && canRebuild(w.status.network) && (
           <div style={{ marginTop: space.lg }}>
             <Overline t={t}>Private pocket</Overline>
             <Row
               t={t}
               index={2}
-              icon={<Shield size={19} />}
+              icon={<Refresh size={19} />}
               title="Rebuild from history"
-              sub="Replay the ledger to recover balances"
+              sub="Replay your event history from the archive"
               value={<ChevronRight size={17} />}
               onClick={() => w.openSheet("rebuild")}
             />

@@ -45,7 +45,12 @@ async function inLiveRegion(locator: import("@playwright/test").Locator): Promis
  * a cheap check rather than one nobody runs. The title is the sheet's
  * accessible name: `Sheet` passes its title straight to `aria-label`.
  */
-const SHEETS: { title: string; open: (w: Wallet) => Promise<void> }[] = [
+const SHEETS: {
+  title: string;
+  /** skipped where this build gives it no entrance. see the rebuild entry. */
+  onlyIfReachable?: boolean;
+  open: (w: Wallet) => Promise<void>;
+}[] = [
   { title: "Receive", open: async (w) => void (await w.nav("Receive").click()) },
   { title: "Send", open: async (w) => void (await w.nav("Send").click()) },
   { title: "Move", open: async (w) => void (await w.nav("Move").click()) },
@@ -65,6 +70,12 @@ const SHEETS: { title: string; open: (w: Wallet) => Promise<void> }[] = [
   },
   {
     title: "Rebuild from history",
+    // unreachable on a build with no archive, which is every shipped build:
+    // the settings row that opened it is now absent rather than present and
+    // refusing (defect D-009). the sheet is kept for the build variant that
+    // does configure an archive, and this entry is skipped rather than deleted
+    // so it comes back into coverage the day that variant ships.
+    onlyIfReachable: true,
     open: async (w) => {
       await w.nav("Settings").click();
       await w.page.getByRole("button", { name: "Rebuild from history" }).click();
@@ -111,7 +122,7 @@ test("every button has an accessible name, on every screen and every sheet", asy
   const settings = await wallet.page.locator("body").ariaSnapshot();
   expect(await unnamedIn(settings), `unnamed buttons in Settings\n${settings}`).toEqual([]);
 
-  for (const sheet of SHEETS) {
+  for (const sheet of SHEETS.filter((x) => !x.onlyIfReachable)) {
     await wallet.nav("Home").click();
     await sheet.open(wallet);
     const dialog = wallet.page.getByRole("dialog", { name: sheet.title });
@@ -135,7 +146,7 @@ test("every sheet is a dialog with an accessible name", async ({ wallet }) => {
   await wallet.createWallet(PASSWORD);
   await wallet.waitForHome(WAITS.ledgerRead);
 
-  for (const sheet of SHEETS) {
+  for (const sheet of SHEETS.filter((x) => !x.onlyIfReachable)) {
     await wallet.nav("Home").click();
     await sheet.open(wallet);
     const dialog = wallet.page.getByRole("dialog", { name: sheet.title });
@@ -153,7 +164,7 @@ test("every sheet closes on Escape", async ({ wallet }) => {
   await wallet.createWallet(PASSWORD);
   await wallet.waitForHome(WAITS.ledgerRead);
 
-  for (const sheet of SHEETS) {
+  for (const sheet of SHEETS.filter((x) => !x.onlyIfReachable)) {
     await wallet.nav("Home").click();
     await sheet.open(wallet);
     const dialog = wallet.page.getByRole("dialog", { name: sheet.title });

@@ -30,7 +30,7 @@ export function Held({
   code,
   /** one sentence: what is holding it. */
   holding,
-  /** the control that releases it. */
+  /** the control that releases it, where one exists. */
   action,
   /** the other way out, where one exists. */
   secondary,
@@ -42,7 +42,14 @@ export function Held({
   amount?: string;
   code?: string;
   holding: ReactNode;
-  action: { label: string; onClick: () => void; busy?: boolean };
+  /**
+   * optional, because some states genuinely have no way out from here.
+   *
+   * offering a control that cannot succeed is worse than offering none: the
+   * dormant pocket used to carry a rebuild button that answered "this account
+   * has no private pocket yet" to someone looking at their own balance.
+   */
+  action?: { label: string; onClick: () => void; busy?: boolean };
   secondary?: { label: string; onClick: () => void; busy?: boolean };
   children?: ReactNode;
 }) {
@@ -63,16 +70,20 @@ export function Held({
       <div style={{ ...text.caption, color: t.sub, marginTop: space.xs, lineHeight: 1.45 }}>
         {holding}
       </div>
-      <ButtonStack>
-        <Button t={t} busy={action.busy} onClick={action.onClick}>
-          {action.label}
-        </Button>
-        {secondary && (
-          <Button t={t} variant="quiet" busy={secondary.busy} onClick={secondary.onClick}>
-            {secondary.label}
-          </Button>
-        )}
-      </ButtonStack>
+      {(action || secondary) && (
+        <ButtonStack>
+          {action && (
+            <Button t={t} busy={action.busy} onClick={action.onClick}>
+              {action.label}
+            </Button>
+          )}
+          {secondary && (
+            <Button t={t} variant="quiet" busy={secondary.busy} onClick={secondary.onClick}>
+              {secondary.label}
+            </Button>
+          )}
+        </ButtonStack>
+      )}
     </Card>
   );
 }

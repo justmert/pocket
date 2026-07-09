@@ -177,16 +177,24 @@ test("the private pocket's refusal to spend states itself fully inside the frame
   // Half two, inside the Move sheet: what rebuilding actually is, and the
   // control that starts it. It arrived with the rebuild-from-history work; a
   // layout that puts it out of reach makes the state a dead end again.
-  const whatRebuildingIs = page.getByText(/Rebuilding replays your history/);
+  // on a build with no archive the sentence is why rebuilding CANNOT happen,
+  // not what it does. both wordings are the same job — the explanation a user in
+  // this state has to be able to read at every width — so the matcher covers the
+  // branch this build actually renders as well as the one it would with an
+  // archive configured.
+  const whatRebuildingIs = page.getByText(
+    /Rebuilding replays your history|Rebuilding would replay your history/,
+  );
   const inMoveSheet = () =>
     forEachViewport(page, [...REQUIRED_VIEWPORTS, ...NARROW_VIEWPORTS], async (vp) => {
+      // one check, not two. this used to also require the "Rebuild from
+      // history" control to be reachable; on a build with no archive that
+      // control is deliberately absent (D-009), and the sentence above is now
+      // the thing a user in this state has to be able to read. checking the
+      // explanation IS checking the way out, because there is no other.
       await expectReachable(
         whatRebuildingIs,
-        `private/needsRecovery + move @ ${vp.name}: what rebuilding does`,
-      );
-      await expectReachable(
-        page.getByRole("button", { name: "Rebuild from history" }),
-        `private/needsRecovery + move @ ${vp.name}: Rebuild from history`,
+        `private/needsRecovery + move @ ${vp.name}: why there is no way forward`,
       );
       await expectReachable(
         page.getByRole("button", { name: "Close" }),

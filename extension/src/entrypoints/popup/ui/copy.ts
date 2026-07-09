@@ -32,3 +32,22 @@ export function privateLossAfterErase(network: NetworkId): string {
  * removed on the screen where the wallet knows least about what it is signing.
  */
 export const NO_MEMO = "None. Exchanges usually require one; a deposit without it can be lost.";
+
+/**
+ * whether this build can rebuild private balances at all.
+ *
+ * the rebuild replays the confidential event history from a durable archive.
+ * `archiveUrl` is supplied at build time and no shipped build sets it —
+ * config.ts records that the release gate refuses the only value that exists,
+ * a loopback address. so on every artifact a user can install, the answer is no.
+ *
+ * this is the same read `privateLossAfterErase` makes, and it exists because the
+ * copy branched on it and the CONTROLS did not: a settings row, a sheet and a
+ * primary button all offered a rebuild that answers with a refusal, one of them
+ * three lines under the worker's own sentence saying it cannot be done. a user
+ * was told "your balances cannot be rebuilt" and handed a button labelled
+ * "Rebuild from history", and could only learn which was true by pressing it.
+ */
+export function canRebuild(network: NetworkId): boolean {
+  return Boolean(NETWORKS[network].archiveUrl);
+}

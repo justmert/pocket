@@ -61,7 +61,7 @@ const HELD = [
     pocket: { state: "needsRecovery", message: "This device's record is behind the contract." },
     label: "Needs rebuilding",
     figure: null,
-    control: /Rebuild from history/i,
+    control: null,
   },
   {
     name: "out of step with the contract",
@@ -69,7 +69,7 @@ const HELD = [
     pocket: { state: "diverged", message: "This device disagrees with the contract." },
     label: "Out of step",
     figure: null,
-    control: /Rebuild from history/i,
+    control: null,
   },
 ] as const;
 
@@ -113,7 +113,21 @@ for (const state of HELD) {
       ).toHaveCount(0);
     }
 
-    await expect(where.getByRole("button", { name: state.control }).first()).toBeVisible();
+    // these two carry NO control on a build with no archive: the rebuild that
+    // would release them cannot run, and offering it anyway was defect D-009.
+    // what they must still do is name themselves and say why there is no way out.
+    if (state.control) {
+      await expect(where.getByRole("button", { name: state.control }).first()).toBeVisible();
+    } else {
+      await expect(
+        where.getByRole("button", { name: /rebuild/i }),
+        "a control was offered for a state this build cannot release",
+      ).toHaveCount(0);
+      await expect(
+        where.getByText(/none configured|not lost|on the ledger/i),
+        "a state with no way out must say why",
+      ).toBeVisible();
+    }
   });
 }
 
