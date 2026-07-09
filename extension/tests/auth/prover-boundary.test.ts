@@ -25,6 +25,10 @@ const listeners: Listener[] = [];
 vi.stubGlobal("chrome", {
   runtime: {
     id: EXTENSION_ID,
+    // The document resolves the vendored bb.js bundle through the extension
+    // rather than through whatever origin served the module, so this is on the
+    // import path and a fake without it fails at load with "not a function".
+    getURL: (path: string) => `chrome-extension://${EXTENSION_ID}/${path}`,
     onMessage: { addListener: (fn: Listener) => listeners.push(fn) },
   },
 });

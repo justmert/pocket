@@ -19,7 +19,15 @@ import {
   type ProverStatus,
 } from "../../core/prover/protocol";
 
-const BB_PATH = "/vendor/bb/index.js";
+// Resolved against the EXTENSION, not against whatever origin served this
+// module. A root-relative specifier is resolved by the importing module's URL,
+// and under `wxt dev` that module is served from http://localhost:3000, so the
+// import went to the Vite dev server, which refuses to hand back a file it
+// copies verbatim out of public/. The prover then failed to initialise and the
+// private pocket could not be set up at all in a development build. An absolute
+// chrome-extension:// URL is the same file in both builds and cannot be
+// retargeted by where the code was served from.
+const BB_PATH = chrome.runtime.getURL("vendor/bb/index.js");
 /** Shared with the service-worker client so the two bounds cannot drift apart. */
 const INIT_TIMEOUT_MS = PROVER_INIT_TIMEOUT_MS;
 const PROVE_TIMEOUT_MS = PROVER_PROVE_TIMEOUT_MS;
