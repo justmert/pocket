@@ -42,7 +42,9 @@ export interface VaultInfo {
 }
 
 export interface VaultPosition {
+  /** Vault shares held, from the response's `dfTokens`. Not an XLM amount. */
   shares: string;
+  /** What those shares are currently worth in the underlying, if reported. */
   underlying?: string;
 }
 
@@ -122,10 +124,26 @@ export class DefindexClient {
    * is the one endpoint whose user parameter is called `from`; see the header.
    */
   async position(address: string, user: string): Promise<VaultPosition> {
-    return this.request<VaultPosition>(
+    // The body is NOT this shape, so it is mapped rather than cast. The live
+    // endpoint answers {"dfTokens":"0","underlyingBalance":["0"]} and the
+    // OpenAPI document declares no 200 schema for this path at all - only 400
+    // and 403 - so there was nothing to check the old cast against. Read as
+    // `VaultPosition`, `shares` was undefined on every real response, and the
+    // yield row rendered the APY with the position beside it blank.
+    // Re-verified against the live testnet vault on 2026-08-03.
+    const body = await this.request<{ dfTokens?: unknown; underlyingBalance?: unknown }>(
       "GET",
       `/vault/${address}/balance?from=${encodeURIComponent(user)}`,
     );
+    if (typeof body?.dfTokens !== "string") {
+      // Refused rather than defaulted to "0". A zero here is indistinguishable
+      // on screen from a real empty position, and telling someone they hold
+      // nothing when the answer was unreadable is the fabricated-balance
+      // failure this module exists to avoid.
+      throw new DefindexError("the vault balance response carried no dfTokens");
+    }
+    const underlying = Array.isArray(body.underlyingBalance) ? body.underlyingBalance[0] : undefined;
+    return { shares: body.dfTokens, underlying: typeof underlying === "string" ? underlying : undefined };
   }
 
   /**

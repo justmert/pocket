@@ -10,6 +10,13 @@ const mockFetch = (handler: (url: string, init?: RequestInit) => unknown) =>
     json: async () => handler(url, init),
   })) as unknown as typeof fetch;
 
+/**
+ * What the live balance endpoint actually answers, recorded from the testnet
+ * XLM vault on 2026-08-03. The OpenAPI document declares no 200 schema for that
+ * path, so this literal is the only specification of it there is.
+ */
+const BALANCE_BODY = { dfTokens: "0", underlyingBalance: ["0"] };
+
 describe("the endpoint shape our own specification got wrong", () => {
   it("submits to ROOT /send, not /vault/{address}/send", async () => {
     let seen = "";
@@ -37,7 +44,7 @@ describe("the endpoint shape our own specification got wrong", () => {
     const urls: string[] = [];
     vi.stubGlobal(
       "fetch",
-      mockFetch((u) => (urls.push(u), {})),
+      mockFetch((u) => (urls.push(u), BALANCE_BODY)),
     );
     const c = new DefindexClient(cfg);
     await c.vault("CVAULT");
@@ -52,7 +59,7 @@ describe("the endpoint shape our own specification got wrong", () => {
     let seen = "";
     vi.stubGlobal(
       "fetch",
-      mockFetch((u) => ((seen = u), {})),
+      mockFetch((u) => ((seen = u), BALANCE_BODY)),
     );
     await new DefindexClient(cfg).position("CVAULT", "GUSER");
     expect(seen).toContain("from=GUSER");
@@ -179,7 +186,7 @@ describe("the user parameter is named differently on the POSTs and the GET", () 
     let seen = "";
     vi.stubGlobal(
       "fetch",
-      mockFetch((u) => ((seen = u), {})),
+      mockFetch((u) => ((seen = u), BALANCE_BODY)),
     );
     await new DefindexClient(cfg).position("CVAULT", "GUSER");
     expect(seen).toContain("from=GUSER");
@@ -251,5 +258,37 @@ describe("APY presentation", () => {
     // The 30d field is documented as "or null if calculation failed".
     expect(describeApy(null as unknown as number, 30)).toBe("Yield not reported");
     expect(describeApy(NaN, 30)).toBe("Yield not reported");
+  });
+});
+
+describe("the vault balance response, which the spec does not describe", () => {
+  it("reads shares out of dfTokens rather than a `shares` field that is never sent", async () => {
+    vi.stubGlobal("fetch", mockFetch(() => ({ dfTokens: "1234567", underlyingBalance: ["89"] })));
+    const pos = await new DefindexClient(cfg).position("CVAULT", "GUSER");
+    // Cast straight to VaultPosition this was `undefined`, and the yield row
+    // rendered an APY with nothing beside it.
+    expect(pos.shares).toBe("1234567");
+    expect(pos.underlying).toBe("89");
+  });
+
+  it("carries a zero position through as a zero, not as an error", async () => {
+    vi.stubGlobal("fetch", mockFetch(() => BALANCE_BODY));
+    expect((await new DefindexClient(cfg).position("CVAULT", "GUSER")).shares).toBe("0");
+  });
+
+  it("refuses a body it cannot read rather than calling it empty", async () => {
+    // "You hold nothing" and "I could not read what you hold" are different
+    // facts, and only one of them is about the user.
+    vi.stubGlobal("fetch", mockFetch(() => ({ balance: "5" })));
+    await expect(new DefindexClient(cfg).position("CVAULT", "GUSER")).rejects.toThrow(
+      DefindexError,
+    );
+  });
+
+  it("does not invent an underlying figure when the array is absent", async () => {
+    vi.stubGlobal("fetch", mockFetch(() => ({ dfTokens: "7" })));
+    const pos = await new DefindexClient(cfg).position("CVAULT", "GUSER");
+    expect(pos.shares).toBe("7");
+    expect(pos.underlying).toBeUndefined();
   });
 });
