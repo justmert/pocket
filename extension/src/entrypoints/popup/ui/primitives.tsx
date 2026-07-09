@@ -868,7 +868,15 @@ export function Sheet({
     const root = panel.current;
     if (!root) return;
     const field = root.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled])");
-    (field ?? root).focus();
+    // preventScroll is load-bearing, not a nicety. focusing an element makes the
+    // browser scroll its scrollable ancestor to reveal it, and the sheet sits at
+    // bottom: 0 inside the frame's scroll container, so revealing it dragged the
+    // whole screen behind it upward. measured at the real 384x600 frame: the
+    // title went from y=18 to y=-465 and the bottom bar from y=520 to y=37, a
+    // 483px lurch one frame after the sheet mounted. behind a 6px blur that
+    // reads as the backdrop tearing rather than as a panel arriving over the
+    // screen you were on. with preventScroll both move 0px.
+    (field ?? root).focus({ preventScroll: true });
   }, [open, mounted, focusKey]);
 
   const keepFocusInside = (e: React.KeyboardEvent) => {
