@@ -202,6 +202,7 @@ export function Home() {
                 sub={b.id === "native" ? "Stellar Lumens" : b.issuer ? shortAddress(b.issuer) : undefined}
                 value={<Amount t={t} value={b.amount} size="row" />}
                 valueSub={!b.authorized ? "Not authorised" : undefined}
+                onClick={() => w.openAsset(b)}
               />
             ))
           )}

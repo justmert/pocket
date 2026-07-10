@@ -105,7 +105,7 @@ test("unlocking twice in one gesture unlocks once and reports nothing wrong", as
   const page = wallet.page;
   await onboard(page);
   await page.getByRole("button", { name: "Lock wallet" }).click();
-  await expect(page.getByText(/Enter your password to continue/)).toBeVisible();
+  await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
 
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await clickTwiceInOneTask(page, "Unlock");
@@ -123,7 +123,7 @@ test("unlocking twice in one gesture unlocks once and reports nothing wrong", as
   await page.getByRole("button", { name: "Close" }).click();
 
   await page.getByRole("button", { name: "Lock wallet" }).click();
-  await expect(page.getByText(/Enter your password to continue/)).toBeVisible();
+  await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Unlock" }).click();
   await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });

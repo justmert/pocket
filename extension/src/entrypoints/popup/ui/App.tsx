@@ -11,11 +11,12 @@ import { Unlock } from "./screens/Unlock";
 import { Recover } from "./screens/Recover";
 import { InFlight } from "./screens/InFlight";
 import { DappApproval } from "./screens/DappApproval";
+import { AssetDetailSheet } from "./sheets/AssetDetailSheet";
 import { ReceiveSheet } from "./sheets/ReceiveSheet";
 import { SendSheet } from "./sheets/SendSheet";
 import { MoveSheet } from "./sheets/MoveSheet";
 import { ConnectionsSheet, EraseSheet, NetworkSheet, RebuildSheet } from "./sheets/SettingsSheets";
-import { placeOnboarding, type Placement } from "./onboardingTab";
+import { onboardingUnfinished, placeOnboarding, raiseOnboardingTab, type Placement } from "./onboardingTab";
 import { space, text, type Theme } from "./theme";
 
 export function App() {
@@ -88,10 +89,58 @@ function OnboardingGate({ t, onDone }: { t: Theme; onDone: () => void }) {
   return <Onboarding t={t} onDone={onDone} ephemeral={place === "stuck"} />;
 }
 
+/**
+ * whether a phrase is on a screen somewhere, unconfirmed.
+ *
+ * only asked once a wallet exists, because before that the gate handles it. null
+ * while the answer is unknown, which `Root` treats as "not yet" rather than
+ * flashing Home and correcting itself.
+ */
+function useUnfinishedOnboarding(hasWallet: boolean): boolean {
+  const [unfinished, setUnfinished] = useState(false);
+  useEffect(() => {
+    if (!hasWallet) return;
+    let live = true;
+    void onboardingUnfinished().then((yes) => {
+      if (live) setUnfinished(yes);
+    });
+    return () => {
+      live = false;
+    };
+  }, [hasWallet]);
+  return unfinished;
+}
+
+/**
+ * the window that is not the one holding the phrase.
+ *
+ * it does not offer the wallet and it does not offer onboarding: the flow is
+ * already running somewhere else, and two windows both showing a recovery phrase
+ * step would be its own defect. it raises that one.
+ */
+function FinishOnboarding({ t }: { t: Theme }) {
+  return (
+    <Boot t={t}>
+      <div style={{ marginTop: space.lg, width: "100%" }}>
+        <Notice t={t} tone="exposed">
+          Your recovery phrase is still open in another tab and has not been confirmed yet. Finish
+          writing it down there. Pocket cannot show it again.
+        </Notice>
+        <ButtonStack>
+          <Button t={t} onClick={() => void raiseOnboardingTab()}>
+            Go back to it
+          </Button>
+        </ButtonStack>
+      </div>
+    </Boot>
+  );
+}
+
 function Root() {
   const w = useWallet();
   const t = w.t;
   const [recovering, setRecovering] = useState(false);
+  const unfinished = useUnfinishedOnboarding(w.status?.initialised === true);
 
   if (!w.status) {
     return w.bootError ? (
@@ -113,6 +162,16 @@ function Root() {
   }
 
   if (!w.status.initialised) return <OnboardingGate t={t} onDone={() => void w.refresh()} />;
+
+  // a wallet exists, and that is not the same as onboarding being finished.
+  //
+  // `create` installs the vault before the phrase is drawn, so every window
+  // except the one holding the words reports a complete, unlocked wallet. a
+  // toolbar click mid-transcription used to land on Home, with an address and a
+  // balance — the strongest possible statement that setup is done, made while
+  // the only copy of the recovery phrase was still unrecorded on another screen.
+  // this window says nothing of the kind and sends the user back to the words.
+  if (unfinished) return <FinishOnboarding t={t} />;
 
   if (w.status.locked) {
     return recovering ? (
@@ -169,6 +228,14 @@ function Shell() {
 
       <BottomNav />
 
+      <AssetDetailSheet
+        asset={top === "asset" ? w.assetDetail : null}
+        onClose={w.closeSheet}
+        onSend={() => {
+          w.closeSheet();
+          w.openSheet("send");
+        }}
+      />
       <ReceiveSheet open={top === "receive"} onClose={w.closeSheet} />
       <SendSheet open={top === "send"} onClose={w.closeSheet} />
       <MoveSheet open={top === "move"} onClose={w.closeSheet} />

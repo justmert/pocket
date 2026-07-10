@@ -61,6 +61,24 @@ export async function placeOnboarding(): Promise<Placement> {
 }
 
 /**
+ * bring the tab holding the phrase to the front, from a window that is not it.
+ *
+ * exported for the second-window case: a toolbar click during an unfinished
+ * backup should take the user back to the words rather than show them a wallet.
+ * if the tab is gone there is nothing to raise and nothing to do — the phrase
+ * went with it, which is the loss `beforeunload` on that screen exists to make
+ * deliberate.
+ */
+export async function raiseOnboardingTab(): Promise<void> {
+  try {
+    const remembered = (await chrome.storage.session.get(OPEN_TAB_KEY))[OPEN_TAB_KEY] as unknown;
+    if (typeof remembered === "number" && (await raise(remembered))) window.close();
+  } catch {
+    // nothing to raise.
+  }
+}
+
+/**
  * bring an already-open onboarding tab to the front.
  *
  * false when it is gone, which is the ordinary case of someone having closed it.
@@ -74,6 +92,51 @@ async function raise(id: number): Promise<boolean> {
       await chrome.windows.update(tab.windowId, { focused: true });
     }
     return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * onboarding is past the point of no return and has not finished.
+ *
+ * `create` installs the vault before the phrase is ever drawn, so from the
+ * instant it resolves `status()` reports a complete, unlocked wallet. Every
+ * window except the one holding the words agrees — which meant that a user who
+ * clicked the toolbar icon mid-transcription was shown a working wallet with an
+ * address and a balance: the most authoritative statement the product can make
+ * that setup is done, made while the only copy of the recovery phrase was still
+ * on a screen somewhere else and had never been written down.
+ *
+ * that is worse than the failure the tab was built to fix. the old one was
+ * silence; this one affirmatively tells the user they are finished.
+ *
+ * session storage, so it dies with the browser exactly as the tab does.
+ */
+const UNFINISHED_KEY = "pocket:onboarding-unfinished";
+
+export async function markOnboardingUnfinished(): Promise<void> {
+  try {
+    await chrome.storage.session.set({ [UNFINISHED_KEY]: true });
+  } catch {
+    // a browser that will not remember this is one where the second window
+    // shows the wallet, which is the behaviour this replaces. not worth failing
+    // the flow the user is in the middle of.
+  }
+}
+
+export async function clearOnboardingUnfinished(): Promise<void> {
+  try {
+    await chrome.storage.session.remove(UNFINISHED_KEY);
+  } catch {
+    // nothing reads it once the wallet is initialised and verified.
+  }
+}
+
+/** true while a phrase is on a screen somewhere and has not been confirmed. */
+export async function onboardingUnfinished(): Promise<boolean> {
+  try {
+    return Boolean((await chrome.storage.session.get(UNFINISHED_KEY))[UNFINISHED_KEY]);
   } catch {
     return false;
   }

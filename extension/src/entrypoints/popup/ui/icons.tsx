@@ -44,6 +44,25 @@ const G = {
     ],
     ["path", { d: "M15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15C13.6569 15 15 13.6569 15 12Z" }],
   ],
+  // the same eye with a stroke through it. drawn as the two halves of the lid
+  // rather than the closed shape, so the pair reads as one control changing
+  // state instead of two unrelated glyphs swapping places.
+  eyeOff: [
+    [
+      "path",
+      {
+        d: "M9.88 5.28C10.53 5.1 11.24 5 12 5C16.69 5 20.18 9.13 21.54 11.05C21.85 11.47 22 11.68 22 12C22 12.32 21.85 12.53 21.54 12.96C21.15 13.5 20.55 14.27 19.78 15.06",
+      },
+    ],
+    [
+      "path",
+      {
+        d: "M16.32 17.32C15.02 18.1 13.57 18.65 12 18.65C7.31 18.65 3.82 14.87 2.46 12.96C2.15 12.53 2 12.32 2 12C2 11.68 2.15 11.47 2.46 11.05C3.03 10.24 4.03 9.01 5.35 7.94",
+      },
+    ],
+    ["path", { d: "M14.12 9.88C13.58 9.34 12.83 9 12 9C10.34 9 9 10.34 9 12C9 12.83 9.34 13.58 9.88 14.12" }],
+    ["path", { d: "M4 20L20 4" }],
+  ],
   arrowDown: [["path", { d: "M18 9.00005C18 9.00005 13.5811 15 12 15C10.4188 15 6 9 6 9" }]],
   arrowUp: [["path", { d: "M17.9998 15C17.9998 15 13.5809 9.00001 11.9998 9C10.4187 8.99999 5.99985 15 5.99985 15" }]],
   refresh: [
@@ -196,6 +215,7 @@ function make(key: keyof typeof G) {
 export const Copy = make("copy");
 export const Check = make("check");
 export const Eye = make("eye");
+export const EyeOff = make("eyeOff");
 export const ArrowDown = make("arrowDown");
 export const ArrowUp = make("arrowUp");
 export const Refresh = make("refresh");

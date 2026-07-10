@@ -142,7 +142,7 @@ export class Wallet {
   }
 
   lockedNotice(): Locator {
-    return this.page.getByText("Enter your password to continue.");
+    return this.page.getByText("Enter your password to unlock Pocket.");
   }
 
   /** The way out of a forgotten password. */

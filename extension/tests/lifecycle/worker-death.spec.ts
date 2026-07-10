@@ -43,7 +43,7 @@ test("worker death drops the session and keeps everything needed to get back in"
     expect(before).toContain("pocket.address");
 
     const reopened = await w.popup();
-    await expect(reopened.getByText(/Enter your password to continue/)).toBeVisible();
+    await expect(reopened.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
     await unlockUi(reopened);
     await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
     expect(await addressOf(reopened)).toBe(address);
@@ -102,7 +102,7 @@ test("a wallet whose worker died before the backup was acknowledged is not orpha
     // offering onboarding here is how a user creates a SECOND seed over the one
     // whose phrase they just wrote down.
     const reopened = await w.popup();
-    await expect(reopened.getByText(/Enter your password to continue/)).toBeVisible();
+    await expect(reopened.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
     await unlockUi(reopened);
     await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
     const address = await addressOf(reopened);
@@ -152,7 +152,7 @@ test("a second tab left on Home after the first locked cannot spend", async () =
     await expect(b.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
 
     await a.getByRole("button", { name: "Lock wallet" }).click();
-    await expect(a.getByText(/Enter your password to continue/)).toBeVisible();
+    await expect(a.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
 
     // Tab B still renders Home. That is stale UI, which is survivable; what is
     // not survivable is a stale tab still being able to act.
@@ -186,7 +186,7 @@ test("a browser restart keeps the wallet exactly as it was", async () => {
     const again = await relaunch(dir);
     try {
       const page2 = await again.popup();
-      await expect(page2.getByText(/Enter your password to continue/)).toBeVisible();
+      await expect(page2.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
       expect(await storageKeys(page2)).toEqual(keys);
       await unlockUi(page2);
       await expect(page2.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });

@@ -122,7 +122,7 @@ test("repeated unlock clicks leave one unlocked wallet, not several sessions", a
     await onboard(page);
     const address = await addressOf(page);
     await page.getByRole("button", { name: "Lock wallet" }).click();
-    await expect(page.getByText(/Enter your password to continue/)).toBeVisible();
+    await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
 
     // Five at once, which is what an impatient user's double-tap plus a slow
     // scrypt looks like from the worker's side.
@@ -162,7 +162,7 @@ test("a wrong password mixed in with right ones never unlocks, and never locks o
     await onboard(page);
     const address = await addressOf(page);
     await page.getByRole("button", { name: "Lock wallet" }).click();
-    await expect(page.getByText(/Enter your password to continue/)).toBeVisible();
+    await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
 
     const replies = await Promise.all([
       send(page, { type: "unlock", password: "wrong-one" }),
@@ -190,7 +190,7 @@ test("two erase-and-restore submissions at once leave one wallet on the same add
     const phrase = await onboard(page);
     const address = await addressOf(page);
     await page.getByRole("button", { name: "Lock wallet" }).click();
-    await expect(page.getByText(/Enter your password to continue/)).toBeVisible();
+    await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
 
     const a = await w.popup();
     const b = await w.popup();
@@ -216,7 +216,7 @@ test("two erase-and-restore submissions at once leave one wallet on the same add
     await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
     expect(await addressOf(reopened), "the restored wallet must be the same account").toBe(address);
     await reopened.getByRole("button", { name: "Lock wallet" }).click();
-    await expect(reopened.getByText(/Enter your password to continue/)).toBeVisible();
+    await expect(reopened.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
     await reopened.getByRole("textbox", { name: "Password", exact: true }).fill("second-password");
     await reopened.getByRole("button", { name: "Unlock" }).click();
     await expect(

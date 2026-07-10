@@ -20,6 +20,7 @@ import type { TxSummary } from "../../../core/provider/describe-tx";
 export type Tab = "home" | "settings";
 
 export type SheetId =
+  | "asset"
   | "receive"
   | "send"
   | "move"
@@ -70,6 +71,15 @@ interface Wallet {
   sheets: SheetId[];
   openSheet(id: SheetId): void;
   closeSheet(): void;
+  /**
+   * the asset whose detail sheet is open.
+   *
+   * held here rather than in Home because a sheet has to render at the frame
+   * level: inside the scrolling area it would scroll away with the content it
+   * is supposed to be covering.
+   */
+  assetDetail: PublicBalance | null;
+  openAsset(b: PublicBalance): void;
   closeAllSheets(): void;
 
   copied: boolean;
@@ -107,6 +117,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [pocketFlip, setPocketFlip] = useState(0);
   const [tab, setTab] = useState<Tab>("home");
   const [sheets, setSheets] = useState<SheetId[]>([]);
+  const [assetDetail, setAssetDetail] = useState<PublicBalance | null>(null);
   const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -288,6 +299,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [],
   );
   const closeSheet = useCallback(() => setSheets((s) => s.slice(0, -1)), []);
+  const openAsset = useCallback(
+    (b: PublicBalance) => {
+      setAssetDetail(b);
+      setSheets((s) => (s[s.length - 1] === "asset" ? s : [...s, "asset"]));
+    },
+    [],
+  );
   const closeAllSheets = useCallback(() => setSheets([]), []);
 
   const value: Wallet = {
@@ -315,6 +333,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     sheets,
     openSheet,
     closeSheet,
+    assetDetail,
+    openAsset,
     closeAllSheets,
     copied,
     copy,

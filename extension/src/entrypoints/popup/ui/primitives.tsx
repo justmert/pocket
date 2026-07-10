@@ -341,6 +341,7 @@ export function Field({
   hint,
   invalid,
   onSubmit,
+  trailing,
 }: {
   t: Theme;
   label: string;
@@ -354,6 +355,15 @@ export function Field({
   hint?: ReactNode;
   invalid?: boolean;
   onSubmit?(): void;
+  /**
+   * A control inside the field's right edge, such as a password reveal.
+   *
+   * It is a sibling of the input rather than a wrapper around it, so the input
+   * keeps its own focus ring and its own accessible name. The input reserves
+   * room for it, because an overlay that sits on top of text the user is typing
+   * is worse than no control at all.
+   */
+  trailing?: ReactNode;
 }) {
   const id = useId();
   const hintId = `${id}-hint`;
@@ -408,24 +418,51 @@ export function Field({
           style={base}
         />
       ) : (
-        <input
-          {...verbatim}
-          id={id}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          type={type}
-          autoFocus={autoFocus}
-          aria-describedby={described}
-          aria-invalid={invalid || undefined}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && onSubmit) {
-              e.preventDefault();
-              onSubmit();
+        // The trailing control is a SIBLING that takes its own width, never an
+        // overlay. Overlaid at `right: 4` it was correct at 384px and wrong at
+        // 160px, which is what Chrome's maximum zoom leaves: the field is 94px
+        // there, a 44px control covers x=46..90, and the input's own centre is
+        // at 47. The control sat on top of the middle of the field, so a tap
+        // aimed at the text landed on the eye.
+        //
+        // With no trailing control the input keeps the field chrome itself, so
+        // every other field in the product renders exactly as it did.
+        <div style={trailing ? { ...base, display: "flex", alignItems: "center", // the frame is 160px at chrome's maximum zoom, and a fixed 16px here plus
+            // the control's own width left the field 28px wide. it gives way first.
+            padding: "0 4px 0 clamp(8px, 4vw, 16px)" } : undefined}>
+          <input
+            {...verbatim}
+            id={id}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            type={type}
+            autoFocus={autoFocus}
+            aria-describedby={described}
+            aria-invalid={invalid || undefined}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && onSubmit) {
+                e.preventDefault();
+                onSubmit();
+              }
+            }}
+            style={
+              trailing
+                ? {
+                    ...base,
+                    flex: 1,
+                    // it may shrink below its content, or it pushes the control
+                    // off the right edge instead of giving way to it.
+                    minWidth: 0,
+                    background: "transparent",
+                    border: "none",
+                    padding: "14px 0",
+                  }
+                : base
             }
-          }}
-          style={base}
-        />
+          />
+          {trailing}
+        </div>
       )}
       {hint && (
         <div

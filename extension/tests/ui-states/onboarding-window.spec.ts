@@ -154,7 +154,7 @@ test("a popup that could not hand off says so on the phrase screen", async ({ wa
     "a window that really does close on blur said nothing about it",
   ).toBeVisible();
   await expect(
-    page.getByText(/this page stays open/i),
+    page.getByText(/do not close this tab/i),
     "a popup promised it would stay open",
   ).toHaveCount(0);
 });

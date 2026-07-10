@@ -59,7 +59,7 @@ test("creating a wallet shows 24 words once, then opens the home screen", async 
   // user switching to a password manager to record the words. The screen may
   // only make this promise where it is true, so the warning it replaced must be
   // gone from the same screen.
-  await expect(wallet.page.getByText(/this page stays open while you write them down/i)).toBeVisible();
+  await expect(wallet.page.getByText(/do not close this tab until you have confirmed the words/i)).toBeVisible();
   await expect(
     wallet.page.getByText(/this window closes the moment/i),
     "a tab told the user it was about to close",

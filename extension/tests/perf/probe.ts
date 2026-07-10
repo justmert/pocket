@@ -76,7 +76,7 @@ export const WATCH: Record<string, string> = {
   home: "Public pocket",
   // Interactive, locked: the password field is on screen. This is what a
   // returning user sees, because an evicted MV3 worker is a lock.
-  locked: "Enter your password to continue",
+  locked: "Enter your password to unlock Pocket",
   // The real balance, seven decimals, from the ledger.
   balance: "\\d+\\.\\d{7}\\s*XLM",
   // Onboarding's first screen.

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { call } from "../rpc";
 import { Button, ButtonStack, Field, Notice, Screen, TextButton } from "../primitives";
+import { clearOnboardingUnfinished, markOnboardingUnfinished } from "../onboardingTab";
 import { Eye } from "../icons";
 import { Brand } from "../Brand";
 import { fonts, radius, space, text, type Theme } from "../theme";
@@ -114,6 +115,10 @@ function Create({
     setError(null);
     try {
       const r = await call({ type: "create", password });
+      // the vault is on disk now and every other window will say so. mark the
+      // flow unfinished before the words are drawn, so a second window raises
+      // this one instead of presenting a wallet the user has not backed up.
+      await markOnboardingUnfinished();
       onCreated(r.mnemonic);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -196,6 +201,26 @@ function Backup({
 }) {
   const [shown, setShown] = useState(false);
   const [checking, setChecking] = useState(false);
+
+  // the phrase exists in this component and nowhere else.
+  //
+  // `create` installs the vault before these words are ever drawn, so by now the
+  // wallet is complete on disk and opens tomorrow whether or not anyone wrote
+  // them down. moving onboarding to a tab closed the ACCIDENT of losing the
+  // window to a blur; it does not close ctrl+w, a middle-click on the tab strip,
+  // "close tabs to the right", quitting the browser for the night, or a crash.
+  // every one of those is the same total loss, and none of them is a decision
+  // about the phrase.
+  //
+  // chrome's own "leave site?" dialog is not the wallet's words, and it cannot
+  // be made to be. what it does is convert an accidental close into a deliberate
+  // one, which is exactly the line the escalation draws: what remains open is
+  // the user who chooses to walk away, not the user whose hand slipped.
+  useEffect(() => {
+    const hold = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", hold);
+    return () => window.removeEventListener("beforeunload", hold);
+  }, []);
   const [copy, setCopy] = useState<"idle" | "done" | "failed">("idle");
   const words = mnemonic.split(" ");
 
@@ -224,11 +249,15 @@ function Backup({
       <Notice t={t} tone="exposed">
         These {words.length} words are the only way to recover this wallet. Anyone who has them owns
         your funds. Pocket cannot show them to you again
-        {/* the flow runs in a tab precisely so this is not true. saying it
-            anyway would be the screen describing a window it is not in. */}
+        {/* the flow runs in a tab precisely so the popup's warning is not true
+            here. but the replacement promised more than the platform delivers:
+            "this page stays open" is true of a blur and of nothing else, and a
+            user who reads it as "the words are safe while i find a pen" has been
+            told the opposite of what they need. so the tab branch names what the
+            user must not do rather than what the page will do. */}
         {ephemeral
           ? ", and this window closes the moment you click anything outside it."
-          : ". This page stays open while you write them down."}
+          : ". Do not close this tab until you have confirmed the words."}
       </Notice>
 
       <div style={{ position: "relative", marginBottom: space.md }}>
@@ -378,7 +407,12 @@ function Verify({
         <Button
           t={t}
           onClick={() => {
-            if (correct) onDone();
+            if (correct) {
+              // the words are confirmed: this is the first moment the wallet is
+              // genuinely finished, and the only one at which another window may
+              // say so.
+              void clearOnboardingUnfinished().then(onDone);
+            }
             else setWrong(true);
           }}
         >

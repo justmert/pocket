@@ -1206,6 +1206,14 @@ const VALUE_PATH = [
   "src/entrypoints/popup/ui/screens/DappApproval.tsx",
   "src/entrypoints/popup/ui/sheets/SendSheet.tsx",
   "src/entrypoints/popup/ui/sheets/MoveSheet.tsx",
+  // the value chart and the asset detail. both turn a balance into a dollar
+  // estimate, which is the one place a float legitimately enters, so both have
+  // to be scanned rather than trusted.
+  "src/entrypoints/popup/ui/Chart.tsx",
+  "src/entrypoints/popup/ui/sheets/AssetDetailSheet.tsx",
+  "src/core/chain/prices.ts",
+  "src/core/chain/portfolio.ts",
+  "src/core/chain/balance-history.ts",
 ];
 
 const FLOATING = /\b(?:Number|parseFloat|parseInt)\s*\(|\.to(?:Fixed|Precision|LocaleString)\s*\(|\bIntl\.NumberFormat\b|\bMath\.(?:round|floor|ceil|abs|max|min)\s*\(/;
@@ -1273,6 +1281,78 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
   {
     fragment: "return `$${v.toFixed(places)}`;",
     why: "renders a USD estimate derived from a market price, which is a float by nature and is never signed or stored",
+  },
+  // ---- the value chart -----------------------------------------------------
+  // Chart.tsx is geometry. every float below maps a series into SVG space or
+  // turns a pointer position into an array index; none of them touches a
+  // balance, and the numbers they produce are pixel coordinates.
+  { fragment: "const lo = Math.min(...values);", why: "normalising a curve into svg space" },
+  { fragment: "const hi = Math.max(...values);", why: "normalising a curve into svg space" },
+  {
+    fragment: "const frac = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));",
+    why: "where a finger is along the chart, 0..1",
+  },
+  {
+    fragment: "report(Math.round(frac * (values.length - 1)));",
+    why: "a scrub position into an array index",
+  },
+  {
+    fragment: "const dot = at === null ? null : pts[Math.min(at, pts.length - 1)]!;",
+    why: "clamps an index to the array",
+  },
+  {
+    fragment: '{up ? "▲" : "▼"} {Math.abs(pct).toFixed(2)}%',
+    why: "a percentage change, which is a ratio and not a balance",
+  },
+  // the asset detail's dollar figures. a price is a float by nature, so an
+  // estimate derived from one cannot be exact and there is nothing to protect by
+  // pretending otherwise. none of this is signed, submitted or stored, and the
+  // holdings row beside it renders the ledger's own string through `Amount`.
+  {
+    fragment: "const places = Math.abs(v) >= 1 || v === 0 ? 2 : 6;",
+    why: "decimal places for a USD price estimate",
+  },
+  {
+    fragment: "if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;",
+    why: "abbreviates a USD volume for display",
+  },
+  {
+    fragment: "if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K`;",
+    why: "abbreviates a USD volume for display",
+  },
+  { fragment: "return `$${v.toFixed(2)}`;", why: "renders a USD volume" },
+  {
+    fragment: "? Number(asset.total ?? asset.amount) * market.price",
+    why: "holdings times a market price, for the estimate row only; the balance itself is rendered from its ledger string by Amount and is never routed through this",
+  },
+  // ---- the price feed ------------------------------------------------------
+  {
+    fragment: "const end = Math.floor(Date.now() / step) * step;",
+    why: "snaps a clock to a candle boundary",
+  },
+  { fragment: "const at = Number(r.timestamp);", why: "a candle timestamp in milliseconds" },
+  {
+    fragment: "const price = Number(r.close);",
+    why: "a market price, which the DEX quotes as a decimal and which is a float by nature",
+  },
+  { fragment: "const price = Number(today.close);", why: "a market price" },
+  { fragment: "const volume = Number(today.counter_volume);", why: "a traded volume, not a holding" },
+  {
+    fragment: "const prev = yesterday ? Number(yesterday.close) : NaN;",
+    why: "yesterday's market price; NaN when absent, which the caller turns into a null change",
+  },
+  // ---- the value series ----------------------------------------------------
+  {
+    fragment: "value: (Number(balanceAt(history, t)) / Number(STROOPS_PER_UNIT)) * price,",
+    why: "THE deliberate conversion: stroops meet a float price here and nowhere else, once, at the boundary, so every balance upstream stays exact",
+  },
+  {
+    fragment: "const len = Math.min(...usable.map((s) => s.length));",
+    why: "the shortest series length, an array count",
+  },
+  {
+    fragment: "const mid = Math.ceil((lo + hi) / 2);",
+    why: "a binary search midpoint over array indices",
   },
 ];
 

@@ -103,7 +103,7 @@ test("a password is taken exactly as typed: padding is part of it, not noise", a
   await createWith(page, padded);
 
   await page.getByRole("button", { name: "Lock wallet" }).click();
-  await expect(page.getByText(/Enter your password to continue/)).toBeVisible();
+  await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
 
   // The trimmed form must NOT open it.
   await page.getByLabel("Password", { exact: true }).fill(padded.trim());
