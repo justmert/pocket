@@ -445,7 +445,7 @@ const PROMPT_ACTION: Record<PrivatePocket["state"], string | null> = {
  * same word twice, and at 500% zoom it is the same word twice overflowing a
  * 40px box.
  */
-function AssetMark({ t, code }: { t: Theme; code: string }) {
+export function AssetMark({ t, code }: { t: Theme; code: string }) {
   return (
     <span
       style={{

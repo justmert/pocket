@@ -13,7 +13,7 @@ import { InFlight } from "./screens/InFlight";
 import { DappApproval } from "./screens/DappApproval";
 import { AssetDetailSheet } from "./sheets/AssetDetailSheet";
 import { ReceiveSheet } from "./sheets/ReceiveSheet";
-import { SendSheet } from "./sheets/SendSheet";
+import { Send } from "./screens/Send";
 import { MoveSheet } from "./sheets/MoveSheet";
 import { ConnectionsSheet, EraseSheet, NetworkSheet, RebuildSheet } from "./sheets/SettingsSheets";
 import { onboardingUnfinished, placeOnboarding, raiseOnboardingTab, type Placement } from "./onboardingTab";
@@ -222,6 +222,12 @@ function Shell() {
   const t = w.t;
   const top = w.sheets[w.sheets.length - 1];
 
+  // send is a ROUTE, not a sheet: it fills the frame and replaces what is
+  // behind it. it still lives on the sheet stack so that every existing
+  // `openSheet("send")` call site, the bottom bar and the asset detail among
+  // them, keeps working and so that close and escape behave as they always did.
+  if (top === "send") return <Send onClose={w.closeSheet} />;
+
   return (
     <Frame t={t}>
       {w.tab === "home" ? <Home /> : <Settings />}
@@ -237,7 +243,6 @@ function Shell() {
         }}
       />
       <ReceiveSheet open={top === "receive"} onClose={w.closeSheet} />
-      <SendSheet open={top === "send"} onClose={w.closeSheet} />
       <MoveSheet open={top === "move"} onClose={w.closeSheet} />
       <NetworkSheet open={top === "network"} onClose={w.closeSheet} />
       <ConnectionsSheet open={top === "connections"} onClose={w.closeSheet} />

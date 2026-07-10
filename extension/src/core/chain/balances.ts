@@ -232,3 +232,40 @@ export function parseAmount(text: string): bigint {
   const raw = BigInt(whole as string) * STROOPS_PER_UNIT + BigInt(frac.padEnd(7, "0") || "0");
   return sign === "-" ? -raw : raw;
 }
+
+/**
+ * A fraction of an amount, exactly.
+ *
+ * Integer arithmetic on stroops from end to end. The obvious implementation,
+ * `Number(text) * 0.25`, is wrong in a way that is invisible for small balances
+ * and real for large ones, and it would put a float back into the value path
+ * that everything else here exists to keep out.
+ *
+ * Truncates rather than rounds. A quarter of an odd number of stroops has to
+ * lose something, and losing it is safe: rounding UP would offer to send a
+ * stroop the account does not have, which fails at submit time with an opaque
+ * error nobody could act on.
+ */
+export function fractionOf(text: string, numerator: bigint, denominator: bigint): string {
+  if (denominator <= 0n) throw new InvalidAmountError("That is not a fraction Pocket can use.");
+  const total = parseAmount(text);
+  if (total <= 0n) return formatAmount(0n);
+  return formatAmount((total * numerator) / denominator);
+}
+
+/**
+ * The most that can actually be SENT of the native asset, once the fee is paid.
+ *
+ * "Use max" that produces a transaction the account cannot afford is worse than
+ * no button at all: it fails after the review step, on a screen that has already
+ * told someone the amount is fine. The spendable figure already excludes the
+ * protocol reserve; this takes off the fee as well.
+ *
+ * `feeStroops` is the fee the transaction will actually carry, so this stays
+ * correct if the wallet ever pays more than base fee.
+ */
+export function sendableAfterFee(text: string, feeStroops: bigint): string {
+  const total = parseAmount(text);
+  const left = total - feeStroops;
+  return formatAmount(left > 0n ? left : 0n);
+}

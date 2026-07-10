@@ -1204,7 +1204,7 @@ const VALUE_PATH = [
   "src/entrypoints/popup/ui/flow.tsx",
   "src/entrypoints/popup/ui/screens/Home.tsx",
   "src/entrypoints/popup/ui/screens/DappApproval.tsx",
-  "src/entrypoints/popup/ui/sheets/SendSheet.tsx",
+  "src/entrypoints/popup/ui/screens/Send.tsx",
   "src/entrypoints/popup/ui/sheets/MoveSheet.tsx",
   // the value chart and the asset detail. both turn a balance into a dollar
   // estimate, which is the one place a float legitimately enters, so both have

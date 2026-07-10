@@ -29,8 +29,8 @@ test("home, funded, both pockets", async ({ wallet }) => {
   await page.waitForTimeout(6000);
   await page.screenshot({ path: `${OUT}/home-funded.png` });
 
-  // the asset detail sheet, over the blurred home behind it.
-  await page.getByRole("button", { name: /^XLM/ }).first().click();
-  await page.waitForTimeout(5000);
-  await page.screenshot({ path: `${OUT}/asset-detail.png` });
+  // the send route.
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: `${OUT}/send.png` });
 });
