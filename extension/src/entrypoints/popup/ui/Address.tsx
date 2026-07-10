@@ -13,36 +13,9 @@ export function shortAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-6)}`;
 }
 
-/**
- * a deterministic mark for an address.
- *
- * two accounts that differ anywhere get different marks, so the avatar is a
- * second signal that the wallet is on the account you think it is.
- */
-export function Avatar({ address, size = 44 }: { address: string; size?: number }) {
-  let h = 2166136261;
-  for (let i = 0; i < address.length; i++) {
-    h ^= address.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  const a = Math.abs(h) % 360;
-  const b = (a + 40 + (Math.abs(h >> 8) % 90)) % 360;
-  const angle = Math.abs(h >> 16) % 360;
-  return (
-    <span
-      aria-hidden
-      style={{
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        flex: "0 0 auto",
-        display: "block",
-        background: `linear-gradient(${angle}deg, hsl(${a} 72% 62%), hsl(${b} 68% 48%))`,
-        boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.16)",
-      }}
-    />
-  );
-}
+// the account mark lives in ./Avatar. it is seeded on an address but it is not
+// an address concern, and its palette is a product decision this file has no
+// business holding.
 
 /** the full address, wrapped rather than clipped, with one press to copy it. */
 export function AddressBlock({
