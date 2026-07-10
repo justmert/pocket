@@ -1,5 +1,8 @@
+import { useState } from "react";
 import type { CSSProperties } from "react";
 import { nativeOf, useWallet } from "../WalletProvider";
+import { call } from "../rpc";
+import { ChangeChip, ValueChartBlock, useValueChart } from "../Chart";
 import { NAV_SPACE } from "../BottomNav";
 import { Amount, HeroAmount } from "../Amount";
 import { shortAddress } from "../Address";
@@ -7,8 +10,21 @@ import { Avatar } from "../Avatar";
 import { Card, IconButton, Notice, Overline, Row, ScrollArea, Skeleton } from "../primitives";
 import { Held } from "../Held";
 import { Check, Copy, Lock, Refresh, Shield } from "../icons";
-import { fontSizes, radius, space, text, type Pocket, type Theme } from "../theme";
+import { FRAME, fontSizes, radius, space, text, type Pocket, type Theme } from "../theme";
 import type { PrivatePocket } from "../../../../core/messages";
+
+/**
+ * a dollar figure, formatted the way money is read rather than the way a float
+ * prints.
+ *
+ * sub-dollar amounts keep more places, because a testnet wallet holding a few
+ * XLM rounds to "$0.00" at two, and a balance that reads as nothing when it is
+ * not is the same class of lie as a fabricated curve.
+ */
+function usd(v: number): string {
+  const places = Math.abs(v) >= 1 || v === 0 ? 2 : 4;
+  return `$${v.toFixed(places)}`;
+}
 
 export function Home() {
   const w = useWallet();
@@ -17,6 +33,17 @@ export function Home() {
   const priv = w.priv;
   const native = nativeOf(w.balances);
   const isPrivate = w.pocket === "private";
+
+  // the public pocket's value over time. keyed on the address so switching
+  // wallets refetches, and NOT on the pocket: the private pocket has no chart,
+  // so re-running this when the tab flips would be a request for nothing.
+  const {
+    chart,
+    loading: chartLoading,
+    range,
+    setRange,
+  } = useValueChart(status?.address ?? "none", (r) => call({ type: "valueSeries", range: r }));
+  const [scrubAt, setScrubAt] = useState<number | null>(null);
 
   return (
     <ScrollArea background={t.canvas}>
@@ -53,10 +80,42 @@ export function Home() {
         </Notice>
       );
     }
+    // while the chart is scrubbed the headline shows the value at the touched
+    // moment. on release it returns to the present: a chart nobody is touching
+    // must not leave a past number standing where the balance belongs.
+    const scrubbed = scrubAt === null ? null : (chart?.points[scrubAt]?.value ?? null);
+    const latest = chart?.points.length ? chart.points[chart.points.length - 1]!.value : null;
+    const shown = scrubbed ?? latest;
+
     return (
       <>
-        <HeroAmount t={t} value={native ? native.amount : null} code="XLM" />
+        <div style={{ display: "flex", alignItems: "center", gap: space.md }}>
+          <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+            {/* dollars on top, the ledger's own figure underneath. the dollar
+                value depends on a market that may be unreadable; the XLM figure
+                does not. the one that can go missing is never the one that
+                carries the balance. */}
+            <HeroAmount t={t} value={shown === null ? null : usd(shown)} code="" />
+          </div>
+          <ChangeChip t={t} pct={scrubAt === null ? (chart?.changePct ?? null) : null} />
+        </div>
+
         <div style={{ ...text.caption, color: t.faint, minHeight: 16 }}>
+          {native ? `${native.amount} XLM` : " "}
+        </div>
+
+        <ValueChartBlock
+          t={t}
+          chart={chart}
+          loading={chartLoading}
+          range={range}
+          onRange={setRange}
+          onScrub={setScrubAt}
+          width={FRAME.width - space.gutter * 2}
+          style={{ marginTop: space.md }}
+        />
+
+        <div style={{ ...text.caption, color: t.faint, minHeight: 16, marginTop: space.sm }}>
           {/* not `Number(reserved) > 0`. a balance is an int64 of stroops as a
               decimal string, and putting it through a float to ask "is it more
               than nothing" is the one place a float was still touching the value

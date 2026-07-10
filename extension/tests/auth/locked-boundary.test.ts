@@ -257,7 +257,26 @@ describe("the sender check", () => {
     expect(manifest.permissions).not.toContain("tabs");
     expect(manifest.permissions).not.toContain("<all_urls>");
     expect(manifest.permissions).not.toContain("scripting");
-    expect(manifest.host_permissions).toEqual(["https://soroban-testnet.stellar.org/*"]);
+
+    // The exact host set. A content script runs in every page this wallet is
+    // injected into, so a host permission is not only what the WORKER may fetch:
+    // it is the blast radius if that relay is ever tricked into speaking for a
+    // page. Each entry is a named endpoint, and none is a wildcard host.
+    //
+    // The mainnet Horizon entry is narrowed to `/trade_aggregations` on purpose.
+    // Horizon accepts `POST /transactions`, so an unscoped grant would put a
+    // real-money submission endpoint inside that blast radius. See
+    // tests/qa/network-guard.test.ts, which asserts that rule on its own.
+    expect(manifest.host_permissions).toEqual([
+      "https://soroban-testnet.stellar.org/*",
+      "https://horizon-testnet.stellar.org/*",
+      "https://horizon.stellar.org/trade_aggregations*",
+    ]);
+    for (const h of manifest.host_permissions as string[]) {
+      expect(h, "a wildcard host would make the relay a general-purpose fetcher").not.toMatch(
+        /^https?:\/\/\*/,
+      );
+    }
   });
 });
 

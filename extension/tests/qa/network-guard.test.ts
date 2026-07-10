@@ -40,9 +40,26 @@ describe("the mainnet guard", () => {
       hosts.some((h) => h.includes(mainnetHost)),
       `the manifest grants a host permission for ${mainnetHost}. that removes the second of the two things keeping this build off mainnet`,
     ).toBe(false);
-    expect(hosts.every((h) => h.includes("testnet")), `host permissions: ${hosts.join(", ")}`).toBe(
-      true,
-    );
+
+    // A mainnet host is permitted ONLY when it is narrowed to a path that cannot
+    // move money. The value chart reads prices from mainnet Horizon, because
+    // testnet has no market to read; what it must never gain is the ability to
+    // submit, and Horizon accepts `POST /transactions`. A match pattern includes
+    // its path, so the grant is `/trade_aggregations*` and nothing else on that
+    // host is reachable.
+    //
+    // The rule this encodes: a mainnet grant must be read-only BY CONSTRUCTION,
+    // not by the good behaviour of the code that uses it. `https://host/*` would
+    // fail here, which is the point.
+    const READ_ONLY_MAINNET = ["https://horizon.stellar.org/trade_aggregations*"];
+    for (const h of hosts) {
+      if (h.includes("testnet")) continue;
+      expect(
+        READ_ONLY_MAINNET.includes(h),
+        `host permission "${h}" reaches mainnet without being narrowed to a read-only path. ` +
+          `Horizon accepts POST /transactions, so an unscoped grant here is a route to submitting real money`,
+      ).toBe(true);
+    }
   });
 
   it("keeps the two networks' passphrases distinct, so an envelope cannot be valid on both", () => {

@@ -62,10 +62,20 @@ export default defineConfig({
     // Neither request names an amount, and the price request does not name the
     // account at all: it asks about the assets the BUILD is configured with, so
     // the request set is identical for every user of a given build.
+    // The mainnet entry is PATH-SCOPED, and that is load-bearing rather than
+    // tidy. This build is testnet-only, and the second thing keeping it there
+    // (after the controller's refusal) is that Chrome will not let it talk to a
+    // mainnet host at all. Horizon accepts `POST /transactions`, so granting
+    // `https://horizon.stellar.org/*` would hand a future edit a way to submit a
+    // real mainnet transaction and would quietly delete that guarantee.
+    //
+    // A match pattern includes its path, so the grant is narrowed to the one
+    // read-only endpoint the chart needs. `/trade_aggregations` cannot submit
+    // anything, and nothing else on that host is reachable.
     host_permissions: [
       "https://soroban-testnet.stellar.org/*",
       "https://horizon-testnet.stellar.org/*",
-      "https://horizon.stellar.org/*",
+      "https://horizon.stellar.org/trade_aggregations*",
     ],
     // 'wasm-unsafe-eval' is required for the phase 3 prover: Chrome's default
     // extension CSP disables WebAssembly outright. img-src is pinned to our own

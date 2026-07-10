@@ -25,7 +25,29 @@ const built = existsSync(join(OUT, "manifest.json"));
  * reviewed. changing this array is the argument.
  */
 const ALLOWED_PERMISSIONS = ["storage", "alarms", "offscreen", "unlimitedStorage"];
-const ALLOWED_HOST_PERMISSIONS = ["https://soroban-testnet.stellar.org/*"];
+/**
+ * and exactly the hosts it may reach, with the argument for each.
+ *
+ *   soroban-testnet   every chain read and every submission.
+ *   horizon-testnet   THIS account's balance over time, for the value chart.
+ *                     Soroban RPC has no history endpoint; Horizon does.
+ *   horizon (mainnet) the PRICE of an asset over time. Always mainnet, because
+ *                     testnet has no market and a testnet price would be noise
+ *                     from a handful of test trades.
+ *
+ * The mainnet entry is NARROWED TO A PATH and that is the whole argument for
+ * allowing it at all. Horizon accepts `POST /transactions`, so an unscoped
+ * `https://horizon.stellar.org/*` would give a future edit a way to submit a
+ * real mainnet transaction, and this build is testnet-only. A match pattern
+ * includes its path, so the grant covers the one read-only endpoint the chart
+ * needs and nothing else on that host. tests/qa/network-guard.test.ts asserts
+ * that rule directly.
+ */
+const ALLOWED_HOST_PERMISSIONS = [
+  "https://soroban-testnet.stellar.org/*",
+  "https://horizon-testnet.stellar.org/*",
+  "https://horizon.stellar.org/trade_aggregations*",
+];
 const REQUIRED_CSP = "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; img-src 'self' data:;";
 
 /**
@@ -37,6 +59,8 @@ const REQUIRED_CSP = "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; i
  */
 const ALLOWED_HOSTS = [
   "soroban-testnet.stellar.org",
+  "horizon-testnet.stellar.org",
+  "horizon.stellar.org",
   "friendbot.stellar.org",
   "api.defindex.io",
   "stellar.org",
