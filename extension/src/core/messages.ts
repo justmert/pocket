@@ -93,7 +93,7 @@ export type WalletRequest =
   | { type: "reconcileInFlight" }
   | { type: "recoverFromMnemonic"; mnemonic: string; password: string }
   | { type: "setNetwork"; network: NetworkId }
-  | { type: "valueSeries"; pocket: "public" | "private"; range: RangeId }
+  | { type: "valueSeries"; range: RangeId }
   | { type: "assetMarket"; symbol: string }
   | { type: "assetSeries"; symbol: string; range: RangeId };
 

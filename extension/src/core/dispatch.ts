@@ -146,7 +146,7 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
     case "recoverFromMnemonic":
       return c.recoverFromMnemonic(str(msg.mnemonic, "mnemonic"), str(msg.password, "password"));
     case "valueSeries":
-      return c.valueSeries(msg.pocket === "private" ? "private" : "public", rangeId(msg.range));
+      return c.valueSeries(rangeId(msg.range));
     case "assetMarket":
       return c.assetMarket(str(msg.symbol, "symbol"));
     case "assetSeries":

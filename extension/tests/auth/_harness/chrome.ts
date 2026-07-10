@@ -242,7 +242,7 @@ export const EVERY_REQUEST: { type: string; msg: Record<string, unknown> }[] = [
   // account at all and are public market facts, but they still go through
   // requireSession, because a locked wallet has no business making network
   // requests on the user's IP either.
-  { type: "valueSeries", msg: { type: "valueSeries", pocket: "public", range: "1W" } },
+  { type: "valueSeries", msg: { type: "valueSeries", range: "1W" } },
   { type: "assetMarket", msg: { type: "assetMarket", symbol: "XLM" } },
   { type: "assetSeries", msg: { type: "assetSeries", symbol: "XLM", range: "1W" } },
 ];

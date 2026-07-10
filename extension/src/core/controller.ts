@@ -1113,39 +1113,30 @@ export class WalletController {
   private static readonly UNREADABLE = class UnreadableHistory extends Error {};
 
   /**
-   * What this pocket has been worth, over one range.
+   * What the PUBLIC pocket has been worth, over one range.
    *
    * `balance_at(t) * price_at(t)`, which is a real history rather than today's
    * holdings priced backwards. The distinction is the whole point: priced
    * backwards, a deposit is invisible and only the market moves the line.
+   *
+   * Public only, and there is no private equivalent. The opening store keeps
+   * only the current state, so a private history would need a full event replay
+   * through the confidential path, and confidential events carry a ledger number
+   * rather than a time. None of that is built, so none of it is offered: the
+   * private pocket shows its balances and no chart.
    *
    * Every failure below returns an EMPTY chart rather than throwing. A chart is
    * decoration on a wallet that works without it, so a price feed being down
    * must not turn into an error banner over someone's balance, and it must
    * certainly not turn into a flat line at zero.
    */
-  async valueSeries(pocket: "public" | "private", range: RangeId): Promise<ValueChart> {
+  async valueSeries(range: RangeId): Promise<ValueChart> {
     const empty: ValueChart = { points: [], changePct: null };
     const { address } = requireSession();
     const since = Date.now() - RANGES[range].days * 86_400_000;
     const horizonUrl = NETWORKS[this.network].horizonUrl;
 
     try {
-      if (pocket === "private") {
-        // NOT YET DRAWN, and returning empty is the honest answer rather than a
-        // placeholder. The opening store holds only the CURRENT state
-        // (`spendable`, `receiving`, `syncedThrough`); it keeps no trail of what
-        // the balance was. Rebuilding one needs a full event replay, and
-        // confidential events carry a LEDGER NUMBER, not a time
-        // (sync.ts `EventPosition`), so it also needs a ledger-to-clock mapping
-        // that nothing here has.
-        //
-        // Both are buildable and neither is small, and the replay touches the
-        // audited confidential path. Until it exists the screen shows no chart,
-        // which is true, instead of a flat line, which would not be.
-        return empty;
-      }
-
       const balances = await this.balances();
       const perAsset = await Promise.all(
         balances.map(async (b) => {
