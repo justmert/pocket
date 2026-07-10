@@ -24,6 +24,10 @@ export const EXPECTED_HOSTS = [
   "soroban-testnet.stellar.org",
   "friendbot.stellar.org",
   "api.defindex.io",
+  // the value chart. two hosts, two jobs: the active network knows what this
+  // account held, mainnet knows what an asset was worth. see chain/prices.ts.
+  "horizon-testnet.stellar.org",
+  "horizon.stellar.org",
   "127.0.0.1",
   "localhost",
 ];

@@ -42,14 +42,31 @@ export default defineConfig({
       // (SDK.md 10.1: discarding it loses receiving-side openings permanently)
       "unlimitedStorage",
     ],
-    // Exactly the hosts the extension fetches, and no more. Balances and
-    // contract state are read through Soroban RPC getLedgerEntries rather than
-    // Horizon (see chain/balances.ts), and nothing in the wallet funds an
-    // account, so Horizon and friendbot were requested for calls that do not
-    // exist. A host permission the code never uses still shows up in the
-    // install prompt and still widens what a compromised page could reach
-    // through the worker, so it costs the user twice and buys nothing.
-    host_permissions: ["https://soroban-testnet.stellar.org/*"],
+    // Exactly the hosts the extension fetches, and no more. A host permission
+    // the code never uses still shows up in the install prompt and still widens
+    // what a compromised page could reach through the worker, so it costs the
+    // user twice and buys nothing. Friendbot stays out for that reason: nothing
+    // in the wallet funds an account.
+    //
+    // Balances and contract state are still read through Soroban RPC
+    // getLedgerEntries rather than Horizon (see chain/balances.ts). The two
+    // Horizon entries below are for the value chart, and they are two entries
+    // rather than one because they answer different questions:
+    //
+    //   horizon-testnet  THIS account's balance over time (chain/balance-history.ts).
+    //                    Only the active network knows the account exists.
+    //   horizon (mainnet) the PRICE of an asset over time (chain/prices.ts).
+    //                    Always mainnet: testnet has no real market, so a
+    //                    testnet price is noise from a handful of test trades.
+    //
+    // Neither request names an amount, and the price request does not name the
+    // account at all: it asks about the assets the BUILD is configured with, so
+    // the request set is identical for every user of a given build.
+    host_permissions: [
+      "https://soroban-testnet.stellar.org/*",
+      "https://horizon-testnet.stellar.org/*",
+      "https://horizon.stellar.org/*",
+    ],
     // 'wasm-unsafe-eval' is required for the phase 3 prover: Chrome's default
     // extension CSP disables WebAssembly outright. img-src is pinned to our own
     // origin so a token logo can never become a per-holding tracking pixel.

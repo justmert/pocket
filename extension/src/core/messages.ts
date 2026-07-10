@@ -6,6 +6,7 @@
 import type { NetworkId } from "./config";
 import type { SubmitOutcome } from "./chain/submit";
 import type { TxSummary } from "./provider/describe-tx";
+import type { RangeId } from "./chain/prices";
 
 export interface PublicBalance {
   id: string;
@@ -91,7 +92,10 @@ export type WalletRequest =
   | { type: "inFlight" }
   | { type: "reconcileInFlight" }
   | { type: "recoverFromMnemonic"; mnemonic: string; password: string }
-  | { type: "setNetwork"; network: NetworkId };
+  | { type: "setNetwork"; network: NetworkId }
+  | { type: "valueSeries"; pocket: "public" | "private"; range: RangeId }
+  | { type: "assetMarket"; symbol: string }
+  | { type: "assetSeries"; symbol: string; range: RangeId };
 
 /** The five private-pocket operations, as the popup asks for them. */
 export type PrivateOpRequest =
@@ -150,6 +154,32 @@ export interface ResponseMap {
   reconcileInFlight: SubmitOutcome | null;
   recoverFromMnemonic: string;
   setNetwork: WalletStatus;
+  valueSeries: ValueChart;
+  assetMarket: AssetMarketView;
+  assetSeries: ValueChart;
+}
+
+/**
+ * A chart, or an honest account of why there is none.
+ *
+ * `points` empty means the wallet could not read enough to draw one, and the UI
+ * shows no chart. It never shows a flat line at zero, because "we could not read
+ * this" and "you had nothing" are different facts and only the second is about
+ * the user. A stretch that predates the account IS drawn as zero, because that
+ * one is true.
+ */
+export interface ValueChart {
+  /** Oldest first. Value is in USD. */
+  points: { at: number; value: number }[];
+  /** Change across the range, as a percentage. Null when it starts from zero. */
+  changePct: number | null;
+}
+
+/** Market facts about one asset. Every field independently nullable. */
+export interface AssetMarketView {
+  price: number | null;
+  change24h: number | null;
+  volume24h: number | null;
 }
 
 /**

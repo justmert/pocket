@@ -4,6 +4,7 @@ import type { WalletController } from "./controller";
 import type { PrivateOpRequest, WalletRequest } from "./messages";
 import { WrongPasswordError } from "./vault/vault";
 import { InvalidAddressError } from "./chain/address";
+import { RANGES, type RangeId } from "./chain/prices";
 
 /**
  * Operations permitted while locked.
@@ -56,6 +57,21 @@ function str(v: unknown, field: string): string {
 
 function optionalStr(v: unknown, field: string): string | undefined {
   return v === undefined || v === null ? undefined : str(v, field);
+}
+
+/**
+ * A chart range, checked against the closed set rather than passed through.
+ *
+ * The range decides a `resolution` and a `limit` that go into a Horizon query
+ * string. Horizon answers 400 for a resolution outside its six, so an unchecked
+ * value here would turn a malformed message into a failed request instead of a
+ * named error, and the chart would simply not appear with nothing saying why.
+ */
+function rangeId(v: unknown): RangeId {
+  if (typeof v !== "string" || !(v in RANGES)) {
+    throw new Error("malformed request: unknown chart range");
+  }
+  return v as RangeId;
 }
 
 const OP_KINDS = new Set(["register", "shield", "merge", "transfer", "unshield"]);
@@ -129,6 +145,12 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
       return c.reconcileInFlight();
     case "recoverFromMnemonic":
       return c.recoverFromMnemonic(str(msg.mnemonic, "mnemonic"), str(msg.password, "password"));
+    case "valueSeries":
+      return c.valueSeries(msg.pocket === "private" ? "private" : "public", rangeId(msg.range));
+    case "assetMarket":
+      return c.assetMarket(str(msg.symbol, "symbol"));
+    case "assetSeries":
+      return c.assetSeries(str(msg.symbol, "symbol"), rangeId(msg.range));
     default: {
       // Without this, a message whose type is outside the union falls off the
       // end, resolves to undefined, and the worker answers {ok: true}. Any

@@ -235,6 +235,16 @@ export const EVERY_REQUEST: { type: string; msg: Record<string, unknown> }[] = [
     msg: { type: "resolveDappRequest", id: "x", approved: true },
   },
   { type: "currentPhase", msg: { type: "currentPhase" } },
+  // The value chart. All three are refused while locked, and `valueSeries` is
+  // the one that matters: it reads this account's balance history, so answering
+  // it locked would tell anyone who could reach the worker how much money the
+  // wallet has held and when it moved. `assetMarket` and `assetSeries` carry no
+  // account at all and are public market facts, but they still go through
+  // requireSession, because a locked wallet has no business making network
+  // requests on the user's IP either.
+  { type: "valueSeries", msg: { type: "valueSeries", pocket: "public", range: "1W" } },
+  { type: "assetMarket", msg: { type: "assetMarket", symbol: "XLM" } },
+  { type: "assetSeries", msg: { type: "assetSeries", symbol: "XLM", range: "1W" } },
 ];
 
 /** The six the worker answers while locked. Everything else must be refused. */

@@ -17,6 +17,17 @@ import {
   minimumBalance,
   AccountNotFoundError,
 } from "./chain/balances";
+// aliased: the controller exposes methods of the same names, and an unqualified
+// call inside the class would silently resolve to the module function.
+import {
+  priceSeries as readPriceSeries,
+  assetMarket as readAssetMarket,
+  isPriceable,
+  RANGES,
+  type RangeId,
+} from "./chain/prices";
+import { balanceHistory } from "./chain/balance-history";
+import { valueSeries, sumSeries, changePct } from "./chain/portfolio";
 import { buildPayment } from "./chain/payment";
 import {
   submitAndConfirm,
@@ -27,7 +38,14 @@ import {
 } from "./chain/submit";
 import { parseAddress } from "./chain/address";
 import { withRequestDeadline } from "./chain/http";
-import type { PublicBalance, WalletStatus, TransferSummary, PrivatePocket } from "./messages";
+import type {
+  PublicBalance,
+  WalletStatus,
+  TransferSummary,
+  PrivatePocket,
+  ValueChart,
+  AssetMarketView,
+} from "./messages";
 import { readConfidentialAccount, readAuditorKey } from "./chain/confidential";
 import { assertVerificationKey, type CircuitName } from "./chain/verification-key";
 import { readAccountTtl, jitteredDelayMs, type TtlStatus } from "./chain/ttl";
@@ -1081,6 +1099,95 @@ export class WalletController {
       out.push({ id: "native", code: "XLM", amount: "0.0000000", authorized: true });
     }
     return out;
+  }
+
+  /**
+   * One asset's history could not be rebuilt, so no chart is drawn.
+   *
+   * Internal and never surfaced: it is caught by `valueSeries` itself and turned
+   * into an empty chart. It exists so that a single unreadable asset abandons
+   * the WHOLE total rather than being skipped, because a total quietly missing
+   * one of its parts is worse than no total at all. Deliberately absent from
+   * dispatch's SAFE_ERRORS: nothing about it should ever reach a screen.
+   */
+  private static readonly UNREADABLE = class UnreadableHistory extends Error {};
+
+  /**
+   * What this pocket has been worth, over one range.
+   *
+   * `balance_at(t) * price_at(t)`, which is a real history rather than today's
+   * holdings priced backwards. The distinction is the whole point: priced
+   * backwards, a deposit is invisible and only the market moves the line.
+   *
+   * Every failure below returns an EMPTY chart rather than throwing. A chart is
+   * decoration on a wallet that works without it, so a price feed being down
+   * must not turn into an error banner over someone's balance, and it must
+   * certainly not turn into a flat line at zero.
+   */
+  async valueSeries(pocket: "public" | "private", range: RangeId): Promise<ValueChart> {
+    const empty: ValueChart = { points: [], changePct: null };
+    const { address } = requireSession();
+    const since = Date.now() - RANGES[range].days * 86_400_000;
+    const horizonUrl = NETWORKS[this.network].horizonUrl;
+
+    try {
+      if (pocket === "private") {
+        // NOT YET DRAWN, and returning empty is the honest answer rather than a
+        // placeholder. The opening store holds only the CURRENT state
+        // (`spendable`, `receiving`, `syncedThrough`); it keeps no trail of what
+        // the balance was. Rebuilding one needs a full event replay, and
+        // confidential events carry a LEDGER NUMBER, not a time
+        // (sync.ts `EventPosition`), so it also needs a ledger-to-clock mapping
+        // that nothing here has.
+        //
+        // Both are buildable and neither is small, and the replay touches the
+        // audited confidential path. Until it exists the screen shows no chart,
+        // which is true, instead of a flat line, which would not be.
+        return empty;
+      }
+
+      const balances = await this.balances();
+      const perAsset = await Promise.all(
+        balances.map(async (b) => {
+          if (!isPriceable(b.code)) return [];
+          const prices = await readPriceSeries(b.code, range);
+          if (prices.length === 0) return [];
+          // `total`, not the spendable figure. The reserve is still money the
+          // account holds; it is merely unspendable, and a chart that dropped it
+          // would disagree with the ledger for no reason a user could follow.
+          const history = await balanceHistory({
+            horizonUrl,
+            account: address,
+            assetId: b.id,
+            currentStroops: parseAmount(b.total ?? b.amount),
+            since,
+          });
+          // null means the history could not be reconstructed. Skipping this
+          // asset would quietly under-report the total, so the whole chart is
+          // withheld instead.
+          if (!history) throw new WalletController.UNREADABLE();
+          return valueSeries(history, prices);
+        }),
+      );
+      const points = sumSeries(perAsset);
+      return { points, changePct: changePct(points) };
+    } catch {
+      return empty;
+    }
+  }
+
+  /** Market facts about one asset, for the detail sheet. */
+  async assetMarket(symbol: string): Promise<AssetMarketView> {
+    requireSession();
+    return readAssetMarket(symbol);
+  }
+
+  /** One asset's price over a range, for the detail sheet's chart. */
+  async assetSeries(symbol: string, range: RangeId): Promise<ValueChart> {
+    requireSession();
+    const prices = await readPriceSeries(symbol, range);
+    const points = prices.map((p) => ({ at: p.at, value: p.price }));
+    return { points, changePct: changePct(points) };
   }
 
   private keypair(): Keypair {
