@@ -10,7 +10,7 @@ import { Avatar } from "../Avatar";
 import { InfoTip } from "../Tooltip";
 import { Card, IconButton, Notice, Overline, Row, ScrollArea, Skeleton } from "../primitives";
 import { Held } from "../Held";
-import { Check, Copy, Lock, Refresh, Shield } from "../icons";
+import { Check, Copy, Dots, Refresh, Shield } from "../icons";
 import { FRAME, fontSizes, radius, space, text, type Pocket, type Theme } from "../theme";
 import type { PrivatePocket } from "../../../../core/messages";
 
@@ -116,17 +116,6 @@ export function Home() {
           bleed={space.gutter}
           style={{ marginTop: space.md }}
         />
-
-        <div style={{ ...text.caption, color: t.faint, minHeight: 16, marginTop: space.sm }}>
-          {/* not `Number(reserved) > 0`. a balance is an int64 of stroops as a
-              decimal string, and putting it through a float to ask "is it more
-              than nothing" is the one place a float was still touching the value
-              path. asking the string whether it contains a non-zero digit is
-              exact, and it cannot be wrong at any magnitude. */}
-          {native?.reserved && /[1-9]/.test(native.reserved)
-            ? `Plus ${native.reserved} XLM locked by the network as a reserve.`
-            : " "}
-        </div>
       </>
     );
   }
@@ -272,7 +261,7 @@ export function Home() {
               width: 36,
               height: 36,
               borderRadius: "50%",
-              background: t.accentFill,
+              background: t.accent,
               color: t.onAccent,
               display: "flex",
               alignItems: "center",
@@ -402,8 +391,10 @@ export function Home() {
         <IconButton t={t} size={40} label="Refresh" onClick={() => void w.refresh()}>
           <Refresh size={18} className={w.refreshing ? "pocket-spinner" : undefined} />
         </IconButton>
-        <IconButton t={t} size={40} label="Lock wallet" onClick={() => void w.lock()}>
-          <Lock size={18} />
+        {/* a menu, not a bare padlock. locking is one item inside it rather than
+            a stray tap in the header that emptied the session by accident. */}
+        <IconButton t={t} size={40} label="More" onClick={() => w.openSheet("menu")}>
+          <Dots size={20} />
         </IconButton>
       </div>
     );
@@ -414,16 +405,28 @@ export function Home() {
     const style: CSSProperties = {
       all: "unset",
       cursor: "pointer",
-      ...text.rowTitle,
+      ...text.heading,
       fontWeight: 800,
       letterSpacing: "-0.01em",
+      // no underline. the active pocket is said by weight and colour, and the
+      // whole surface already flips light/dark to say which pocket you are in.
       color: on ? t.text : t.faint,
-      paddingBottom: 4,
-      borderBottom: `2px solid ${on ? t.accent : "transparent"}`,
-      transition: "color 200ms ease, border-color 200ms ease",
+      transition: "color 200ms ease",
     };
     return (
-      <button type="button" aria-pressed={on} onClick={() => w.setPocket(pocket)} style={style}>
+      <button
+        type="button"
+        aria-pressed={on}
+        // blur after a mouse press so the keyboard focus ring, which WCAG needs
+        // dark on this near-white surface, does not sit as a black box around a
+        // tab someone merely clicked. a keyboard user still gets the ring while
+        // tabbing, because they never trigger this.
+        onClick={(e) => {
+          w.setPocket(pocket);
+          e.currentTarget.blur();
+        }}
+        style={style}
+      >
         {label}
       </button>
     );

@@ -347,7 +347,7 @@ function AmountCard({
               width: 24,
               height: 24,
               borderRadius: "50%",
-              background: t.accentFill,
+              background: t.accent,
               color: t.onAccent,
               display: "flex",
               alignItems: "center",
@@ -578,6 +578,7 @@ function AmountSlider({
         <span>Max</span>
       </div>
       <input
+        className="pocket-bare"
         type="range"
         min={0}
         max={100}
@@ -585,6 +586,8 @@ function AmountSlider({
         disabled={disabled}
         aria-label={`Send ${percent}% of your ${code}`}
         onChange={(e) => onPercent(Number(e.target.value))}
+        // no outline box around the track: the global input:focus rule drew a
+        // hard rectangle around the whole slider. accent-color paints the fill.
         style={{ width: "100%", accentColor: t.accent, cursor: disabled ? "not-allowed" : "pointer" }}
       />
     </div>

@@ -255,3 +255,22 @@ export function Unshield({ size = 22, sw, style, className }: IconProps) {
     </svg>
   );
 }
+
+/** three vertical dots: the "more actions" affordance. */
+export function Dots({ size = 22, style, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      style={style}
+      className={className}
+      aria-hidden
+    >
+      <circle cx="12" cy="5" r="1.9" />
+      <circle cx="12" cy="12" r="1.9" />
+      <circle cx="12" cy="19" r="1.9" />
+    </svg>
+  );
+}

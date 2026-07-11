@@ -12,6 +12,7 @@ import { Recover } from "./screens/Recover";
 import { InFlight } from "./screens/InFlight";
 import { DappApproval } from "./screens/DappApproval";
 import { AssetDetailSheet } from "./sheets/AssetDetailSheet";
+import { MenuSheet } from "./sheets/MenuSheet";
 import { ReceiveSheet } from "./sheets/ReceiveSheet";
 import { Send } from "./screens/Send";
 import { MoveSheet } from "./sheets/MoveSheet";
@@ -242,6 +243,7 @@ function Shell() {
           w.openSheet("send");
         }}
       />
+      <MenuSheet open={top === "menu"} onClose={w.closeSheet} />
       <ReceiveSheet open={top === "receive"} onClose={w.closeSheet} />
       <MoveSheet open={top === "move"} onClose={w.closeSheet} />
       <NetworkSheet open={top === "network"} onClose={w.closeSheet} />

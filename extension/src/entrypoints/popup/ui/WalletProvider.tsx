@@ -21,6 +21,7 @@ export type Tab = "home" | "settings";
 
 export type SheetId =
   | "asset"
+  | "menu"
   | "receive"
   | "send"
   | "move"

@@ -11,16 +11,18 @@ export function ReceiveSheet({ open, onClose }: { open: boolean; onClose: () => 
 
   return (
     <Sheet t={t} open={open} onClose={onClose} title="Receive">
-      <div style={{ textAlign: "center", marginBottom: space.gutter }}>
-        {address ? <Qr t={t} value={address} /> : <Skeleton width={238} height={238} />}
-      </div>
-
-      <div style={{ ...text.body, color: t.sub, textAlign: "center", marginBottom: space.md }}>
-        One address for both pockets.
+      {/* the QR is the point of this sheet, so it gets the room; the address is
+          a smaller line beneath it. no explanatory sentence: the wallet has one
+          address and the QR is it. */}
+      <div style={{ textAlign: "center", marginBottom: space.lg }}>
+        {address ? <Qr t={t} value={address} size={288} /> : <Skeleton width={288} height={288} />}
       </div>
 
       {address ? (
         <>
+          <div style={{ ...text.caption, color: t.faint, textAlign: "center", marginBottom: space.xs }}>
+            Your address
+          </div>
           <AddressBlock t={t} address={address} onCopy={w.copy} copied={w.copied} />
           <ButtonStack>
             <Button t={t} onClick={() => w.copy(address)}>

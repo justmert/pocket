@@ -170,7 +170,7 @@ const EXACT: CSSProperties = {
 /* --------------------------------------------------------------------- */
 
 /** each digit sits in a column that slides to its new value. */
-function Rolling({ value }: { value: string }) {
+export function Rolling({ value }: { value: string }) {
   return (
     <span style={{ display: "inline-flex", alignItems: "flex-end", whiteSpace: "pre" }}>
       {value.split("").map((ch, i) =>

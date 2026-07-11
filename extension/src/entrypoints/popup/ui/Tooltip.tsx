@@ -95,13 +95,19 @@ export function InfoTip({
             right: 0,
             width: 240,
             maxWidth: "70vw",
-            background: t.dark ? "#26232F" : "#2A2A2E",
-            color: "#F2F1EE",
+            // the wallet's own surface, not a stray charcoal that belonged to no
+            // theme. a card with a hairline and a soft shadow, light in light and
+            // dark in dark, so it reads as part of the product.
+            background: t.surface,
+            color: t.text,
+            border: `1px solid ${t.line}`,
             ...text.caption,
             lineHeight: 1.45,
             padding: `${space.sm}px ${space.md}px`,
             borderRadius: radius.md,
-            boxShadow: "0 10px 30px -12px rgba(0,0,0,0.55)",
+            boxShadow: t.dark
+              ? "0 12px 32px -14px rgba(0,0,0,0.7)"
+              : "0 12px 32px -14px rgba(20,21,26,0.35)",
             zIndex: 60,
             pointerEvents: "none",
             textAlign: "left",

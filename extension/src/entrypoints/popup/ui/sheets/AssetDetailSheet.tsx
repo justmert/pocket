@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
-import { Amount } from "../Amount";
+import { Amount, Rolling } from "../Amount";
 import { Button, Sheet, Skeleton } from "../primitives";
 import { ChangeChip, ValueChartBlock, useValueChart } from "../Chart";
 import { Lock } from "../icons";
@@ -50,7 +50,7 @@ function AssetBadge({ t, code, size }: { t: Theme; code: string; size: number })
         height: size,
         borderRadius: "50%",
         flex: "0 0 auto",
-        background: t.accentFill,
+        background: t.accent,
         color: t.onAccent,
         display: "flex",
         alignItems: "center",
@@ -215,7 +215,8 @@ export function AssetDetailSheet({
           <div style={{ marginTop: 3 }}>
             {price !== null ? (
               <span style={{ ...text.heading, color: t.text, fontVariantNumeric: "tabular-nums" }}>
-                {usd(price)}
+                {/* rolls its digits on a scrub, the same as the home hero. */}
+                <Rolling value={usd(price)} />
               </span>
             ) : marketLoaded ? (
               <span style={{ ...text.heading, color: t.faint }}>Price unavailable</span>
@@ -247,11 +248,18 @@ export function AssetDetailSheet({
             <Amount t={t} value={asset.amount} code={code} size="row" />
           </DetailRow>
 
-          {holdingsValue !== null && (
-            <DetailRow t={t} icon={<RowIcon t={t}>$</RowIcon>} label="Holdings value">
-              {usd(holdingsValue)}
-            </DetailRow>
-          )}
+          {/* market rows shimmer while the fetch is in flight instead of popping
+              in a beat late. once loaded, a row we could not source is simply
+              absent. */}
+          <DetailRow t={t} icon={<RowIcon t={t}>$</RowIcon>} label="Holdings value">
+            {holdingsValue !== null ? (
+              usd(holdingsValue)
+            ) : marketLoaded ? (
+              <span style={{ color: t.faint }}>—</span>
+            ) : (
+              <Skeleton width={64} height={16} />
+            )}
+          </DetailRow>
 
           {asset.reserved && /[1-9]/.test(asset.reserved) && (
             <DetailRow
@@ -268,26 +276,44 @@ export function AssetDetailSheet({
             </DetailRow>
           )}
 
-          {market?.volume24h !== null && market?.volume24h !== undefined && (
-            <DetailRow
-              t={t}
-              icon={
-                <RowIcon t={t}>
-                  <VolumeGlyph color={t.sub} />
-                </RowIcon>
-              }
-              label="24h volume"
-            >
-              {compactUsd(market.volume24h)}
-            </DetailRow>
-          )}
+          <DetailRow
+            t={t}
+            icon={
+              <RowIcon t={t}>
+                <VolumeGlyph color={t.sub} />
+              </RowIcon>
+            }
+            label="24h volume"
+          >
+            {market?.volume24h !== null && market?.volume24h !== undefined ? (
+              compactUsd(market.volume24h)
+            ) : marketLoaded ? (
+              <span style={{ color: t.faint }}>—</span>
+            ) : (
+              <Skeleton width={64} height={16} />
+            )}
+          </DetailRow>
         </div>
+      </div>
 
-        <div style={{ marginTop: space.xl }}>
-          <Button t={t} onClick={() => onSend(asset)}>
-            Send {code}
-          </Button>
-        </div>
+      {/* the send action is a sticky footer, always visible, on an opaque bar
+          that hides whatever scrolls under it, the same behaviour as the bottom
+          nav. sticky within the sheet's own scroll area; the negative margins let
+          the bar span the full sheet width. */}
+      <div
+        style={{
+          position: "sticky",
+          bottom: 0,
+          zIndex: 1,
+          margin: `0 -${space.lg}px`,
+          padding: `${space.md}px ${space.lg}px ${space.lg}px`,
+          background: t.sheet,
+          boxShadow: `0 -16px 20px -14px ${t.sheet}`,
+        }}
+      >
+        <Button t={t} onClick={() => onSend(asset)}>
+          Send
+        </Button>
       </div>
     </Sheet>
   );

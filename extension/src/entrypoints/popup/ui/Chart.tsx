@@ -50,6 +50,20 @@ function pathOf(pts: [number, number][]): string {
   return d;
 }
 
+/** linearly resample a series to exactly n points, so two curves can tween 1:1. */
+function resample(arr: number[], n: number): number[] {
+  if (arr.length === n) return arr.slice();
+  if (arr.length < 2) return new Array(n).fill(arr[0] ?? 0);
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * (arr.length - 1);
+    const a = Math.floor(x);
+    const b = Math.min(arr.length - 1, a + 1);
+    out.push(arr[a]! + (arr[b]! - arr[a]!) * (x - a));
+  }
+  return out;
+}
+
 /** the moment a touched point falls on, worded by how wide the range is. */
 export function rangeLabel(range: RangeId): (ms: number) => string {
   return (ms) => {
@@ -96,9 +110,48 @@ export function Sparkline({
   const box = useRef<HTMLDivElement>(null);
   const id = `chart-${t.pocket}`;
 
+  // the curve MORPHS to a new series on a range switch, instead of snapping. each
+  // frame tweens the old shape toward the new one, so 1D flowing into 1W reads as
+  // the line reshaping rather than a hard cut. keyed on a cheap signature of the
+  // series so it only re-runs when the data actually changes.
+  const [display, setDisplay] = useState<number[]>(values);
+  const displayRef = useRef(display);
+  displayRef.current = display;
+  const raf = useRef<number | undefined>(undefined);
+  const sig = values.length ? `${values.length}:${values[0]}:${values[values.length - 1]}` : "none";
+  useEffect(() => {
+    if (values.length < 2) {
+      setDisplay(values);
+      return;
+    }
+    const prev = displayRef.current;
+    if (prev.length < 2) {
+      setDisplay(values);
+      return;
+    }
+    const N = Math.max(prev.length, values.length);
+    const from = resample(prev, N);
+    const to = resample(values, N);
+    const start = performance.now();
+    const DUR = 420;
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / DUR);
+      const e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2; // easeInOutCubic
+      setDisplay(from.map((v, i) => v + (to[i]! - v) * e));
+      if (p < 1) raf.current = requestAnimationFrame(tick);
+    };
+    if (raf.current) cancelAnimationFrame(raf.current);
+    raf.current = requestAnimationFrame(tick);
+    return () => {
+      if (raf.current) cancelAnimationFrame(raf.current);
+    };
+  }, [sig]);
+
   if (values.length < 2) return null;
 
-  const pts = points(values, width, height);
+  // draw the morphing series; scrub still reports indices against the real one.
+  const series = display.length >= 2 ? display : values;
+  const pts = points(series, width, height);
   const area = `${pathOf(pts)} L${width},${height} L0,${height} Z`;
   // a warm grey in light, a dim white in dark. the same "this is behind you"
   // signal the reference paints past the cursor.

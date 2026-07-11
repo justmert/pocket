@@ -4,7 +4,6 @@ import { useEffect, useId, useRef, useState } from "react";
 import type {
   ButtonHTMLAttributes,
   CSSProperties,
-  PointerEvent as ReactPointerEvent,
   ReactNode,
 } from "react";
 import { FRAME, fonts, motion, radius, ROW_STAGGER_MS, space, text, type Theme } from "./theme";
@@ -794,71 +793,7 @@ export function Toast({ t, children }: { t: Theme; children: ReactNode }) {
 
 /* --------------------------------------------------------------- sheets -- */
 
-/**
- * grab a sheet's header and pull it down to put it away. released short of the
- * threshold it springs back.
- */
-function useDragDismiss(onDismiss: () => void, open: boolean) {
-  const [dy, setDy] = useState(0);
-  const [grabbing, setGrabbing] = useState(false);
-  const startY = useRef<number | null>(null);
-
-  // reset the drag offset every time the sheet opens. the Sheet WRAPPER stays
-  // mounted while the popup is closed (only its contents unmount), so this hook
-  // keeps its state across open/close. without this, a sheet closed by dragging
-  // it down kept dy at its dragged distance, and the NEXT open rendered
-  // translateY(120px): the popup came up already halfway off the bottom and read
-  // as broken. this is the second-open bug.
-  useEffect(() => {
-    if (open) {
-      setDy(0);
-      setGrabbing(false);
-      startY.current = null;
-    }
-  }, [open]);
-
-  const onPointerDown = (e: ReactPointerEvent<HTMLElement>) => {
-    // controls inside the header keep their own press.
-    if ((e.target as HTMLElement).closest("button, input, textarea, a, [role='button']")) return;
-    startY.current = e.clientY;
-    setGrabbing(true);
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // capture is not available on every target, and the drag still works.
-    }
-  };
-  const onPointerMove = (e: ReactPointerEvent<HTMLElement>) => {
-    if (startY.current == null) return;
-    const d = e.clientY - startY.current;
-    setDy(d > 0 ? d : 0);
-  };
-  const finish = () => {
-    if (startY.current == null) return;
-    const dismiss = dy > 90;
-    startY.current = null;
-    setGrabbing(false);
-    // always snap back to zero. on dismiss the closing animation carries the
-    // slide down, and leaving dy at its dragged value strands the offset for the
-    // next open.
-    setDy(0);
-    if (dismiss) onDismiss();
-  };
-
-  return {
-    handleProps: {
-      onPointerDown,
-      onPointerMove,
-      onPointerUp: finish,
-      onPointerCancel: finish,
-    },
-    grabStyle: { cursor: grabbing ? "grabbing" : "grab", touchAction: "none" } as CSSProperties,
-    style: {
-      transform: dy ? `translateY(${dy}px)` : undefined,
-      transition: grabbing ? "none" : `transform ${motion.sheet} ${motion.enter}`,
-    } as CSSProperties,
-  };
-}
+const SHEET_MS = 280;
 
 /**
  * a bottom sheet.
@@ -893,26 +828,71 @@ export function Sheet({
   still?: boolean;
 }) {
   const [mounted, setMounted] = useState(open);
-  const [closing, setClosing] = useState(false);
+  // ONE transform drives entrance, exit AND drag, in pixels, so a drag-to-close
+  // continues straight into the exit slide with no snap. the old split (a CSS
+  // exit animation plus an inline drag transform) fought each other: releasing a
+  // drag jumped the sheet back to 0 and then a separate animation slid it down.
+  const [y, setY] = useState(0);
+  const [grabbing, setGrabbing] = useState(false);
+  const [entering, setEntering] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const enterTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const startY = useRef<number | null>(null);
   const panel = useRef<HTMLElement>(null);
-  const drag = useDragDismiss(onClose, open);
 
   useEffect(() => {
     if (open) {
       clearTimeout(timer.current);
       setMounted(true);
-      setClosing(false);
+      setY(0);
+      setGrabbing(false);
+      startY.current = null;
+      // let the entrance animation play, then hand the transform back to drag.
+      setEntering(true);
+      clearTimeout(enterTimer.current);
+      enterTimer.current = setTimeout(() => setEntering(false), SHEET_MS);
     } else if (mounted) {
-      setClosing(true);
+      // slide down from wherever it is, be that 0 or a drag position, then
+      // unmount. one mechanism, so there is nothing to snap against.
+      setEntering(false);
+      setY(panel.current?.offsetHeight ?? 800);
       clearTimeout(timer.current);
       timer.current = setTimeout(() => {
         setMounted(false);
-        setClosing(false);
-      }, 240);
+        setY(0);
+      }, SHEET_MS);
     }
-    return () => clearTimeout(timer.current);
+    return () => {
+      clearTimeout(timer.current);
+      clearTimeout(enterTimer.current);
+    };
   }, [open, mounted]);
+
+  // grab the header and pull down to dismiss; released short of the threshold it
+  // springs back.
+  const onGrabDown = (e: React.PointerEvent<HTMLElement>) => {
+    if ((e.target as HTMLElement).closest("button, input, textarea, a, [role='button']")) return;
+    startY.current = e.clientY;
+    setGrabbing(true);
+    setEntering(false);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* capture unavailable; the drag still tracks over the header */
+    }
+  };
+  const onGrabMove = (e: React.PointerEvent<HTMLElement>) => {
+    if (startY.current == null) return;
+    setY(Math.max(0, e.clientY - startY.current));
+  };
+  const onGrabEnd = () => {
+    if (startY.current == null) return;
+    const dismiss = y > 90;
+    startY.current = null;
+    setGrabbing(false);
+    if (dismiss) onClose();
+    else setY(0);
+  };
 
   // focus goes to the sheet's first field when it has one, so the next
   // keystroke lands in the form rather than on the screen behind. a sheet with
@@ -971,7 +951,7 @@ export function Sheet({
     <>
       <div
         onClick={onClose}
-        className={closing ? "pocket-fade-out" : "pocket-fade-in"}
+        className={open ? "pocket-fade-in" : "pocket-fade-out"}
         style={{
           position: "absolute",
           inset: 0,
@@ -988,7 +968,7 @@ export function Sheet({
         aria-modal="true"
         aria-label={title}
         onKeyDown={keepFocusInside}
-        className={`${closing ? "pocket-sheet-out" : "pocket-sheet-in"}${still ? " pocket-still" : ""}`}
+        className={`${entering && !grabbing ? "pocket-sheet-in" : ""}${still ? " pocket-still" : ""}`.trim() || undefined}
         style={{
           position: "absolute",
           left: 0,
@@ -1003,12 +983,23 @@ export function Sheet({
           borderRadius: full ? 0 : `${radius.sheet}px ${radius.sheet}px 0 0`,
           zIndex: 31,
           boxShadow: t.dark ? "0 -20px 50px -30px #000" : "0 -18px 46px -30px rgba(20,21,26,0.5)",
-          ...drag.style,
+          // the entrance runs as a CSS animation; once it is done, this inline
+          // transform owns the sheet for drag and exit.
+          transform: `translateY(${y}px)`,
+          transition: grabbing ? "none" : `transform ${SHEET_MS}ms ${motion.enter}`,
         }}
       >
         <div
-          {...drag.handleProps}
-          style={{ ...drag.grabStyle, padding: `${space.md}px ${space.lg}px 0`, flex: "0 0 auto" }}
+          onPointerDown={onGrabDown}
+          onPointerMove={onGrabMove}
+          onPointerUp={onGrabEnd}
+          onPointerCancel={onGrabEnd}
+          style={{
+            cursor: grabbing ? "grabbing" : "grab",
+            touchAction: "none",
+            padding: `${space.sm}px ${space.lg}px 0`,
+            flex: "0 0 auto",
+          }}
         >
           {!full && (
             <div
@@ -1022,7 +1013,7 @@ export function Sheet({
               }}
             />
           )}
-          <div style={{ display: "flex", alignItems: "center", gap: space.md, marginTop: space.md }}>
+          <div style={{ display: "flex", alignItems: "center", gap: space.md, marginTop: full ? 0 : space.md }}>
             {title ? (
               <h2 style={{ ...text.screenTitle, color: t.text, flex: 1, minWidth: 0, margin: 0 }}>
                 {title}
@@ -1035,7 +1026,7 @@ export function Sheet({
         </div>
         <div
           style={{
-            padding: `${space.gutter}px ${space.lg}px ${space.lg}px`,
+            padding: `${space.sm}px ${space.lg}px ${space.lg}px`,
             overflowX: "hidden",
             overflowY: "auto",
             minHeight: 0,

@@ -54,7 +54,7 @@ export function BottomNav() {
             width: fab,
             height: fab,
             borderRadius: "50%",
-            background: t.accentFill,
+            background: t.accent,
             color: t.onAccent,
             display: "flex",
             alignItems: "center",
