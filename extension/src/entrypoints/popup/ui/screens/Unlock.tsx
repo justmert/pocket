@@ -2,7 +2,7 @@ import { useState } from "react";
 import { call } from "../rpc";
 import { Button, Field, Frame, Notice, ScrollArea, TextButton } from "../primitives";
 import { Eye, EyeOff } from "../icons";
-import { Cover, coverAvailable } from "../Cover";
+import { Cover, Wordmark, coverAvailable } from "../Cover";
 import { FRAME, radius, space, text, type Theme } from "../theme";
 
 export function Unlock({
@@ -69,14 +69,25 @@ export function Unlock({
                 chrome-extension://<id>/popup.html — in both a development and a
                 shipped build. `img-src 'self'` allows it precisely because it is
                 packaged rather than fetched. */}
-            <img
-              src="/logo.png"
-              alt=""
-              aria-hidden
-              // width is capped rather than fixed so it gives way at Chrome's
-              // maximum zoom, where the frame is 160px wide.
-              style={{ width: "min(230px, 74%)", height: "auto", display: "block", margin: "0 auto" }}
-            />
+            {cover ? (
+              <Wordmark height={104} />
+            ) : (
+              // Without WebGL2 there is no shader to draw the logo, so the flat
+              // one is drawn instead. The screen is never without its mark.
+              <img
+                src="/logo.png"
+                alt=""
+                aria-hidden
+                // capped rather than fixed, so it gives way at Chrome's maximum
+                // zoom, where the frame is 160px wide.
+                style={{
+                  width: "min(230px, 74%)",
+                  height: "auto",
+                  display: "block",
+                  margin: "0 auto",
+                }}
+              />
+            )}
             <h1
               style={{
                 ...text.screenTitle,

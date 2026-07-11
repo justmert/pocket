@@ -50,36 +50,59 @@ function pathOf(pts: [number, number][]): string {
   return d;
 }
 
+/** the moment a touched point falls on, worded by how wide the range is. */
+export function rangeLabel(range: RangeId): (ms: number) => string {
+  return (ms) => {
+    const d = new Date(ms);
+    if (range === "1D") return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (range === "1Y") return d.toLocaleDateString([], { month: "short", year: "numeric" });
+    return d.toLocaleDateString([], { month: "short", day: "numeric" });
+  };
+}
+
 /**
  * the line, with an area under it and an optional scrub.
  *
- * `onScrub` reports the touched index so the hero figure can show the value at
- * that moment. it reports null on release, and the caller goes back to the
- * present: a chart you have stopped touching must not leave a stale number
- * standing where the current balance belongs.
+ * scrubbing does three things, all of which the reference does and the first
+ * port did not: it GREYS the line past the touched point, so the eye reads
+ * "here, and everything after is later"; it drops a dot on the point; and it
+ * floats a pill naming the moment. the VALUE at that moment is shown by the
+ * caller in the headline figure, so the pill carries the time and the figure
+ * carries the money, which is how the reference splits it too.
+ *
+ * `onScrub` reports the touched index and reports null on release, so the
+ * headline returns to the present: a chart nobody is touching must not leave a
+ * past number where the current balance belongs.
  */
 export function Sparkline({
   t,
   values,
+  times,
   width,
   height = HEIGHT,
   onScrub,
+  labelAt,
 }: {
   t: Theme;
   values: number[];
+  /** the moment each value falls on, parallel to `values`. */
+  times?: number[];
   width: number;
   height?: number;
   onScrub?: (index: number | null) => void;
+  labelAt?: (ms: number) => string;
 }) {
   const [at, setAt] = useState<number | null>(null);
-  const box = useRef<SVGSVGElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   const id = `chart-${t.pocket}`;
 
   if (values.length < 2) return null;
 
   const pts = points(values, width, height);
-  const line = pathOf(pts);
-  const area = `${line} L${width},${height} L0,${height} Z`;
+  const area = `${pathOf(pts)} L${width},${height} L0,${height} Z`;
+  // a warm grey in light, a dim white in dark. the same "this is behind you"
+  // signal the reference paints past the cursor.
+  const muted = t.dark ? "rgba(255,255,255,0.26)" : "#CBC6BE";
 
   const report = (index: number | null) => {
     setAt(index);
@@ -93,53 +116,120 @@ export function Sparkline({
     report(Math.round(frac * (values.length - 1)));
   };
 
-  const dot = at === null ? null : pts[Math.min(at, pts.length - 1)]!;
+  const active = at !== null;
+  const cut = active ? Math.min(at, pts.length - 1) : 0;
+  const dot = active ? pts[cut]! : null;
+  // the pill is clamped off the edges so it never clips at the ends of a scrub.
+  const pillX = dot ? Math.max(30, Math.min(width - 30, dot[0])) : 0;
+  const label =
+    active && times && labelAt ? labelAt(times[Math.min(at, times.length - 1)]!) : null;
 
   return (
-    <svg
+    <div
       ref={box}
-      width={width}
-      height={height}
-      viewBox={`0 0 ${width} ${height}`}
-      // decorative: the figure above it is the number, and it is already read
-      // out. a screen reader announcing ninety-six sample values would bury it.
-      aria-hidden
-      style={{ display: "block", touchAction: "none", cursor: onScrub ? "col-resize" : "default" }}
+      style={{
+        position: "relative",
+        width,
+        touchAction: "none",
+        cursor: onScrub ? "col-resize" : "default",
+      }}
       onPointerDown={(e) => {
         if (!onScrub) return;
-        e.currentTarget.setPointerCapture(e.pointerId);
+        // capture so a scrub that wanders off the element keeps tracking. it is
+        // wrapped because a synthetic or capture-less pointer throws here, and a
+        // throw would abort the scrub before it started rather than merely
+        // losing the follow-off-element nicety.
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          /* no capture; tracking still works while the pointer is over the chart */
+        }
         track(e.clientX);
       }}
       onPointerMove={(e) => {
-        if (!onScrub || at === null) return;
+        if (!onScrub || !active) return;
         track(e.clientX);
       }}
       onPointerUp={() => report(null)}
       onPointerCancel={() => report(null)}
       onPointerLeave={() => report(null)}
     >
-      <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={t.accent} stopOpacity={t.dark ? 0.34 : 0.28} />
-          <stop offset="100%" stopColor={t.accent} stopOpacity={0} />
-        </linearGradient>
-      </defs>
-      <path d={area} fill={`url(#${id})`} />
-      <path
-        d={line}
-        fill="none"
-        stroke={t.accent}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {dot && (
-        <>
-          <line x1={dot[0]} y1={0} x2={dot[0]} y2={height} stroke={t.line} strokeWidth={1} />
-          <circle cx={dot[0]} cy={dot[1]} r={4} fill={t.accent} stroke={t.bg} strokeWidth={2} />
-        </>
+      <svg
+        width={width}
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        // decorative: the figure above it is the number, and it is already read
+        // out. a screen reader announcing ninety-six samples would bury it.
+        aria-hidden
+        style={{ display: "block" }}
+      >
+        <defs>
+          <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={t.accent} stopOpacity={t.dark ? 0.34 : 0.28} />
+            <stop offset="100%" stopColor={t.accent} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <path d={area} fill={`url(#${id})`} />
+        {!active ? (
+          <path
+            d={pathOf(pts)}
+            fill="none"
+            stroke={t.accent}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : (
+          <>
+            {/* past the cursor, greyed; up to it, in the pocket's colour. the
+                two share the point at `cut`, so the line stays continuous. */}
+            <path
+              d={pathOf(pts.slice(cut))}
+              fill="none"
+              stroke={muted}
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d={pathOf(pts.slice(0, cut + 1))}
+              fill="none"
+              stroke={t.accent}
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </>
+        )}
+        {dot && (
+          <>
+            <line x1={dot[0]} y1={0} x2={dot[0]} y2={height} stroke={t.line} strokeWidth={1} />
+            <circle cx={dot[0]} cy={dot[1]} r={4.5} fill={t.accent} stroke={t.bg} strokeWidth={2.5} />
+          </>
+        )}
+      </svg>
+      {label && (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            left: pillX,
+            top: -4,
+            transform: "translateX(-50%)",
+            background: t.accentSoft,
+            color: t.dark ? t.accent : t.text,
+            ...text.caption,
+            fontWeight: 700,
+            padding: "3px 9px",
+            borderRadius: radius.pill,
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+          }}
+        >
+          {label}
+        </div>
       )}
-    </svg>
+    </div>
   );
 }
 
@@ -240,6 +330,7 @@ export function ValueChartBlock({
   style?: CSSProperties;
 }) {
   const values = chart?.points.map((p) => p.value) ?? [];
+  const times = chart?.points.map((p) => p.at) ?? [];
   const drawable = values.length >= 2;
 
   // the tabs stay while a range is loading, so switching does not collapse the
@@ -248,12 +339,18 @@ export function ValueChartBlock({
     <div style={style}>
       <div style={{ height: HEIGHT, display: "flex", alignItems: "center" }}>
         {drawable ? (
-          <Sparkline t={t} values={values} width={width} onScrub={onScrub} />
+          <Sparkline
+            t={t}
+            values={values}
+            times={times}
+            width={width}
+            onScrub={onScrub}
+            labelAt={rangeLabel(range)}
+          />
         ) : loading ? (
-          // a shimmer, not an empty box. the chart reserves 92px whatever
+          // a shimmer, not an empty box. the chart reserves its height whatever
           // happens, and left blank that gap reads as a rendering fault rather
-          // than as work in progress. this is the same skeleton the balance and
-          // the asset list use while they wait.
+          // than as work in progress.
           <Skeleton width="100%" height={HEIGHT - 24} />
         ) : (
           <div style={{ ...text.caption, color: t.faint }}>

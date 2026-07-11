@@ -1297,10 +1297,6 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "a scrub position into an array index",
   },
   {
-    fragment: "const dot = at === null ? null : pts[Math.min(at, pts.length - 1)]!;",
-    why: "clamps an index to the array",
-  },
-  {
     fragment: '{up ? "▲" : "▼"} {Math.abs(pct).toFixed(2)}%',
     why: "a percentage change, which is a ratio and not a balance",
   },
@@ -1353,6 +1349,22 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
   {
     fragment: "const mid = Math.ceil((lo + hi) / 2);",
     why: "a binary search midpoint over array indices",
+  },
+  {
+    fragment: "const cut = active ? Math.min(at, pts.length - 1) : 0;",
+    why: "clamps the scrub position to an array index",
+  },
+  {
+    fragment: "const pillX = dot ? Math.max(30, Math.min(width - 30, dot[0])) : 0;",
+    why: "keeps the scrub pill off the chart edges, in pixels",
+  },
+  {
+    fragment: "active && times && labelAt ? labelAt(times[Math.min(at, times.length - 1)]!) : null;",
+    why: "clamps a scrub index into the timestamps array",
+  },
+  {
+    fragment: "fontSize: Math.round(size * 0.42),",
+    why: "the asset badge's letter size, in pixels",
   },
 ];
 
