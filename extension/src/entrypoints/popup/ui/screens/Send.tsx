@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { BASE_FEE } from "@stellar/stellar-sdk/base";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
-import { Button, ButtonStack, Header, Notice, Screen, Sheet, Row } from "../primitives";
+import { Button, Frame, Header, Notice, Sheet, Row } from "../primitives";
 import { ConfirmSheet, useOnce, usePhase } from "../flow";
 import { AssetMark } from "./Home";
 import { fractionOf, sendableAfterFee, formatAmount } from "../../../../core/chain/balances";
@@ -159,17 +159,80 @@ export function Send({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <Screen t={t}>
-        <Header t={t} title={isPrivate ? "Send privately" : "Send"} onBack={onClose} />
+      {/* a full-frame column: header, a scrolling form, and the primary action
+          pinned to the bottom on an opaque bar. the button no longer floats in
+          the middle with a random gap below it; its bottom padding is the same
+          as every other footer in the wallet. */}
+      <Frame t={t}>
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: `${space.gutter}px ${space.gutter}px ${space.sm}px` }}>
+            <Header t={t} title={isPrivate ? "Send privately" : "Send"} onBack={onClose} />
+          </div>
 
-        {blocked ? (
-          <>
-            <Notice t={t}>
-              {w.priv
-                ? PRIVATE_NOT_READY[w.priv.state]
-                : "Pocket is still reading this account. Try again in a moment."}
-            </Notice>
-            <ButtonStack>
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflowX: "hidden",
+              overflowY: "auto",
+              padding: `0 ${space.gutter}px`,
+            }}
+          >
+            {blocked ? (
+              <Notice t={t}>
+                {w.priv
+                  ? PRIVATE_NOT_READY[w.priv.state]
+                  : "Pocket is still reading this account. Try again in a moment."}
+              </Notice>
+            ) : (
+              <>
+                <AmountCard
+                  t={t}
+                  code={code}
+                  amount={amount}
+                  onAmount={setAmount}
+                  spendable={spendable}
+                  fiat={fiat}
+                  asFiat={asFiat}
+                  onToggleFiat={price !== null ? () => setAsFiat((v) => !v) : undefined}
+                  onMax={() => setFraction(1n, 1n)}
+                  onPick={isPrivate ? undefined : () => setPicking(true)}
+                  mark={<AssetMark t={t} code={code} />}
+                  onSubmit={() => ready && void review()}
+                />
+
+                <RecipientField t={t} value={to} onChange={setTo} onPaste={() => void paste()} />
+
+                {!isPrivate && (
+                  <div style={{ marginTop: space.md }}>
+                    <MemoField t={t} value={memo} onChange={setMemo} />
+                  </div>
+                )}
+
+                <AmountSlider
+                  t={t}
+                  code={code}
+                  disabled={!spendable}
+                  percent={sliderPercent(amount, spendable)}
+                  onPercent={(p) => setFraction(BigInt(p), 100n)}
+                />
+
+                {isPrivate && (
+                  <Notice t={t}>
+                    The amount is hidden. Both addresses stay public on the ledger.
+                  </Notice>
+                )}
+                {error && !confirming && (
+                  <Notice t={t} tone="danger">
+                    {error}
+                  </Notice>
+                )}
+              </>
+            )}
+          </div>
+
+          <div style={{ padding: `${space.md}px ${space.gutter}px ${space.lg}px`, background: t.bg }}>
+            {blocked ? (
               <Button
                 t={t}
                 onClick={() => {
@@ -179,58 +242,14 @@ export function Send({ onClose }: { onClose: () => void }) {
               >
                 Open the private pocket
               </Button>
-            </ButtonStack>
-          </>
-        ) : (
-          <>
-            <AmountCard
-              t={t}
-              code={code}
-              amount={amount}
-              onAmount={setAmount}
-              spendable={spendable}
-              fiat={fiat}
-              asFiat={asFiat}
-              onToggleFiat={price !== null ? () => setAsFiat((v) => !v) : undefined}
-              onMax={() => setFraction(1n, 1n)}
-              onPick={isPrivate ? undefined : () => setPicking(true)}
-              mark={<AssetMark t={t} code={code} />}
-              onSubmit={() => ready && void review()}
-            />
-
-            <RecipientField t={t} value={to} onChange={setTo} onPaste={() => void paste()} />
-
-            {!isPrivate && (
-              <div style={{ marginTop: space.md }}>
-                <MemoField t={t} value={memo} onChange={setMemo} />
-              </div>
-            )}
-
-            <AmountSlider
-              t={t}
-              code={code}
-              disabled={!spendable}
-              percent={sliderPercent(amount, spendable)}
-              onPercent={(p) => setFraction(BigInt(p), 100n)}
-            />
-
-            {isPrivate && (
-              <Notice t={t}>The amount is hidden. Both addresses stay public on the ledger.</Notice>
-            )}
-            {error && !confirming && (
-              <Notice t={t} tone="danger">
-                {error}
-              </Notice>
-            )}
-
-            <ButtonStack>
+            ) : (
               <Button t={t} disabled={!ready} busy={building} onClick={() => void review()}>
                 {building ? "Checking" : "Continue"}
               </Button>
-            </ButtonStack>
-          </>
-        )}
-      </Screen>
+            )}
+          </div>
+        </div>
+      </Frame>
 
       <AssetPicker
         t={t}

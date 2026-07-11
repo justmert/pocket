@@ -86,36 +86,20 @@ button:active:not(:disabled),
   transform: scale(0.96) !important;
 }
 
-/* most tappables are built with `all: unset`, which is an inline declaration and
- * so outranks anything here. the ring has to say `!important` or a keyboard user
- * has nothing to follow. */
+/* keyboard focus ring for the things that have no other focus signal: buttons,
+ * tiles, tabs. most are built with `all: unset`, an inline declaration, so the
+ * ring says `!important` or a keyboard user has nothing to follow.
+ *
+ * TEXT INPUTS are deliberately NOT here. a text field shows focus with its
+ * caret, which is the native and expected signal, and a hard ring around a field
+ * drew a black rectangle the product does not want. the caret is enough. */
 :focus-visible,
 button:focus-visible,
 [role="button"]:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
 [tabindex]:focus-visible {
   outline: 2px solid var(--pocket-ring, currentColor) !important;
   outline-offset: 2px;
   border-radius: 6px;
-}
-
-/* a text field gets the ring on real focus, not only keyboard focus: a caret
- * alone is a weak signal for which field of a payment form you are in. */
-input:focus,
-textarea:focus {
-  outline: 2px solid var(--pocket-ring, currentColor) !important;
-  outline-offset: 1px;
-}
-
-/* the one field that opts out: the send amount. it is the hero of its screen,
- * and a full-width ring drew a hard black rectangle around the figure. the
- * caret is signal enough for the field you are obviously typing the amount into,
- * and it is sized to its content rather than the row, so there is no box to
- * ring. every other field keeps the ring above. */
-input.pocket-bare:focus,
-input.pocket-bare:focus-visible {
-  outline: none !important;
 }
 
 @keyframes pocket-spin {
