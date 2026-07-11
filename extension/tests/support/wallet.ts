@@ -240,7 +240,7 @@ export class Wallet {
     await this.page.getByLabel("To", { exact: true }).fill(p.to);
     await this.page.getByLabel("Amount (XLM)").fill(p.amount);
     if (p.memo !== undefined) await this.page.getByLabel("Memo (optional)").fill(p.memo);
-    await this.page.getByRole("button", { name: "Review" }).click();
+    await this.page.getByRole("button", { name: "Continue" }).click();
   }
 
   /** Approve the reviewed payment and wait for the receipt. Returns its hash. */

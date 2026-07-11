@@ -108,6 +108,16 @@ textarea:focus {
   outline-offset: 1px;
 }
 
+/* the one field that opts out: the send amount. it is the hero of its screen,
+ * and a full-width ring drew a hard black rectangle around the figure. the
+ * caret is signal enough for the field you are obviously typing the amount into,
+ * and it is sized to its content rather than the row, so there is no box to
+ * ring. every other field keeps the ring above. */
+input.pocket-bare:focus,
+input.pocket-bare:focus-visible {
+  outline: none !important;
+}
+
 @keyframes pocket-spin {
   to {
     transform: rotate(360deg);

@@ -798,10 +798,24 @@ export function Toast({ t, children }: { t: Theme; children: ReactNode }) {
  * grab a sheet's header and pull it down to put it away. released short of the
  * threshold it springs back.
  */
-function useDragDismiss(onDismiss: () => void) {
+function useDragDismiss(onDismiss: () => void, open: boolean) {
   const [dy, setDy] = useState(0);
   const [grabbing, setGrabbing] = useState(false);
   const startY = useRef<number | null>(null);
+
+  // reset the drag offset every time the sheet opens. the Sheet WRAPPER stays
+  // mounted while the popup is closed (only its contents unmount), so this hook
+  // keeps its state across open/close. without this, a sheet closed by dragging
+  // it down kept dy at its dragged distance, and the NEXT open rendered
+  // translateY(120px): the popup came up already halfway off the bottom and read
+  // as broken. this is the second-open bug.
+  useEffect(() => {
+    if (open) {
+      setDy(0);
+      setGrabbing(false);
+      startY.current = null;
+    }
+  }, [open]);
 
   const onPointerDown = (e: ReactPointerEvent<HTMLElement>) => {
     // controls inside the header keep their own press.
@@ -824,8 +838,11 @@ function useDragDismiss(onDismiss: () => void) {
     const dismiss = dy > 90;
     startY.current = null;
     setGrabbing(false);
+    // always snap back to zero. on dismiss the closing animation carries the
+    // slide down, and leaving dy at its dragged value strands the offset for the
+    // next open.
+    setDy(0);
     if (dismiss) onDismiss();
-    else setDy(0);
   };
 
   return {
@@ -879,7 +896,7 @@ export function Sheet({
   const [closing, setClosing] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const panel = useRef<HTMLElement>(null);
-  const drag = useDragDismiss(onClose);
+  const drag = useDragDismiss(onClose, open);
 
   useEffect(() => {
     if (open) {

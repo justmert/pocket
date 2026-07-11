@@ -7,8 +7,9 @@ import { useEffect, useRef, useState } from "react";
 import { call } from "./rpc";
 import { Amount, type Treatment } from "./Amount";
 import { AddressBlock, MonoBlock } from "./Address";
-import { Button, ButtonRow, ButtonStack, Label, Notice, Overline } from "./primitives";
+import { Button, ButtonRow, ButtonStack, Label, Notice, Overline, Sheet } from "./primitives";
 import { Progress } from "./Progress";
+import { InfoTip } from "./Tooltip";
 import { NO_MEMO } from "./copy";
 import { space, text, type Theme } from "./theme";
 
@@ -233,5 +234,187 @@ export function Receipt({
         </Button>
       </ButtonStack>
     </>
+  );
+}
+
+/**
+ * a confirm, as a popup.
+ *
+ * every confirm in the wallet is this: a bottom sheet with the figure, the full
+ * destination, the fee, and a last chance to back out. it is clean on purpose,
+ * but two things stay that the reference wallet omits, because they are the
+ * whole point of a self-custody confirm and the suite enforces both:
+ *
+ *   the ADDRESS is shown in full, never truncated. matching first-4 + last-4 is
+ *   about an hour of brute force, so a shortened address is not what anyone
+ *   approves.
+ *
+ *   WHAT THIS DOES is listed. it is the anti-blind-signing surface: the bytes
+ *   that leave the machine have to be the bytes the screen described, and
+ *   tests/qa/signed-equals-shown.spec.ts reconstructs the envelope from this
+ *   list. it is kept compact rather than removed.
+ *
+ * the prose the old screen wrote inline (the memo caveat especially) moves into
+ * an info tooltip, which is the rule now: the screen states the fact, the tip
+ * carries the why.
+ *
+ * on success the same popup swaps to the receipt, so the flow never leaves the
+ * sheet: open, confirm, done, close.
+ */
+export function ConfirmSheet({
+  t,
+  open,
+  heading = "Confirm send",
+  amount,
+  code = "XLM",
+  treatment = "plain",
+  to,
+  memo,
+  fee,
+  effects,
+  warning,
+  blocked,
+  error,
+  busy,
+  phase,
+  approveLabel = "Confirm and send",
+  waitDescription = "Signing and submitting, then waiting for the ledger to confirm.",
+  result,
+  onApprove,
+  onCancel,
+  onDone,
+}: {
+  t: Theme;
+  open: boolean;
+  heading?: string;
+  amount?: string;
+  code?: string;
+  treatment?: Treatment;
+  to?: string;
+  memo?: { value?: string };
+  /** network fee in decimal XLM, shown as its own row like the reference. */
+  fee?: string;
+  effects: string[];
+  warning?: string;
+  blocked?: string;
+  error?: string | null;
+  busy: boolean;
+  phase: string | null;
+  approveLabel?: string;
+  waitDescription?: string;
+  /** set once the transaction has landed; the popup then shows the receipt. */
+  result?: { hash: string; ledger: number } | null;
+  onApprove: () => void;
+  onCancel: () => void;
+  onDone: () => void;
+}) {
+  return (
+    <Sheet
+      t={t}
+      open={open}
+      onClose={busy ? () => undefined : result ? onDone : onCancel}
+      full
+      still
+      focusKey={result ? "done" : "review"}
+    >
+      {result ? (
+        <Receipt t={t} hash={result.hash} ledger={result.ledger} onDone={onDone} />
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: space.gutter }}>
+          <Overline t={t}>{heading}</Overline>
+
+          {amount && (
+            <Amount t={t} value={amount} code={code} size="display" treatment={treatment} />
+          )}
+
+          {to && (
+            <div>
+              <Label t={t}>To</Label>
+              <AddressBlock t={t} address={to} />
+            </div>
+          )}
+
+          {/* the clean rows: fee, and memo as a fact with its caveat tucked into
+              a tip rather than shouted in prose. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: space.sm }}>
+            {fee && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ ...text.rowSub, color: t.sub }}>Network fee</span>
+                <span style={{ ...text.rowTitle, color: t.text }}>{fee} XLM</span>
+              </div>
+            )}
+            {memo && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: space.sm }}>
+                <span style={{ ...text.rowSub, color: t.sub, display: "flex", alignItems: "center", gap: 6 }}>
+                  Memo
+                  {!memo.value && (
+                    <InfoTip t={t} label="About memos" size={16}>
+                      {NO_MEMO}
+                    </InfoTip>
+                  )}
+                </span>
+                <span style={{ ...text.rowTitle, color: memo.value ? t.text : t.faint, overflowWrap: "anywhere", textAlign: "right", minWidth: 0 }}>
+                  {memo.value || "None"}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* the security surface, compact and de-emphasised but present. open
+              by default: it is what stands between a person and a blind
+              signature, and the suite reconstructs the envelope from it. */}
+          <details open style={{ ...text.caption, color: t.sub }}>
+            <summary
+              style={{ cursor: "pointer", ...text.rowSub, color: t.sub, listStyle: "none" }}
+            >
+              What this does
+            </summary>
+            <ul
+              style={{
+                margin: `${space.xs}px 0 0`,
+                paddingLeft: space.gutter,
+                lineHeight: 1.5,
+                overflowWrap: "anywhere",
+              }}
+            >
+              {effects.map((e, i) => (
+                <li key={i} style={{ marginBottom: 2 }}>
+                  {e}
+                </li>
+              ))}
+            </ul>
+          </details>
+
+          {warning && (
+            <Notice t={t} tone="danger">
+              {warning}
+            </Notice>
+          )}
+          {blocked && (
+            <Notice t={t} tone="danger">
+              {blocked}
+            </Notice>
+          )}
+          {error && (
+            <Notice t={t} tone="danger">
+              {error}
+            </Notice>
+          )}
+
+          {busy ? (
+            <Progress t={t} phase={phase} label={approveLabel} fallback={waitDescription} />
+          ) : (
+            <ButtonRow>
+              <Button t={t} variant="quiet" onClick={onCancel}>
+                Cancel
+              </Button>
+              <Button t={t} disabled={Boolean(blocked)} onClick={onApprove}>
+                {approveLabel}
+              </Button>
+            </ButtonRow>
+          )}
+        </div>
+      )}
+    </Sheet>
   );
 }

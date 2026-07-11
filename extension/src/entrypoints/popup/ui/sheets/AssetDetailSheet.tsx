@@ -16,6 +16,7 @@ import { Amount } from "../Amount";
 import { Button, Sheet } from "../primitives";
 import { ChangeChip, ValueChartBlock, useValueChart } from "../Chart";
 import { Lock } from "../icons";
+import { InfoTip } from "../Tooltip";
 import { FRAME, space, text, type Theme } from "../theme";
 import type { AssetMarketView, PublicBalance } from "../../../../core/messages";
 
@@ -108,21 +109,28 @@ function DetailRow({
   t,
   icon,
   label,
-  sub,
+  labelTip,
   children,
 }: {
   t: Theme;
   icon: ReactNode;
   label: string;
-  sub?: string;
+  /** the "why", on a hover tip rather than a caption under the label. */
+  labelTip?: string;
   children: ReactNode;
 }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: space.md, minHeight: 44 }}>
       {icon}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ ...text.rowTitle, color: t.sub }}>{label}</div>
-        {sub && <div style={{ ...text.caption, color: t.faint }}>{sub}</div>}
+      <div
+        style={{ flex: 1, minWidth: 0, ...text.rowTitle, color: t.sub, display: "flex", alignItems: "center", gap: 6 }}
+      >
+        {label}
+        {labelTip && (
+          <InfoTip t={t} label={label} size={16}>
+            {labelTip}
+          </InfoTip>
+        )}
       </div>
       <div style={{ ...text.rowTitle, color: t.text, textAlign: "right" }}>{children}</div>
     </div>
@@ -183,7 +191,10 @@ export function AssetDetailSheet({
 
   return (
     <Sheet t={t} open={asset !== null} onClose={onClose} focusKey={code}>
-      <div style={{ padding: `0 ${space.gutter}px ${space.gutter}px` }}>
+      {/* no extra horizontal padding here: the Sheet body already insets its
+          content, and doubling it was the "too much padding" the detail had.
+          only a little breathing room at the bottom, above the send button. */}
+      <div style={{ paddingBottom: space.gutter }}>
         {/* identity: badge, name, price + change. the sheet's own header above
             this carries only the close button (no title passed), so the close
             sits top-right and the identity reads below it, as in the reference. */}
@@ -207,7 +218,8 @@ export function AssetDetailSheet({
           range={range}
           onRange={setRange}
           onScrub={setScrubAt}
-          width={FRAME.width - space.gutter * 2}
+          width={FRAME.width}
+          bleed={space.gutter}
           style={{ marginTop: space.lg }}
         />
 
@@ -235,7 +247,7 @@ export function AssetDetailSheet({
                 </RowIcon>
               }
               label="Held as reserve"
-              sub="Locked by the network. Cannot be sent."
+              labelTip="Locked by the network as the account's minimum balance. It cannot be sent."
             >
               <Amount t={t} value={asset.reserved} code={code} size="row" />
             </DetailRow>

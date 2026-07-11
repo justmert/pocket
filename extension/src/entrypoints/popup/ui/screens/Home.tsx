@@ -7,6 +7,7 @@ import { NAV_SPACE } from "../BottomNav";
 import { Amount, HeroAmount } from "../Amount";
 import { shortAddress } from "../Address";
 import { Avatar } from "../Avatar";
+import { InfoTip } from "../Tooltip";
 import { Card, IconButton, Notice, Overline, Row, ScrollArea, Skeleton } from "../primitives";
 import { Held } from "../Held";
 import { Check, Copy, Lock, Refresh, Shield } from "../icons";
@@ -111,7 +112,8 @@ export function Home() {
           range={range}
           onRange={setRange}
           onScrub={setScrubAt}
-          width={FRAME.width - space.gutter * 2}
+          width={FRAME.width}
+          bleed={space.gutter}
           style={{ marginTop: space.md }}
         />
 
@@ -280,8 +282,25 @@ export function Home() {
           >
             <Shield size={19} />
           </span>
-          <span style={{ ...text.rowTitle, color: t.text, flex: 1, minWidth: 0 }}>
+          <span
+            style={{
+              ...text.rowTitle,
+              color: t.text,
+              flex: 1,
+              minWidth: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
             {PROMPT_TITLE[priv.state]}
+            {/* the long "why" moves off the card and into the tip. the card now
+                says the state and offers the one action; the reasoning is a hover
+                away rather than a paragraph nobody reads. */}
+            <InfoTip t={t} label="About the private pocket">
+              {priv.message ? <span style={{ display: "block", marginBottom: 6 }}>{priv.message}</span> : null}
+              Hides amounts, never addresses. Who you pay stays public on the ledger.
+            </InfoTip>
           </span>
           {action && (
             <button
@@ -301,15 +320,6 @@ export function Home() {
             </button>
           )}
         </div>
-        {priv.message && (
-          <div style={{ ...text.body, color: t.sub, lineHeight: 1.5 }}>{priv.message}</div>
-        )}
-        {/* measured, not chosen: faint on this card is 3.67:1 in the private
-            pocket, and this line is the product's honesty statement rather than
-            decoration. */}
-        <div style={{ ...text.caption, color: t.sub, marginTop: space.xs }}>
-          Hides amounts, never addresses. Who you pay stays public on the ledger.
-        </div>
       </Card>
     );
   }
@@ -321,14 +331,38 @@ export function Home() {
       <div style={{ marginTop: space.xl }}>
         <Overline t={t}>Yield</Overline>
         {y.available ? (
-          <Row
-            t={t}
-            title="Vault position"
-            sub={y.apy ? `${y.apy} reported` : undefined}
-            value={y.balance ? `${y.balance} shares` : undefined}
-          />
+          <div
+            style={{ display: "flex", alignItems: "center", gap: space.sm, minHeight: 44 }}
+          >
+            <span
+              style={{
+                ...text.rowTitle,
+                color: t.text,
+                flex: 1,
+                minWidth: 0,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              Vault position
+              {/* the APY and its caveat were a sentence jammed into a subtitle
+                  ("14.67% over the last 7 days, variable and not guaranteed
+                  reported"). the figure stays; the sentence becomes a tip. */}
+              {y.apy && (
+                <InfoTip t={t} label="About this yield">
+                  {y.apy} at the moment. It is variable and not guaranteed, and it
+                  is reported by the vault rather than earned in the private pocket.
+                </InfoTip>
+              )}
+            </span>
+            <span style={{ ...text.rowTitle, color: t.text }}>
+              {y.balance ? `${y.balance} shares` : "None deposited"}
+            </span>
+          </div>
         ) : (
-          <div style={{ ...text.body, color: t.sub, lineHeight: 1.5 }}>{y.reason}</div>
+          // the "not configured" case is short and factual, so it stays inline.
+          <div style={{ ...text.caption, color: t.faint, lineHeight: 1.5 }}>{y.reason}</div>
         )}
       </div>
     );

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { call } from "../rpc";
 import { Button, Field, Frame, Notice, ScrollArea, TextButton } from "../primitives";
 import { Eye, EyeOff } from "../icons";
-import { Cover, Wordmark, coverAvailable } from "../Cover";
+import { Cover, coverAvailable } from "../Cover";
 import { FRAME, radius, space, text, type Theme } from "../theme";
 
 export function Unlock({
@@ -65,29 +65,28 @@ export function Unlock({
                 the sentence under the heading, so announcing it here would say
                 "Pocket" twice to a screen reader and add nothing.
 
+                The drawn logo itself, not a shader rendering of it. A halftone
+                quantises the smooth hand-drawn curves into dots and, at this
+                size, thins the strokes into a lighter, different mark; the mark
+                has to stay the mark. The grain lives in the `Cover` behind it.
+
                 Root-relative, which resolves against the DOCUMENT — the popup at
                 chrome-extension://<id>/popup.html — in both a development and a
                 shipped build. `img-src 'self'` allows it precisely because it is
                 packaged rather than fetched. */}
-            {cover ? (
-              <Wordmark height={104} />
-            ) : (
-              // Without WebGL2 there is no shader to draw the logo, so the flat
-              // one is drawn instead. The screen is never without its mark.
-              <img
-                src="/logo.png"
-                alt=""
-                aria-hidden
-                // capped rather than fixed, so it gives way at Chrome's maximum
-                // zoom, where the frame is 160px wide.
-                style={{
-                  width: "min(230px, 74%)",
-                  height: "auto",
-                  display: "block",
-                  margin: "0 auto",
-                }}
-              />
-            )}
+            <img
+              src="/logo.png"
+              alt=""
+              aria-hidden
+              // capped rather than fixed, so it gives way at Chrome's maximum
+              // zoom, where the frame is 160px wide.
+              style={{
+                width: "min(240px, 76%)",
+                height: "auto",
+                display: "block",
+                margin: "0 auto",
+              }}
+            />
             <h1
               style={{
                 ...text.screenTitle,

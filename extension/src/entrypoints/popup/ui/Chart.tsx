@@ -133,26 +133,21 @@ export function Sparkline({
         touchAction: "none",
         cursor: onScrub ? "col-resize" : "default",
       }}
+      // HOVER, not hold-and-drag. a mouse tracks the line just by moving over
+      // it; there is nothing to press. a touch, which has no hover, tracks while
+      // a finger is down and lets go when it lifts. either way the reveal
+      // follows the pointer rather than a gesture.
+      onPointerMove={(e) => {
+        if (!onScrub) return;
+        track(e.clientX);
+      }}
       onPointerDown={(e) => {
         if (!onScrub) return;
-        // capture so a scrub that wanders off the element keeps tracking. it is
-        // wrapped because a synthetic or capture-less pointer throws here, and a
-        // throw would abort the scrub before it started rather than merely
-        // losing the follow-off-element nicety.
-        try {
-          e.currentTarget.setPointerCapture(e.pointerId);
-        } catch {
-          /* no capture; tracking still works while the pointer is over the chart */
-        }
         track(e.clientX);
       }}
-      onPointerMove={(e) => {
-        if (!onScrub || !active) return;
-        track(e.clientX);
-      }}
+      onPointerLeave={() => report(null)}
       onPointerUp={() => report(null)}
       onPointerCancel={() => report(null)}
-      onPointerLeave={() => report(null)}
     >
       <svg
         width={width}
@@ -318,6 +313,7 @@ export function ValueChartBlock({
   onRange,
   onScrub,
   width,
+  bleed = 0,
   style,
 }: {
   t: Theme;
@@ -326,7 +322,13 @@ export function ValueChartBlock({
   range: RangeId;
   onRange: (r: RangeId) => void;
   onScrub?: (index: number | null) => void;
+  /** the chart's own pixel width, edge to edge. */
   width: number;
+  /**
+   * how far to pull the chart out past its padded parent, so it spans the frame
+   * with no side gutter. the tabs stay inside the padding; only the line bleeds.
+   */
+  bleed?: number;
   style?: CSSProperties;
 }) {
   const values = chart?.points.map((p) => p.value) ?? [];
@@ -337,7 +339,18 @@ export function ValueChartBlock({
   // block and shove everything below it up the screen.
   return (
     <div style={style}>
-      <div style={{ height: HEIGHT, display: "flex", alignItems: "center" }}>
+      <div
+        style={{
+          height: HEIGHT,
+          display: "flex",
+          alignItems: "center",
+          // the chart bleeds to the frame edges; its own padding lives here so
+          // the loading and empty states stay inset with the rest of the column.
+          margin: bleed ? `0 -${bleed}px` : undefined,
+          paddingLeft: drawable ? 0 : bleed,
+          paddingRight: drawable ? 0 : bleed,
+        }}
+      >
         {drawable ? (
           <Sparkline
             t={t}
