@@ -131,7 +131,9 @@ export function Sparkline({
         position: "relative",
         width,
         touchAction: "none",
-        cursor: onScrub ? "col-resize" : "default",
+        // no cursor change on hover: the reveal follows the pointer, and swapping
+        // the cursor to a resize handle read as "you can drag this", which is not
+        // what a hover does.
       }}
       // HOVER, not hold-and-drag. a mouse tracks the line just by moving over
       // it; there is nothing to press. a touch, which has no hover, tracks while

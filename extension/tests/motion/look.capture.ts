@@ -40,8 +40,10 @@ test("home, funded, both pockets", async ({ wallet }) => {
     await page.mouse.move(hb.x - 5, hb.y);
   }
 
-  // asset detail.
+  // asset detail: one shot right as it opens (full height + price skeleton), one after load.
   await page.getByRole("button", { name: /^XLM/ }).first().click();
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: `${OUT}/asset-open.png` });
   await page.waitForTimeout(5000);
   await page.screenshot({ path: `${OUT}/asset-detail.png` });
   await page.getByRole("dialog").getByRole("button", { name: "Close" }).click();
@@ -54,8 +56,8 @@ test("home, funded, both pockets", async ({ wallet }) => {
   await page.getByRole("button", { name: "Send", exact: true }).click();
   await page.waitForTimeout(1200);
   await page.screenshot({ path: `${OUT}/send-compose.png` });
-  await page.getByLabel("Recipient address").fill(addr);
-  await page.getByLabel(/Amount in/).fill("1");
+  await page.getByLabel("To", { exact: true }).fill(addr);
+  await page.getByLabel("Amount (XLM)").fill("1");
   await page.getByRole("button", { name: "Continue" }).click();
   await page.waitForTimeout(2500);
   await page.screenshot({ path: `${OUT}/send-confirm.png` });

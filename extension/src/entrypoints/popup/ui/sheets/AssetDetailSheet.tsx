@@ -13,7 +13,7 @@ import type { ReactNode } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Amount } from "../Amount";
-import { Button, Sheet } from "../primitives";
+import { Button, Sheet, Skeleton } from "../primitives";
 import { ChangeChip, ValueChartBlock, useValueChart } from "../Chart";
 import { Lock } from "../icons";
 import { InfoTip } from "../Tooltip";
@@ -152,6 +152,9 @@ export function AssetDetailSheet({
   const code = asset?.code ?? "";
 
   const [market, setMarket] = useState<AssetMarketView | null>(null);
+  // whether the market fetch has come back yet, so the price can shimmer while
+  // it is in flight rather than reading "Price unavailable" before it has tried.
+  const [marketLoaded, setMarketLoaded] = useState(false);
   const [scrubAt, setScrubAt] = useState<number | null>(null);
 
   // the price series for THIS asset. keyed on the code, so opening a different
@@ -164,6 +167,7 @@ export function AssetDetailSheet({
     if (!code) return;
     let live = true;
     setMarket(null);
+    setMarketLoaded(false);
     call({ type: "assetMarket", symbol: code })
       .then((m) => {
         if (live) setMarket(m);
@@ -172,6 +176,9 @@ export function AssetDetailSheet({
         // a market we cannot read is an absent row, never an error banner over
         // a balance the ledger answered for perfectly well.
         if (live) setMarket(null);
+      })
+      .finally(() => {
+        if (live) setMarketLoaded(true);
       });
     return () => {
       live = false;
@@ -190,24 +197,32 @@ export function AssetDetailSheet({
       : null;
 
   return (
-    <Sheet t={t} open={asset !== null} onClose={onClose} focusKey={code}>
-      {/* no extra horizontal padding here: the Sheet body already insets its
-          content, and doubling it was the "too much padding" the detail had.
-          only a little breathing room at the bottom, above the send button. */}
+    // `full`: the sheet opens at full height from the first frame. without it the
+    // sheet sized to its content, then grew as the chart and market loaded, so it
+    // "became" a full page a beat after opening instead of arriving as one.
+    <Sheet t={t} open={asset !== null} onClose={onClose} focusKey={code} full>
       <div style={{ paddingBottom: space.gutter }}>
-        {/* identity: badge, name, price + change. the sheet's own header above
-            this carries only the close button (no title passed), so the close
-            sits top-right and the identity reads below it, as in the reference. */}
-        <div style={{ display: "flex", alignItems: "center", gap: space.md }}>
-          <AssetBadge t={t} code={code} size={48} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ ...text.screenTitle, color: t.text, lineHeight: 1.1 }}>{code}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: space.sm, marginTop: 3 }}>
+        {/* identity, stacked like the reference: the badge on its own line at the
+            top, then the name, then the price, with the change chip floated to
+            the right. the old row centred everything beside a big badge, which
+            pushed the name and price down the screen. */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: space.md }}>
+          <AssetBadge t={t} code={code} size={44} />
+          <ChangeChip t={t} pct={scrubAt === null ? (market?.change24h ?? null) : null} />
+        </div>
+        <div style={{ marginTop: space.md }}>
+          <div style={{ ...text.screenTitle, color: t.text, lineHeight: 1.1 }}>{code}</div>
+          <div style={{ marginTop: 3 }}>
+            {price !== null ? (
               <span style={{ ...text.heading, color: t.text, fontVariantNumeric: "tabular-nums" }}>
-                {price === null ? "Price unavailable" : usd(price)}
+                {usd(price)}
               </span>
-              <ChangeChip t={t} pct={scrubAt === null ? (market?.change24h ?? null) : null} />
-            </div>
+            ) : marketLoaded ? (
+              <span style={{ ...text.heading, color: t.faint }}>Price unavailable</span>
+            ) : (
+              // shimmer while the price is in flight, the same as the home hero.
+              <Skeleton width={120} height={26} />
+            )}
           </div>
         </div>
 
