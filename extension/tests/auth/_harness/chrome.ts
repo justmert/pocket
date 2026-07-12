@@ -221,6 +221,7 @@ export const EVERY_REQUEST: { type: string; msg: Record<string, unknown> }[] = [
   },
   { type: "setNetwork", msg: { type: "setNetwork", network: "testnet" } },
   { type: "setAutoLock", msg: { type: "setAutoLock", minutes: 15 } },
+  { type: "fundTestnet", msg: { type: "fundTestnet" } },
   // The SEP-43 dApp surface, added mid-pass. None of these is on the
   // locked-state allowlist, and all four reach key material or reveal the
   // address, so all four must refuse while locked.

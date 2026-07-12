@@ -1,70 +1,37 @@
-// The lock screen's background shader.
+// The lock screen's background.
 //
-// `Cover` is a grain gradient carrying both pocket accents, drawn behind the
-// wordmark and the unlock form. The wordmark itself is the drawn logo, not a
-// shader: a halftone quantises its smooth hand-drawn curves into dots and reads
-// as a thinner, different mark at the size it sits here, so the mark stays the
-// packaged image and the shader stays in the background where it belongs.
+// A clean, static dual-accent wash: the sky (public) pocket glowing from the top, the
+// teal (private) pocket from the bottom, so the front door carries both pockets. Four
+// things stay true, now with plain CSS instead of a shader:
 //
-// Four things about this layer are constraints rather than taste:
+//   Nothing is fetched. It reads two theme colours and nothing else; the extension's
+//   CSP would let a remote asset on the lock screen leak the time of every unlock.
 //
-//   Nothing is fetched from anywhere. It reads two colours and nothing else.
-//   The extension's CSP is `img-src 'self' data:`, and a wallet that pulled a
-//   remote asset onto its lock screen would tell that host the time of every
-//   unlock.
+//   Nothing moves. A lock screen is opened dozens of times a day and closed in
+//   seconds; there is no motion to cost battery or to suppress for reduced-motion.
 //
-//   It does not move. `speed={0}` renders one frame and stops. A lock screen is
-//   opened dozens of times a day and closed in seconds; a shader animating
-//   behind it costs battery for something nobody watches long enough to see. It
-//   also means there is no motion to suppress for someone who asked for less.
+//   The intensity is low on purpose: it sits behind body text and the unlock form, so
+//   the accents are a wash and the contrast of everything on top stays measured.
 //
-//   Its intensity is low on purpose. It sits behind body text, so the accents
-//   are a wash rather than blocks of colour and the contrast of everything
-//   drawn on top stays where it was measured.
-//
-//   It is allowed to be absent. It needs WebGL2, which Chrome does not provide
-//   when hardware acceleration is off or the GPU is blocklisted. The caller
-//   draws the plain canvas underneath either way, so a machine without WebGL2
-//   gets a flat cover rather than a blank screen.
-import { GrainGradient } from "@paper-design/shaders-react";
-import { accent, type Theme } from "./theme";
+//   It is always available. This replaced a WebGL2 grain shader (@paper-design), which
+//   was absent whenever hardware acceleration was off; a CSS gradient needs no GPU, so
+//   there is no "flat fallback" branch and no probe to run before rendering.
+import { accent } from "./theme";
 
-/** True when this context can actually run the shader. */
-export function coverAvailable(): boolean {
-  try {
-    return document.createElement("canvas").getContext("webgl2") !== null;
-  } catch {
-    // Some environments throw rather than answer null.
-    return false;
-  }
-}
-
-export function Cover({ t, width, height }: { t: Theme; width: number; height: number }) {
+export function Cover() {
   return (
     <div
       aria-hidden
-      style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}
-    >
-      <GrainGradient
-        width={width}
-        height={height}
-        colorBack={t.bg}
-        // Both accents, in the order the pockets appear in the product.
-        colors={[accent.public, accent.private]}
-        shape="wave"
-        // The package's own `wave` preset values. Its intensity of 0.15 is the
-        // reason this reads as a wash rather than as a pair of colour fields,
-        // and its noise of 0.5 is the grain.
-        softness={0.7}
-        intensity={0.15}
-        noise={0.5}
-        speed={0}
-        // Stopped, but not stopped at the beginning. These shaders develop
-        // their field over time, so frame 0 is the least interesting frame
-        // there is and can be close to flat. This picks one well into the
-        // sequence and holds it.
-        frame={9000}
-      />
-    </div>
+      style={{
+        position: "absolute",
+        inset: 0,
+        overflow: "hidden",
+        pointerEvents: "none",
+        background: [
+          `radial-gradient(130% 58% at 50% -10%, color-mix(in srgb, ${accent.public} 18%, transparent) 0%, transparent 60%)`,
+          `radial-gradient(130% 52% at 50% 110%, color-mix(in srgb, ${accent.private} 14%, transparent) 0%, transparent 58%)`,
+        ].join(", "),
+      }}
+    />
   );
 }

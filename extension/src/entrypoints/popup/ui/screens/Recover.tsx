@@ -2,8 +2,6 @@ import { useState } from "react";
 import { call } from "../rpc";
 import { Button, ButtonStack, Field, Header, Notice, Screen, TextButton } from "../primitives";
 import { space, text, type Theme } from "../theme";
-import type { NetworkId } from "../../../../core/config";
-import { privateLossAfterErase } from "../copy";
 
 /**
  * the only way past a forgotten password, and it destroys the device's copy of
@@ -13,12 +11,10 @@ import { privateLossAfterErase } from "../copy";
  */
 export function Recover({
   t,
-  network,
   onDone,
   onCancel,
 }: {
   t: Theme;
-  network: NetworkId;
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -51,7 +47,7 @@ export function Recover({
   if (!acknowledged) {
     return (
       <Screen t={t} still>
-        <Header t={t} title="Erase and restore" onBack={onCancel} />
+        <Header t={t} title="Reset with your phrase" onBack={onCancel} />
         <Notice t={t} tone="danger">
           This erases the wallet on this device. Everything it holds goes with it.
         </Notice>
@@ -66,14 +62,13 @@ export function Recover({
           }}
         >
           <li style={{ marginBottom: space.xs }}>
-            Your <strong>public pocket</strong> comes back in full. The phrase reproduces the same
-            address, and its balance is on the ledger.
+            Your <strong>public pocket</strong> comes back in full from the phrase; its balance is
+            on the ledger.
           </li>
-          <li style={{ marginBottom: space.xs }}>
-            Your <strong>private pocket balances do not</strong>. The chain holds commitments; only
-            this device knew what opens them.
+          <li>
+            Your <strong>private pocket balances do not</strong>. Only this device holds the keys
+            that open them.
           </li>
-          <li>{privateLossAfterErase(network)}</li>
         </ul>
 
         <Notice t={t} tone="exposed">
@@ -98,7 +93,7 @@ export function Recover({
 
   return (
     <Screen t={t} still>
-      <Header t={t} title="Erase and restore" onBack={() => setAcknowledged(false)} />
+      <Header t={t} title="Reset with your phrase" onBack={() => setAcknowledged(false)} />
       <form
         onSubmit={(e) => {
           e.preventDefault();

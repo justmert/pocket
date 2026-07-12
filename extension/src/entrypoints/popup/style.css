@@ -236,6 +236,17 @@ textarea::placeholder {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--pocket-accent) 22%, transparent);
 }
 
+/* every text field now carries `.pk-field`, so the soft glow above is the ONE focus
+ * signal a field shows. suppress the browser's hard rectangle (and any bare
+ * focus-visible) that used to draw a crisp blue box around the password / phrase
+ * inputs, which had no `.pk-field` treatment and fell through to the default. */
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible {
+  outline: none !important;
+}
+
 @keyframes pocket-spin {
   to {
     transform: rotate(360deg);

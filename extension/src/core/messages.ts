@@ -156,6 +156,7 @@ export type WalletRequest =
   | { type: "recoverFromMnemonic"; mnemonic: string; password: string }
   | { type: "setNetwork"; network: NetworkId }
   | { type: "setAutoLock"; minutes: number }
+  | { type: "fundTestnet" }
   | { type: "valueSeries"; range: RangeId }
   | { type: "assetMarket"; symbol: string }
   | { type: "assetSeries"; symbol: string; range: RangeId }
@@ -249,6 +250,8 @@ export interface ResponseMap {
   recoverFromMnemonic: string;
   setNetwork: WalletStatus;
   setAutoLock: WalletStatus;
+  /** Status after friendbot funding lands; the popup refreshes balances off it. */
+  fundTestnet: WalletStatus;
   valueSeries: ValueChart;
   assetMarket: AssetMarketView;
   assetSeries: ValueChart;

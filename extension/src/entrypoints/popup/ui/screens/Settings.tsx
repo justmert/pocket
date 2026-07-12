@@ -1,4 +1,5 @@
 import { useWallet } from "../WalletProvider";
+import { useFundTestnet } from "../FundTestnet";
 import { NAV_SPACE } from "../BottomNav";
 import { Header, Overline, Row, ScrollArea } from "../primitives";
 import { canRebuild } from "../copy";
@@ -10,6 +11,15 @@ import { space } from "../theme";
 export function Settings() {
   const w = useWallet();
   const t = w.t;
+
+  // testnet funding, from friendbot. the row has no body to grow an inline notice,
+  // so the outcome is a toast; `funding` spins the row's trailing glyph and blocks
+  // a second press mid-flight.
+  const { fund, funding } = useFundTestnet();
+  const runFund = () => {
+    if (funding) return;
+    void fund().then((err) => w.showToast(err ?? "Testnet XLM added to your account."));
+  };
 
   // one running counter, incremented only for rows actually rendered, so the
   // entrance stagger stays contiguous. hardcoded 0..5 left a 90ms gap in the
@@ -36,6 +46,23 @@ export function Settings() {
           }
           onClick={() => w.openSheet("network")}
         />
+
+        {/* testnet-only: friendbot funds a fresh account so it exists on the ledger.
+            mainnet has no faucet, so this section is absent there entirely. */}
+        {w.status?.network === "testnet" && (
+          <div style={{ marginTop: space.lg }}>
+            <Overline t={t}>Testnet</Overline>
+            <Row
+              t={t}
+              index={i++}
+              icon={<Coins size={19} />}
+              title="Fund account"
+              sub="Get free testnet XLM from friendbot"
+              value={funding ? <Refresh size={17} className="pocket-spinner" /> : undefined}
+              onClick={runFund}
+            />
+          </div>
+        )}
 
         <div style={{ marginTop: space.lg }}>
           <Overline t={t}>Assets</Overline>

@@ -150,6 +150,8 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
       return c.setNetwork(networkId(msg.network, "network"));
     case "setAutoLock":
       return c.setAutoLock(num(msg.minutes, "minutes"));
+    case "fundTestnet":
+      return c.fundTestnet();
     case "balances":
       return c.balances();
     case "buildPayment":
@@ -278,6 +280,9 @@ const ACTIVITY = new Set([
   "confirmPayment",
   "setNetwork",
   "setAutoLock",
+  // Funding a fresh account from friendbot is a deliberate user action that
+  // takes a few seconds; it must not race the idle lock mid-flight.
+  "fundTestnet",
   "create",
   "import",
   // A private operation is user activity too: proving can take a moment and a
@@ -384,6 +389,9 @@ const SAFE_ERRORS = new Set([
   "RecoveryUnavailableError",
   "RecoveryMismatchError",
   "OriginRefusedError",
+  // Testnet funding. Its messages are wholly authored here and interpolate
+  // nothing from the wire; the address is our own session's, never a wire value.
+  "FriendbotError",
 ]);
 
 /** Messages we author ourselves and vet, matched exactly. */

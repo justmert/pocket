@@ -155,6 +155,12 @@ export class UnresolvedTransactionError extends Error {
   override readonly name = "UnresolvedTransactionError";
 }
 
+/** Testnet friendbot funding the user can act on. Its messages are authored
+ *  prose, safe to surface verbatim; the address it names is our session's. */
+export class FriendbotError extends Error {
+  override readonly name = "FriendbotError";
+}
+
 /**
  * Which circuit each operation proves against. Merge and shield have none:
  * a deposit and a merge are authorised, not proved.
@@ -645,6 +651,64 @@ export class WalletController {
       })),
       autoLockMinutes: this.autoLockMinutes_,
     };
+  }
+
+  /**
+   * Fund this account from friendbot. Testnet only, and gated on the network
+   * actually having a friendbot: `friendbotUrl` is absent on mainnet by design
+   * (config.ts), so this refuses there rather than pretending. Friendbot creates
+   * the account with a starting XLM balance, which is what a freshly onboarded
+   * wallet needs before it can hold a trustline, set up a private pocket, or pay.
+   *
+   * We wait for the created account to actually read back before returning, so
+   * the popup's next balance read finds the funds rather than racing the ledger
+   * the way a bare "friendbot answered 200" would.
+   */
+  async fundTestnet(): Promise<WalletStatus> {
+    const { address } = requireSession();
+    const net = NETWORKS[this.network];
+    if (!net.friendbotUrl) {
+      throw new FriendbotError("Funding from friendbot is only available on testnet.");
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(`${net.friendbotUrl}?addr=${encodeURIComponent(address)}`, {
+        method: "GET",
+        signal: AbortSignal.timeout(20_000),
+        headers: { accept: "application/json" },
+      });
+    } catch {
+      throw new FriendbotError("Could not reach the testnet funding service. Try again.");
+    }
+
+    // Friendbot answers 400 for an account it has already funded. That is not a
+    // failure the user must fix: if the account already reads back, the funds
+    // are there and this counts as success.
+    if (!res.ok) {
+      try {
+        await readNative(this.server(), address);
+        return this.status();
+      } catch {
+        throw new FriendbotError(
+          "The testnet funding service could not fund this account right now. Try again shortly.",
+        );
+      }
+    }
+
+    // Wait for the create-account to land before answering, so the popup's next
+    // balance read finds it. Bounded: friendbot's transaction is usually visible
+    // within a few seconds, and the worker is never blocked indefinitely.
+    for (let i = 0; i < 10; i++) {
+      try {
+        await readNative(this.server(), address);
+        break;
+      } catch (e) {
+        if (!(e instanceof AccountNotFoundError)) throw e;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+    return this.status();
   }
 
   /**

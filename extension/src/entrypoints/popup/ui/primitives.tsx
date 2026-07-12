@@ -493,7 +493,12 @@ export function Field({
     borderRadius: radius.md,
     background: t.field,
     color: t.text,
-    border: `1px solid ${invalid ? t.danger : "transparent"}`,
+    // a resting hairline, not a transparent edge. the soft fill alone defined the
+    // field only where it sat on the canvas; on a white `surface` card (the unlock
+    // and onboarding screens) the pale fill and the card were the same value and the
+    // field disappeared. the line gives every field a visible edge on any surface,
+    // and the accent focus glow still reads outside it.
+    border: `1px solid ${invalid ? t.danger : t.line}`,
     fontFamily: mono ? fonts.mono : fonts.body,
     // verbatim data (the phrase import) is mono at 500; prose inputs keep 400.
     fontWeight: 500,
@@ -528,6 +533,7 @@ export function Field({
       </label>
       {multiline ? (
         <textarea
+          className="pk-field"
           {...verbatim}
           id={id}
           value={value}
@@ -550,6 +556,7 @@ export function Field({
         // With no trailing control the input keeps the field chrome itself, so
         // every other field in the product renders exactly as it did.
         <div
+          className={trailing ? "pk-field" : undefined}
           style={
             trailing
               ? {
@@ -563,6 +570,7 @@ export function Field({
           }
         >
           <input
+            className={trailing ? undefined : "pk-field"}
             {...verbatim}
             id={id}
             value={value}

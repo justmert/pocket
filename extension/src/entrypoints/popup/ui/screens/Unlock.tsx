@@ -2,8 +2,8 @@ import { useState } from "react";
 import { call } from "../rpc";
 import { Button, Field, Frame, Notice, ScrollArea, TextButton } from "../primitives";
 import { Eye, EyeOff } from "../icons";
-import { Cover, coverAvailable } from "../Cover";
-import { FRAME, radius, space, text, type Theme } from "../theme";
+import { Cover } from "../Cover";
+import { radius, space, text, type Theme } from "../theme";
 
 export function Unlock({
   t,
@@ -18,9 +18,6 @@ export function Unlock({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [reveal, setReveal] = useState(false);
-  // Read once, not per render: the answer cannot change while the popup is open
-  // and creating a probe canvas on every keystroke is a real cost.
-  const [cover] = useState(coverAvailable);
 
   const submit = async () => {
     if (!password || busy) return;
@@ -42,7 +39,7 @@ export function Unlock({
   return (
     <Frame t={t}>
       <ScrollArea className="pocket-page" background={t.canvas}>
-        {cover && <Cover t={t} width={FRAME.width} height={FRAME.height} />}
+        <Cover />
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -55,20 +52,22 @@ export function Unlock({
             padding: `${space.xl}px ${space.gutter}px ${space.gutter}px`,
             display: "flex",
             flexDirection: "column",
+            // the lockup and the form read as ONE centred column, not a mark pinned
+            // to the top and a card pinned to the bottom with a void between them.
+            // centring the group is what fills the empty middle without decorating it.
+            justifyContent: "center",
           }}
         >
           {/* The lockup is stacked rather than a row, and larger: this is the
               one screen with no other content competing for the eye, and it is
               the screen a returning user sees more often than any other. */}
-          <div style={{ textAlign: "center", marginTop: space.lg }}>
+          <div style={{ textAlign: "center" }}>
             {/* The wordmark, decorative: the product's name is already spoken by
                 the sentence under the heading, so announcing it here would say
                 "Pocket" twice to a screen reader and add nothing.
 
-                The drawn logo itself, not a shader rendering of it. A halftone
-                quantises the smooth hand-drawn curves into dots and, at this
-                size, thins the strokes into a lighter, different mark; the mark
-                has to stay the mark. The grain lives in the `Cover` behind it.
+                The drawn logo itself, packaged. The accent wash lives in the
+                `Cover` behind it, so the mark stays the mark.
 
                 Root-relative, which resolves against the DOCUMENT — the popup at
                 chrome-extension://<id>/popup.html — in both a development and a
@@ -103,7 +102,7 @@ export function Unlock({
             </p>
           </div>
 
-          <div style={{ marginTop: "auto", paddingTop: space.xl }}>
+          <div style={{ marginTop: space.xl }}>
             {error && (
               <Notice t={t} tone="danger">
                 {error}
@@ -115,11 +114,13 @@ export function Unlock({
             <div
               style={{
                 background: t.surface,
-                border: `1px solid ${t.line}`,
                 borderRadius: radius.xl,
-                // narrows with the frame: at 160px a fixed 14px each side is 28px
+                // a hairline pairs with the shadow so the card reads as a deliberate
+                // panel rather than a white blob floating on the wash.
+                border: `1px solid ${t.line}`,
+                // narrows with the frame: at 160px a fixed 16px each side is 32px
                 // of the 124px available, taken from the one control that needs it.
-                padding: "clamp(6px, 4vw, 14px)",
+                padding: "clamp(6px, 4vw, 16px)",
                 boxShadow: t.shadow,
               }}
             >

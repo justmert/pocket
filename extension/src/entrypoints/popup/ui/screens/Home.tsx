@@ -10,6 +10,7 @@ import { shortAddress } from "../Address";
 import { Avatar } from "../Avatar";
 import { AssetLogo, tokenIconFile } from "../AssetIcon";
 import { InfoTip } from "../Tooltip";
+import { FundTestnetCard } from "../FundTestnet";
 import {
   Button,
   Card,
@@ -47,6 +48,12 @@ export function Home() {
   const priv = w.priv;
   const privAssets = w.privAssets;
   const native = nativeOf(w.balances);
+  // a freshly onboarded account exists only on this device: `balances()` reports
+  // its native line with an amount but NO `total` (there is no on-ledger reserve
+  // to report yet), which a funded account always carries. on testnet that is the
+  // cue to offer friendbot funding; mainnet has no faucet, so the prompt is absent.
+  const needsFunding =
+    status?.network === "testnet" && native != null && native.total === undefined;
   const isPrivate = w.pocket === "private";
   // more than one confidential asset is configured: the private pocket becomes a
   // list of per-asset pockets, mirroring the public pocket. one asset (the common
@@ -527,6 +534,15 @@ export function Home() {
   function publicBody() {
     return (
       <>
+        {/* a fresh, unfunded account gets nothing else moving until it exists on the
+            ledger, so this sits above everything. it removes itself once the funds
+            land: `needsFunding` reads false the moment the account has a reserve. */}
+        {needsFunding && (
+          <div style={{ marginTop: space.gutter }}>
+            <FundTestnetCard t={t} />
+          </div>
+        )}
+
         {/* the private pocket is set up PER ASSET: `priv` is the selected asset, so a
             not-ready `priv` (USDC) would wrongly read as "the whole pocket is not set
             up" while another asset (XLM) is already live. only prompt to set up the

@@ -199,7 +199,6 @@ function Root() {
     return recovering ? (
       <Recover
         t={t}
-        network={w.status.network}
         onDone={() => {
           setRecovering(false);
           void w.refresh();
