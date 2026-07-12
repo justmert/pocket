@@ -14,13 +14,12 @@ import { InfoTip } from "../Tooltip";
 import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark } from "./Home";
 import { ChevronRight, Globe } from "../icons";
-import { CROSS_CHAIN_DOMAINS, ChainPicker } from "./CctpSend";
+import { CLAIM_DOMAINS, ChainPicker, isTxId } from "./CctpSend";
 import { cctpDomainName } from "../../../../core/integrations/cctp";
 import { radius, space, text } from "../theme";
 import type { CctpSummary } from "../../../../core/messages";
 
 /** a source-chain burn tx hash is 32 bytes; mirror the shape for live feedback. */
-const TXHASH_RE = /^(0x)?[0-9a-fA-F]{64}$/;
 
 export function CctpClaim({ onClose }: { onClose: () => void }) {
   const w = useWallet();
@@ -45,7 +44,9 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
   const leaving = useRef(false);
 
   const chainName = domain !== null ? cctpDomainName(domain) : null;
-  const txValid = TXHASH_RE.test(txHash.trim());
+  // The pattern follows the CHAIN. Solana signs in base58 and everything else
+  // in hex, and one hex-only rule rejected every Solana signature typed here.
+  const txValid = isTxId(txHash, domain);
 
   const review = async () => {
     if (domain === null) return;
@@ -200,7 +201,12 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
                   t={t}
                   label="Burn transaction hash"
                   value={txHash}
-                  onChange={setTxHash}
+                  onChange={(v) => {
+                    setTxHash(v);
+                    // clear a prior build error so Continue re-enables on a new hash
+                    // (without this, disabling Continue on error would deadlock here).
+                    setError(null);
+                  }}
                   placeholder="0x…"
                   mono
                   multiline
@@ -225,7 +231,12 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
             <div
               style={{ padding: `${space.md}px ${space.gutter}px ${space.lg}px`, background: t.bg }}
             >
-              <Button t={t} disabled={!ready} busy={building} onClick={() => void review()}>
+              <Button
+                t={t}
+                disabled={!ready || Boolean(error)}
+                busy={building}
+                onClick={() => void review()}
+              >
                 {building ? "Checking" : "Continue"}
               </Button>
             </div>
@@ -236,7 +247,7 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
       <ChainPicker
         t={t}
         open={picking}
-        chains={CROSS_CHAIN_DOMAINS}
+        chains={CLAIM_DOMAINS}
         onPick={(d) => {
           setDomain(d);
           setPicking(false);

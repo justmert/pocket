@@ -106,7 +106,9 @@ export function AmountComposer({
     gap: space.sm,
     padding: `6px 12px`,
     borderRadius: radius.pill,
-    background: t.surface,
+    // the page floor, so the asset chip reads as a recess into the compose surface:
+    // #020b0e in the private pocket, the #fcfdfe page in the public one (never white).
+    background: t.bg,
     minWidth: 0,
   } as const;
 

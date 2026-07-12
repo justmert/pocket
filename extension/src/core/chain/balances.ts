@@ -24,6 +24,17 @@ export interface AssetBalance {
   raw: bigint;
   /** Trustline limit in stroops, absent for native. */
   limit?: bigint;
+  /**
+   * Stroops already committed to open offers, which cannot be sent.
+   *
+   * The protocol enforces this the same way it enforces the reserve: a payment
+   * that dips into selling liabilities fails with `txINSUFFICIENT_BALANCE`, and
+   * the raw balance gives no hint of it. Pocket creates no offers itself, which
+   * is exactly why this was easy to leave out and easy to get wrong: the same
+   * G-address can hold offers made in any other wallet, and then Pocket's
+   * "spendable" is simply too big.
+   */
+  sellingLiabilities: bigint;
   /** False when the issuer has not authorised this trustline. */
   authorized: boolean;
 }
@@ -122,7 +133,13 @@ async function readEntry(
 export async function readNative(
   server: rpc.Server,
   accountId: string,
-): Promise<{ raw: bigint; subEntryCount: number; numSponsoring: number; numSponsored: number }> {
+): Promise<{
+  raw: bigint;
+  subEntryCount: number;
+  numSponsoring: number;
+  numSponsored: number;
+  sellingLiabilities: bigint;
+}> {
   const val = await readEntry(server, accountKey(accountId));
   // Only an explicit empty entries array reaches here as null, and that is the
   // one condition allowed to render a zero balance.
@@ -146,6 +163,11 @@ export async function readNative(
     subEntryCount: acc.numSubEntries(),
     numSponsoring: ext ? (ext.ext().v2()?.numSponsoring() ?? 0) : 0,
     numSponsored: ext ? (ext.ext().v2()?.numSponsored() ?? 0) : 0,
+    // The v1 extension was already being read, for sponsorship, and its
+    // liabilities were stepped straight over. An account with an open offer
+    // therefore reported the offer's stroops as spendable, and the protocol
+    // refuses to send them.
+    sellingLiabilities: ext ? BigInt(ext.liabilities().selling().toString()) : 0n,
   };
 }
 
@@ -173,12 +195,16 @@ export async function readTrustline(
   if (tl.asset().toXDR("base64") !== asset.toTrustLineXDRObject().toXDR("base64")) {
     throw new LedgerEntryMismatchError(`asked about ${asset.getCode()} and got another asset`);
   }
+  const ext = tl.ext().v1();
   return {
     id: `${asset.getCode()}:${asset.getIssuer()}`,
     code: asset.getCode(),
     issuer: asset.getIssuer(),
     raw: BigInt(tl.balance().toString()),
     limit: BigInt(tl.limit().toString()),
+    // Same omission as the account entry, same consequence. A trustline holding
+    // an open sell offer reported the whole balance as spendable.
+    sellingLiabilities: ext ? BigInt(ext.liabilities().selling().toString()) : 0n,
     // Bit 0 of the trustline flags is AUTHORIZED_FLAG.
     authorized: (tl.flags() & 1) === 1,
   };
@@ -252,6 +278,54 @@ export function fractionOf(text: string, numerator: bigint, denominator: bigint)
   if (total <= 0n) return formatAmount(0n);
   return formatAmount((total * numerator) / denominator);
 }
+
+/**
+ * What can actually leave the account, for ANY asset.
+ *
+ * One function because the answer was being computed in several places and each
+ * one knew about a different subset of the deductions. The protocol takes all
+ * of them, and a figure missing any one is a number the wallet will offer, the
+ * user will accept, and the network will refuse.
+ *
+ * `reserve` is the base reserve times the entry count and applies to the native
+ * balance only: a trustline balance is not reserved against. `sellingLiabilities`
+ * applies to both. The fee is NOT taken here, because it is paid in XLM
+ * regardless of which asset is moving, so it belongs to the caller that knows
+ * which asset that is.
+ *
+ * Never negative: an account below its own reserve is at zero spendable, not in
+ * debt to itself.
+ */
+export function availableToSend(balance: {
+  raw: bigint;
+  sellingLiabilities: bigint;
+  reserve?: bigint;
+}): bigint {
+  const out = balance.raw - balance.sellingLiabilities - (balance.reserve ?? 0n);
+  return out > 0n ? out : 0n;
+}
+
+/**
+ * What to hold back for the fee of a SOROBAN operation, in stroops.
+ *
+ * `BASE_FEE` is 100 stroops and pays for a classic payment. A Soroban
+ * invocation pays that plus a resource fee, which is decided by simulation and
+ * is three to four orders of magnitude larger: measured on this deployment,
+ * ~179,000 stroops for a swap and 350,412 for a native shield.
+ *
+ * "Use max" on the swap, yield, shield and unshield screens reserved 100
+ * stroops, so it produced an amount that left nothing for the real fee. The
+ * user pressed the button the wallet offered and the transaction could not be
+ * paid for.
+ *
+ * The screens cannot simulate, so this is a RESERVE, not a prediction: rounded
+ * up well past the largest figure measured, because reserving too much costs a
+ * fraction of an XLM that stays in the account, and reserving too little costs
+ * a failed transaction. The worker re-checks against the real fee once
+ * simulation has produced one, so this only has to be close enough to keep
+ * "use max" honest.
+ */
+export const SOROBAN_FEE_RESERVE_STROOPS = 5_000_000n; // 0.5 XLM
 
 /**
  * The most that can actually be SENT of the native asset, once the fee is paid.

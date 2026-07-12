@@ -169,7 +169,9 @@ export class Wallet {
   // ---------------------------------------------------------------------- home
 
   /** The bottom bar, which is how every screen and sheet is reached. */
-  nav(name: "Home" | "Receive" | "Send" | "Send privately" | "Move" | "Settings"): Locator {
+  // "Move" is deliberately absent: the bar's private control is "Move value"
+  // and it opens a menu, not the Move sheet. `openMove()` is the way there.
+  nav(name: "Home" | "Receive" | "Send" | "Send privately" | "Settings"): Locator {
     return this.page.getByRole("button", { name, exact: true });
   }
 
@@ -310,8 +312,31 @@ export class Wallet {
     const menu = this.page.getByRole("dialog", { name: "Move" });
     if ((await menu.count()) > 0) return;
     if ((await this.page.getByRole("dialog").count()) > 0) await this.close();
-    await this.nav("Move").click();
-    await expect(menu).toBeVisible();
+
+    // There is no "Move" button on the bar any more, and there has not been for
+    // some time: the private FAB is labelled "Move value" and opens a MENU of
+    // Shield/Send/Unshield, none of which is this sheet. `nav("Move")` matched
+    // nothing, every one of the twenty-three spec files that reach the private
+    // pocket through here timed out on it, and each one paid the full locator
+    // timeout to do so.
+    //
+    // The sheet is reached from the private pocket's own prompt, whose label is
+    // the STATE's action: "Set up" before registration, "Make spendable" once
+    // there is something to fold, "Reactivate" when dormant. So the way in is
+    // whichever of those is on screen, which is also how a user gets here.
+    await this.openPocket("Private pocket");
+    const ways = ["Set up", "Make spendable", "Reactivate", "Rebuild"];
+    for (const name of ways) {
+      const control = this.page.getByRole("button", { name, exact: true });
+      if ((await control.count()) > 0) {
+        await control.first().click();
+        await expect(menu).toBeVisible();
+        return;
+      }
+    }
+    throw new Error(
+      `no way into the Move sheet: the private pocket offered none of ${ways.join(", ")}`,
+    );
   }
 
   /** Register: the one-time, permanent set-up. Returns once it has confirmed. */
@@ -457,10 +482,33 @@ export class Wallet {
 export async function openMoveAction(page: Page, name: string): Promise<void> {
   const dialog = page.getByRole("dialog");
   if ((await dialog.count()) === 0) {
-    await page.getByRole("button", { name: "Move", exact: true }).click();
+    // The private pocket's own prompt, not a bar button. There is no "Move" on
+    // the bar: the private control is labelled "Move value" and opens a menu of
+    // Shield/Send/Unshield, none of which is this sheet. The old locator matched
+    // nothing, so every spec reaching a private action through here paid a full
+    // locator timeout and failed.
+    //
+    // The prompt's label is the STATE's action, and the action being asked for
+    // is usually that same label, so try it first and fall back to the other
+    // labels that also open this sheet.
+    const ways = [name, "Set up", "Make spendable", "Reactivate", "Rebuild"];
+    let opened = false;
+    for (const label of ways) {
+      const control = page.getByRole("button", { name: label, exact: true });
+      if ((await control.count()) > 0) {
+        await control.first().click();
+        opened = true;
+        break;
+      }
+    }
+    if (!opened) {
+      throw new Error(`no way into the Move sheet for "${name}": none of ${ways.join(", ")} is up`);
+    }
     await expect(dialog).toBeVisible();
   }
-  await dialog.getByRole("button", { name, exact: true }).click();
+  // Already there when the prompt's own label WAS the action (Set up, Rebuild).
+  const action = dialog.getByRole("button", { name, exact: true });
+  if ((await action.count()) > 0) await action.click();
 }
 
 /**

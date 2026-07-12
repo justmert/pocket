@@ -137,8 +137,13 @@ export function ConfirmBody({
           }}
         >
           {heading && <span style={{ ...text.rowSub, color: t.sub }}>{heading}</span>}
+          {/* `reveal`: this is the figure being signed or the one just sent.
+              masking it would make a confirm impossible to check and a receipt
+              impossible to read, and both are figures the user has this second
+              asked to see. hide-balance is about a balance sitting on a screen,
+              not about the amount in front of you. */}
           {amount && (
-            <Amount t={t} value={amount} code={code} size="display" treatment={treatment} />
+            <Amount t={t} value={amount} code={code} size="display" treatment={treatment} reveal />
           )}
           {exposed && (
             <span
@@ -448,7 +453,17 @@ export function WalletReview({
                   {mark}
                 </span>
               )}
-              <Amount t={t} value={amount} code={code} size="row" treatment={treatment} full flat />
+              {/* the amount being signed. see the `reveal` note above. */}
+              <Amount
+                t={t}
+                value={amount}
+                code={code}
+                size="row"
+                treatment={treatment}
+                full
+                flat
+                reveal
+              />
             </FactRow>
           )}
           {fee && <FactRow t={t} label="Network fee">{`${fee} XLM`}</FactRow>}
@@ -654,7 +669,6 @@ function ReceiptRow({ t, label, children }: { t: Theme; label: string; children:
         alignItems: "center",
         justifyContent: "space-between",
         minHeight: 46,
-        borderTop: `1px solid ${t.line}`,
       }}
     >
       <span style={{ ...text.body, fontWeight: 600, color: t.sub }}>{label}</span>

@@ -148,6 +148,56 @@ describe("a site cannot get a signature without a person answering", () => {
     expect(summary.warning).toMatch(/who controls the account/i);
   });
 
+  it("refuses a contract call rather than describing it as 'Invoke a smart contract'", async () => {
+    // The last blind-signing door. `invokeHostFunction` was on the describable
+    // list and its entire sentence was "Invoke a smart contract": no contract
+    // id, no function, no arguments, no value, and it was not in ALARMING so
+    // nothing warned either. Approve was live under it. It is the ONE operation
+    // that can do anything at all, so it was the worst possible one to describe
+    // by its type name, which is the exact pattern the describable list was
+    // introduced to close for `createClaimableBalance`.
+    const { c, address } = await connected();
+    const { TransactionBuilder, Account, Operation, Address, nativeToScVal, BASE_FEE, Networks } =
+      await import("@stellar/stellar-sdk/base");
+    const xdr = new TransactionBuilder(new Account(address, "1"), {
+      fee: BASE_FEE,
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(
+        // A token transfer of everything, which is what this looked like as
+        // one unadorned line reading "1. Invoke a smart contract".
+        Operation.invokeContractFunction({
+          contract: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          function: "transfer",
+          args: [
+            new Address(address).toScVal(),
+            new Address("GDRXE2BQUC3AZNPVFSCEZ76NJ3WWL25FYFK6RGZGIEKWE4SOOHSUJUJ6").toScVal(),
+            nativeToScVal(9_500_0000000n, { type: "i128" }),
+          ],
+        }),
+      )
+      .setTimeout(180)
+      .build()
+      .toXDR();
+
+    const summary = describeTransaction(xdr, "Test SDF Network ; September 2015");
+    expect(summary.decoded).toBe(false);
+    expect(summary.effects).toEqual([]);
+    // And the refusal says whose limitation it is. The generic sentence reads
+    // as "this envelope is broken", which would send a site re-encoding a
+    // perfectly good transaction.
+    expect(summary.warning).toMatch(/calls a smart contract/i);
+    expect(summary.warning).toMatch(/arguments/i);
+
+    // End to end: it never reaches the approval queue, so no screen can offer
+    // an Approve button over it.
+    const res = (await c.sep43("https://app.example", "signTransaction", [xdr])) as {
+      error?: { message: string };
+    };
+    expect(res.error).toBeDefined();
+    expect(c.pendingDappRequest()).toBeNull();
+  });
+
   it("still refuses signAuthEntry and signMessage, which have no screen", async () => {
     const { c } = await connected();
     for (const m of ["signAuthEntry", "signMessage"]) {

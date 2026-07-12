@@ -14,7 +14,7 @@ export interface PublicBalance {
   issuer?: string;
   /** SPENDABLE amount, decimal string. For native XLM this excludes the reserve. */
   amount: string;
-  /** Full balance including anything locked. Present for native only. */
+  /** Full balance including anything locked. Present for native and any trustline. */
   total?: string;
   /** Protocol-locked reserve. Present for native only. */
   reserved?: string;
@@ -364,6 +364,21 @@ export interface HistoryPage {
   entries: HistoryEntry[];
   /** Opaque; pass back as `cursor` for the next page. Null when there are no more. */
   cursor: string | null;
+  /**
+   * Which halves of the history could not be read, if any.
+   *
+   * `history()` catches at three layers so one pocket's failure cannot take the
+   * other's list down with it, which is right. What was wrong is that the
+   * catches returned `[]` and said nothing, so an unreachable Horizon, an
+   * unavailable archive and a genuinely empty account all arrived as the same
+   * page and the screen drew all three as "No activity yet." One of those is a
+   * fact about the user and the other two are facts about the network.
+   *
+   * Absent or empty means everything asked for was read. A partial page is
+   * still returned alongside this, because half a history is worth showing as
+   * long as it is not presented as the whole one.
+   */
+  unread?: { pocket: "public" | "private"; reason: string }[];
 }
 
 /**

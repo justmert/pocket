@@ -1,7 +1,14 @@
 // The wallet controller. Owns the vault, the session and every chain call.
 // Runs in the service worker; the popup never touches keys.
 import { rpc } from "@stellar/stellar-sdk";
-import { Account, Asset, Keypair, type Transaction, type xdr } from "@stellar/stellar-sdk/base";
+import {
+  Account,
+  Asset,
+  Keypair,
+  BASE_FEE,
+  type Transaction,
+  type xdr,
+} from "@stellar/stellar-sdk/base";
 import { generateMnemonic, mnemonicToSeed, validateMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { NETWORKS, DEFAULT_NETWORK, type NetworkId, type ConfidentialDeployment } from "./config";
@@ -31,6 +38,7 @@ import {
   readTrustline,
   formatAmount,
   parseAmount,
+  availableToSend,
   minimumBalance,
   AccountNotFoundError,
 } from "./chain/balances";
@@ -181,8 +189,45 @@ type StagedResolution =
       kind: "openings";
       spendable: [string, string];
       receiving: [string, string];
+      /**
+       * The last ledger whose inbound transfers are all already in `receiving`.
+       * INCLUSIVE, so a scan resumes at `syncedThrough + 1`.
+       *
+       * Two places produce it, `creditInboundTransfers` here and
+       * `recoverOpenings` from the archive's `ingested_through`, and both must
+       * mean the same thing, because only one of them reads it back. It is a
+       * high-water mark of what has been ACCOUNTED FOR, never a chain tip or a
+       * wall-clock of when a scan ran: a cursor one ledger optimistic re-reads
+       * an event that is already credited, and the all-or-nothing check in
+       * `creditInbound` turns that into a pocket that refuses to reconcile on
+       * every retry rather than a balance that is merely stale.
+       */
       syncedThrough: number;
     }
+  /**
+   * A spend sets the SPENDABLE side and deliberately says nothing about the
+   * receiving side or the cursor.
+   *
+   * Transfer and unshield used the absolute form above, carrying `receiving` as
+   * it was read at BUILD time. That is a claim the sender is not entitled to
+   * make. The contract does not touch the sender's `receiving_commitment` in
+   * either operation (`storage.rs:711-712` for `confidential_transfer`, `627`
+   * for `withdraw`), so the only thing that moves it is somebody ELSE paying
+   * you, which needs no transaction of yours and no permission.
+   *
+   * Proving takes tens of seconds. A payment arriving inside that window is
+   * ordinary, and it made the staged post-state wrong about a side the
+   * operation never changed: `persistVerified` compared the stale sum against
+   * the chain, refused, and the pocket sat `diverged` after an operation that
+   * had SUCCEEDED. Carrying the build-time `syncedThrough` was the same mistake
+   * one level down, rolling the scan cursor back over the credit that had just
+   * advanced it.
+   *
+   * So the post-state is absolute exactly where it has to be, because the new
+   * spendable opening comes out of the proof and cannot be recomputed, and
+   * silent everywhere else.
+   */
+  | { kind: "spend"; spendable: [string, string] }
   /** A deposit credits the receiving side by a public amount, blinding zero. */
   | { kind: "credit"; amount: string }
   /** A merge folds the whole receiving side into spendable. */
@@ -489,8 +534,23 @@ export class WalletController {
       // Still not included, and it can never be included now. Left as "pending"
       // the record is unclearable, and the screen that renders it sits in front
       // of the whole wallet on every popup mount, forever.
+      //
+      // `answered` gates it, and has to. This rewrite routes the operation to
+      // `discardStaged`, which deletes the only copy of the post-state that
+      // exists, so the reasoning behind it has to be sound: an envelope past
+      // its maxTime can never apply FROM NOW ON, which says nothing whatever
+      // about whether it applied earlier. The one thing that rules that out is
+      // the ledger having answered NOT_FOUND, and `pollToTerminal` returns
+      // "pending" both when it heard that and when it heard nothing at all.
+      // Conflating them turned an RPC outage lasting longer than a
+      // three-minute timeBounds window into the deletion of the openings of a
+      // confidential operation that had succeeded.
+      //
+      // Unanswered stays pending: unresolved is the honest report, and it is
+      // recoverable on the next poll that gets through.
       if (
         outcome.kind === "pending" &&
+        outcome.answered &&
         e.maxTime > 0 &&
         Math.floor(Date.now() / 1000) > e.maxTime
       ) {
@@ -671,13 +731,42 @@ export class WalletController {
         ...id,
         state: "unregistered",
         message:
-          "Setting up a private pocket is a one-time, publicly visible transaction. " +
-          "It permanently binds an auditor that can read your amounts.",
+          "Hides your amounts, never your addresses. Setting it up is a one-time, " +
+          "publicly visible transaction that permanently adds an auditor who can see " +
+          "your amounts.",
       };
     }
 
     this.readyAssets.add(cfg.token);
     const ttl = await readAccountTtl(this.server(), cfg.token, address, this.network);
+
+    // The account READ succeeded, so the entry is reachable. If its TTL says
+    // otherwise, the entry has archived and the network restored it to answer
+    // us. Both facts are true at once, and only one of them was being reported.
+    //
+    // This deployment is soroban-rpc 27.1.1 / protocol 27, where an archived
+    // persistent entry is AUTO-RESTORED into the readWrite footprint instead of
+    // coming back as a `restorePreamble`. Measured on a real archived entry
+    // (`liveUntilLedgerSeq: 0`, lastModified 3086116 against latest 4019256): no
+    // preamble, a real result, and `transactionData` carrying
+    // `archivedSorobanEntries`, which `assembleTransaction` copies verbatim so
+    // the network performs the restore as part of the transaction.
+    //
+    // Two consequences, and the second is the one that was missed. The first:
+    // `readConfidentialAccount` now returns a real account for an archived
+    // pocket, so the `state: "archived"` branch above is unreachable on this
+    // deployment, and reporting dormancy through it would be reporting a state
+    // the chain no longer produces. The second: the pocket therefore reads as
+    // fully READY, which is not wrong (it is genuinely spendable) and is not the
+    // whole truth either, because the next operation silently carries a restore
+    // and its fee.
+    //
+    // So the state stays `ready`, because forcing a usable pocket into a dormant
+    // dead end would be the worse error, and the fact is said in the message
+    // instead. `getLedgerEntries` omits an evicted entry entirely, which is why
+    // `absent` counts here: a registered account whose entry cannot be found has
+    // been evicted, and that is exactly the archived case.
+    const restored = ttl.kind === "archived" || ttl.kind === "absent";
 
     // Openings live in the encrypted vault; without them the commitments on
     // chain are visible but unspendable, which is precisely why that store is
@@ -698,9 +787,7 @@ export class WalletController {
         // balance.
         message:
           "This account has a private pocket but this device has no record of its balances. " +
-          "Your funds are safe on chain. Rebuilding the record means replaying your event " +
-          "history from a durable archive, and this build has none configured, so they cannot " +
-          "be rebuilt yet.",
+          `Your funds are safe on chain. ${rebuildAdvice(NETWORKS[this.network].archiveUrl)}`,
       };
     }
 
@@ -719,8 +806,8 @@ export class WalletController {
         message:
           `Local records for the ${check.which} balance do not match the ledger. ` +
           (this.lastInboundFailure ? `${this.lastInboundFailure} ` : "") +
-          "Pocket will not spend from this state. Your funds are safe on chain. Rebuilding the " +
-          "record needs a durable event archive, and this build has none configured.",
+          "Pocket will not spend from this state. Your funds are safe on chain. " +
+          rebuildAdvice(NETWORKS[this.network].archiveUrl),
       };
     }
 
@@ -740,6 +827,14 @@ export class WalletController {
       mergeAvailable: b.mergeAvailable,
       auditorId: account.auditorId,
       ...ttlFields(ttl),
+      ...(restored
+        ? {
+            message:
+              "This private pocket went dormant and the network restored it to read it. " +
+              "Your balances are correct and still spendable. The next operation you make " +
+              "will restore the entry as part of itself and cost a little more in fees.",
+          }
+        : {}),
     };
   }
 
@@ -913,6 +1008,27 @@ export class WalletController {
         apiKey: cfg.apiKey,
         network: this.network,
       });
+
+      // A DEPOSIT spends a wallet balance, and nothing here read it. Positivity
+      // and the vault target were checked; the quantity leaving the account was
+      // not, so an over-balance deposit was built, reviewed, signed, submitted
+      // and refused by the network with a fee paid.
+      //
+      // A WITHDRAW is not guarded here because it does not spend a wallet
+      // balance at all: it redeems vault shares, and the figure to check it
+      // against is `position.underlying`, which the withdraw form already sizes
+      // its maximum from.
+      //
+      // Best effort on the ASSET, deliberately. The vault names its underlying
+      // by symbol, and resolving a symbol to an issuer needs `knownAssets`. If
+      // that lookup fails the guard is skipped rather than refusing: this check
+      // exists to stop a spend that cannot work, and it must never become the
+      // reason a spend that would have worked does not happen.
+      if (kind === "deposit") {
+        const asset = await this.yieldUnderlying(client, cfg.vault);
+        if (asset) await this.assertCanSpend(asset, amount);
+      }
+
       const built =
         kind === "deposit"
           ? await client.buildDeposit(cfg.vault, { caller: address, amounts: [amount] })
@@ -975,6 +1091,14 @@ export class WalletController {
           "The yield transaction moves more than the amount you entered, so Pocket will not " +
             "sign it.",
         );
+      }
+
+      // The real fee, from DeFindex's own composed envelope. The guard before
+      // the build could only assume the base fee, and a vault deposit is a
+      // Soroban invocation costing orders of magnitude more.
+      if (kind === "deposit") {
+        const asset = await this.yieldUnderlying(client, cfg.vault);
+        if (asset) await this.assertCanAffordFee(decoded, asset, amount);
       }
 
       const handle = decoded.hash().toString("hex");
@@ -1321,6 +1445,11 @@ export class WalletController {
       }
       const inA = this.assetSac(assetIn);
       const outA = this.assetSac(assetOut);
+      // The IN balance, which nothing here read. Positivity, slippage and the
+      // OUT trustline were all checked and the one quantity actually being
+      // spent was not, so a swap for more XLM than the account holds was
+      // routed, priced, reviewed, signed, submitted and refused by the network.
+      await this.assertCanSpend(inA.asset, amount);
 
       // Receiving a classic asset needs a trustline, or the swap reverts at
       // submit with an opaque error. Check first and refuse clearly.
@@ -1396,6 +1525,9 @@ export class WalletController {
         .build();
       // Simulated now, so the fee the sheet states is the fee that gets signed.
       const tx = await this.prepareForReview(rawSwap);
+      // ...and the first moment the real fee is known. A swap costs orders of
+      // magnitude more than the base fee the guard above had to assume.
+      await this.assertCanAffordFee(tx, inA.asset, amount);
 
       const handle = tx.hash().toString("hex");
       this.pending.set(handle, { xdr: tx.toXDR(), at: Date.now(), kind: "swap" });
@@ -1517,6 +1649,20 @@ export class WalletController {
       // is the amount someone authorises, and it must not exceed what they
       // asked for.
       const bridged = cctp.fromCctpAmount(cctpAmount);
+
+      // The USDC balance, which nothing here read. This is the path where the
+      // omission costs the most: `confirmCctpSend` submits TWO transactions,
+      // and leg one is a SAC `approve`, which requires no balance at all. So an
+      // over-balance bridge paid for a successful approve and then failed on
+      // the burn, and reported it as a connection problem.
+      //
+      // Against `bridged`, not the typed amount, because the rounded-down
+      // figure is what the approve and the burn actually move. Guarding the
+      // larger number would refuse a bridge of an exact balance that would in
+      // fact have succeeded.
+      const usdcIssuer = chain.usdc.split("-")[1];
+      if (usdcIssuer) await this.assertCanSpend(new Asset("USDC", usdcIssuer), bridged);
+
       const maxFee = 0n; // standard transfer; no fast-transfer fee
       const minFinality = fast ? cctp.FINALITY.fast : cctp.FINALITY.standard;
       const usdcSac = this.cctpUsdcSac(chain.usdc);
@@ -1546,6 +1692,18 @@ export class WalletController {
         .build();
       // Simulated now, so the fee the sheet states is the fee that gets signed.
       const approveTx = await this.prepareForReview(rawApprove);
+      // The real fee for this leg, finally known: a Soroban invocation costs
+      // orders of magnitude more than the base fee the guard above had to
+      // assume, and an approve the account cannot pay for must not be signed.
+      //
+      // This covers leg ONE only. The burn is built at confirm time, against
+      // the sequence the approve consumed and the allowance it created, so it
+      // cannot be simulated before the approve exists. That is why the balance
+      // is checked up front instead: the remaining exposure is a burn that
+      // fails for a fee the approve left too little of, which is far narrower
+      // than the over-balance case that used to reach here.
+      if (usdcIssuer)
+        await this.assertCanAffordFee(approveTx, new Asset("USDC", usdcIssuer), bridged);
 
       const handle = approveTx.hash().toString("hex");
       this.pending.set(handle, {
@@ -1904,7 +2062,7 @@ export class WalletController {
    *      denylist would fail open the moment a method is added.
    */
   async sep43(origin: string, method: string, params: unknown[]): Promise<unknown> {
-    const { ERROR, err, CONFIDENTIAL_METHODS } = await import("./provider/sep43");
+    const { ERROR, err, dappForbiddenInvocation } = await import("./provider/sep43");
     const sessions = await import("./provider/session");
 
     if (method === "getNetwork") {
@@ -1970,8 +2128,21 @@ export class WalletController {
             "That transaction is from a different account, so Pocket will not sign it.",
           );
         }
-        // The private pocket is unreachable from a site by design.
-        void CONFIDENTIAL_METHODS;
+        // The private pocket is unreachable from a site by design, and this is
+        // where that stops being a design and becomes a check. It was
+        // `void CONFIDENTIAL_METHODS`, which reads like a boundary and does
+        // nothing; what actually kept a site out was that no screen can
+        // describe a contract call, so none reached here. That barrier is real
+        // and it is incidental, and it would fall silently the day contract
+        // calls become describable.
+        const forbidden = dappForbiddenInvocation(xdr, NETWORKS[this.network].passphrase);
+        if (forbidden) {
+          return err(
+            ERROR.INVALID_REQUEST,
+            `Pocket does not sign contract calls for websites (${forbidden}). Your private ` +
+              `pocket is not reachable from a site at all.`,
+          );
+        }
 
         // Parked until the user answers in the popup. A timeout resolves to
         // REFUSED: someone who walked away has not consented.
@@ -2458,6 +2629,14 @@ export class WalletController {
   }
 
   async setNetwork(network: NetworkId): Promise<WalletStatus> {
+    // Belt and braces with the dispatcher's own check, and worth having twice:
+    // this value is assigned to `this.network` and then PERSISTED, so an
+    // unknown one leaves every later `NETWORKS[this.network]` undefined and
+    // survives a restart, with no screen that can set it back. A guard that
+    // only exists at one caller is a guard the next caller will not have.
+    if (!Object.prototype.hasOwnProperty.call(NETWORKS, network)) {
+      throw new Error("Pocket does not know that network.");
+    }
     // Mainnet has no host permission in the manifest yet, so every RPC call
     // would fail with an opaque network error. Refuse the switch instead of
     // letting the wallet look broken.
@@ -2481,9 +2660,12 @@ export class WalletController {
       const native = await readNative(this.server(), address);
       // The reserve is locked by the protocol and cannot be sent. Presenting
       // the raw balance would let a user try to spend into it and get an
-      // opaque tx_insufficient_balance at submit time.
+      // opaque tx_insufficient_balance at submit time. Selling liabilities are
+      // locked the same way and were not being subtracted: an offer made in any
+      // other wallet on this same G-address made this figure too big by exactly
+      // the offer.
       const reserve = minimumBalance(native, BASE_RESERVE_STROOPS);
-      const spendable = native.raw > reserve ? native.raw - reserve : 0n;
+      const spendable = availableToSend({ ...native, reserve });
       out.push({
         id: "native",
         code: "XLM",
@@ -2516,7 +2698,12 @@ export class WalletController {
           id: tl.id,
           code: tl.code,
           issuer: tl.issuer,
-          amount: formatAmount(tl.raw),
+          // The raw trustline balance was published straight through as
+          // SPENDABLE. A trustline is not reserved against, so there is no
+          // reserve term here, but an open sell offer locks its stroops just as
+          // firmly as it does on the native side.
+          amount: formatAmount(availableToSend(tl)),
+          total: formatAmount(tl.raw),
           authorized: tl.authorized,
         });
       }
@@ -2637,10 +2824,21 @@ export class WalletController {
     const wantPrivate = pocket !== "public";
     const wantPublic = pocket !== "private";
 
+    // Which halves could not be read. Reported rather than swallowed: the
+    // catches below are right to keep one pocket's failure off the other's
+    // list, and they were wrong to return an empty page in silence, because the
+    // screen renders that as "No activity yet."
+    const unread: { pocket: "public" | "private"; reason: string }[] = [];
+
     // The private list is computed whole (a stateful replay cannot be paged) and
     // memoised, so scrolling does not re-fetch and re-replay the archive per page.
     // A failed private read is not fatal: the public half still shows.
-    const priv = wantPrivate ? await this.privateHistoryAll(address, asset).catch(() => []) : [];
+    const priv = wantPrivate
+      ? await this.privateHistoryAll(address, asset).catch((e: unknown) => {
+          unread.push({ pocket: "private", reason: describeHistoryFailure(e, "private") });
+          return [] as HistoryEntry[];
+        })
+      : [];
     const privBelow = priv.filter((e) => beforeCursor(e.at, e.id, before));
 
     // Public is paged from Horizon. A failed public read is not fatal: the
@@ -2655,17 +2853,52 @@ export class WalletController {
           excludeCounterparties: confidentialTokens,
           before,
           limit: lim,
-        }).catch(() => ({ entries: [] as HistoryEntry[], more: false }))
-      : { entries: [] as HistoryEntry[], more: false };
+        }).catch((e: unknown) => {
+          unread.push({ pocket: "public", reason: describeHistoryFailure(e, "public") });
+          return {
+            entries: [] as HistoryEntry[],
+            more: false,
+            tokenOf: {} as Record<string, string>,
+          };
+        })
+      : { entries: [] as HistoryEntry[], more: false, tokenOf: {} as Record<string, string> };
 
     const merged = [...privBelow, ...pub.entries].sort(byRecency);
     const entries = merged.slice(0, lim);
     // There is more when the merge overflowed the page, or Horizon stopped at its
     // page cap with entries still below the cursor.
     const more = merged.length > lim || pub.more;
+
+    // Horizon's own paging token for the last PUBLIC entry that SURVIVED the
+    // merge, so the next call resumes there instead of walking from the newest
+    // page and skipping. It has to be the surviving one, not the last one
+    // fetched: the private side can fill the page and push public entries out
+    // of the slice, and a token past those would skip them for good.
+    //
+    // Carried forward when this page kept no public entry at all, so a run of
+    // private-only pages does not lose the public position.
+    let token: string | undefined;
+    for (let i = entries.length - 1; i >= 0 && token === undefined; i--) {
+      const id = entries[i]?.id;
+      if (id !== undefined && pub.tokenOf[id] !== undefined) token = pub.tokenOf[id];
+    }
+    token ??= before?.token;
+
     const last = entries[entries.length - 1];
-    const nextCursor = last && more ? encodeCursor({ at: last.at, id: last.id }) : null;
-    return { entries, cursor: nextCursor };
+    // `more` was dropped whenever the page came back empty, because the cursor
+    // was derived from the last entry and there was no last entry. That is
+    // exactly the deep-scroll case: the skip consumed all twenty pages, found
+    // nothing, correctly reported `more: true`, and the null cursor then told
+    // the popup there was nothing further. `loadMore` returned early forever
+    // and the list stopped, silently. With a token to resume from there is
+    // something to say even with no entries.
+    const nextCursor =
+      last && more
+        ? encodeCursor({ at: last.at, id: last.id, ...(token ? { token } : {}) })
+        : more && before
+          ? encodeCursor({ ...before, ...(token ? { token } : {}) })
+          : null;
+    return { entries, cursor: nextCursor, ...(unread.length ? { unread } : {}) };
   }
 
   private async privateHistoryAll(address: string, asset?: string): Promise<HistoryEntry[]> {
@@ -2674,7 +2907,11 @@ export class WalletController {
     const key = `${this.network}:${address}:${asset ?? "all"}`;
     const memo = this.privHistoryMemo;
     if (memo && memo.key === key && Date.now() - memo.at < 20_000) return memo.entries;
-    const entries = await this.computePrivateHistory(address, asset).catch(() => []);
+    // NOT caught here, and NOT memoised on failure. Swallowing it produced an
+    // empty list, and memoising that pinned "you have no private history" in
+    // front of the user for twenty seconds after the read recovered. The caller
+    // catches this and reports it as an unread half.
+    const entries = await this.computePrivateHistory(address, asset);
     this.privHistoryMemo = { key, at: Date.now(), entries };
     return entries;
   }
@@ -2739,6 +2976,160 @@ export class WalletController {
     return this.exclusive(() => this.doBuildPayment(req));
   }
 
+  /**
+   * Refuse a spend the account cannot actually make, BEFORE anything is built.
+   *
+   * One method because there were five build paths and only one of them did
+   * this. `buildSwap` validated positivity, slippage and the destination
+   * trustline; `buildYieldMove` validated positivity and the vault; and
+   * `buildCctpSend` validated positivity, the six-decimal floor and the EVM
+   * address. None of the three ever read the balance it was about to spend
+   * from, so every one of them ended the same way: review, sign, submit, fail
+   * on chain, pay a fee for the privilege.
+   *
+   * The argument for putting it at the worker is the one already written above
+   * the payment guard, and it applies unchanged to the other four: a popup
+   * showing a spendable figure is display, and the check has to sit where
+   * whatever calls the worker cannot go round it.
+   *
+   * `feeStroops` is subtracted from the NATIVE balance only, because that is
+   * where the fee is paid from. A Soroban invocation costs far more than base
+   * fee, and the caller that built it is the one that knows, so it passes what
+   * the envelope will really carry rather than this guessing.
+   */
+  /**
+   * The classic asset a vault takes deposits in, or null if it cannot be named.
+   *
+   * The API reports the underlying by SYMBOL and by SAC address. A `Asset`
+   * needs code and issuer, so the symbol is matched against this network's
+   * `knownAssets`, which is the same way the yield screen resolves it.
+   *
+   * Null rather than a throw on anything unrecognised: the only caller uses
+   * this to decide whether it can check a balance, and "we could not tell" must
+   * degrade to the behaviour that existed before the check, not to a refusal.
+   */
+  /**
+   * The classic asset a symbol names on this network, or null.
+   *
+   * A wrapper records its underlying as a SAC CONTRACT id and its display
+   * symbol separately, and an `Asset` needs code and issuer, so neither field
+   * can be used directly. The symbol is matched against `knownAssets`, which is
+   * how the screens resolve it too.
+   */
+  private assetForSymbol(symbol: string | undefined): Asset | null {
+    if (!symbol) return null;
+    if (symbol === "XLM") return Asset.native();
+    const known = (NETWORKS[this.network].knownAssets ?? []).find((a) => a.code === symbol);
+    return known ? new Asset(known.code, known.issuer) : null;
+  }
+
+  private async yieldUnderlying(
+    client: { vault(address: string): Promise<{ assets?: { symbol?: string }[] }> },
+    vaultAddress: string,
+  ): Promise<Asset | null> {
+    try {
+      return this.assetForSymbol((await client.vault(vaultAddress)).assets?.[0]?.symbol);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * The same affordability question, asked again once the fee is REAL.
+   *
+   * `assertCanSpend` runs before anything is built, so the only fee it can
+   * assume is `BASE_FEE`: 100 stroops. A Soroban invocation costs three to four
+   * orders of magnitude more than that (measured on this deployment: ~179,000
+   * for a swap, 350,412 for a native shield), and simulation is the first
+   * moment the number exists. So the early check catches the gross cases
+   * cheaply and this one catches the case it structurally cannot: an amount
+   * that fits the balance and leaves nothing for the fee.
+   *
+   * Called after `prepareForReview`, before the handle is retained, so a
+   * transaction that cannot be paid for is never offered for signature.
+   */
+  private async assertCanAffordFee(tx: Transaction, asset: Asset, amount: bigint) {
+    await this.assertCanSpend(asset, amount, BigInt(tx.fee));
+  }
+
+  private async assertCanSpend(asset: Asset, amount: bigint, feeStroops = BigInt(BASE_FEE)) {
+    const { address } = requireSession();
+    const fee = feeStroops;
+    if (asset.isNative()) {
+      const native = await readNative(this.server(), address);
+      const reserve = minimumBalance(native, BASE_RESERVE_STROOPS);
+      const unreserved = availableToSend({ ...native, reserve });
+      // The FEE comes out of the same balance, and this guard did not count it.
+      // So the exact unreserved figure, which is the number the compose screen
+      // shows and the one a careful user types by hand, passed every check the
+      // wallet makes and then failed on chain as `txINSUFFICIENT_BALANCE` for
+      // want of 100 stroops: a fee charged, a sequence number consumed, and an
+      // opaque error, which is precisely the outcome the comment above says
+      // this guard exists to prevent. "Use max" was the only path that got it
+      // right, because `sendableAfterFee` subtracts it there.
+      const sendable = unreserved > fee ? unreserved - fee : 0n;
+      if (amount > sendable) {
+        throw new InsufficientBalanceError(
+          `That is more than you can send. Your balance is ${formatAmount(native.raw)} XLM, ` +
+            `of which ${formatAmount(reserve)} XLM is locked by the network as a reserve and ` +
+            `${formatAmount(fee)} XLM pays the network fee, leaving ${formatAmount(sendable)} XLM.`,
+        );
+      }
+    } else {
+      // The same guard, for the assets the picker now offers. It sat inside
+      // `if (asset.isNative())` from a time when XLM was the only sendable
+      // thing, so a USDC payment for more than the trustline holds reached the
+      // network unchecked and came back as an opaque failure with a fee paid.
+      //
+      // Three separate ways to be refused, and they are different sentences on
+      // purpose: no trustline, a trustline the issuer has frozen, and simply
+      // not enough. Collapsing them into "insufficient balance" describes the
+      // last one and misdescribes the other two.
+      const tl = await readTrustline(this.server(), address, asset);
+      if (!tl) {
+        throw new InsufficientBalanceError(
+          `This account does not hold ${asset.getCode()}, so there is nothing to send. ` +
+            `Adding the asset creates a trustline for it.`,
+        );
+      }
+      if (!tl.authorized) {
+        throw new InsufficientBalanceError(
+          `The issuer of ${asset.getCode()} has not authorised this account to hold it, so ` +
+            `Pocket cannot send it. The balance is ${formatAmount(tl.raw)} ${asset.getCode()} ` +
+            `and the issuer controls whether it can move.`,
+        );
+      }
+      const sendable = availableToSend(tl);
+      if (amount > sendable) {
+        // The fee is XLM and is not deducted from THIS asset: it does not come
+        // out of it. Whether the account can cover that fee is a separate
+        // question, asked below.
+        throw new InsufficientBalanceError(
+          `That is more than you can send. Your ${asset.getCode()} balance is ` +
+            `${formatAmount(tl.raw)}, leaving ${formatAmount(sendable)} to send.`,
+        );
+      }
+
+      // ...and the fee itself, which is paid in XLM whatever is moving. Left
+      // unchecked, a wallet holding plenty of USDC and almost no XLM passed
+      // every check and failed on chain, and on a Soroban path that fee is not
+      // the 100 stroops of a classic payment: it is measured in the hundreds of
+      // thousands.
+      const native = await readNative(this.server(), address);
+      const spare = availableToSend({
+        ...native,
+        reserve: minimumBalance(native, BASE_RESERVE_STROOPS),
+      });
+      if (spare < fee) {
+        throw new InsufficientBalanceError(
+          `This needs ${formatAmount(fee)} XLM for the network fee and only ` +
+            `${formatAmount(spare)} XLM is free after the network's reserve. Add a little XLM ` +
+            `and try again.`,
+        );
+      }
+    }
+  }
+
   private async doBuildPayment(req: {
     to: string;
     amount: string;
@@ -2764,18 +3155,7 @@ export class WalletController {
     // display only: entering more than it still builds, signs and submits, and
     // the failure charges a fee and consumes the sequence number. The check
     // has to sit where it cannot be bypassed by whatever calls the worker.
-    if (asset.isNative()) {
-      const native = await readNative(this.server(), address);
-      const reserve = minimumBalance(native, BASE_RESERVE_STROOPS);
-      const spendable = native.raw > reserve ? native.raw - reserve : 0n;
-      if (amount > spendable) {
-        throw new InsufficientBalanceError(
-          `That is more than you can send. Your balance is ${formatAmount(native.raw)} XLM, ` +
-            `of which ${formatAmount(reserve)} XLM is locked by the network as a reserve, ` +
-            `leaving ${formatAmount(spendable)} XLM.`,
-        );
-      }
-    }
+    await this.assertCanSpend(asset, amount);
 
     const seq = await this.server().getAccount(address);
     const tx = buildPayment(
@@ -2983,6 +3363,11 @@ export class WalletController {
     // not the one this build proves against. A mismatch otherwise surfaces as
     // an opaque contract error at submit time, after the user has waited
     // through proving and signed.
+    // Before the VK check and the circuit load, both of which are slow and
+    // neither of which can rescue a request that was never going to be built.
+    const refusal = refusePrivateOp(req, address);
+    if (refusal) throw new PrivatePocketError(refusal);
+
     const circuit = CIRCUIT_FOR[req.kind];
     // Each phase is named as it STARTS, and only when it really starts. The
     // popup polls this; nothing is invented and no percentage is implied.
@@ -3033,6 +3418,14 @@ export class WalletController {
         // the envelope built alongside it was never signed.
         const { deposit: rawDeposit } = await ops.buildShield(ctx, amount);
         const deposit = await this.prepareForReview(rawDeposit);
+        // The real fee. A native shield was measured at 350,412 stroops on this
+        // deployment, against the 100 the pre-build guard has to assume, so
+        // "use max" plus a base-fee reservation produced an amount the account
+        // could not actually pay for.
+        // By SYMBOL: the wrapper records its underlying as a SAC contract id,
+        // which is not something `Asset` can be built from.
+        const shielded = this.assetForSymbol(cfg.symbol);
+        if (shielded) await this.assertCanAffordFee(deposit, shielded, amount);
         return this.stagePrivate(
           deposit,
           {
@@ -3073,12 +3466,8 @@ export class WalletController {
 
       case "transfer": {
         const amount = parseAmount(req.amount);
+        // Already refused above if it is not a G-address or if it is ours.
         const to = parseAddress(req.to);
-        if (to.kind !== "account") {
-          throw new PrivatePocketError(
-            "A private transfer needs an account address (G...). Contract addresses cannot hold one.",
-          );
-        }
         const stored = await this.requireOpenings(address, cfg.token);
         if (amount > stored.spendable.value) {
           throw new PrivatePocketError(
@@ -3118,13 +3507,7 @@ export class WalletController {
               `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
             ],
           },
-          {
-            resolve: openingsResolution({
-              spendable: newSpendable,
-              receiving: stored.receiving,
-              syncedThrough: stored.syncedThrough,
-            }),
-          },
+          { resolve: spendResolution(newSpendable) },
           cfg.token,
         );
       }
@@ -3158,13 +3541,7 @@ export class WalletController {
               `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
             ],
           },
-          {
-            resolve: openingsResolution({
-              spendable: newSpendable,
-              receiving: stored.receiving,
-              syncedThrough: stored.syncedThrough,
-            }),
-          },
+          { resolve: spendResolution(newSpendable) },
           cfg.token,
         );
       }
@@ -3222,8 +3599,7 @@ export class WalletController {
     if (!stored) {
       throw new PrivatePocketError(
         "This device has no record of your private balances, so it cannot spend them. " +
-          "Your funds are safe on chain. Rebuilding the record needs a durable event archive, " +
-          "and this build has none configured.",
+          `Your funds are safe on chain. ${rebuildAdvice(NETWORKS[this.network].archiveUrl)}`,
       );
     }
     return stored;
@@ -3379,8 +3755,17 @@ export class WalletController {
     token?: string,
   ): Promise<SubmitOutcome> {
     const outcome = await this.signAndSubmit(tx, resolve, kind, token);
-    if (outcome.kind === "succeeded") await this.applyStaged(outcome.hash);
-    else if (outcome.kind !== "pending") await this.discardStaged(outcome.hash);
+    if (outcome.kind === "succeeded") {
+      // Consequence FIRST, record second, and the order is the whole point.
+      // `applyStaged` throws on a chain read that fails and on a post-state the
+      // chain disagrees with, and in both cases the in-flight record has to
+      // survive: it is the only thing `reconcileInFlight` reads, and the staged
+      // opening it leads back to is the only copy that exists. Cleared here
+      // rather than inside `submitAndConfirm`, which used to do it the moment
+      // the ledger answered, one line before this write could fail.
+      await this.applyStaged(outcome.hash);
+      await this.inFlightSink().clear(outcome.hash);
+    } else if (outcome.kind !== "pending") await this.discardStaged(outcome.hash);
     return outcome;
   }
 
@@ -3445,7 +3830,13 @@ export class WalletController {
     // The KIND travels with the record so a stranded merge can be told from a
     // stranded payment. Without it the merge exemption would have to trust its
     // caller rather than check.
-    return submitAndConfirm(this.server(), prepared, { inFlight: this.inFlightSink(kind) });
+    return submitAndConfirm(this.server(), prepared, {
+      inFlight: this.inFlightSink(kind),
+      // A staged resolution is a consequence only this device can write, so
+      // this submission is not settled when the ledger says so. `submitStaged`
+      // clears the record after the write lands. See `Settles`.
+      settles: resolve ? "caller" : "chain",
+    });
   }
 
   /** Store openings only once the chain agrees they open what it holds. */
@@ -3462,15 +3853,14 @@ export class WalletController {
       // between a user who should investigate and one who simply needs their
       // balances rebuilt. Blaming a divergence when this device never held a
       // record sends them looking for a problem that is not there.
+      const advice = rebuildAdvice(NETWORKS[this.network].archiveUrl);
       throw new PrivatePocketError(
         hadRecord
           ? `The transaction landed, but the ${check.which} balance this device computed does not ` +
             `match what the contract now holds. Your funds are safe on chain. Pocket will not ` +
-            `spend from a state it cannot verify, and rebuilding the record needs a durable ` +
-            `event archive, which this build does not have configured.`
+            `spend from a state it cannot verify. ${advice}`
           : `The transaction landed, but this device has no record of your private balances, so ` +
-            `it cannot work out what you now hold. Your funds are safe on chain. Rebuilding the ` +
-            `record needs a durable event archive, and this build has none configured.`,
+            `it cannot work out what you now hold. Your funds are safe on chain. ${advice}`,
       );
     }
     await this.writeOpenings(address, cfg.token, state);
@@ -3504,9 +3894,20 @@ export class WalletController {
     // Bumping only the first would let every other asset's account archive
     // silently. They run one at a time (each awaits its own confirmation), so
     // the account sequence a later bump reads already reflects the earlier one.
+    //
+    // The soonest any asset wants looking at again, and the notice belonging to
+    // it. Returning a flat seven days discarded every per-asset plan the loop
+    // had just computed, including the urgent ones: on the live deployment the
+    // XLM wrapper had 22 days of headroom and the USDC wrapper 6.8, and the
+    // caller was told to come back in a week either way.
+    let soonest = jitteredDelayMs(7);
+    let notice: string | undefined;
+
     for (const cfg of list) {
       const ttl = await readAccountTtl(this.server(), cfg.token, session.address, this.network);
-      const plan = planKeepAlive(ttl, this.recentlyActive());
+      const plan = planKeepAlive(ttl, this.recentlyActive(cfg.token));
+      if (plan.nextCheckMs < soonest) soonest = plan.nextCheckMs;
+      notice ??= plan.notice;
       if (!plan.due) continue;
       // Fetched per bump: two bumps from one stale source object would collide
       // on the sequence number.
@@ -3520,9 +3921,17 @@ export class WalletController {
       // Same path as every other invocation, so it is simulated for its footprint
       // and auth entries before signing.
       const outcome = await this.signAndSubmit(tx);
-      if (outcome.kind === "succeeded") this.lastKeepAlive = Date.now();
+      // PER TOKEN, and that is the whole fix. This was one shared timestamp
+      // assigned inside this loop, and `recentlyActive` is tested at the top of
+      // every later iteration, so the first asset to need a bump told every
+      // asset after it that its entry had just been touched. It had not: these
+      // are separate ledger entries with separate TTLs, and bumping one does
+      // nothing for another. On the live deployment that is exactly backwards
+      // from what is needed, because the wrapper that comes first has 22 days
+      // of headroom and the one it silences has 6.8.
+      if (outcome.kind === "succeeded") this.lastKeepAlive.set(cfg.token, Date.now());
     }
-    return { due: false, nextCheckMs: jitteredDelayMs(7) };
+    return { due: false, nextCheckMs: soonest, ...(notice ? { notice } : {}) };
   }
 
   /** Verification keys already confirmed this session, per (deployment, circuit). */
@@ -3667,21 +4076,37 @@ export class WalletController {
       const ctx = await this.opContext(cfg.token);
       const { deriveConfidentialKeys } = await import("./confidential-ops");
       const { vk } = await deriveConfidentialKeys(ctx);
-      const { findInbound, creditInbound } = await import("./inbound");
+      const { findInbound, creditInbound, resumeFrom, cursorAfter } = await import("./inbound");
       // `findInbound` clamps to the RPC's reported floor itself, so passing a
       // best guess is safe: asking from before retention is what returns zero
       // events with no error, and the function that talks to the RPC is the
       // one that knows that.
-      const health = await this.server().getHealth();
-      const from = stored.syncedThrough > 0 ? stored.syncedThrough : 1;
-      const found = await findInbound(this.server(), cfg.token, address, vk, from);
+      //
+      // Resuming AT the cursor rather than after it re-read the ledger the last
+      // scan had already applied, and the all-or-nothing check downstream turns
+      // that into a permanent fault rather than a double credit: the pocket
+      // stays diverged with the money on chain and no retry that can help. See
+      // `resumeFrom`.
+      const found = await findInbound(
+        this.server(),
+        cfg.token,
+        address,
+        vk,
+        resumeFrom(stored.syncedThrough),
+      );
       if (found.length === 0) {
         // Not an error, and it must not read as one. It means the search ran
         // and the window held nothing for us, which for a diverged pocket
         // points at history older than the RPC keeps.
+        // Says "transfer or deposit" because the scan now looks for both, and
+        // the sentence is the wallet's whole explanation of a diverged pocket.
+        // While it only looked for transfers it named a cause that was often
+        // not the cause: a third-party deposit needs no permission from the
+        // recipient, was invisible to this search, and sent the user after
+        // history older than a week that was not missing.
         this.lastInboundFailure =
-          "Pocket searched the last week of ledger history and found no transfer addressed " +
-          "to this account, so the difference is older than that.";
+          "Pocket searched the last week of ledger history and found no transfer or deposit " +
+          "addressed to this account, so the difference is older than that.";
         return stored;
       }
 
@@ -3695,13 +4120,29 @@ export class WalletController {
       //
       // `privatePocket()` is a read that happens to write, and the popup calls
       // it on every mount, so two tabs are all it takes.
-      return this.exclusive(async () => {
+      //
+      // `return await`, not `return`. Without the await the promise is handed
+      // back rather than settled here, so nothing thrown inside this block ever
+      // reaches the catch below, and that catch is the only thing standing
+      // between an RPC-authored or storage-authored message and the diverged
+      // screen. `writeOpenings` and `creditInbound` both throw from in here.
+      return await this.exclusive(async () => {
         const fresh = (await this.readOpenings(address, cfg.token)) ?? stored;
         // Someone else may have credited or merged while we scanned. Their
         // result is newer than ours; ours is now about a state that is gone.
         if (verifyAgainstChain(fresh, account).ok) return fresh;
         const receiving = creditInbound(fresh.receiving, found, account.receivingCommitment);
-        const next = { ...fresh, receiving, syncedThrough: health.latestLedger };
+        // Anchored on the events actually credited, NOT on the chain tip, which
+        // was read before a scan that pages the whole retained window and so
+        // could point behind a transfer this very call had just credited. The
+        // line above only returns when the sum reproduces the accumulator the
+        // contract holds, which is what makes the anchor provable. Floored at
+        // `fresh`, which is re-read here, so the cursor can only move forward.
+        const next = {
+          ...fresh,
+          receiving,
+          syncedThrough: cursorAfter(fresh.syncedThrough, found),
+        };
         await this.writeOpenings(address, cfg.token, next);
         this.lastInboundFailure = null;
         return next;
@@ -3723,11 +4164,18 @@ export class WalletController {
   /** Why the last inbound-credit attempt did not complete, if it did not. */
   private lastInboundFailure: string | null = null;
 
-  private lastKeepAlive = 0;
+  /**
+   * When each wrapper's entry was last bumped, BY TOKEN.
+   *
+   * Per token because the fact is per token: every configured wrapper is its
+   * own confidential account with its own ledger entry and its own TTL, and a
+   * bump extends exactly one of them.
+   */
+  private lastKeepAlive = new Map<string, number>();
 
-  /** Any operation we submitted recently already touched the entry. */
-  private recentlyActive(): boolean {
-    return Date.now() - this.lastKeepAlive < 7 * 24 * 3600_000;
+  /** This token's own entry was bumped recently, so it needs nothing now. */
+  private recentlyActive(token: string): boolean {
+    return Date.now() - (this.lastKeepAlive.get(token) ?? 0) < 7 * 24 * 3600_000;
   }
 
   /** Envelopes this controller built, awaiting confirmation. Keyed by tx hash. */
@@ -3837,6 +4285,125 @@ export class WalletController {
   }
 }
 
+/**
+ * Why this private operation will not be built, or null.
+ *
+ * Separated out and run BEFORE the verification-key check and the circuit load,
+ * because neither of those can rescue a request that is refused on its face and
+ * both make the user wait to be told so. Pure, so the refusals are checkable
+ * without a chain, a session or a proving backend behind them.
+ */
+export function refusePrivateOp(req: PrivateOpRequest, self: string): string | null {
+  // Positivity, for every operation that carries an amount.
+  //
+  // `transfer` and `unshield` were checked against the SPENDABLE balance, which
+  // a negative passes trivially, and `shield` was not checked at all: it parsed
+  // the string, built a deposit for it, and put "Move -5 XLM from the public
+  // pocket into the private one" on the review as a signed fact. `parseAmount`
+  // accepts a leading minus on purpose, because a history entry can be
+  // negative; a thing the user is about to sign cannot.
+  //
+  // Zero too. A zero-amount operation costs a fee and a proof to change
+  // nothing, and every builder below treats it as a real request.
+  if ("amount" in req) {
+    let amount: bigint;
+    try {
+      amount = parseAmount(req.amount);
+    } catch {
+      // Not a number at all. `parseAmount` throws its own authored sentence
+      // from the builder, which is a better one than this could write.
+      return null;
+    }
+    if (amount <= 0n) return "Enter an amount greater than zero.";
+  }
+
+  if (req.kind !== "transfer") return null;
+  const to = parseAddress(req.to); // throws on a bad checksum, which is not this
+  if (to.kind !== "account") {
+    return "A private transfer needs an account address (G...). Contract addresses cannot hold one.";
+  }
+  // A private transfer to your OWN address is the one case where the SENDER's
+  // receiving commitment moves, because sender and recipient are the same
+  // account and the contract debits spendable and credits receiving on the one
+  // entry. Every other transfer leaves the sender's receiving side alone, which
+  // is the fact `spendResolution` is built on.
+  //
+  // Refused rather than special-cased, because there is nothing to
+  // special-case FOR. The effect is to move your own money from spendable to
+  // received: a merge run backwards, paid for with a fee and a proof, leaving
+  // you strictly worse off. Allowed, it also produced a post-state the wallet
+  // could not record, and by then the money was spent.
+  if (to.value === self) {
+    return (
+      "That is this wallet's own address. Sending privately to yourself costs a fee and moves " +
+      "the amount out of your spendable balance, so Pocket does not do it. To make received " +
+      "funds spendable, use Make spendable."
+    );
+  }
+  return null;
+}
+
+/**
+ * The post-state of an operation that spends: the new spendable opening, and
+ * nothing about the side the operation does not touch. See `StagedResolution`.
+ */
+function spendResolution(spendable: Opening): StagedResolution {
+  return {
+    kind: "spend",
+    spendable: [spendable.value.toString(), spendable.randomness.toString()],
+  };
+}
+
+/**
+ * How to recover a private balance this device cannot account for, phrased for
+ * whether recovery is actually available.
+ *
+ * Five worker-authored sentences asserted "this build has none configured" as a
+ * flat constant, none of them reading `archiveUrl`. That was written when no
+ * build had one, and it is the same defect D-009 recorded and closed on the UI
+ * side: the popup learned to branch on `canRebuild` and the worker's own
+ * sentences did not. On a build WITH an archive the wallet therefore states
+ * that rebuilding is impossible directly above a working Rebuild button, and
+ * the user can only find out which is true by pressing it.
+ *
+ * One function so the two halves cannot drift apart again: the popup gates the
+ * CONTROL on `archiveUrl` and this gates the SENTENCE on the same fact.
+ */
+export function rebuildAdvice(archiveUrl: string | undefined): string {
+  return archiveUrl
+    ? "Rebuilding the record replays your event history from this build's archive, which you " +
+        "can start from Settings."
+    : "Rebuilding the record needs a durable event archive, and this build has none configured.";
+}
+
+/**
+ * Why a half of the history is missing, in words the wallet wrote.
+ *
+ * An allowlist by class, the same discipline `describeError` follows and for
+ * the same reason: an archive's or Horizon's own message can carry a URL or a
+ * stack fragment, and this string goes straight onto a screen. Anything not
+ * named gets a sentence about the pocket that failed, which is still far more
+ * than the silence this replaces.
+ */
+function describeHistoryFailure(e: unknown, pocket: "public" | "private"): string {
+  const name = e instanceof Error ? e.name : "";
+  if (name === "ArchiveUnavailableError") {
+    return "The durable archive did not answer, so your private history could not be replayed.";
+  }
+  if (name === "IncompleteHistoryError") {
+    return (
+      "The archive could not serve an unbroken run of events, so Pocket will not show a " +
+      "private history it knows has a gap in it."
+    );
+  }
+  if (name === "RecoveryUnavailableError" || name === "MalformedEventError") {
+    return "Your private history could not be read from the archive.";
+  }
+  return pocket === "private"
+    ? "Your private history could not be read just now."
+    : "Your public history could not be read just now.";
+}
+
 /** An absolute post-state, in the string form the staged record holds. */
 function openingsResolution(state: {
   spendable: Opening;
@@ -3868,6 +4435,17 @@ function resolveStaged(
       spendable: { value: BigInt(resolve.spendable[0]), randomness: BigInt(resolve.spendable[1]) },
       receiving: { value: BigInt(resolve.receiving[0]), randomness: BigInt(resolve.receiving[1]) },
       syncedThrough: resolve.syncedThrough,
+    };
+  }
+  if (resolve.kind === "spend") {
+    // `stored` is read at PERSIST time, so a credit that landed while the proof
+    // was being built is carried through here instead of being overwritten by a
+    // snapshot that predates it. Idempotent: replaying sets the same spendable
+    // opening, and the chain check that follows is what makes it safe.
+    return {
+      spendable: { value: BigInt(resolve.spendable[0]), randomness: BigInt(resolve.spendable[1]) },
+      receiving: stored.receiving,
+      syncedThrough: stored.syncedThrough,
     };
   }
   if (resolve.kind === "credit") {

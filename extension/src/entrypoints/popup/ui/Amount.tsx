@@ -6,6 +6,7 @@
 // complete, and it is still readable at a glance. below one that rule inverts,
 // because then the front carries nothing, so the figure is set as one run.
 import { useEffect, useRef, useState } from "react";
+import { useHidden } from "./WalletProvider";
 import type { CSSProperties } from "react";
 import { FRAME, fontSizes, fonts, motion, space, type Theme } from "./theme";
 
@@ -62,6 +63,43 @@ export function splitAmount(value: string): { whole: string; fraction: string } 
   };
 }
 
+/** the fixed run of stars a masked figure shows, per part. */
+const MASK = "∗∗∗";
+
+/**
+ * The same mask, for a figure drawn as plain text rather than through `Amount`.
+ *
+ * History renders its amounts as interpolated strings, so it inherited nothing
+ * from the component and honoured "hide balance" nowhere: every row, every
+ * detail hero and every fiat figure on the activity screen stayed legible with
+ * the mask on. A history is exactly what someone turning that setting on in a
+ * cafe is hiding.
+ *
+ * Fixed-length per part, like the component, so the mask does not leak the
+ * magnitude by its own width.
+ */
+/**
+ * Should this figure be masked?
+ *
+ * A function rather than an expression because the DEFAULT is the whole point
+ * and the popup has no DOM test environment to check a rendered component in.
+ *
+ * `explicit` undefined means "the caller did not say", and that falls through
+ * to the wallet's setting. It used to fall through to FALSE, so honouring the
+ * mask was opt-in per call site: four did, fourteen did not, and forgetting it
+ * revealed a balance the user had asked to hide. Inverted, forgetting it
+ * over-masks, which is visible immediately and harms nobody.
+ */
+export function isMasked(explicit: boolean | undefined, walletHidden: boolean, reveal: boolean) {
+  return (explicit ?? walletHidden) && !reveal;
+}
+
+export function maskAmount(text: string, hidden: boolean): string {
+  if (!hidden) return text;
+  const sign = text.startsWith("$") ? "$" : text.startsWith("-") ? "-" : "";
+  return text.includes(".") ? `${sign}${MASK}.${MASK}` : `${sign}${MASK}`;
+}
+
 export function Amount({
   t,
   value,
@@ -77,12 +115,25 @@ export function Amount({
   animate = true,
   /** "hide balance": the digits are replaced by a fixed run of asterisks, so the
    *  magnitude is hidden too (not just the exact value), the way a masked balance
-   *  reads in every wallet. the currency sign, if any, stays. */
-  hidden = false,
+   *  reads in every wallet. the currency sign, if any, stays.
+   *
+   *  DEFAULTS TO THE WALLET'S OWN SETTING rather than to false. it was a plain
+   *  `hidden = false`, which meant every figure had to opt IN by threading
+   *  `hidden={w.hidden}` down to it, and four surfaces did while fourteen did
+   *  not, including two figures on the very screen that draws the mask toggle.
+   *  a setting honoured in a quarter of the places it applies is not a setting,
+   *  and the failure was silent in the one direction that matters: forgetting
+   *  the prop revealed a balance the user had asked to hide.
+   *
+   *  inverted, forgetting it now over-masks, which is visible immediately and
+   *  harms nobody. the places where the figure IS the point pass `reveal`. */
+  hidden,
   /** show EVERY fraction digit, not the four-place display cap. a confirm and a
    *  receipt must show the exact figure being signed: a shown value that differs
    *  from the signed value, even by a truncated tail, is a shown != signed gap. */
   full = false,
+  reveal = false,
+  hideCode = false,
   /** render the figure as ONE run at one size, never a demoted fraction. for a
    *  value sitting in a row (a confirm fact) rather than as a hero. */
   flat = false,
@@ -94,9 +145,29 @@ export function Amount({
   treatment?: Treatment;
   animate?: boolean;
   hidden?: boolean;
+  /** keep the code OUT of the drawn figure while leaving it in the accessible
+   *  one. the home rows name the asset on their left already, so drawing the
+   *  code beside the number repeats it; dropping the prop entirely was the
+   *  first attempt and it took the code out of the exact span too, leaving a
+   *  screen reader to announce "40.0000000" with no unit at all, and leaving
+   *  the suite's money locator, which matches a figure followed by a code, with
+   *  nothing to find on the whole public home screen. */
+  hideCode?: boolean;
+  /** show the figure even when the mask is on: a confirm, a receipt, or an
+   *  amount the user is typing. all three are figures the user has just asked
+   *  to see, and masking them makes the screen unusable rather than private. */
+  reveal?: boolean;
   full?: boolean;
   flat?: boolean;
 }) {
+  // The wallet's setting unless this call says otherwise. An explicit `hidden`
+  // still wins, for the few places that decide it themselves.
+  //
+  // The hook is called unconditionally. `hidden ?? useHidden()` reads better and
+  // is a rules-of-hooks violation: a caller that passes `hidden` on one render
+  // and omits it on the next changes the hook order under React.
+  const walletHidden = useHidden();
+  const masked = isMasked(hidden, walletHidden, reveal);
   const { whole, fraction: rawFraction } = splitAmount(value);
   // the visible figure shows at most FOUR fraction digits: stellar's seven made a
   // long, hard-to-read tail on every balance. it is a DISPLAY cap only, truncated
@@ -107,15 +178,14 @@ export function Amount({
   const big = size === "hero" || size === "display";
   // the mask: a fixed three-star run per part, keeping the sign in front, so a
   // hidden balance is "$***.***" rather than a length that leaks its magnitude.
-  const MASK = "∗∗∗";
   const sign = whole.startsWith("$") ? "$" : whole.startsWith("-") ? "-" : "";
-  const dispWhole = hidden ? `${sign}${MASK}` : whole;
-  const dispFraction = hidden ? (fraction ? MASK : "") : fraction;
+  const dispWhole = masked ? `${sign}${MASK}` : whole;
+  const dispFraction = masked ? (fraction ? MASK : "") : fraction;
   // never roll a figure being SIGNED: `full`/`flat` are the confirm and receipt,
   // where the exact digits are the point and stillness is the treatment; rolling
   // them would also swap the drawn glyphs for ten-deep digit columns. everything
   // else (balances, heroes, spendables) is a live figure that should tally.
-  const doAnimate = animate && !hidden && !full && !flat;
+  const doAnimate = animate && !masked && !full && !flat;
 
   /*
    * a figure below one keeps everything that matters after the point, and the
@@ -136,8 +206,8 @@ export function Amount({
   const units =
     (oneRun ? whole.length + 1 + fraction.length : whole.length) +
     (!oneRun && fraction ? (fraction.length + 1) * fractionOf : 0) +
-    (code ? code.length * codeOf : 0);
-  const px = fit(SIZES[size], units, code ? 1 : 0);
+    (code && !hideCode ? code.length * codeOf : 0);
+  const px = fit(SIZES[size], units, code && !hideCode ? 1 : 0);
 
   const tones: Record<Treatment, CSSProperties> = {
     plain: { color: t.text },
@@ -164,7 +234,7 @@ export function Amount({
         lineHeight: 1.1,
         minWidth: 0,
         ...tones[treatment],
-        ...(hidden ? { userSelect: "none" } : null),
+        ...(masked ? { userSelect: "none" } : null),
       }}
     >
       {/* the exact figure, unsplit and ungrouped. reading a balance out of three
@@ -172,9 +242,9 @@ export function Amount({
           grouped one gives the digits in the wrong groups, so the value a
           screen reader announces is this one, and it is also the one a test
           can match. hidden: the value is not spoken either. */}
-      <span style={EXACT}>{hidden ? "Balance hidden" : code ? `${value} ${code}` : value}</span>
+      <span style={EXACT}>{masked ? "Balance hidden" : code ? `${value} ${code}` : value}</span>
       <span aria-hidden style={{ display: "inline-flex", alignItems: "baseline" }}>
-        {oneRun && !hidden ? (
+        {oneRun && !masked ? (
           doAnimate ? (
             <Rolling value={`${whole}.${fraction}`} />
           ) : (
@@ -193,7 +263,7 @@ export function Amount({
           </>
         )}
       </span>
-      {code && (
+      {code && !hideCode && (
         <span
           aria-hidden
           style={{ fontSize: Math.round(px * codeOf), fontWeight: 600, color: t.sub }}
@@ -326,7 +396,7 @@ export function HeroAmount({
   value,
   code,
   treatment = "plain",
-  hidden = false,
+  hidden,
 }: {
   t: Theme;
   value: string | null;

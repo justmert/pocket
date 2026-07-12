@@ -31,13 +31,27 @@ const sky = {
   // ~6:1 on the sky[50] tint it is drawn on, so it reads as info, not an error.
   700: "#005c8a",
 } as const;
+// the private pocket's accent: a deep teal. it shares the public sky's HUE (198) so
+// the two pockets read as one hue family, light-blue (public) vs deep-teal (private),
+// rather than two hues that look almost-but-not-quite the same. it used to sit at 192,
+// which read a touch green next to the public blue; each stop keeps its own saturation
+// and lightness and only the hue is pinned to 198.
 const teal = {
-  200: "#83cfe2",
-  300: "#53c2de",
-  400: "#1ca3c4",
-  600: "#0c7995",
-  800: "#024d60",
-  950: "#041d23",
+  // 100 is a light readable stop for the private "exposed" info tone, set apart from
+  // positive (300) so the two stop reading as the same colour.
+  100: "#bcdeed",
+  200: "#83c6e2",
+  300: "#53b4de",
+  400: "#1c92c4",
+  600: "#0c6c95",
+  800: "#023c55",
+  // 850 is the deeper glow the private page wash fades from: darker than the accent
+  // soft (800) so the pocket badge does not disappear into the top-of-page glow.
+  850: "#0b212a",
+  // 950 is the soft fill behind positive/exposed notices. it was near-black and read
+  // as the same tone as the card surface it sits on; a more saturated dark teal keeps
+  // it a "soft" band while separating it from the surface underneath.
+  950: "#06303e",
 } as const;
 // the public pocket's neutrals: a clean, faintly-cool gray ramp (NOT rose). the
 // old ramp was warm/rose-tinted to sit under a rose accent; under the blue accent
@@ -45,21 +59,35 @@ const teal = {
 // to a cool gray that pairs with the blue. same lightness per stop, hue removed.
 const warm = {
   bg: "#fcfdfe",
-  0: "#ffffff",
+  // no pure #ffffff anywhere: the lightest surface is the same soft off-white as the
+  // page, so a card lifts by its border or shadow rather than by being whiter than
+  // white. 100 is a faint step down for the "i" tooltip, so it reads off the page.
+  0: "#fcfdfe",
+  100: "#eef1f5",
   200: "#dce2e8",
   900: "#1b1f24",
 } as const;
 const cool = {
-  bg: "#030709",
+  bg: "#020b0e",
   950: "#000102",
   850: "#0a1921",
   800: "#11242d",
+  // 750 is the private card surface (and sheet): a small lift off the near-black floor,
+  // borderless, so a soft shadow carries the elevation rather than a grey slab of fill.
+  750: "#0b1a22",
   700: "#1a2f39",
+  // 650 is the private floating nav's own stop, well DARKER than the cards (750) and
+  // sitting close to the page floor: the bar recedes into the dark and its teal glow
+  // (BottomNav) does the lifting, so it is never the lightest thing on the screen.
+  650: "#06121a",
+  // 625 is the private hairline/border stop, just below the shared 600.
+  625: "#264554",
   // the mid stops of the measured ramp (resources/colors.md, HSL 200): the private
   // pocket surfaces sit one step LIGHTER than the near-black floor so pages, popups
   // and the cards inside them read as distinct raised planes rather than one dark
-  // mass. these are the same measured stops, re-introduced, not new colours.
-  600: "#2c4552",
+  // mass. 600 was darkened off the measured stop: it fills the active nav tile and
+  // the input field in the private pocket, and the old value read too light there.
+  600: "#21323e",
   500: "#456271",
   400: "#7493a2",
   100: "#eef1f2",
@@ -68,14 +96,15 @@ const cool = {
 // type reads as grey-black rather than carrying the accent. surfaces, borders and
 // fills keep their warm/cool cast; only text points at these.
 const ink = { 900: "#1d1d1f", 700: "#5c5c5e", 600: "#737377", 400: "#c9c9ce" } as const; // light pocket
-// dark-pocket type greys. 200 is the one measured stop added when the private
-// surfaces were lifted lighter: the old secondary/tertiary greys (300/400) read
-// too faint on the raised cards, so the ramp gained a brighter stop (L* ~78) and
-// the roles each moved up one (sub -> 200, faint -> 300).
+// dark-pocket type greys, one role per stop: text (100), sub (150), faint (200),
+// hairline (600). sub and faint were darkened off the near-white end to WIDEN the
+// private text hierarchy: text/sub/faint used to sit inside a ~15 L* spread and read
+// as one weight, so 150 and 200 drop to open the spread to ~36 and give the three
+// levels a clear order.
 const paper = {
   100: "#eeeef0",
-  150: "#d9d9dd",
-  200: "#c3c3c6",
+  150: "#b3b3bd",
+  200: "#8d8d9a",
   300: "#a4a4a7",
   600: "#3a3a3f",
 } as const;
@@ -88,12 +117,12 @@ const dangerRamp = {
   light: "#c3382e",
   lightTint: "#fceae9",
   dark: "#fb6e64",
-  darkTint: "#2f100e",
+  darkTint: "#4a1512",
 } as const;
 
 // the loading shimmer is a translucent sheen that sweeps across whatever surface
 // it covers, so it is a sheer white/black overlay rather than a ramp stop. the
-// dark private canvas (cool.bg #030709) needs a LIGHT sheen or a mid-grey barely
+// dark private canvas (cool.bg #020b0e) needs a LIGHT sheen or a mid-grey barely
 // travels and the state looks broken; the light public surface needs a DARK one.
 // two stops each: a dim base at the sweep's edges and a brighter peak at its
 // centre, matching the 0.09/0.2 rhythm the single hardcoded gradient used to run.
@@ -311,6 +340,10 @@ export interface Theme {
   /** the page backdrop, including the glow the dark pocket carries. */
   canvas: string;
   surface: string;
+  /** the "i" tooltip bubble: deliberately OFF the surface/sheet tone so the
+   *  explanation reads as a layer over the card, not as the card. a touch darker
+   *  than the light page, a touch lighter than the dark surface. */
+  tip: string;
   text: string;
   sub: string;
   faint: string;
@@ -379,6 +412,8 @@ const PUBLIC: Theme = {
   // rather than a flat band of one colour across the whole width.
   canvas: `radial-gradient(130% 130px at 50% 0px, ${sky[200]} 0%, ${warm.bg} 72%)`,
   surface: warm[0],
+  // a faint step darker than the page, so the tooltip reads as a raised layer.
+  tip: warm[100],
   // blue-tinted slates rather than neutral ink: neutral black type read as not
   // belonging on the sky-blue cards and fields (the amount card, the recipient
   // field). these are the measured blue-grey stops, tinted toward the pocket's own
@@ -431,13 +466,16 @@ const PRIVATE: Theme = {
   // public (teal[800] as both fill and line made the border vanish).
   accentLine: teal[600],
   accentFill: teal[400],
-  // the private ladder sits ANOTHER measured step lighter: the page floor and the
-  // cards on it were still reading as one dark mass, so pages, sheets, cards, field
-  // and composer each move up one more stop. the order still reads page < raised
-  // (bar/cards) < field < composer, just opened up further.
-  bg: cool[800],
-  canvas: `radial-gradient(130% 130px at 50% 0px, ${teal[800]} 0%, ${cool[800]} 72%)`,
-  surface: cool[700],
+  // the page floor is the near-black cool.bg, the private mirror of the public
+  // pocket flooring its pages at warm.bg: the page itself is the darkest plane and
+  // the raised surfaces (bar/cards/field/composer) sit a measured step above it, so
+  // they read as distinct planes rather than one dark mass. the order still reads
+  // page < raised (bar/cards) < field < composer.
+  bg: cool.bg,
+  canvas: `radial-gradient(130% 130px at 50% 0px, ${teal[850]} 0%, ${cool.bg} 72%)`,
+  surface: cool[750],
+  // a step LIGHTER than the near-black surface, so the tooltip lifts off the sheet.
+  tip: cool[700],
   // the type greys go one step WHITER to match the brighter surfaces: on the raised
   // cards the old secondary/tertiary greys had lost contrast, so sub and faint each
   // step up (paper[150] is the one measured grey added for exactly this).
@@ -445,15 +483,15 @@ const PRIVATE: Theme = {
   sub: paper[150],
   faint: paper[200],
   hairline: paper[600],
-  line: cool[600],
+  line: cool[625],
   // on dark, a recessed input disappears; the field is the raised stop instead,
   // so it reads as a field rather than a hole.
   field: cool[600],
   tint: cool[500],
-  // the floating nav shares the raised card tone so it lifts off the page rather
-  // than sinking into it.
-  bar: cool[700],
-  sheet: cool[700],
+  // the floating nav sits one stop LIGHTER than the cards (650 vs surface 700) so it
+  // separates from the cards under it rather than merging into them.
+  bar: cool[650],
+  sheet: cool[750],
   shadow: "0 14px 34px -14px rgba(0, 0, 0, 0.7)",
   // a light sheen: on the near-black canvas a mid-grey barely travels, so the
   // private pocket gets a brighter white sweep than public's dark one.
@@ -467,9 +505,10 @@ const PRIVATE: Theme = {
   // own accent, so positive states read as the wallet's colour on the dark surface.
   positive: teal[300],
   positiveSoft: teal[950],
-  // "exposed" as the pocket's own accent, a light readable stop of it on the
-  // dark surface: an info note that an amount is public, not a red error.
-  exposed: teal[300],
+  // "exposed" as the pocket's own accent, a LIGHT readable stop (100) on the dark
+  // surface: an info note that an amount is public, not a red error. lighter than
+  // positive (300) on purpose, so the two tones stop reading as the same colour.
+  exposed: teal[100],
   exposedSoft: teal[950],
   ring: cool[100],
 };

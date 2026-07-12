@@ -9,8 +9,9 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useWallet, type SheetId } from "../WalletProvider";
 import { call } from "../rpc";
+import { canRebuild, dormancyWarning } from "../copy";
 import { Amount } from "../Amount";
-import { Button, IconDisc, Notice, Sheet } from "../primitives";
+import { Button, IconDisc, Notice, Sheet, Skeleton } from "../primitives";
 import { Held } from "../Held";
 import { AssetMark, privateMarkId } from "../screens/Home";
 import { Send as SendIcon, Shield, Unshield } from "../icons";
@@ -33,6 +34,9 @@ const STATE_TITLE: Record<PrivatePocketState, string> = {
   diverged: "Out of step with the ledger",
   ready: "",
 };
+/** states whose only route out is a rebuild, which needs an archive. */
+const NEEDS_ARCHIVE: PrivatePocketState[] = ["needsRecovery", "diverged"];
+
 const STATE_ACTION: Record<PrivatePocketState, string | null> = {
   unavailable: null,
   unfunded: null,
@@ -46,7 +50,7 @@ const STATE_ACTION: Record<PrivatePocketState, string | null> = {
 export function PrivateAssetSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const w = useWallet();
   const t = w.t;
-  const priv = w.priv;
+  const priv = w.privateDetail;
   const symbol = priv?.symbol ?? "XLM";
 
   // a price for the dollar line, fetched only while the sheet is open and refetched
@@ -74,6 +78,14 @@ export function PrivateAssetSheet({ open, onClose }: { open: boolean; onClose: (
   const ttl =
     typeof priv?.daysRemaining === "number" && priv.daysRemaining < 8 ? priv.daysRemaining : null;
 
+  // A rebuild is only offerable where there is an archive to replay from. See
+  // the comment at the button.
+  const label = priv ? STATE_ACTION[priv.state] : null;
+  const action =
+    priv && NEEDS_ARCHIVE.includes(priv.state) && !canRebuild(w.status?.network ?? "testnet")
+      ? null
+      : label;
+
   // an action REPLACES this sheet with the form, so the form's close returns to the
   // pocket rather than back into this detail. the asset is already selected, so the
   // form (and the op it builds) runs against it.
@@ -88,7 +100,7 @@ export function PrivateAssetSheet({ open, onClose }: { open: boolean; onClose: (
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: space.md }}>
             <IconDisc t={t} size={44} tone="accentSoft">
-              <AssetMark t={t} id={privateMarkId(symbol)} code={symbol} />
+              <AssetMark t={t} id={privateMarkId(symbol, w.status?.network)} code={symbol} />
             </IconDisc>
             <div style={{ minWidth: 0 }}>
               <div style={{ ...text.heading, color: t.text }}>{symbol}</div>
@@ -101,13 +113,22 @@ export function PrivateAssetSheet({ open, onClose }: { open: boolean; onClose: (
           {ready ? (
             <>
               <div style={{ textAlign: "center", margin: `${space.xl}px 0 ${space.md}px` }}>
-                <Amount
-                  t={t}
-                  value={priv.spendable ?? "0"}
-                  code={symbol}
-                  size="display"
-                  hidden={w.hidden}
-                />
+                {/* a ready pocket with no spendable figure has not answered
+                    yet; it does not hold nothing. `?? "0"` drew a confident
+                    0.0000000, which is what WalletProvider means by "a zero
+                    would be a lie", and this is the biggest number on the
+                    sheet. */}
+                {priv.spendable ? (
+                  <Amount
+                    t={t}
+                    value={priv.spendable}
+                    code={symbol}
+                    size="display"
+                    hidden={w.hidden}
+                  />
+                ) : (
+                  <Skeleton width={160} height={34} />
+                )}
                 <div style={{ ...text.body, color: t.sub, marginTop: 4 }}>
                   {!w.hidden && priv.spendable
                     ? (usdOf(priv.spendable, price) ?? "Spendable")
@@ -128,11 +149,25 @@ export function PrivateAssetSheet({ open, onClose }: { open: boolean; onClose: (
                 </div>
               )}
 
+              {/* a READY pocket can still have something to say. under protocol
+                  27 an archived entry is auto-restored to answer a read, so the
+                  pocket is genuinely spendable AND genuinely dormant at the same
+                  time, and only the first half was being reported. the message
+                  is the worker's, and until this it was rendered on the
+                  not-ready branch only, so a ready pocket's message went
+                  nowhere. */}
+              {priv?.message && (
+                <div style={{ marginBottom: space.md }}>
+                  <Notice t={t} tone="exposed">
+                    {priv.message}
+                  </Notice>
+                </div>
+              )}
+
               {ttl !== null && (
                 <div style={{ marginBottom: space.md }}>
                   <Notice t={t} tone="exposed">
-                    This pocket goes dormant in {ttl} days unless it is used. Opening the wallet
-                    before then keeps it alive.
+                    {dormancyWarning(ttl)}
                   </Notice>
                 </div>
               )}
@@ -154,13 +189,17 @@ export function PrivateAssetSheet({ open, onClose }: { open: boolean; onClose: (
                   </Notice>
                 </div>
               )}
-              <div style={{ ...text.body, color: t.sub, marginTop: space.sm }}>
-                Hides amounts, never addresses. Who you pay stays public on the ledger.
-              </div>
-              {STATE_ACTION[priv.state] && (
+              {/* "Rebuild" is only a real offer where an archive exists to
+                  replay from. D-009 gated the settings row and the move sheet
+                  on `canRebuild` and left this map untouched, so on a build
+                  with no archive this button sat under the worker's own
+                  sentence saying it cannot be done, and the only way to learn
+                  which was true was to press it. every other action here is
+                  always available, so only this one is gated. */}
+              {action && (
                 <div style={{ marginTop: space.lg }}>
                   <Button t={t} onClick={go("move")}>
-                    {STATE_ACTION[priv.state]}
+                    {action}
                   </Button>
                 </div>
               )}

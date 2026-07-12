@@ -1,7 +1,16 @@
 // Crediting a received transfer, and refusing to credit one we cannot verify.
 import { describe, it, expect } from "vitest";
-import { openInbound, creditInbound, findInbound, InboundCreditError } from "./inbound";
+import {
+  openInbound,
+  creditInbound,
+  findInbound,
+  resumeFrom,
+  cursorAfter,
+  InboundCreditError,
+} from "./inbound";
 import { commit, scalarMul, add, H } from "./crypto/grumpkin";
+import { xdr, Address, nativeToScVal } from "@stellar/stellar-sdk/base";
+import "../lib/polyfill";
 import { sharedScalar, transferBlinding, encryptAmount, ephemeralScalar } from "./crypto/derive";
 import { R, Q } from "./crypto/field";
 import { MAX_AMOUNT } from "./witness/guards";
@@ -163,3 +172,238 @@ describe("the search window comes from the RPC, not from arithmetic", () => {
     expect(seen[0]?.startLedger).toBeGreaterThanOrEqual(950_000);
   });
 });
+
+// The scan cursor: what it means, and what goes wrong when it is one out.
+//
+// This is the arithmetic behind an S0. `creditInbound` above is all-or-nothing
+// against the accumulator the contract holds, so a cursor that re-reads an
+// already-credited event does NOT produce a double credit and does not produce
+// a merely stale balance. It produces a pocket that refuses to reconcile, with
+// the money on chain, on every retry, forever. The final test here runs that
+// scenario rather than asserting on the numbers alone.
+describe("the scan cursor", () => {
+  it("resumes AFTER the last accounted ledger, because startLedger is inclusive", () => {
+    expect(resumeFrom(1000)).toBe(1001);
+  });
+
+  it("asks from as far back as retention allows when nothing is accounted for", () => {
+    // Not 1 because 1 is interesting: `findInbound` clamps up to the RPC's
+    // reported floor, so 1 is how you say "whatever you still hold".
+    expect(resumeFrom(0)).toBe(1);
+  });
+
+  it("stores the newest ledger it credited from, not the tip it was told about", () => {
+    // The tip is read BEFORE a scan that pages the whole retained window, so a
+    // transfer landing mid-scan is credited by the scan and skipped by a
+    // tip-anchored cursor.
+    const found = [
+      { id: "a", ledger: 1200, opening: { value: 1n, randomness: 1n } },
+      { id: "b", ledger: 1500, opening: { value: 1n, randomness: 1n } },
+      { id: "c", ledger: 1300, opening: { value: 1n, randomness: 1n } },
+    ];
+    expect(cursorAfter(1000, found)).toBe(1500);
+  });
+
+  it("never moves backwards", () => {
+    // A cursor that can regress is a cursor that can re-read.
+    expect(
+      cursorAfter(2000, [{ id: "a", ledger: 1500, opening: { value: 1n, randomness: 1n } }]),
+    ).toBe(2000);
+    expect(cursorAfter(2000, [])).toBe(2000);
+  });
+
+  it("does not wedge the pocket when a transfer lands in the cursor's own ledger", () => {
+    // The scenario, end to end, with real commitments.
+    //
+    // Round 1: one transfer at ledger 900, which is also the chain tip the old
+    // code recorded. Round 2: a second transfer at 950. The question is whether
+    // round 2's scan re-reads the round 1 event.
+    const t1 = send(VK, 300n, 0x11n);
+    const t2 = send(VK, 700n, 0x22n);
+    const zero = { value: 0n, randomness: 0n };
+
+    // Round 1. The chain now holds exactly t1.
+    const afterFirst = creditInbound(
+      zero,
+      [{ id: "e1", ledger: 900, opening: t1.opening }],
+      commit(t1.opening.value, t1.opening.randomness),
+    );
+    const cursor = cursorAfter(0, [{ id: "e1", ledger: 900, opening: t1.opening }]);
+    expect(cursor).toBe(900);
+
+    // Round 2. The scan resumes at 901, so ledger 900 is not re-read and the
+    // only candidate is t2.
+    expect(resumeFrom(cursor)).toBe(901);
+    const onChain = add(
+      commit(t1.opening.value, t1.opening.randomness),
+      commit(t2.opening.value, t2.opening.randomness),
+    );
+    const afterSecond = creditInbound(
+      afterFirst,
+      [{ id: "e2", ledger: 950, opening: t2.opening }],
+      onChain,
+    );
+    expect(afterSecond.value).toBe(1000n);
+
+    // And this is what the old cursor did: resuming AT 900 re-finds e1, which
+    // is already inside `afterFirst`. Not a double credit, a permanent refusal.
+    expect(() =>
+      creditInbound(
+        afterFirst,
+        [
+          { id: "e1", ledger: 900, opening: t1.opening },
+          { id: "e2", ledger: 950, opening: t2.opening },
+        ],
+        onChain,
+      ),
+    ).toThrow(InboundCreditError);
+  });
+});
+
+// A deposit is a credit nobody needs your permission to make.
+//
+// `deposit(from, to, amount)` calls `from.require_auth()` and nothing else
+// (`mod.rs:291-296`), so anyone can aim one at your receiving commitment, and
+// `storage::deposit` credits `amount * G` with blinding ZERO (`storage.rs:512`).
+// The scan looked for `transfer` only, so those credits were invisible: the
+// pocket read as diverged and the wallet blamed history older than the RPC's
+// week-long window, which was not the cause and sent the user after a rebuild
+// no shipped build can run.
+describe("deposits addressed to us", () => {
+  const SENDER = "GDRXE2BQUC3AZNPVFSCEZ76NJ3WWL25FYFK6RGZGIEKWE4SOOHSUJUJ6";
+
+  const depositRow = (id: string, ledger: number, from: string, amount: bigint) => ({
+    ledger,
+    id,
+    topic: [
+      xdr.ScVal.scvSymbol("deposit").toXDR("base64"),
+      Address.fromString(from).toScVal().toXDR("base64"),
+      Address.fromString(ACCOUNT).toScVal().toXDR("base64"),
+    ],
+    value: xdr.ScVal.scvMap([
+      new xdr.ScMapEntry({
+        key: nativeToScVal("amount", { type: "symbol" }),
+        val: nativeToScVal(amount, { type: "i128" }),
+      }),
+    ]).toXDR("base64"),
+  });
+
+  /** The topic filters the last scan actually sent to the RPC. */
+  let asked: string[][] = [];
+
+  const scan = async (rows: unknown[]) => {
+    asked = [];
+    const server = {
+      getHealth: async () => ({ latestLedger: 1_000, oldestLedger: 1 }),
+      _getEvents: async (args: { filters?: { topics?: string[][] }[] }) => {
+        for (const f of args.filters ?? []) asked.push(...(f.topics ?? []));
+        return { latestLedger: 1_000, events: rows, cursor: null };
+      },
+    } as unknown as Parameters<typeof findInbound>[0];
+    return findInbound(server, "CTOKEN", ACCOUNT, VK, 1);
+  };
+
+  /** The event name a topic filter matches on, decoded back out. */
+  const names = () =>
+    asked.map((t) => scValToNativeName(t[0])).filter((n): n is string => n !== null);
+
+  it("ASKS the RPC for deposits, not only transfers", async () => {
+    // The half that decoding tests cannot see. Without this filter the RPC
+    // never returns a deposit event at all, so every assertion below would
+    // pass over a scan that finds nothing in production.
+    await scan([]);
+    expect(names()).toContain("deposit");
+    expect(names()).toContain("transfer");
+  });
+
+  it("keeps the recipient match on the filter, so the RPC does the filtering", async () => {
+    // On BOTH names. A filter without it pulls every event the contract ever
+    // emitted through this loop.
+    await scan([]);
+    const me = Address.fromString(ACCOUNT).toScVal().toXDR("base64");
+    expect(asked).toHaveLength(2);
+    for (const t of asked) expect(t[2]).toBe(me);
+  });
+
+  it("finds one from a stranger, with the public amount and a zero blinding", async () => {
+    const found = await scan([depositRow("e1", 500, SENDER, 7_000_000n)]);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.opening).toEqual({ value: 7_000_000n, randomness: 0n });
+    expect(found[0]?.ledger).toBe(500);
+  });
+
+  it("credits it against the accumulator the contract actually holds", async () => {
+    // End to end through the same all-or-nothing check every candidate faces.
+    const found = await scan([depositRow("e1", 500, SENDER, 7_000_000n)]);
+    const credited = creditInbound({ value: 0n, randomness: 0n }, found, commit(7_000_000n, 0n));
+    expect(credited).toEqual({ value: 7_000_000n, randomness: 0n });
+  });
+
+  it("SKIPS our own shield, which the staged credit already applied", async () => {
+    // Counting it twice overshoots the accumulator, and the check refuses
+    // rather than miscounting, so this would wedge the pocket rather than
+    // inflate it. `from` is exact: a deposit we authorised is one we sent.
+    const found = await scan([depositRow("e1", 500, ACCOUNT, 7_000_000n)]);
+    expect(found).toHaveLength(0);
+  });
+
+  it("still finds transfers, which is what it looked for before", async () => {
+    const t = send(VK, 300n, 0x11n);
+    const body = xdr.ScVal.scvMap(
+      [
+        ["r_e_point", nativeToScVal(Buffer.from(encodePointBytes(t.RE)), { type: "bytes" })],
+        ["sigma", nativeToScVal(Buffer.from(be32(t.sigma)), { type: "bytes" })],
+        ["v_tilde", nativeToScVal(Buffer.from(be32(t.vTilde)), { type: "bytes" })],
+      ]
+        .sort((a, b) => (a[0] as string).localeCompare(b[0] as string))
+        .map(
+          ([k, v]) =>
+            new xdr.ScMapEntry({
+              key: nativeToScVal(k as string, { type: "symbol" }),
+              val: v as xdr.ScVal,
+            }),
+        ),
+    );
+    const found = await scan([
+      {
+        ledger: 600,
+        id: "e2",
+        topic: [
+          xdr.ScVal.scvSymbol("transfer").toXDR("base64"),
+          Address.fromString(SENDER).toScVal().toXDR("base64"),
+          Address.fromString(ACCOUNT).toScVal().toXDR("base64"),
+        ],
+        value: body.toXDR("base64"),
+      },
+    ]);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.opening).toEqual(t.opening);
+  });
+});
+
+function be32(v: bigint): Uint8Array {
+  const out = new Uint8Array(32);
+  let x = v;
+  for (let i = 31; i >= 0; i--) {
+    out[i] = Number(x & 0xffn);
+    x >>= 8n;
+  }
+  return out;
+}
+
+function encodePointBytes(p: { x: bigint; y: bigint }): Uint8Array {
+  const out = new Uint8Array(64);
+  out.set(be32(p.x), 0);
+  out.set(be32(p.y), 32);
+  return out;
+}
+
+/** The symbol in a base64 topic-filter slot, or null if it is a wildcard. */
+function scValToNativeName(t: string | undefined): string | null {
+  if (typeof t !== "string" || t === "*") return null;
+  try {
+    return xdr.ScVal.fromXDR(t, "base64").sym().toString();
+  } catch {
+    return null;
+  }
+}

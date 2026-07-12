@@ -6,6 +6,7 @@
 // is that the UI states the fact and an info affordance carries the why, shown
 // on hover and on focus, dismissed on leave and on escape.
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { CSSProperties, ReactNode } from "react";
 import { FRAME, radius, space, text, type Theme } from "./theme";
 import { Info } from "./icons";
@@ -44,13 +45,25 @@ export function InfoTip({
   const id = useId();
   const wrap = useRef<HTMLSpanElement>(null);
   const bubble = useRef<HTMLSpanElement>(null);
+  // a short close delay bridges the GAP between the icon and the bubble: the bubble
+  // is PORTALED out of the wrapper (so a sheet's overflow cannot clip it), so moving
+  // the pointer onto it would otherwise count as leaving the icon and close it.
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const cancelClose = () => clearTimeout(closeTimer.current);
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => setOpen(false), 90);
+  };
+  useEffect(() => () => cancelClose(), []);
 
   // a tap outside, or escape, closes it. hover-open alone would strand it open
-  // on a touch device where there is no leave.
+  // on a touch device where there is no leave. the bubble is portaled, so an inside
+  // tap must check the bubble too or scrolling the tip would dismiss it.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
-      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (!wrap.current?.contains(target) && !bubble.current?.contains(target)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
@@ -63,12 +76,12 @@ export function InfoTip({
     };
   }, [open]);
 
-  // measure once open: clamp the bubble's viewport-left into the frame, then
-  // express it as an offset from the wrapper. ABSOLUTE (relative to the wrapper),
-  // not fixed: a `position: fixed` bubble is positioned against the nearest
-  // transformed ancestor, and every sheet has a `translateY`, so a fixed tooltip
-  // inside a sheet landed off-screen and read as "not opening". absolute is
-  // transform-safe because it and the wrapper share the same transformed space.
+  // measure once open, in VIEWPORT coordinates, and render the bubble in a portal at
+  // document.body with `position: fixed`. the portal escapes the confirm sheet's
+  // `overflow: auto` (which clipped the bubble's top) AND the sheet's `translateY`
+  // (which had made a plain fixed bubble land off-screen), because document.body has
+  // no transformed ancestor between it and the bubble. it still opens on whichever
+  // side has more room and caps to it, scrolling inside when the content is taller.
   useLayoutEffect(() => {
     if (!open) {
       setPos(null);
@@ -79,21 +92,16 @@ export function InfoTip({
     const frameW = Math.min(FRAME.width, window.innerWidth);
     const width = Math.min(TIP_W, frameW - 2 * EDGE);
     const targetLeft = Math.max(EDGE, Math.min(anchor.right - width, frameW - width - EDGE));
-    const left = targetLeft - anchor.left;
-    // open on whichever side of the icon has more vertical room, and CAP the
-    // bubble to that room. without the cap a tall explanation (a full "what this
-    // does" list) in a small/zoomed popup spilled past the window edge and its top
-    // was cut off; capped with an inner scroll, it always fits and scrolls itself.
     const spaceAbove = anchor.top - GAP - EDGE;
     const spaceBelow = window.innerHeight - anchor.bottom - GAP - EDGE;
     const above = spaceAbove >= spaceBelow;
     const maxHeight = Math.max(72, Math.floor(above ? spaceAbove : spaceBelow));
     setPos({
-      position: "absolute",
-      left,
+      position: "fixed",
+      left: targetLeft,
       width,
       maxHeight,
-      ...(above ? { bottom: `calc(100% + ${GAP}px)` } : { top: `calc(100% + ${GAP}px)` }),
+      ...(above ? { bottom: window.innerHeight - anchor.top + GAP } : { top: anchor.bottom + GAP }),
     });
   }, [open, children]);
 
@@ -101,8 +109,11 @@ export function InfoTip({
     <span
       ref={wrap}
       style={{ position: "relative", display: "inline-flex", flex: "0 0 auto", lineHeight: 0 }}
-      onPointerEnter={() => setOpen(true)}
-      onPointerLeave={() => setOpen(false)}
+      onPointerEnter={() => {
+        cancelClose();
+        setOpen(true);
+      }}
+      onPointerLeave={scheduleClose}
     >
       <button
         type="button"
@@ -120,8 +131,11 @@ export function InfoTip({
           width: size,
           height: size,
           borderRadius: "50%",
-          background: t.field,
-          color: t.faint,
+          // the "i" stands OFF its page: a DARK filled disc in the light pocket, a
+          // VERY LIGHT disc in the dark pocket, each with a contrasting glyph, so it
+          // reads clearly against either background.
+          background: t.dark ? t.accentOnSoft : t.accent,
+          color: t.dark ? t.accentSoft : t.onAccent,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -129,27 +143,34 @@ export function InfoTip({
       >
         <Info size={Math.round(size * 0.72)} sw={2.2} />
       </button>
-      {open && (
-        <span
-          id={id}
-          ref={bubble}
-          role="tooltip"
-          className="pocket-fade-in"
-          style={{
-            // the wallet's own surface, not a stray charcoal that belonged to no
-            // theme. a card with a hairline and a soft shadow, light in light and
-            // dark in dark, so it reads as part of the product.
-            background: t.surface,
+      {open &&
+        createPortal(
+          <span
+            id={id}
+            ref={bubble}
+            role="tooltip"
+            className="pocket-fade-in"
+            onPointerEnter={cancelClose}
+            onPointerLeave={scheduleClose}
+            style={{
+            // its own tone, OFF the surface/sheet it opens over, so the explanation
+            // reads as a layer rather than the card: a touch darker than the light
+            // page, a touch lighter than the dark surface (see `tip` in theme).
+            background: t.tip,
             color: t.text,
             border: `1px solid ${t.line}`,
             ...text.caption,
+            // the tooltip reads at 13, one up from the caption's 12, for comfortable
+            // body reading in the bubble.
+            fontSize: 13,
             lineHeight: 1.45,
             padding: `${space.sm}px ${space.md}px`,
             borderRadius: radius.md,
             // the canonical raised-surface shadow, per pocket, rather than a
             // hand-written rgba that had drifted from every other raised surface.
             boxShadow: t.shadow,
-            zIndex: 60,
+            // portaled to body, above every sheet/backdrop/menu (which top out at 41).
+            zIndex: 2000,
             // scroll inside the bubble when its content is taller than the room it
             // was capped to (maxHeight, from `pos`): a long "what this does" in a
             // small/zoomed popup then fits and scrolls instead of being cut off.
@@ -160,12 +181,13 @@ export function InfoTip({
             textAlign: "left",
             // measured on open; until then it is placed off the flow so its first
             // paint (used to read its own height) does not flash at the corner.
-            ...(pos ?? { position: "absolute", top: -9999, left: -9999, width: TIP_W }),
+            ...(pos ?? { position: "fixed", top: -9999, left: -9999, width: TIP_W }),
           }}
         >
           {children}
-        </span>
-      )}
+        </span>,
+          document.body,
+        )}
     </span>
   );
 }

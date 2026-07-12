@@ -332,8 +332,8 @@ export function Button({
   const fills: Record<string, CSSProperties> = {
     primary: { background: t.accentFill, color: t.onAccent, boxShadow: glow },
     soft: { background: t.accentSoft, color: t.accentOnSoft },
-    quiet: { background: t.field, color: t.text, border: `1px solid ${t.line}` },
-    danger: { background: t.danger, color: t.onDanger, boxShadow: glow },
+    quiet: { background: t.field, color: t.text },
+    danger: { background: t.danger, color: t.onAccent, boxShadow: glow },
   };
   // one place decides scale: the block CTA fills its column at 52px on the button
   // role; the pill hugs its label at chip scale. everything else (fill, radius,
@@ -627,7 +627,11 @@ export function Card({
 }) {
   const tones: Record<string, CSSProperties> = {
     surface: { background: t.surface, border: `1px solid ${t.line}` },
-    accent: { background: t.accentSoft, border: `1px solid ${t.accentLine}` },
+    // borderless: the accent card reads by its accentSoft fill alone (a clear tint in
+    // both pockets), so it drops the hairline that made it look like an old outlined
+    // card. surface/field keep theirs for now (a white surface card needs the edge on
+    // the near-white public page).
+    accent: { background: t.accentSoft },
     field: { background: t.field, border: "1px solid transparent" },
   };
   return (
@@ -861,7 +865,10 @@ export function Notice({
     neutral: { bg: t.field, fg: t.text },
     danger: { bg: t.dangerSoft, fg: t.danger },
     positive: { bg: t.positiveSoft, fg: t.positive },
-    exposed: { bg: t.exposedSoft, fg: t.exposed },
+    // the exposed/info banner reads like the receive-address block: the neutral field
+    // fill with plain readable text, NOT a low-contrast tint-on-tint. the "this is
+    // public" signal is carried by the inline exposed-coloured markers, not the banner.
+    exposed: { bg: t.field, fg: t.text },
   };
   const c = tones[tone]!;
   // a refusal interrupts, because it has to. an outcome is announced without

@@ -11,6 +11,8 @@ import type { ReactNode, UIEvent } from "react";
 import { message, useWallet, type BgOp } from "../WalletProvider";
 import { call } from "../rpc";
 import { capDecimals, displayAmount } from "../../../../core/chain/balances";
+import { maskAmount } from "../Amount";
+import { useHidden } from "../WalletProvider";
 import { AssetMark } from "./Home";
 import { Avatar } from "../Avatar";
 import {
@@ -144,8 +146,6 @@ function isStellarAddress(a: string): boolean {
   return /^[GCM][A-Z2-7]{55}$/.test(a);
 }
 
-
-
 /** a full date and time, for the detail. */
 function fullDate(at: number): string {
   return new Date(at).toLocaleString([], {
@@ -183,6 +183,8 @@ export function History() {
   // bumped whenever the pocket changes; a response from the pocket we just left
   // is dropped rather than shown under the new one.
   const gen = useRef(0);
+  /** halves of the history the worker could not read, with its own wording. */
+  const [unread, setUnread] = useState<{ pocket: string; reason: string }[]>([]);
 
   // one loader for two callers: the pocket switch clears to skeletons, the
   // reconcile poll keeps the list on screen and only refreshes it underneath. the
@@ -199,6 +201,12 @@ export function History() {
       call({ type: "history", limit: PAGE, pocket })
         .then((p) => {
           if (myGen !== gen.current) return;
+          // A half that could not be read. The worker catches per pocket so one
+          // failure cannot take the other's list down, and it now says WHICH
+          // failed instead of returning an empty page in silence. Without this
+          // an unreachable Horizon and an empty account are the same screen,
+          // and the wallet picks the reading that is about the user.
+          setUnread(p.unread ?? []);
           if (clear) {
             setEntries(p.entries);
             setCursor(p.cursor);
@@ -531,6 +539,17 @@ export function History() {
                 </div>
               )}
 
+              {/* a list with a half missing still LOOKS complete: there is no
+                  shape a partial history has that a whole one does not. so it
+                  is said above the rows rather than left to be inferred from an
+                  absence, which is by definition invisible. */}
+              {unread.length > 0 && shown.length > 0 && (
+                <div style={{ marginBottom: space.md }}>
+                  <Notice t={t} tone="exposed" bare>
+                    {unread.map((u) => u.reason).join(" ")} What is shown below is incomplete.
+                  </Notice>
+                </div>
+              )}
               {shown.length > 0 && <List t={t} entries={shown} now={now} onOpen={setSelected} />}
 
               {shown.length === 0 && (q || filtersActive) && (
@@ -583,8 +602,12 @@ export function History() {
                   }}
                 >
                   <Avatar t={t} size={64} />
+                  {/* "No activity yet" is a claim about the ACCOUNT. It may
+                      only be made when the history was actually read. */}
                   <span style={{ ...text.body, color: t.faint }}>
-                    No activity yet. Your transactions will appear here.
+                    {unread.length > 0
+                      ? unread.map((u) => u.reason).join(" ")
+                      : "No activity yet. Your transactions will appear here."}
                   </span>
                 </div>
               )}
@@ -782,6 +805,10 @@ function Entry({
   onClick: () => void;
   delay?: string;
 }) {
+  // read here rather than threaded from the screen: a prop that four call
+  // sites have to remember is a prop three of them will eventually forget, and
+  // forgetting it shows a figure the user asked to hide.
+  const hidden = useHidden();
   return (
     <button
       type="button"
@@ -809,7 +836,7 @@ function Entry({
         </span>
       </span>
       <span style={{ ...text.value, color: t.sub, textAlign: "right", flex: "0 0 auto" }}>
-        {e.amount === null ? "—" : `${displayAmount(e.amount)} ${e.code}`}
+        {e.amount === null ? "—" : `${maskAmount(displayAmount(e.amount), hidden)} ${e.code}`}
       </span>
     </button>
   );
@@ -918,6 +945,10 @@ function DetailSheet({
   onClose: () => void;
   onCopy: (v: string) => void;
 }) {
+  // read here rather than threaded from the screen: a prop that four call
+  // sites have to remember is a prop three of them will eventually forget, and
+  // forgetting it shows a figure the user asked to hide.
+  const hidden = useHidden();
   // hold the last entry through the close so the card slides DOWN still showing it
   // rather than emptying to a blank panel the instant it is deselected.
   const e = useRetained(entry, 300);
@@ -959,7 +990,7 @@ function DetailSheet({
                   fontVariantNumeric: "tabular-nums lining-nums",
                 }}
               >
-                {e.amount === null ? "—" : capDecimals(e.amount, 7)}
+                {e.amount === null ? "—" : maskAmount(capDecimals(e.amount, 7), hidden)}
               </span>
               {e.amount !== null && <span style={{ ...text.heading, color: t.sub }}>{e.code}</span>}
             </div>
@@ -1131,7 +1162,7 @@ export function TransactionsSheet({ open, onClose }: { open: boolean; onClose: (
         <div style={{ textAlign: "center", marginBottom: space.lg }}>
           <div style={{ ...text.screenTitle, color: t.text }}>Transactions</div>
           <div style={{ ...text.body, fontWeight: 600, color: t.sub, marginTop: 4 }}>
-            {inProgress > 0 ? `${inProgress} in progress` : "None in progress"}
+            {inProgress > 0 ? `${inProgress} in progress` : ""}
           </div>
         </div>
         {pending.length === 0 ? (
@@ -1148,10 +1179,7 @@ export function TransactionsSheet({ open, onClose }: { open: boolean; onClose: (
             <span aria-hidden style={{ color: t.faint, display: "flex" }}>
               <Clock size={28} />
             </span>
-            <span style={{ ...text.body, color: t.faint }}>
-              Nothing in progress. A transaction stays here while it settles, even if you close the
-              wallet.
-            </span>
+            <span style={{ ...text.body, color: t.faint }}>Nothing in progress.</span>
           </div>
         ) : (
           <div style={{ display: "grid", gap: space.sm, paddingBottom: space.gutter }}>
@@ -1190,6 +1218,10 @@ function ProcessingRow({
   onClick: () => void;
   index?: number;
 }) {
+  // read here rather than threaded from the screen: a prop that four call
+  // sites have to remember is a prop three of them will eventually forget, and
+  // forgetting it shows a figure the user asked to hide.
+  const hidden = useHidden();
   const done = op.status === "done";
   const failed = op.status === "failed";
   const statusColor = done
@@ -1230,11 +1262,11 @@ function ProcessingRow({
         {op.amount && (
           <span style={{ textAlign: "right", flex: "0 0 auto", minWidth: 0 }}>
             <span style={{ ...text.value, color: t.text, display: "block" }}>
-              {displayAmount(op.amount)} {op.code}
+              {maskAmount(displayAmount(op.amount), hidden)} {op.code}
             </span>
             {op.fiat != null && (
               <span style={{ ...text.rowSub, color: t.sub, display: "block", marginTop: 1 }}>
-                {usd(op.fiat)}
+                {maskAmount(usd(op.fiat), hidden)}
               </span>
             )}
           </span>
@@ -1305,6 +1337,10 @@ function ProcessingDetailSheet({
   onDismiss: (id: string) => void;
   onCopy: (v: string) => void;
 }) {
+  // read here rather than threaded from the screen: a prop that four call
+  // sites have to remember is a prop three of them will eventually forget, and
+  // forgetting it shows a figure the user asked to hide.
+  const hidden = useHidden();
   // hold the last op through the close so the sheet slides DOWN still showing it,
   // not an empty card; `liveOp` drives open/close, `op` the body.
   const op = useRetained(liveOp, 300);
@@ -1351,12 +1387,14 @@ function ProcessingDetailSheet({
                     fontVariantNumeric: "tabular-nums lining-nums",
                   }}
                 >
-                  {capDecimals(op.amount, 7)}
+                  {maskAmount(capDecimals(op.amount, 7), hidden)}
                 </span>
                 <span style={{ ...text.heading, color: t.sub }}>{op.code}</span>
               </div>
               {op.fiat != null && (
-                <div style={{ ...text.body, color: t.sub, marginTop: 4 }}>{usd(op.fiat)}</div>
+                <div style={{ ...text.body, color: t.sub, marginTop: 4 }}>
+                  {maskAmount(usd(op.fiat), hidden)}
+                </div>
               )}
             </div>
           )}
@@ -1396,7 +1434,9 @@ function ProcessingDetailSheet({
                 // and no link is better than one that denies the address.
                 value={isStellarAddress(op.to) ? short(op.to) : op.to}
                 onCopy={() => onCopy(op.to!)}
-                href={isStellarAddress(op.to) ? explorerUrl(op.network, "account", op.to) : undefined}
+                href={
+                  isStellarAddress(op.to) ? explorerUrl(op.network, "account", op.to) : undefined
+                }
               />
             )}
             {op.fee && <DetailRow t={t} label="Onchain fee" value={`${op.fee} XLM`} />}
@@ -1411,11 +1451,7 @@ function ProcessingDetailSheet({
             )}
           </div>
 
-          {op.status === "processing" ? (
-            <div style={{ ...text.body, color: t.faint, textAlign: "center", marginTop: space.lg }}>
-              Safe to close. This keeps going in the background.
-            </div>
-          ) : (
+          {op.status === "processing" ? null : (
             <div style={{ marginTop: space.lg }}>
               <Button t={t} variant="quiet" onClick={() => onDismiss(op.id)}>
                 Dismiss

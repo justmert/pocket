@@ -79,10 +79,10 @@ export function moveBody(
   what: "deposit" | "withdraw",
 ): { caller: string; amounts: number[]; slippageBps?: number } {
   const amounts = p.amounts.map((a) => {
-    if (a < 0n) throw new DefindexError(`cannot ${what} a negative amount`);
+    if (a < 0n) throw new DefindexError(`Cannot ${what} a negative amount.`);
     if (a > BigInt(Number.MAX_SAFE_INTEGER)) {
       throw new DefindexError(
-        `that ${what} amount is too large to send to the yield service without losing precision`,
+        `That ${what} amount is too large to send to the yield service without losing precision.`,
       );
     }
     return Number(a);

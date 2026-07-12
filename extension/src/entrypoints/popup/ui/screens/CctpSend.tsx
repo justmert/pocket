@@ -12,6 +12,7 @@ import { call } from "../rpc";
 import { Button, Field, Frame, Header, Notice, Row, Sheet } from "../primitives";
 import { InfoTip } from "../Tooltip";
 import { AmountComposer, withinSpendable } from "../AmountComposer";
+import { findHeld, holdingAmount } from "../holdings";
 import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark } from "./Home";
 import { ChevronRight, Globe } from "../icons";
@@ -24,15 +25,48 @@ import {
 import { radius, space, text, type Theme } from "../theme";
 import type { CctpSummary } from "../../../../core/messages";
 
-/** the EVM chains a CCTP transfer can involve with this wallet: every CCTP domain
- *  whose address is an EVM 0x address. Solana (domain 5) is excluded because its
- *  address is not 0x, and Stellar (27) is home. Sourced from the backend's own
- *  table, so the list can never name a chain the worker does not know. Shared with
- *  the inbound claim screen (same set of source chains). */
-export const CROSS_CHAIN_DOMAINS = Object.entries(CCTP_DOMAIN_NAMES)
+/** Every CCTP domain the worker knows, minus Stellar, which is home. */
+const OTHER_CHAINS = Object.entries(CCTP_DOMAIN_NAMES)
   .map(([d, name]) => ({ domain: Number(d), name }))
-  .filter((c) => c.domain !== STELLAR_DOMAIN && c.domain !== 5)
+  .filter((c) => c.domain !== STELLAR_DOMAIN)
   .sort((a, b) => a.domain - b.domain);
+
+/** Solana. Its addresses are base58, not 0x, and its tx ids are base58 too. */
+const SOLANA_DOMAIN = 5;
+
+/**
+ * Chains this wallet can SEND to: the EVM ones.
+ *
+ * Solana is excluded for a reason specific to sending: the recipient field
+ * composes a 32-byte `mintRecipient` from an EVM 0x address, and there is no
+ * screen that can take a base58 one.
+ */
+export const SEND_DOMAINS = OTHER_CHAINS.filter((c) => c.domain !== SOLANA_DOMAIN);
+
+/**
+ * Chains a claim can come FROM: all of them.
+ *
+ * The claim screen used to share the send list, so a Solana-originated transfer
+ * could not be claimed for a reason that only applies in the other direction.
+ * Nothing about claiming touches the source chain's address format: the wallet
+ * hands Circle's attestation service a domain and a transaction id and receives
+ * a message to submit on Stellar, and every leg after that is Stellar's.
+ */
+export const CLAIM_DOMAINS = OTHER_CHAINS;
+
+/**
+ * Is this a plausible transaction id on that chain?
+ *
+ * Live feedback only; Circle's attestation service is the real judge. EVM ids
+ * are 32 bytes of hex, and Solana's are base58 signatures of 64 bytes, so one
+ * pattern cannot cover both and the hex one silently rejected every Solana
+ * signature that reached the field.
+ */
+export function isTxId(value: string, domain: number | null): boolean {
+  const v = value.trim();
+  if (domain === SOLANA_DOMAIN) return /^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(v);
+  return /^(0x)?[0-9a-fA-F]{64}$/.test(v);
+}
 
 /** the backend validates a 20-byte EVM address; mirror the rule for live feedback. */
 const EVM_RE = /^(0x)?[0-9a-fA-F]{40}$/;
@@ -41,10 +75,13 @@ export function CctpSend({ onClose }: { onClose: () => void }) {
   const w = useWallet();
   const t = w.t;
 
-  const balances = w.balances ?? [];
-  const usdc = balances.find((b) => b.code === "USDC") ?? null;
+  // FOUR answers, not two. `(w.balances ?? []).find(...)` reads an unloaded or
+  // failed balance list as "you hold no USDC", which this screen then states as
+  // a fact and acts on by disabling Continue permanently.
+  const usdcHeld = findHeld(w.balances, w.balanceError, (b) => b.code === "USDC");
+  const usdc = usdcHeld.kind === "held" ? usdcHeld.balance : null;
   const markId = usdc?.id ?? "USDC";
-  const spendable = usdc?.amount ?? null;
+  const spendable = holdingAmount(usdcHeld);
 
   const [domain, setDomain] = useState<number | null>(null);
   const [recipient, setRecipient] = useState("");
@@ -180,9 +217,10 @@ export function CctpSend({ onClose }: { onClose: () => void }) {
   };
 
   // Continue is offered only when the bridge can actually be funded: a chosen
-  // chain, a valid EVM recipient, a positive amount, AND enough USDC to cover it
-  // (spendable is null when no USDC is held, so this also disables the "you hold
-  // no USDC" dead end the notice above describes).
+  // chain, a valid EVM recipient, a positive amount, AND enough USDC to cover
+  // it. `spendable` is null whenever there is no figure to be sure of, which
+  // covers "holds none", "not loaded" and "could not read" alike: all three are
+  // reasons not to offer a bridge, and only the first is a reason to say so.
   const ready =
     domain !== null &&
     recipientValid &&
@@ -219,10 +257,38 @@ export function CctpSend({ onClose }: { onClose: () => void }) {
                 padding: `0 ${space.gutter}px`,
               }}
             >
-              {!usdc && (
+              {usdcHeld.kind === "absent" && (
+                // it reads as an error because it BLOCKS the bridge (Continue is
+                // disabled until it is resolved), and the way to resolve it is a link
+                // inside the sentence rather than a separate control, the same shape
+                // the swap page uses for a missing asset.
                 <div style={{ marginBottom: space.md }}>
-                  <Notice t={t} tone="exposed" bare>
-                    You do not hold any public USDC to bridge. Receive or swap into USDC first.
+                  <Notice t={t} tone="danger" bare>
+                    You do not hold any public USDC to bridge.{" "}
+                    <button
+                      type="button"
+                      onClick={() => w.openSheet("swap")}
+                      style={{
+                        all: "unset",
+                        cursor: "pointer",
+                        color: "inherit",
+                        textDecoration: "underline",
+                        fontWeight: 700,
+                      }}
+                    >
+                      Swap into USDC
+                    </button>{" "}
+                    first.
+                  </Notice>
+                </div>
+              )}
+              {usdcHeld.kind === "unreadable" && (
+                <div style={{ marginBottom: space.md }}>
+                  {/* the worker's own sentence. telling someone to go and get
+                      USDC they may already have is worse than saying nothing,
+                      because it is a specific instruction to do wasted work. */}
+                  <Notice t={t} tone="danger">
+                    {usdcHeld.message}
                   </Notice>
                 </div>
               )}
@@ -231,7 +297,10 @@ export function CctpSend({ onClose }: { onClose: () => void }) {
                 t={t}
                 code="USDC"
                 amount={amount}
-                onAmount={setAmount}
+                onAmount={(v) => {
+                  setAmount(v);
+                  setError(null);
+                }}
                 spendable={spendable}
                 onMax={setMax}
                 mark={<AssetMark t={t} id={markId} code="USDC" />}
@@ -321,7 +390,12 @@ export function CctpSend({ onClose }: { onClose: () => void }) {
             <div
               style={{ padding: `${space.md}px ${space.gutter}px ${space.lg}px`, background: t.bg }}
             >
-              <Button t={t} disabled={!ready} busy={building} onClick={() => void review()}>
+              <Button
+                t={t}
+                disabled={!ready || Boolean(error)}
+                busy={building}
+                onClick={() => void review()}
+              >
                 {building ? "Checking" : "Continue"}
               </Button>
             </div>
@@ -332,7 +406,7 @@ export function CctpSend({ onClose }: { onClose: () => void }) {
       <ChainPicker
         t={t}
         open={picking}
-        chains={CROSS_CHAIN_DOMAINS}
+        chains={SEND_DOMAINS}
         onPick={(d) => {
           setDomain(d);
           setPicking(false);

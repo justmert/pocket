@@ -15,7 +15,7 @@ import { fiatOf } from "../money";
 import { shortAddress } from "../Address";
 import { AmountComposer, AmountSlider, sliderPercent, withinSpendable } from "../AmountComposer";
 import { ConfirmSheet, useOnce } from "../flow";
-import { AssetMark } from "./Home";
+import { AssetMark, privateMarkId } from "./Home";
 import { PrivateAssetPicker } from "../sheets/PrivateAssetPicker";
 import {
   fractionOf,
@@ -69,6 +69,9 @@ export function Send({ onClose }: { onClose: () => void }) {
   const [pickingPrivate, setPickingPrivate] = useState(false);
   const multiPrivate = (w.status?.privateAssets?.length ?? 0) > 1;
   const [assetId, setAssetId] = useState("native");
+  // the private asset this form acts on, chosen LOCALLY (null = the primary). there
+  // is no global selection, so picking here changes only this form.
+  const [privToken, setPrivToken] = useState<string | null>(null);
   const [price, setPrice] = useState<number | null>(null);
   const once = useOnce();
   // the id of the background-op record for the send in flight, so the confirm's
@@ -78,15 +81,18 @@ export function Send({ onClose }: { onClose: () => void }) {
 
   const balances = w.balances ?? [];
   const asset = balances.find((b) => b.id === assetId) ?? balances[0] ?? null;
-  // the private send runs against the selected private asset; the public send
-  // against the picked balance. symbol for display/price, token for the op.
-  const privSymbol = w.priv?.symbol ?? "XLM";
-  const privMarkId = privSymbol === "XLM" ? "native" : privSymbol;
+  // the private send runs against the LOCALLY chosen private asset (default primary);
+  // the public send against the picked balance. its pocket carries the symbol, the
+  // spendable, the state and the wrapper token the private path reads.
+  const privList = w.privAssets ?? [];
+  const localPriv = privList.find((p) => p.token === privToken) ?? privList[0] ?? null;
+  const privSymbol = localPriv?.symbol ?? "XLM";
+  const privMarkId = privateMarkId(privSymbol, w.status?.network);
   const code = isPrivate ? privSymbol : (asset?.code ?? "XLM");
 
   // what can actually leave, which is not the same as what is held. the public
   // pocket's spendable already excludes the network reserve.
-  const spendable = isPrivate ? (w.priv?.spendable ?? null) : (asset?.amount ?? null);
+  const spendable = isPrivate ? (localPriv?.spendable ?? null) : (asset?.amount ?? null);
 
   // a price, for the fiat readout under the amount. absent leaves the wallet in
   // its own unit, which is always true, rather than a dollar it cannot source.
@@ -113,7 +119,7 @@ export function Send({ onClose }: { onClose: () => void }) {
         const r = await call({
           type: "buildPrivateOp",
           op: { kind: "transfer", to, amount },
-          asset: w.privateAsset ?? undefined,
+          asset: localPriv?.token ?? undefined,
         });
         setHandle(r.handle);
         setPrivateSummary(r.summary);
@@ -230,7 +236,7 @@ export function Send({ onClose }: { onClose: () => void }) {
   };
 
   const ready = to !== "" && amount !== "" && withinSpendable(amount, spendable);
-  const blocked = isPrivate && w.priv?.state !== "ready";
+  const blocked = isPrivate && localPriv?.state !== "ready";
   const fiat = fiatOf(amount, price);
 
   return (
@@ -270,8 +276,12 @@ export function Send({ onClose }: { onClose: () => void }) {
             >
               {blocked ? (
                 <Notice t={t}>
-                  {w.priv
-                    ? PRIVATE_NOT_READY[w.priv.state]
+                  {localPriv
+                    ? localPriv.state === "unregistered" && privSymbol !== "XLM"
+                      ? // registration is PER ASSET: name the asset rather than implying
+                        // the whole pocket is closed when another asset is already live.
+                        `Setting up ${privSymbol} in your private pocket takes two transactions, and you review the second one.`
+                      : PRIVATE_NOT_READY[localPriv.state]
                     : "Pocket is still reading this account. Try again in a moment."}
                 </Notice>
               ) : (
@@ -280,7 +290,10 @@ export function Send({ onClose }: { onClose: () => void }) {
                     t={t}
                     code={code}
                     amount={amount}
-                    onAmount={setAmount}
+                    onAmount={(v) => {
+                      setAmount(v);
+                      setError(null);
+                    }}
                     spendable={spendable}
                     fiat={fiat}
                     onMax={() => setFraction(1n, 1n)}
@@ -366,13 +379,18 @@ export function Send({ onClose }: { onClose: () => void }) {
                   t={t}
                   onClick={() => {
                     onClose();
-                    w.openSheet("move");
+                    if (localPriv) w.openMove(localPriv);
                   }}
                 >
                   Open the private pocket
                 </Button>
               ) : (
-                <Button t={t} disabled={!ready} busy={building} onClick={() => void review()}>
+                <Button
+                  t={t}
+                  disabled={!ready || Boolean(error)}
+                  busy={building}
+                  onClick={() => void review()}
+                >
                   {building ? "Checking" : "Continue"}
                 </Button>
               )}
@@ -392,7 +410,11 @@ export function Send({ onClose }: { onClose: () => void }) {
         onClose={() => setPicking(false)}
       />
 
-      <PrivateAssetPicker open={pickingPrivate} onClose={() => setPickingPrivate(false)} />
+      <PrivateAssetPicker
+        open={pickingPrivate}
+        onClose={() => setPickingPrivate(false)}
+        onPick={setPrivToken}
+      />
 
       <ConfirmSheet
         t={t}

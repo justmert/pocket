@@ -5,6 +5,7 @@ import type { PrivateOpRequest, WalletRequest } from "./messages";
 import { WrongPasswordError } from "./vault/vault";
 import { InvalidAddressError } from "./chain/address";
 import { RANGES, type RangeId } from "./chain/prices";
+import { NETWORKS, type NetworkId } from "./config";
 
 /**
  * Operations permitted while locked.
@@ -71,6 +72,26 @@ function optionalStr(v: unknown, field: string): string | undefined {
  * connection." instead of being named at the boundary, which is the whole point
  * of these helpers.
  */
+/**
+ * A network this build actually knows.
+ *
+ * `setNetwork` was the one case here that passed a field straight through, and
+ * it is the worst one to have missed: the value is ASSIGNED to
+ * `controller.network` and then PERSISTED, so an unknown string leaves every
+ * later `NETWORKS[this.network]` undefined and survives a restart. The wallet
+ * does not fail at the boundary with a named error, it fails on the next read
+ * of anything, forever, and there is no screen that can set it back.
+ *
+ * Checked against the table itself rather than a literal list, so a network
+ * added to config is accepted here without a second edit that could be missed.
+ */
+function networkId(v: unknown, field: string): NetworkId {
+  if (typeof v !== "string" || !Object.prototype.hasOwnProperty.call(NETWORKS, v)) {
+    throw new Error(`malformed request: ${field} is not a network this build knows`);
+  }
+  return v as NetworkId;
+}
+
 function num(v: unknown, field: string): number {
   if (typeof v !== "number" || !Number.isInteger(v)) {
     throw new Error(`malformed request: ${field} must be a whole number`);
@@ -126,7 +147,7 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
       await c.lock();
       return c.status();
     case "setNetwork":
-      return c.setNetwork(msg.network);
+      return c.setNetwork(networkId(msg.network, "network"));
     case "setAutoLock":
       return c.setAutoLock(num(msg.minutes, "minutes"));
     case "balances":

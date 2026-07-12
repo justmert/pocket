@@ -73,7 +73,37 @@ describe("a flaky RPC must not be mistaken for a flaky ledger", () => {
     );
     // "We do not know" is the only honest answer, and it is the one that tells
     // the caller not to resend.
-    expect(outcome).toEqual({ kind: "pending", hash: "abc" });
+    //
+    // `answered: false` is the load-bearing half. The caller decides from it
+    // whether maxTime passing means "expired, safe to discard the staged
+    // consequence"; an outage that never reached the RPC is not evidence the
+    // transaction failed to land, and treating it as evidence deleted openings.
+    expect(outcome).toEqual({ kind: "pending", hash: "abc", answered: false });
+  });
+
+  it("reports pending as ANSWERED when the ledger really said it does not have it", async () => {
+    const outcome = await pollToTerminal(
+      fakeServer({ getTransaction: async () => ({ status: "NOT_FOUND" }) as never }),
+      "abc",
+      { attempts: 2, sleepMs: 1 },
+    );
+    expect(outcome).toEqual({ kind: "pending", hash: "abc", answered: true });
+  });
+
+  it("counts a single reply among failures as having been answered", async () => {
+    // One good poll is enough evidence. The rest failing does not un-see it.
+    let n = 0;
+    const outcome = await pollToTerminal(
+      fakeServer({
+        getTransaction: async () => {
+          if (++n === 2) return { status: "NOT_FOUND" } as never;
+          throw new Error("ECONNREFUSED");
+        },
+      }),
+      "abc",
+      { attempts: 3, sleepMs: 1 },
+    );
+    expect(outcome).toEqual({ kind: "pending", hash: "abc", answered: true });
   });
 
   it("polls by hash rather than concluding anything when the submit itself fails in transit", async () => {
@@ -126,7 +156,7 @@ describe("a flaky RPC must not be mistaken for a flaky ledger", () => {
 
 describe("what a user is told about a submission", () => {
   it("tells them not to resend while the outcome is unknown", () => {
-    const said = describeOutcome({ kind: "pending", hash: "deadbeef" });
+    const said = describeOutcome({ kind: "pending", hash: "deadbeef", answered: true });
     expect(said).toMatch(/do not resend/i);
     expect(said).toContain("deadbeef");
   });
@@ -153,7 +183,8 @@ describe("what a user is told about a submission", () => {
       { kind: "rejected", hash: "h", reason: "r" },
       { kind: "notAccepted", hash: "h" },
       { kind: "expired", hash: "h" },
-      { kind: "pending", hash: "h" },
+      { kind: "pending", hash: "h", answered: true },
+      { kind: "pending", hash: "h", answered: false },
     ] as const;
     for (const k of kinds) expect(describeOutcome(k).length).toBeGreaterThan(20);
   });

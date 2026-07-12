@@ -36,13 +36,15 @@ const VERB: Record<Kind, string> = {
 export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const w = useWallet();
   const t = w.t;
-  const priv = w.priv;
+  // the asset the opener meant (register / make-spendable is per asset), falling back
+  // to the primary if it was opened without one.
+  const priv = w.privateDetail ?? w.priv;
   const refresh = w.refresh;
   // the setup/make-spendable/rebuild here all act on the selected private asset,
   // set by the asset row that opened this sheet. symbol for display, token for the
   // op; both default to the primary asset for a single-asset wallet.
   const symbol = priv?.symbol ?? "XLM";
-  const assetToken = w.privateAsset ?? undefined;
+  const assetToken = priv?.token ?? undefined;
 
   const [stage, setStage] = useState<Stage>("menu");
   const [kind, setKind] = useState<Kind>("merge");

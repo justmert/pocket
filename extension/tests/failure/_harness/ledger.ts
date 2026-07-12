@@ -107,3 +107,45 @@ export function fundedAccountResult(
     opts.latestLedger,
   );
 }
+
+/**
+ * A whole small ledger that answers whichever key it is asked about.
+ *
+ * `fundedAccountResult` answers with the ACCOUNT entry whatever was requested,
+ * and `readEntry` compares the echoed key against the one it sent, so a test
+ * account that is asked about a trustline gets `LedgerEntryMismatchError`
+ * rather than "no such trustline". That was invisible while only the native
+ * balance was ever read; it surfaces the moment anything reads a trustline,
+ * which the balance guards on the send, swap and bridge paths now do.
+ *
+ * An absent trustline answers with an explicit empty `entries`, which is what a
+ * real RPC does and the only shape `readEntry` is allowed to read as "genuinely
+ * not there".
+ */
+export function ledgerAnswering(
+  accountId: string,
+  opts: {
+    native?: bigint;
+    subEntries?: number;
+    trustlines?: { asset: Asset; balance: bigint; authorized?: boolean }[];
+    latestLedger?: number;
+  } = {},
+): (key: xdr.LedgerKey) => unknown {
+  const rows: RawEntry[] = [
+    entryFor(
+      accountKey(accountId),
+      accountEntry(accountId, opts.native ?? 100_0000000n, { subEntries: opts.subEntries }),
+    ),
+    ...(opts.trustlines ?? []).map((t) =>
+      entryFor(
+        trustlineKey(accountId, t.asset),
+        trustlineEntry(accountId, t.asset, t.balance, { authorized: t.authorized }),
+      ),
+    ),
+  ];
+  return (key: xdr.LedgerKey) => {
+    const want = key.toXDR("base64");
+    const hit = rows.find((r) => r.key === want);
+    return entriesResult(hit ? [hit] : [], opts.latestLedger);
+  };
+}

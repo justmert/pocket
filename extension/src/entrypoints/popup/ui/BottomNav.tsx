@@ -12,6 +12,7 @@ import {
   BridgeIn,
   BridgeOut,
   Clock,
+  Coins,
   Gear,
   HomeIcon,
   Plus,
@@ -70,6 +71,9 @@ export function BottomNav() {
         { key: "send", label: "Send", icon: <Send size={24} /> },
         ...(swapAvailable
           ? [{ key: "swap" as SheetId, label: "Swap", icon: <SwapIcon size={24} /> }]
+          : []),
+        ...(w.yieldPosition?.available
+          ? [{ key: "yieldDeposit" as SheetId, label: "Yield", icon: <Coins size={24} /> }]
           : []),
         { key: "cctpSend", label: "Send to a chain", icon: <BridgeOut size={24} /> },
         { key: "cctpClaim", label: "Claim from a chain", icon: <BridgeIn size={24} /> },
@@ -279,7 +283,9 @@ function FabMenu({
           gap: space.xs,
           padding: `${space.xs}px ${space.sm}px`,
           borderRadius: radius.lg,
-          background: t.sheet,
+          // the action popup shares the bottom bar's tone (not the card sheet tone)
+          // so the popup and the bar it springs from read as one surface.
+          background: t.bar,
           boxShadow: t.dark
             ? `0 18px 46px -12px rgba(0,0,0,0.75), 0 0 26px -6px ${t.accent}`
             : `0 18px 46px -14px rgba(20,21,26,0.32), 0 0 24px -6px ${t.accent}`,
@@ -306,7 +312,9 @@ function FabMenu({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: t.text,
+              // the muted nav tone, matching the resting icons in the bottom bar this
+              // popup springs from, rather than the loud accent that stood apart.
+              color: t.faint,
             }}
           >
             {it.icon}
@@ -392,16 +400,12 @@ function bar(t: Theme, compact: boolean): CSSProperties {
     background: t.bar,
     backdropFilter: "blur(24px) saturate(1.7)",
     WebkitBackdropFilter: "blur(24px) saturate(1.7)",
-    // a UNIFORM accent halo (0/0 offset, so it is the same on every side) is the
-    // bar's signature in both pockets. the light pocket ALSO carries a soft dark
-    // ambient for lift; the dark pocket does NOT — a black drop shadow below the
-    // bar is not just invisible on the dark page, it DARKENS the strip under the
-    // bar and cancels the glow exactly where the user saw it missing. so on dark
-    // the halo stands alone, wider and stronger, and reaches all the way round
-    // including below.
-    boxShadow: t.dark
-      ? `0 0 40px 0px ${hexAlpha(t.accent, 0.7)}`
-      : `0 10px 34px -12px rgba(20,21,26,0.28), 0 0 34px -3px ${hexAlpha(t.accent, 0.55)}`,
+    // the bar's signature is one accent halo, IDENTICAL in both pockets: same blur,
+    // spread and strength, only the accent hue differs (blue in public, teal in
+    // private). a soft ambient rides under it for lift. the dark pocket used to run
+    // a wider, stronger halo to compensate for the near-black page, but that read as
+    // too much: matched geometry keeps the two bars the same height of glow.
+    boxShadow: `0 10px 34px -12px rgba(20,21,26,0.28), 0 0 26px -3px ${hexAlpha(t.accent, 0.55)}`,
   };
 }
 

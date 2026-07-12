@@ -6,7 +6,6 @@
 // payment. the position refreshes on its own once the move lands (completeOp
 // triggers the provider refresh, which reloads yieldPosition).
 import { useEffect, useRef, useState } from "react";
-import { BASE_FEE } from "@stellar/stellar-sdk/base";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Frame, Header, Notice } from "../primitives";
@@ -15,11 +14,14 @@ import { fiatOf } from "../money";
 import { AmountComposer, withinSpendable } from "../AmountComposer";
 import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark } from "./Home";
-import { fractionOf, sendableAfterFee, composeAmount } from "../../../../core/chain/balances";
+import {
+  fractionOf,
+  sendableAfterFee,
+  composeAmount,
+  SOROBAN_FEE_RESERVE_STROOPS,
+} from "../../../../core/chain/balances";
 import { radius, space, text, type Theme } from "../theme";
 import type { YieldMoveSummary } from "../../../../core/messages";
-
-const BASE_FEE_STROOPS = BigInt(BASE_FEE);
 
 type Kind = "deposit" | "withdraw";
 
@@ -43,7 +45,10 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
   const opId = useRef<string | null>(null);
   const leaving = useRef(false);
 
-  const code = y?.underlying ?? "XLM";
+  // the vault's underlying is a SAC id; "native" is wrapped XLM, shown as XLM (never
+  // the raw "native"), so the composer, the confirm and the marks all read as XLM.
+  const rawUnderlying = y?.underlying ?? "XLM";
+  const code = rawUnderlying === "native" ? "XLM" : rawUnderlying;
   const balances = w.balances ?? [];
   // the underlying's mark and held balance. XLM is the native row; a classic
   // underlying (USDC) is matched by code so its own logo and spendable are used.
@@ -68,7 +73,11 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
   const setMax = () => {
     if (!spendable) return;
     const part = fractionOf(spendable, 1n, 1n);
-    const raw = markId === "native" ? sendableAfterFee(part, BASE_FEE_STROOPS) : part;
+    // A SOROBAN operation, so the reserve is the Soroban one. `BASE_FEE` is 100
+    // stroops and pays for a classic payment; this call pays a resource fee decided
+    // by simulation, measured in the hundreds of thousands. Reserving 100 stroops
+    // produced a "use max" amount that left nothing for the real fee.
+    const raw = markId === "native" ? sendableAfterFee(part, SOROBAN_FEE_RESERVE_STROOPS) : part;
     setAmount(composeAmount(raw, 4));
   };
 
@@ -194,11 +203,73 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
                 />
               </div>
 
+              {/* the position on the page itself: what is in the vault and the rate,
+                  so the yield screen carries its own context, not only the form. */}
+              {y && (y.underlyingBalance || y.balance || y.apy) && (
+                <div
+                  style={{
+                    background: t.field,
+                    borderRadius: radius.lg,
+                    padding: `${space.md}px ${space.gutter}px`,
+                    marginBottom: space.lg,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: space.sm,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "baseline",
+                      gap: space.sm,
+                    }}
+                  >
+                    <span style={{ ...text.rowSub, color: t.sub }}>In the vault</span>
+                    <span style={{ ...text.rowTitle, color: t.text }}>
+                      {y.underlyingBalance
+                        ? `${y.underlyingBalance} ${code}`
+                        : y.balance
+                          ? `${y.balance} shares`
+                          : "None yet"}
+                    </span>
+                  </div>
+                  {y.apy && (
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "baseline",
+                        gap: space.sm,
+                      }}
+                    >
+                      <span style={{ ...text.rowSub, color: t.sub }}>Rate</span>
+                      <span
+                        style={{
+                          ...text.rowSub,
+                          fontWeight: 600,
+                          color: t.positive,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {/* just the figure; "variable, not guaranteed" lives in the
+                            header tip rather than wrapping across the card. */}
+                        {y.apy.match(/[\d.]+%/)?.[0] ?? y.apy}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <AmountComposer
                 t={t}
                 code={code}
                 amount={amount}
-                onAmount={setAmount}
+                onAmount={(v) => {
+                  setAmount(v);
+                  // clear a prior build error so the button re-enables on a new amount.
+                  setError(null);
+                }}
                 spendable={spendable}
                 fiat={fiat}
                 onMax={setMax}
@@ -230,7 +301,12 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
             <div
               style={{ padding: `${space.md}px ${space.gutter}px ${space.lg}px`, background: t.bg }}
             >
-              <Button t={t} disabled={!ready} busy={building} onClick={() => void review()}>
+              <Button
+                t={t}
+                disabled={!ready || Boolean(error)}
+                busy={building}
+                onClick={() => void review()}
+              >
                 {building ? "Checking" : "Continue"}
               </Button>
             </div>

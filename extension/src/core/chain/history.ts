@@ -27,6 +27,22 @@ const MAX_PAGES = 20;
 export interface HistoryCursor {
   at: number;
   id: string;
+  /**
+   * Horizon's own paging token for the last PUBLIC entry this cursor covers.
+   *
+   * Without it every call restarted at Horizon's newest page and skipped
+   * forward to `(at, id)`, which the function's own comment described as
+   * costing "some repeated reads on deep scrolls". The real cost was harder:
+   * the skip is bounded by MAX_PAGES x PAGE = 1000 records, so once a cursor
+   * sat past record 1000 every page was skipped, the call returned no entries,
+   * and history older than that was unreachable at any speed. Activity simply
+   * stopped, with nothing on screen saying it had been truncated.
+   *
+   * Optional because a cursor issued before this existed has no token, and
+   * must keep working: absent, the walk starts at the newest page exactly as
+   * it used to.
+   */
+  token?: string;
 }
 
 /** True when (at, id) sorts strictly OLDER than the cursor, in (at desc, id desc) order. */
@@ -51,8 +67,10 @@ export function decodeCursor(s: string | undefined): HistoryCursor | null {
     if (o && typeof o === "object") {
       const at = (o as { at?: unknown }).at;
       const id = (o as { id?: unknown }).id;
-      if (typeof at === "number" && Number.isFinite(at) && typeof id === "string")
-        return { at, id };
+      const token = (o as { token?: unknown }).token;
+      if (typeof at === "number" && Number.isFinite(at) && typeof id === "string") {
+        return typeof token === "string" && token ? { at, id, token } : { at, id };
+      }
     }
   } catch {
     /* a malformed cursor reads as "from the top" rather than an error. */
@@ -156,11 +174,7 @@ async function fetchPage(url: string): Promise<PaymentRecord[]> {
  * or not a kind we render (a counterparty's leg, an unknown op type, or a leg of
  * a confidential deposit/withdraw shown from the private side instead).
  */
-function mapPayment(
-  r: PaymentRecord,
-  me: string,
-  exclude: ReadonlySet<string>,
-): HistoryEntry[] {
+function mapPayment(r: PaymentRecord, me: string, exclude: ReadonlySet<string>): HistoryEntry[] {
   const at = Date.parse(r.created_at);
   if (!Number.isFinite(at)) return [];
   const id = `${r.transaction_hash}:${r.id}`;
@@ -310,13 +324,21 @@ function mapPayment(
 
 /**
  * Public history entries strictly older than `before`, newest first, up to
- * `limit`, plus whether more remain.
+ * `limit`, plus whether more remain and where Horizon got to.
  *
- * Walks Horizon from the newest page and skips entries at or above the cursor.
- * That re-reads the pages above the cursor on each call rather than resuming
- * from a Horizon token, which keeps the merge with the private side simple (one
- * shared (at, id) cursor for both sources) at the cost of some repeated reads on
- * deep scrolls. Bounded by MAX_PAGES.
+ * RESUMES from `before.token` when the cursor carries one, rather than walking
+ * from Horizon's newest page and skipping forward. The old comment here
+ * described the cost of that skip as "some repeated reads on deep scrolls",
+ * which understated it: the skip is bounded by MAX_PAGES x PAGE = 1000 records,
+ * so a cursor past record 1000 skipped every page, returned nothing, and made
+ * older history unreachable at any speed. The `(at, id)` cursor is still the
+ * authority on what has been shown, so the token is only ever a starting point
+ * and nothing can be skipped by trusting it.
+ *
+ * `tokenOf` maps each returned entry's id to the Horizon paging token of the
+ * record it came from. The caller merges these entries with the private side
+ * and may keep only some of them, so only the caller knows which token the next
+ * cursor should carry.
  */
 export async function publicHistory(opts: {
   horizonUrl: string;
@@ -328,12 +350,16 @@ export async function publicHistory(opts: {
   excludeCounterparties?: string[];
   before: HistoryCursor | null;
   limit: number;
-}): Promise<{ entries: HistoryEntry[]; more: boolean }> {
+}): Promise<{ entries: HistoryEntry[]; more: boolean; tokenOf: Record<string, string> }> {
   const { horizonUrl, account, excludeCounterparties, before, limit } = opts;
   const exclude = new Set(excludeCounterparties ?? []);
   const base = `${horizonUrl}/accounts/${encodeURIComponent(account)}/payments?order=desc&limit=${PAGE}&join=transactions`;
   const entries: HistoryEntry[] = [];
-  let url = base;
+  const tokenOf: Record<string, string> = {};
+  // Resume where the last page left off. Horizon's `cursor` is exclusive and
+  // the records are in the same order the merge sorts by, so everything from
+  // here is older than what has already been shown.
+  let url = before?.token ? `${base}&cursor=${encodeURIComponent(before.token)}` : base;
   let more = false;
 
   for (let p = 0; p < MAX_PAGES; p++) {
@@ -350,6 +376,7 @@ export async function publicHistory(opts: {
           break;
         }
         entries.push(entry);
+        if (r.paging_token) tokenOf[entry.id] = r.paging_token;
       }
       if (more) break;
     }
@@ -364,5 +391,5 @@ export async function publicHistory(opts: {
     url = `${base}&cursor=${encodeURIComponent(token)}`;
   }
 
-  return { entries, more };
+  return { entries, more, tokenOf };
 }

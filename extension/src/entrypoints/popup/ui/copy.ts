@@ -51,3 +51,29 @@ export const NO_MEMO = "None. Exchanges usually require one; a deposit without i
 export function canRebuild(network: NetworkId): boolean {
   return Boolean(NETWORKS[network].archiveUrl);
 }
+
+/**
+ * The dormancy warning, in one place because it was written in two and both
+ * were wrong the same way.
+ *
+ * Both said "opening the wallet before then keeps it alive". It does not.
+ * Opening the wallet performs a SIMULATED read, and `chain/confidential.ts`
+ * states in its own words that a simulated read does not bump the entry: only
+ * a submitted transaction does. So the wallet gave an instruction that someone
+ * could follow exactly and still lose access to their private pocket, which is
+ * a worse failure than saying nothing.
+ *
+ * What is true is one step removed. Pocket submits a keep-alive itself, from
+ * `runKeepAlive`, whenever the wallet is unlocked with the deadline close. So
+ * opening it IS sufficient, not because opening bumps anything, but because
+ * being open is what lets the wallet send the transaction that does. The
+ * sentence has to say that, or the next person to read the TTL code will
+ * "correct" it back.
+ */
+export function dormancyWarning(days: number): string {
+  return (
+    `This pocket goes dormant in ${days} ${days === 1 ? "day" : "days"} unless a transaction is ` +
+    `submitted for it. Pocket sends one for you whenever the wallet is unlocked in time, so ` +
+    `opening it once before then is enough. Viewing a balance alone is not.`
+  );
+}

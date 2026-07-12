@@ -98,6 +98,32 @@ export default defineBackground(() => {
     });
   });
 
+  /**
+   * Tell every open wallet page that the session is gone.
+   *
+   * This lived inside the idle-alarm branch and nowhere else, so ONLY an idle
+   * timeout told other pages. Pressing Lock, and erasing the wallet, both
+   * destroy the session synchronously and posted nothing, and Pocket ships an
+   * extension tab as well as the toolbar popup, so two pages open at once is
+   * ordinary. The second one kept a full render of balances, history and the
+   * address on screen for a wallet whose keys no longer existed, and only found
+   * out when the user next touched it.
+   *
+   * The deliberate lock is the worse case of the two, not the better one: the
+   * user pressed Lock, watched one window obey, and can see another that has
+   * not.
+   */
+  const announceLocked = () => {
+    for (const port of uiPorts) {
+      try {
+        port.postMessage({ type: "locked" });
+      } catch {
+        /* the page went away between the lock and this post; its disconnect
+           handler has already dropped it, or will. */
+      }
+    }
+  };
+
   chrome.runtime.onMessage.addListener(
     (msg: WalletRequest, sender, sendResponse: (r: WalletResponse<unknown>) => void) => {
       // Only this extension's own pages. A web page cannot reach this listener
@@ -158,6 +184,7 @@ export default defineBackground(() => {
             sendResponse({ ok: false, error: "Wallet is locked." });
             return;
           }
+          const wasUnlocked = isUnlocked();
           const data = await dispatch(controller, msg);
           // Only real user activity postpones the lock. A status poll or an
           // unrecognised message must not keep a funded wallet open forever. The
@@ -167,6 +194,11 @@ export default defineBackground(() => {
             armAutoLock(controller.autoLockMinutes());
             controller.slideDeadline();
           }
+          // Any request that ENDED the session tells the other pages, not just
+          // the idle alarm. Keyed on the observed transition rather than on a
+          // list of message types, so a future request that locks is covered by
+          // the same line rather than by remembering to add it here.
+          if (wasUnlocked && !isUnlocked()) announceLocked();
           sendResponse({ ok: true, data });
         } catch (e) {
           sendResponse({ ok: false, error: describeError(e) });
@@ -211,14 +243,7 @@ export default defineBackground(() => {
         // above, the worker would simply have died here and the page would have
         // found out on its next call; now the worker survives the idle period, so
         // it has to say so itself.
-        for (const port of uiPorts) {
-          try {
-            port.postMessage({ type: "locked" });
-          } catch {
-            /* the page went away between the lock and this post; its disconnect
-               handler has already dropped it, or will. */
-          }
-        }
+        announceLocked();
         keepWarm();
       });
     }

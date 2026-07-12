@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { isAllowedWhileLocked, describeError, isUserActivity } from "./dispatch";
+import { isAllowedWhileLocked, describeError, isUserActivity, dispatch } from "./dispatch";
+import { NETWORKS } from "./config";
 
 describe("the locked-state allowlist", () => {
   it("keeps reset out, because it has no guard of its own", () => {
@@ -72,5 +73,48 @@ describe("onboarding by import must be reachable", () => {
 
   it("still keeps reset out, which import's own guard does not cover", () => {
     expect(isAllowedWhileLocked("reset")).toBe(false);
+  });
+});
+
+// The one dispatch case that passed a field straight through.
+//
+// `setNetwork` ASSIGNS its argument to `controller.network` and then PERSISTS
+// it, so an unknown string leaves every later `NETWORKS[this.network]`
+// undefined and survives a restart. The wallet does not fail at the boundary
+// with a named error; it fails on the next read of anything, forever, and no
+// screen can set it back. Every other field here is validated.
+describe("the network a request may ask for", () => {
+  const controller = {
+    setNetwork: async (n: string) => ({ network: n }),
+  } as unknown as Parameters<typeof dispatch>[0];
+
+  it("accepts a network this build knows", async () => {
+    await expect(
+      dispatch(controller, { type: "setNetwork", network: "testnet" } as never),
+    ).resolves.toEqual({ network: "testnet" });
+  });
+
+  it("refuses one it does not, at the boundary", async () => {
+    await expect(
+      dispatch(controller, { type: "setNetwork", network: "banana" } as never),
+    ).rejects.toThrow(/not a network this build knows/);
+  });
+
+  it("refuses a non-string, which would be assigned just as happily", async () => {
+    for (const bad of [null, undefined, 7, {}, ["testnet"]]) {
+      await expect(
+        dispatch(controller, { type: "setNetwork", network: bad } as never),
+        String(bad),
+      ).rejects.toThrow(/not a network/);
+    }
+  });
+
+  it("checks against the config table, not a hardcoded list", async () => {
+    // So a network added to config is accepted here without a second edit.
+    for (const id of Object.keys(NETWORKS)) {
+      await expect(
+        dispatch(controller, { type: "setNetwork", network: id } as never),
+      ).resolves.toBeTruthy();
+    }
   });
 });

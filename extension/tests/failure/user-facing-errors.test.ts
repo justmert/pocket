@@ -131,7 +131,7 @@ describe("every name on the allowlist actually round-trips", () => {
     ["InsufficientBalanceError", new InsufficientBalanceError(AUTHORED)],
     ["VerificationKeyMismatchError", new VerificationKeyMismatchError(AUTHORED)],
     ["UnresolvedTransactionError", new UnresolvedTransactionError(AUTHORED)],
-    ["SubmitOutcomeError", new SubmitOutcomeError(AUTHORED, { kind: "pending", hash: "x" })],
+    ["SubmitOutcomeError", new SubmitOutcomeError(AUTHORED, { kind: "pending", hash: "x", answered: true })],
   ];
 
   for (const [name, e] of authored) {

@@ -17,6 +17,8 @@ import {
 import type { ReactNode } from "react";
 import { call } from "./rpc";
 import { stillUnresolved } from "./backgroundOps";
+import { readAddressBook, addToAddressBook, clearAddressBook } from "./addressBook";
+import { selectPrivateAsset } from "./selectAsset";
 import { motion, theme, type Pocket, type Theme } from "./theme";
 import type {
   PrivatePocket,
@@ -153,19 +155,29 @@ interface Wallet {
    */
   privAssets: PrivatePocket[] | null;
   /**
-   * the private pocket a form acts on: the selected asset's pocket, or the
-   * primary one. singular by design, because every op runs against exactly one
-   * asset. kept for the many consumers that read one pocket; it is now whichever
-   * asset `privateAsset` names.
+   * the PRIMARY private pocket (native / first configured), for the home's prompt
+   * and single-asset hero. singular by design; there is NO global "selected asset"
+   * any more, so nothing a form does can change what the home reads here. each form
+   * (send / move / shield / unshield) picks its own asset locally.
    */
   priv: PrivatePocket | null;
-  /** the selected private asset's wrapper token, passed as `asset` on every
-   *  private op. defaults to the primary (first configured) asset. */
-  privateAsset: string | null;
-  /** choose which private asset the next private op runs against. */
-  setPrivateAsset(token: string): void;
+  /** the private asset whose detail sheet is open (the row the user tapped), null
+   *  when closed. PrivateAssetSheet reads this instead of `priv`, so it shows the
+   *  tapped asset rather than the primary. */
+  privateDetail: PrivatePocket | null;
   privError: string | null;
   yieldPosition: YieldPosition | null;
+  /**
+   * Why the yield position could not be read, if it could not.
+   *
+   * Separate from a null position because they mean opposite things. Null is
+   * "this build has no vault configured", which is a fact about the product;
+   * this is "the service did not answer", which is a fact about right now. The
+   * catch here used to turn the second into the first, so a DeFindex outage
+   * removed the entire Yield section from Home and the wallet looked like a
+   * build that never had the feature.
+   */
+  yieldError: string | null;
   dappRequest: DappRequest | null;
   inFlight: InFlightRecord | null;
 
@@ -191,11 +203,12 @@ interface Wallet {
   assetDetail: PublicBalance | null;
   openAsset(b: PublicBalance): void;
   /**
-   * open a private asset's detail. selects it (so the sheet and any op it starts
-   * act on that asset) and raises the private-asset sheet. the sheet reads the
-   * live pocket off `priv`, so it stays in step as balances refresh.
+   * open a private asset's detail: stashes the tapped pocket in `privateDetail` and
+   * raises the private-asset sheet, WITHOUT touching any global selection.
    */
   openPrivateAsset(p: PrivatePocket): void;
+  /** open the move sheet (register / make spendable) FOR a specific asset. */
+  openMove(p: PrivatePocket): void;
   closeAllSheets(): void;
 
   copied: boolean;
@@ -212,6 +225,17 @@ export function useWallet(): Wallet {
   return w;
 }
 
+/**
+ * Is the balance mask on? Answers false outside the provider.
+ *
+ * Non-throwing on purpose, so `Amount` can consult it without every use of that
+ * component requiring a wallet around it. Onboarding renders amounts before
+ * there is a session to mask.
+ */
+export function useHidden(): boolean {
+  return useContext(Ctx)?.hidden ?? false;
+}
+
 /** the native balance, which is the one the hero shows. */
 export function nativeOf(balances: PublicBalance[] | null): PublicBalance | undefined {
   return balances?.find((b) => b.id === "native");
@@ -226,24 +250,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [privError, setPrivError] = useState<string | null>(null);
   // which confidential asset a private op runs against, by wrapper token. seeded
   // from localStorage so the choice survives a reopen; reconciled against the
-  // configured set once status loads (a token no longer configured falls back to
-  // the primary). null until then, which every consumer reads as "the primary".
-  const [privateAsset, setPrivateAssetState] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem("pocket:privateAsset");
-    } catch {
-      return null;
-    }
-  });
-  const setPrivateAsset = useCallback((token: string) => {
-    setPrivateAssetState(token);
-    try {
-      localStorage.setItem("pocket:privateAsset", token);
-    } catch {
-      /* storage disabled: the choice stays in memory for this session. */
-    }
-  }, []);
+  // the private asset whose detail sheet is open (the tapped row). there is no
+  // persisted "selected asset" any more: each form picks its own asset locally, so
+  // nothing a form does bleeds into the home or the next form.
+  const [privateDetail, setPrivateDetail] = useState<PrivatePocket | null>(null);
   const [yieldPosition, setYieldPosition] = useState<YieldPosition | null>(null);
+  const [yieldError, setYieldError] = useState<string | null>(null);
   const [dappRequest, setDappRequest] = useState<DappRequest | null>(null);
   const [inFlight, setInFlight] = useState<InFlightRecord | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -275,27 +287,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // survives the popup closing. addresses are public, so this is not vault
   // material; it is a convenience, offered from a receipt and used from the send
   // field. most-recent first, deduped, and capped so it cannot grow without bound.
-  const [savedAddresses, setSavedAddresses] = useState<string[]>(() => {
-    try {
-      const raw = localStorage.getItem("pocket:savedAddresses");
-      const list: unknown = raw ? JSON.parse(raw) : [];
-      return Array.isArray(list) ? list.filter((a): a is string => typeof a === "string") : [];
-    } catch {
-      return [];
-    }
-  });
+  const [savedAddresses, setSavedAddresses] = useState<string[]>(readAddressBook);
   const saveAddress = useCallback((address: string) => {
-    const addr = address.trim();
-    if (!addr) return;
-    setSavedAddresses((prev) => {
-      const next = [addr, ...prev.filter((a) => a !== addr)].slice(0, 20);
-      try {
-        localStorage.setItem("pocket:savedAddresses", JSON.stringify(next));
-      } catch {
-        /* storage disabled: the list stays in memory for this session. */
-      }
-      return next;
-    });
+    setSavedAddresses((prev) => addToAddressBook(prev, address));
   }, []);
   // transactions the popup is still watching. session-only: the worker owns the
   // durable record (its in-flight entry and, on success, the openings), so this
@@ -343,11 +337,26 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       let assets: PrivatePocket[];
       try {
         assets = await call({ type: "privatePockets" });
-      } catch {
+        setPrivError(null);
+      } catch (plural) {
+        // The fallback returns the PRIMARY asset alone, so on a multi-asset
+        // wallet it is a truncated list, not an equivalent one. It was being
+        // stored as though it were complete and the error cleared, so the other
+        // assets simply vanished from every private screen with nothing said,
+        // and the pocket the user had selected could disappear out from under
+        // the selection.
+        //
+        // Kept, because an older worker really does lack `privatePockets` and a
+        // list of one beats a list of none. Reported alongside, because a
+        // silently short list of balances is the same class of lie as a zero.
         assets = [await call({ type: "privatePocket" })];
+        setPrivError(
+          assets.length < 2
+            ? message(plural)
+            : "Pocket could not read every private asset, so this list may be incomplete.",
+        );
       }
       setPrivAssets(assets);
-      setPrivError(null);
     } catch (e) {
       setPrivError(message(e));
     }
@@ -363,13 +372,49 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       if (next) {
         setStatus(next);
         setBootError(null);
+        // An erase must take the popup's own memory with it. `backgroundOps`,
+        // the balances, the private pockets and the yield position are all held
+        // in React state, and `reset` only clears the WORKER: everything here
+        // survived it for as long as the popup stayed open, so creating or
+        // importing a wallet straight after an erase showed the previous
+        // wallet's operations, amounts and hashes under the new one's identity.
+        //
+        // Keyed on the transition rather than added to the erase handler, so an
+        // erase reached by any other route is covered by the same line.
+        if (!next.initialised) {
+          setBackgroundOps([]);
+          setBalances(null);
+          setBalanceError(null);
+          setPrivAssets(null);
+          setYieldPosition(null);
+          setYieldError(null);
+          // The address book too, and it is the one the worker's erase sweep
+          // could never have reached: it lives in the POPUP's localStorage, not
+          // in `chrome.storage.local`. So erasing a wallet left the list of
+          // everyone the previous owner had paid, and the next wallet created
+          // on the device inherited it, offered from its own send field.
+          //
+          // Addresses are public on the ledger, which is why they are stored in
+          // the clear; WHO THIS DEVICE PAID is not, and that is what the list
+          // is.
+          setSavedAddresses([]);
+          clearAddressBook();
+        }
         if (!next.locked && next.initialised) {
           await Promise.all([
             loadBalances(),
             next.privateAvailable ? loadPrivate() : Promise.resolve(),
             call({ type: "yieldPosition" })
-              .then(setYieldPosition)
-              .catch(() => setYieldPosition(null)),
+              .then((p) => {
+                setYieldPosition(p);
+                setYieldError(null);
+              })
+              // The position is NOT cleared. The last figure read is still the
+              // best thing known about the vault, and replacing it with null
+              // deletes the section rather than reporting that the refresh
+              // failed, which is the same "a zero would be a lie" rule applied
+              // to a whole feature.
+              .catch((e: unknown) => setYieldError(message(e))),
           ]);
         }
       }
@@ -443,7 +488,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // what lets the worker keep itself alive across MV3's ~30s idle eviction
   // instead of dying under an idle popup, the death that read to the user as the
   // wallet "locking every couple of minutes". it also carries the worker's own
-  // "locked" push, for the case where the fifteen-minute idle lock fires while
+  // "locked" push, sent whenever the session ends: the idle lock, the Lock
+  // button and an erase all announce it now, so a second open page follows the
+  // first rather than showing balances for a wallet whose keys are gone.
+  // originally only for the case where the fifteen-minute idle lock fires while
   // this page is still open.
   //
   // only while unlocked: a locked wallet has nothing in the worker to protect,
@@ -629,33 +677,26 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setAssetDetail(b);
     setSheets((s) => (s[s.length - 1] === "asset" ? s : [...s, "asset"]));
   }, []);
-  const openPrivateAsset = useCallback(
-    (p: PrivatePocket) => {
-      // no token on the fallback single-pocket read: nothing to select, and the
-      // one asset is already what `priv` resolves to.
-      if (p.token) setPrivateAsset(p.token);
-      setSheets((s) => (s[s.length - 1] === "privateAsset" ? s : [...s, "privateAsset"]));
-    },
-    [setPrivateAsset],
-  );
+  const openPrivateAsset = useCallback((p: PrivatePocket) => {
+    setPrivateDetail(p);
+    setSheets((s) => (s[s.length - 1] === "privateAsset" ? s : [...s, "privateAsset"]));
+  }, []);
+  // the move sheet (register / make-spendable) acts on ONE asset, passed by whoever
+  // opens it (the tapped asset, a blocked form's local asset, or the primary). it
+  // reuses privateDetail, so there is still no global selection: MoveSheet just reads
+  // the asset the opener meant, not whatever `priv` happens to be.
+  const openMove = useCallback((p: PrivatePocket) => {
+    setPrivateDetail(p);
+    setSheets((s) => (s[s.length - 1] === "move" ? s : [...s, "move"]));
+  }, []);
   const closeAllSheets = useCallback(() => setSheets([]), []);
 
-  // the effective selected asset token: the stored choice if it is still one of
-  // the configured assets, else the primary (first). status.privateAssets is the
-  // config list, present even while the per-asset balances are still loading, so
-  // the selection resolves before privAssets does.
-  const configuredTokens = status?.privateAssets?.map((a) => a.token) ?? [];
-  const effectiveAsset =
-    privateAsset && configuredTokens.includes(privateAsset)
-      ? privateAsset
-      : (configuredTokens[0] ?? null);
-  // the one pocket a form acts on, derived so it always agrees with the loaded
-  // set and the current selection. the fallback single-pocket read carries no
-  // token, so match on token first and fall back to the first loaded pocket.
-  const priv =
-    privAssets && privAssets.length > 0
-      ? (privAssets.find((p) => p.token === effectiveAsset) ?? privAssets[0]!)
-      : null;
+  // the PRIMARY private asset (first configured / native), for the home only. there
+  // is no global selection any more: each form picks its own asset locally, so this
+  // never shifts under the home. `selectPrivateAsset` keeps it agreeing with the
+  // loaded set rather than substituting a different asset silently.
+  const primaryToken = status?.privateAssets?.map((a) => a.token)[0] ?? null;
+  const priv = selectPrivateAsset(privAssets, primaryToken);
 
   const value: Wallet = {
     t,
@@ -676,10 +717,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     balanceError,
     privAssets,
     priv,
-    privateAsset: effectiveAsset,
-    setPrivateAsset,
+    privateDetail,
     privError,
     yieldPosition,
+    yieldError,
     dappRequest,
     inFlight,
     refreshing,
@@ -696,6 +737,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     assetDetail,
     openAsset,
     openPrivateAsset,
+    openMove,
     closeAllSheets,
     copied,
     copy,

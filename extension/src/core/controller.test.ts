@@ -311,7 +311,7 @@ describe("private pocket reporting", () => {
       // The two facts a user must have BEFORE committing: it is public, and
       // the auditor binding is permanent.
       expect(p.message).toMatch(/publicly visible/i);
-      expect(p.message).toMatch(/permanently binds an auditor/i);
+      expect(p.message).toMatch(/permanently adds an auditor/i);
     }
   }, 30_000);
 

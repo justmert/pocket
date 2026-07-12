@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, UIEvent } from "react";
 import { nativeOf, useWallet } from "../WalletProvider";
 import { call } from "../rpc";
+import { canRebuild, dormancyWarning } from "../copy";
 import { ChangeChip, ValueChartBlock, useValueChart } from "../Chart";
 import { NAV_SPACE } from "../BottomNav";
 import { Amount, HeroAmount } from "../Amount";
@@ -35,8 +36,9 @@ import {
   type Theme,
 } from "../theme";
 import { usd, usdOf } from "../money";
+import { NETWORKS, type NetworkId } from "../../../../core/config";
 import { capDecimals } from "../../../../core/chain/balances";
-import type { PrivatePocket } from "../../../../core/messages";
+import type { PrivatePocket, PrivatePocketState } from "../../../../core/messages";
 
 export function Home() {
   const w = useWallet();
@@ -363,8 +365,8 @@ export function Home() {
         {w.balanceError && native && (
           <div style={{ marginTop: space.xs }}>
             <Notice t={t} tone="exposed" bare>
-              Showing the last balance Pocket read. It could not reach the network just now, so
-              this may be out of date.
+              Showing the last balance Pocket read. It could not reach the network just now, so this
+              may be out of date.
             </Notice>
           </div>
         )}
@@ -384,17 +386,31 @@ export function Home() {
     );
   }
 
-  // the private spendable, valued in dollars across every asset we can price. null
-  // when nothing ready can be priced, so the caller can fall back to a unit figure
-  // rather than a fabricated total.
+  // the private spendable, valued in dollars across every asset. null unless the
+  // whole thing can be valued, so the caller falls back to a unit figure rather
+  // than showing a partial sum as a total.
+  //
+  // this used to return the sum as soon as ANY asset could be priced, skipping
+  // the rest. with XLM priced and USDC not, the wallet drew the XLM value alone
+  // under a heading that says it is everything, and the missing part is
+  // invisible: there is no shape a partial total has that a complete one does
+  // not. a pocket that cannot be fully valued has no dollar total, which is a
+  // fact the unit figure states honestly.
+  //
+  // a state that is not "ready" invalidates it too, unless it is one of the two
+  // that mean the pocket provably holds nothing. "diverged" and "needsRecovery"
+  // hold an amount this device cannot read, and leaving them out of the sum
+  // says they are worth zero.
   function privateTotalUsd(): number | null {
     if (!privAssets) return null;
+    const HOLDS_NOTHING: PrivatePocketState[] = ["unavailable", "unfunded", "unregistered"];
     let total = 0;
     let any = false;
     for (const p of privAssets) {
-      if (p.state !== "ready" || !p.spendable) continue;
+      if (HOLDS_NOTHING.includes(p.state)) continue;
+      if (p.state !== "ready" || !p.spendable) return null;
       const price = prices[p.symbol ?? ""] ?? null;
-      if (price == null) continue;
+      if (price == null) return null;
       total += Number(p.spendable) * price;
       any = true;
     }
@@ -511,9 +527,17 @@ export function Home() {
   function publicBody() {
     return (
       <>
-        {status?.privateAvailable && priv && priv.state !== "ready" && (
-          <div style={{ marginTop: space.gutter }}>{privatePrompt(priv)}</div>
-        )}
+        {/* the private pocket is set up PER ASSET: `priv` is the selected asset, so a
+            not-ready `priv` (USDC) would wrongly read as "the whole pocket is not set
+            up" while another asset (XLM) is already live. only prompt to set up the
+            pocket when NOTHING is ready yet; once any asset is live, adding another is
+            a per-asset step in the private pocket, not a "set up your pocket" banner. */}
+        {status?.privateAvailable &&
+          priv &&
+          priv.state !== "ready" &&
+          !privAssets?.some((p) => p.state === "ready") && (
+            <div style={{ marginTop: space.gutter }}>{privatePrompt(priv)}</div>
+          )}
 
         <div style={{ marginTop: space.xl }}>
           <Overline t={t}>Assets</Overline>
@@ -543,7 +567,10 @@ export function Home() {
                     <span style={{ fontFamily: fonts.mono }}>{shortAddress(b.issuer)}</span>
                   ) : undefined
                 }
-                value={<Amount t={t} value={b.amount} size="row" hidden={w.hidden} />}
+                // the code stays OUT of the drawn figure (the row names the asset on its
+                // left) and IN the accessible one, so a screen reader hears a unit and
+                // the figure is still findable as money.
+                value={<Amount t={t} value={b.amount} code={b.code} hideCode size="row" />}
                 valueSub={
                   !b.authorized
                     ? "Not authorised"
@@ -586,16 +613,27 @@ export function Home() {
               amount={priv.receiving}
               code={symbol}
               holding="Received funds sit here until you make them spendable."
-              action={{ label: "Make spendable", onClick: () => w.openSheet("move") }}
+              action={{ label: "Make spendable", onClick: () => w.openMove(priv) }}
             />
+          </div>
+        )}
+
+        {/* a READY pocket can still have something to say: under protocol 27 an
+            archived entry is auto-restored to answer a read, so it is both
+            spendable and dormant, and the worker reports the second half here.
+            `privatePrompt` renders `message` only for the not-ready states. */}
+        {priv.message && (
+          <div style={{ marginTop: space.gutter }}>
+            <Notice t={t} tone="exposed">
+              {priv.message}
+            </Notice>
           </div>
         )}
 
         {typeof priv.daysRemaining === "number" && priv.daysRemaining < 8 && (
           <div style={{ marginTop: space.gutter }}>
             <Notice t={t} tone="exposed">
-              This pocket goes dormant in {priv.daysRemaining} days unless it is used. Opening the
-              wallet before then is what keeps it alive.
+              {dormancyWarning(priv.daysRemaining)}
             </Notice>
           </div>
         )}
@@ -633,34 +671,56 @@ export function Home() {
   }
 
   function privatePrompt(priv: PrivatePocket) {
-    const open = () => w.openSheet("move");
-    const action = PROMPT_ACTION[priv.state];
+    const open = () => w.openMove(priv);
+    // "Rebuild" is only a real offer where an archive exists to replay from,
+    // and this is the screen a user lands on. D-009 gated the settings row and
+    // the move sheet on `canRebuild` and left this map untouched, so the very
+    // first thing a diverged wallet showed was a button whose only outcome is
+    // the worker refusing, in a sentence that says it cannot be done.
+    const label = PROMPT_ACTION[priv.state];
+    const action =
+      NEEDS_ARCHIVE.includes(priv.state) && !canRebuild(w.status?.network ?? "testnet")
+        ? null
+        : label;
     return (
       <Card t={t} tone="accent">
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: space.md,
-            flexWrap: "wrap",
+            gap: space.sm,
+            // ONE ROW: no wrap. the title shrinks (and ellipsises only at the very
+            // narrowest zoom) so the action pill stays on the same line beside it,
+            // rather than being pushed onto a second line under the title.
+            flexWrap: "nowrap",
             marginBottom: priv.message ? space.sm : 0,
           }}
         >
-          <IconDisc t={t} size={36}>
-            <Shield size={19} />
+          <IconDisc t={t} size={32}>
+            <Shield size={18} />
           </IconDisc>
           <span
             style={{
-              ...text.rowTitle,
-              color: t.text,
-              flex: 1,
+              flex: "1 1 auto",
               minWidth: 0,
               display: "flex",
               alignItems: "center",
               gap: 6,
+              overflow: "hidden",
             }}
           >
-            {PROMPT_TITLE[priv.state]}
+            <span
+              style={{
+                ...text.rowTitle,
+                color: t.text,
+                minWidth: 0,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {PROMPT_TITLE[priv.state]}
+            </span>
             {/* the long "why" moves off the card and into the tip. the card now
                 says the state and offers the one action; the reasoning is a hover
                 away rather than a paragraph nobody reads. */}
@@ -685,13 +745,51 @@ export function Home() {
 
   function yieldRow() {
     const y = w.yieldPosition;
-    if (!y) return null;
+    // A read that FAILED is not a build without a vault. Returning null for
+    // both removed the whole section, so "the service is down" and "this
+    // feature does not exist" looked identical, and the second one is not
+    // something a refresh can fix.
+    if (!y) {
+      if (!w.yieldError) return null;
+      return (
+        <div style={{ marginTop: space.xl }}>
+          <Overline t={t}>Yield</Overline>
+          <div style={{ marginTop: space.sm }}>
+            <Notice t={t} tone="exposed" bare>
+              {w.yieldError}
+            </Notice>
+          </div>
+        </div>
+      );
+    }
     // a withdraw only makes sense against an existing position; a fresh vault
     // shows only Deposit until there is something to take back out.
     const hasPosition = Boolean(y.balance && /[1-9]/.test(y.balance));
     return (
       <div style={{ marginTop: space.xl }}>
-        <Overline t={t}>Yield</Overline>
+        {/* Deposit / Withdraw ride the section header row, beside the "Yield" heading
+            they belong to, rather than sitting below the position line. */}
+        <div style={{ display: "flex", alignItems: "center", gap: space.sm, marginBottom: space.sm }}>
+          <div style={{ ...text.heading, color: t.text }}>Yield</div>
+          <div style={{ flex: 1 }} />
+          {y.available && (
+            <>
+              <Button t={t} size="pill" onClick={() => w.openSheet("yieldDeposit")}>
+                Deposit
+              </Button>
+              {hasPosition && (
+                <Button
+                  t={t}
+                  size="pill"
+                  variant="soft"
+                  onClick={() => w.openSheet("yieldWithdraw")}
+                >
+                  Withdraw
+                </Button>
+              )}
+            </>
+          )}
+        </div>
         {y.available ? (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: space.sm, minHeight: 44 }}>
@@ -720,21 +818,6 @@ export function Home() {
               <span style={{ ...text.rowTitle, color: t.text }}>
                 {y.balance ? `${y.balance} shares` : "None deposited"}
               </span>
-            </div>
-            <div style={{ display: "flex", gap: space.sm, marginTop: space.sm }}>
-              <Button t={t} size="pill" onClick={() => w.openSheet("yieldDeposit")}>
-                Deposit
-              </Button>
-              {hasPosition && (
-                <Button
-                  t={t}
-                  size="pill"
-                  variant="soft"
-                  onClick={() => w.openSheet("yieldWithdraw")}
-                >
-                  Withdraw
-                </Button>
-              )}
             </div>
           </>
         ) : (
@@ -899,7 +982,10 @@ export function Home() {
             right: 0,
             zIndex: 41,
             minWidth: 210,
-            background: t.sheet,
+            // the private pocket's menu is the tinted card tone; the light pocket's
+            // was pure white and read as a stray sheet, so there it takes the pocket-
+            // tinted field, carrying the sky accent the way the private one carries teal.
+            background: t.dark ? t.sheet : t.field,
             border: `1px solid ${t.line}`,
             borderRadius: radius.lg,
             boxShadow: t.shadow,
@@ -1008,6 +1094,9 @@ const PROMPT_TITLE: Record<PrivatePocket["state"], string> = {
   ready: "",
 };
 
+/** states whose only route out is a rebuild, which needs an archive. */
+const NEEDS_ARCHIVE: PrivatePocket["state"][] = ["needsRecovery", "diverged"];
+
 const PROMPT_ACTION: Record<PrivatePocket["state"], string | null> = {
   unavailable: null,
   unfunded: null,
@@ -1052,8 +1141,15 @@ const PRIVATE_ASSET_NAME: Record<string, string> = {
  * the wire and a code-matched logo could be the wrong issuer's mark. shared so the
  * list, the forms, and the detail sheet all draw one asset the same way.
  */
-export function privateMarkId(symbol: string): string {
-  return symbol === "XLM" ? "native" : symbol;
+export function privateMarkId(symbol: string, network?: NetworkId): string {
+  if (symbol === "XLM") return "native";
+  // a CONFIGURED private asset (USDC) is the same verified classic asset the public
+  // pocket holds, so resolve its canonical CODE:ISSUER and its real logo shows, like
+  // public. an unknown symbol stays the bare code and draws the safe monogram.
+  const known = network
+    ? (NETWORKS[network].knownAssets ?? []).find((k) => k.code === symbol)
+    : undefined;
+  return known ? `${known.code}:${known.issuer}` : symbol;
 }
 
 /**
@@ -1077,14 +1173,22 @@ export function PrivateAssetRow({
   hidden: boolean;
   onClick: () => void;
 }) {
+  const w = useWallet();
   const symbol = p.symbol ?? "XLM";
   const ready = p.state === "ready";
   const receiving = ready && p.receiving && /[1-9]/.test(p.receiving) ? p.receiving : null;
 
-  const value = ready ? (
-    <Amount t={t} value={p.spendable ?? "0"} size="row" hidden={hidden} />
-  ) : (
+  // a READY pocket with no spendable figure has not answered yet; it does not
+  // hold nothing. `?? "0"` drew a confident 0.0000000 for it, which is the one
+  // thing WalletProvider says must never happen: "a zero would be a lie". the
+  // hero on this very screen already refuses to do it, so the row and the hero
+  // disagreed about the same pocket.
+  const value = !ready ? (
     <span style={{ ...text.value, color: t.exposed }}>{ROW_STATE_LABEL[p.state]}</span>
+  ) : p.spendable ? (
+    <Amount t={t} value={p.spendable} size="row" hidden={hidden} />
+  ) : (
+    <Skeleton width={72} height={16} />
   );
 
   const valueSub = ready
@@ -1108,7 +1212,7 @@ export function PrivateAssetRow({
       t={t}
       index={index}
       iconRing
-      icon={<AssetMark t={t} id={privateMarkId(symbol)} code={symbol} />}
+      icon={<AssetMark t={t} id={privateMarkId(symbol, w.status?.network)} code={symbol} />}
       title={symbol}
       sub={sub}
       value={value}

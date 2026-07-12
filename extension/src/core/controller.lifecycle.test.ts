@@ -281,6 +281,232 @@ describe("the worker dies between submit and the write", () => {
   });
 });
 
+describe("an RPC that never answers is not evidence the transaction expired", () => {
+  // `pollToTerminal` reports "pending" for two different facts: the ledger said
+  // NOT_FOUND, and no poll ever got through. Only the first is evidence.
+  //
+  // `reconcileInFlight` used to rewrite either one to "expired" once maxTime
+  // had passed, and "expired" routes to `discardStaged`, which deletes the
+  // staged post-state. So an outage spanning a three-minute timeBounds window
+  // deleted the openings of an operation that may well have succeeded, on the
+  // strength of an envelope being un-includable from now on, which says
+  // nothing about whether it was included before.
+  const stranded = async () => {
+    const { c, address } = await worker();
+    getTx = () => new Promise(() => undefined);
+    const handle = stage(c, envelope(address, "100"), {
+      kind: "spend",
+      spendable: ["40000000", "5"],
+    });
+    void c.confirmPrivateOp(handle).catch(() => undefined);
+    await vi.waitFor(() => expect(store.has("pocket.inflight")).toBe(true));
+    // Rewind maxTime so the envelope is past it however the poll goes.
+    const rec = store.get("pocket.inflight") as { hash: string; maxTime: number };
+    store.set("pocket.inflight", { ...rec, maxTime: Math.floor(Date.now() / 1000) - 10 });
+    return worker("pw", false);
+  };
+
+  it("keeps an unresolved submission unresolved when no poll got through", async () => {
+    const fresh = await stranded();
+    getTx = async () => {
+      throw new Error("getaddrinfo ENOTFOUND");
+    };
+
+    const outcome = await fresh.c.reconcileInFlight();
+    expect(outcome?.kind).toBe("pending");
+    // Both survive, so the next poll that gets through can still settle it.
+    expect(store.has("pocket.staged")).toBe(true);
+    expect(store.has("pocket.inflight")).toBe(true);
+  });
+
+  it("does expire it once the ledger has actually said it does not have it", async () => {
+    // The behaviour the rewrite exists for is intact: an answered NOT_FOUND
+    // past maxTime is genuinely un-includable, and leaving it pending would
+    // wedge the unfinished-transaction screen in front of the wallet forever.
+    const fresh = await stranded();
+    getTx = async () => ({ status: "NOT_FOUND" });
+
+    const outcome = await fresh.c.reconcileInFlight();
+    expect(outcome?.kind).toBe("expired");
+    expect(store.has("pocket.staged")).toBe(false);
+    expect(store.has("pocket.inflight")).toBe(false);
+  });
+});
+
+describe("the consequence of a landed operation outlives a failed write", () => {
+  // The two settlement moments, which are not the same moment.
+  //
+  // The ledger says SUCCESS, and `submitAndConfirm` used to clear the in-flight
+  // record right there. The openings write happens one line later, in the
+  // caller. Between those two lines the wallet is holding the only copy of an
+  // opening in a staged record, and the only thing that ever reads that record
+  // is keyed on the in-flight hash that was just deleted. So a chain read that
+  // failed in that gap, or a post-state the chain disagreed with, left a landed
+  // confidential operation with its opening unwritten, unreachable, and on a
+  // build with no archive unrecoverable: money visible on chain and permanently
+  // unspendable.
+  it("keeps the in-flight record when the post-state does not verify", async () => {
+    const { c, address } = await worker();
+    await (
+      c as unknown as { writeOpenings: (a: string, t: string, s: unknown) => Promise<void> }
+    ).writeOpenings(address, TOKEN, {
+      spendable: { value: 10n, randomness: 3n },
+      receiving: { value: 0n, randomness: 0n },
+      syncedThrough: 0,
+    });
+
+    // Landed on chain, and the contract holds something this device cannot
+    // account for. `applyStaged` must refuse, and refusing must not orphan.
+    onChain = { spendable: commit(1n, 1n), receiving: IDENTITY };
+    getTx = async () => ({ status: "SUCCESS", ledger: 12, applicationOrder: 1 });
+
+    const handle = stage(c, envelope(address, "100"), {
+      kind: "spend",
+      spendable: ["40000000", "5"],
+    });
+    await expect(c.confirmPrivateOp(handle)).rejects.toThrow(/does not match/);
+
+    // BOTH survive. The staged record is the opening; the in-flight record is
+    // the only pointer to it.
+    expect(store.has("pocket.staged")).toBe(true);
+    expect(store.has("pocket.inflight")).toBe(true);
+
+    // And it really is recoverable: the pointer leads a fresh worker back.
+    const fresh = await worker("pw", false);
+    onChain = { spendable: commit(40_000_000n, 5n), receiving: IDENTITY };
+    const outcome = await fresh.c.reconcileInFlight();
+    expect(outcome?.kind).toBe("succeeded");
+    expect(await openings(fresh.c, address)).toEqual({
+      spendable: { value: 40_000_000n, randomness: 5n },
+      receiving: { value: 0n, randomness: 0n },
+      syncedThrough: 0,
+    });
+    expect(store.has("pocket.inflight")).toBe(false);
+    expect(store.has("pocket.staged")).toBe(false);
+  });
+
+  it("clears the record once the consequence is written, and not before", async () => {
+    // The other half: a successful write must still close the slot, or the
+    // unfinished-transaction screen sits in front of the wallet forever.
+    const { c, address } = await worker();
+    onChain = { spendable: commit(40_000_000n, 5n), receiving: IDENTITY };
+    getTx = async () => ({ status: "SUCCESS", ledger: 12, applicationOrder: 1 });
+
+    const handle = stage(c, envelope(address, "100"), {
+      kind: "spend",
+      spendable: ["40000000", "5"],
+    });
+    await c.confirmPrivateOp(handle);
+
+    expect(await openings(c, address)).toEqual({
+      spendable: { value: 40_000_000n, randomness: 5n },
+      receiving: { value: 0n, randomness: 0n },
+      syncedThrough: 0,
+    });
+    expect(store.has("pocket.inflight")).toBe(false);
+    expect(store.has("pocket.staged")).toBe(false);
+  });
+
+  it("still settles a plain payment on the ledger's answer alone", async () => {
+    // Nothing local to write, so nothing to wait for. A payment that clung to
+    // its record would block the next send behind a transaction that is done.
+    const { c, address } = await worker();
+    getTx = async () => ({ status: "SUCCESS", ledger: 12, applicationOrder: 1 });
+    const r = await (
+      c as unknown as { signAndSubmit: (t: unknown) => Promise<{ kind: string }> }
+    ).signAndSubmit(envelope(address, "100"));
+    expect(r.kind).toBe("succeeded");
+    expect(store.has("pocket.inflight")).toBe(false);
+  });
+});
+
+describe("a payment arriving while the proof is being built", () => {
+  // Proving takes tens of seconds. Somebody paying this account inside that
+  // window is ordinary, it needs no permission and nothing refuses it, and the
+  // contract moves the RECEIVING commitment without the sender touching it
+  // (`storage.rs:711-712` for `confidential_transfer`, `627` for `withdraw`,
+  // neither writes the sender's `receiving_commitment`).
+  //
+  // Transfer and unshield used to stage an ABSOLUTE post-state carrying
+  // `receiving` as it was at build time, so that ordinary event made the wallet
+  // refuse to record an operation that had SUCCEEDED on chain, and it refused
+  // identically on every retry. The pocket sat `diverged` with the money spent.
+  const local = {
+    write: (c: InstanceType<typeof WalletController>, address: string, state: unknown) =>
+      (
+        c as unknown as {
+          writeOpenings: (a: string, t: string, s: unknown) => Promise<void>;
+        }
+      ).writeOpenings(address, TOKEN, state),
+  };
+
+  it("records a landed transfer against the credit, not against a stale snapshot", async () => {
+    const { c, address } = await worker();
+
+    // Four XLM spendable, one already received and credited.
+    await local.write(c, address, {
+      spendable: { value: 40_000_000n, randomness: 11n },
+      receiving: { value: 10_000_000n, randomness: 22n },
+      syncedThrough: 500,
+    });
+
+    // The transfer is built here, spending one XLM. `newSpendable` comes out of
+    // the proof, so it is the one part of the post-state that must be absolute.
+    const spendable = { value: 30_000_000n, randomness: 77n };
+
+    // ...and while it proves, 1.5 XLM arrives and the inbound scan credits it.
+    const receiving = { value: 25_000_000n, randomness: 33n };
+    await local.write(c, address, {
+      spendable: { value: 40_000_000n, randomness: 11n },
+      receiving,
+      syncedThrough: 600,
+    });
+
+    // The contract holds the post-transfer spendable AND the new receiving.
+    onChain = {
+      spendable: commit(spendable.value, spendable.randomness),
+      receiving: commit(receiving.value, receiving.randomness),
+    };
+
+    const handle = stage(c, envelope(address, "100"), {
+      kind: "spend",
+      spendable: ["30000000", "77"],
+    });
+    await c.confirmPrivateOp(handle);
+
+    // The spend is recorded and the credit survived it. The cursor survived
+    // too: staging the build-time value would have rolled it back over the
+    // very credit that advanced it, and a cursor that goes backwards re-reads
+    // an event that is already in the opening.
+    expect(await openings(c, address)).toEqual({ spendable, receiving, syncedThrough: 600 });
+    expect(store.has("pocket.staged")).toBe(false);
+  });
+
+  it("still refuses when the spendable side is the part that disagrees", async () => {
+    // The guard is not weakened by any of the above: what the operation DOES
+    // claim is still checked against the chain, and a wrong claim is refused.
+    const { c, address } = await worker();
+    await local.write(c, address, {
+      spendable: { value: 40_000_000n, randomness: 11n },
+      receiving: { value: 0n, randomness: 0n },
+      syncedThrough: 500,
+    });
+    onChain = { spendable: commit(1n, 1n), receiving: IDENTITY };
+
+    const handle = stage(c, envelope(address, "100"), {
+      kind: "spend",
+      spendable: ["30000000", "77"],
+    });
+    await expect(c.confirmPrivateOp(handle)).rejects.toThrow(/does not match/);
+    // Nothing written, and the record kept so the user is brought back to it.
+    expect(await openings(c, address)).toEqual({
+      spendable: { value: 40_000_000n, randomness: 11n },
+      receiving: { value: 0n, randomness: 0n },
+      syncedThrough: 500,
+    });
+  });
+});
+
 describe("an unresolved submission blocks the next one", () => {
   it("refuses to build a second payment while the first may still land", async () => {
     const { c } = await worker();

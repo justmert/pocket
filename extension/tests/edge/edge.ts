@@ -79,12 +79,20 @@ export async function compose(
   // length of its exit. asking "is the field visible" during that window said
   // yes, so nothing reopened it and the fill landed on a form that was about to
   // detach. the open sheet is the thing to wait on.
-  const dialog = page.getByRole("dialog", { name: /^Send/ });
-  if ((await dialog.count()) === 0) {
+  // Send is a full-frame ROUTE, not a dialog. It was one, and this locator was
+  // not moved with it: `Frame` renders a plain div with no `role="dialog"`, so
+  // the count was always 0, the menu was opened correctly, and then the wait
+  // below timed out on a role nothing has. That took out every caller of this
+  // helper, which is the whole `tests/edge` tier, at 30s a spec.
+  //
+  // The page's own `<h1>` is what identifies it, and it is the same thing a
+  // person reads to know where they are.
+  const heading = page.getByRole("heading", { name: "Send", level: 1 });
+  if ((await heading.count()) === 0) {
     await page.getByRole("button", { name: "Actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "Send", exact: true }).click();
   }
-  await expect(dialog).toBeVisible();
+  await expect(heading).toBeVisible();
   const recipient = page.getByLabel("To", { exact: true });
   await expect(recipient).toBeVisible();
   if (fields.to !== undefined) await recipient.fill(fields.to);

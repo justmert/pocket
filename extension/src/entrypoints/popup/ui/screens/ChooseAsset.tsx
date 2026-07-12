@@ -294,13 +294,15 @@ function ResultRow({
         <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           <span style={{ ...text.rowTitle, color: t.text }}>{asset.code}</span>
           {verified && (
-            // the exact pill the "Use max" button wears, so a badge and an action
-            // that sit a screen apart read as the same product: text.chip on the
-            // solid accent fill, pill radius, the same padding.
+            // a compact verified badge in the "Use max" pill's colours (solid accent
+            // fill, pill radius) so it reads as the same product, but sized DOWN: it is
+            // a passive label, not a tap target, so it drops the button's padding and
+            // sits on the caption scale instead.
             <span
               style={{
-                ...text.chip,
-                padding: "8px 14px",
+                ...text.caption,
+                fontWeight: 700,
+                padding: "3px 8px",
                 borderRadius: radius.pill,
                 background: t.accentFill,
                 color: t.onAccent,

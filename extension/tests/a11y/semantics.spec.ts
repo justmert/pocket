@@ -14,7 +14,7 @@
 // Sheets are `role="dialog"` over a screen that stays in the DOM, so nothing
 // here reads `body.innerText` any more: it would pick up the screen behind.
 import { test, expect } from "../support/fixtures";
-import { Wallet, WAITS, openMoveAction } from "../support/wallet";
+import { Wallet, WAITS } from "../support/wallet";
 import * as ledger from "../support/testnet";
 import { offline, hang, RPC_HOST } from "../support/stub";
 
@@ -53,7 +53,10 @@ const SHEETS: {
 }[] = [
   { title: "Receive", open: async (w) => void (await w.nav("Receive").click()) },
   { title: "Send", open: async (w) => void (await w.nav("Send").click()) },
-  { title: "Move", open: async (w) => void (await w.nav("Move").click()) },
+  // no "Move" button on the bar: the private FAB is "Move value" and opens a
+  // menu, not this sheet. `openMove` knows the real route, which is the private
+  // pocket's own prompt, and is also how a person gets here.
+  { title: "Move", open: async (w) => void (await w.openMove()) },
   {
     title: "Network",
     open: async (w) => {

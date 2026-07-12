@@ -42,8 +42,6 @@ function describeOperation(op: DecodedOp, index: number): string {
       return op.limit === "0"
         ? `${n} REMOVE the trustline for ${op.line.toString()}`
         : `${n} Trust ${op.line.toString()} up to ${op.limit ?? "the maximum"}`;
-    case "invokeHostFunction":
-      return `${n} Invoke a smart contract`;
     case "setOptions":
       // The dangerous one. Changing signers or thresholds can hand the account
       // away permanently, so it is never summarised as "set options".
@@ -85,7 +83,24 @@ const DESCRIBED = new Set([
   "accountMerge",
   "pathPaymentStrictSend",
   "pathPaymentStrictReceive",
-  "invokeHostFunction",
+]);
+
+/**
+ * an operation with a refusal written for it, because the generic one would
+ * misdescribe WHY.
+ *
+ * the generic refusal reads "an operation Pocket cannot describe
+ * (invokeHostFunction)", which a user reasonably hears as "this envelope is
+ * broken". it is not. the envelope is fine and the limitation is ours, and a
+ * site hitting it needs to know that retrying or re-encoding will not help.
+ */
+const REFUSED = new Map([
+  [
+    "invokeHostFunction",
+    "This transaction calls a smart contract. What a contract call actually does is " +
+      "carried in its arguments, and Pocket cannot yet put those into words, so it will not " +
+      "ask you to approve one on trust. Nothing has been sent.",
+  ],
 ]);
 
 /** Operations that hand away control and must be called out, not listed. */
@@ -132,8 +147,35 @@ export function describeTransaction(xdr: string, networkPassphrase: string): TxS
   // is deliberate: a list where four lines are real and the fifth is a type name
   // reads as a complete description, and the one line that is not is the one
   // carrying the operation nobody reviewed.
+  //
+  // `invokeHostFunction` was on the DESCRIBED list, and its whole sentence was
+  // "Invoke a smart contract". No contract id, no function name, no arguments,
+  // no value, and it was absent from ALARMING so nothing warned either. That is
+  // the exact failure this list was added to close, reappearing on the one
+  // operation that can do ANYTHING: transfer a token balance, set an approval,
+  // upgrade a contract. A user reading that line has been told the operation's
+  // TYPE and nothing about its effect, and Approve was live beneath it.
+  //
+  // Describing it properly is not a sentence, it is a feature: the effect lives
+  // in ScVal arguments of arbitrary shape, and rendering some of them while
+  // silently dropping the rest is the same costume worn one layer down. So it
+  // is refused until that feature exists, which is what the pairing rule at
+  // DESCRIBED already says: the sentence comes first, the entry second.
   const undescribable = tx.operations.filter((o) => !DESCRIBED.has(o.type));
   if (undescribable.length > 0) {
+    const reasoned = undescribable.map((o) => REFUSED.get(o.type)).filter((r) => r !== undefined);
+    if (reasoned.length > 0) {
+      return {
+        decoded: false,
+        source: tx.source,
+        fee: tx.fee,
+        network: networkPassphrase,
+        effects: [],
+        // The first one. Listing several reasons for one refusal buries the
+        // actionable sentence, and the envelope is refused whole regardless.
+        warning: reasoned[0],
+      };
+    }
     const names = [...new Set(undescribable.map((o) => o.type))].join(", ");
     return {
       decoded: false,

@@ -7,7 +7,6 @@
 // the build/prove/submit path is the worker's `buildPrivateOp`/`confirmPrivateOp`,
 // untouched: this file only composes the amount and hands off to ConfirmSheet.
 import { useEffect, useRef, useState } from "react";
-import { BASE_FEE } from "@stellar/stellar-sdk/base";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Frame, Header, Notice } from "../primitives";
@@ -15,13 +14,16 @@ import { InfoTip } from "../Tooltip";
 import { fiatOf } from "../money";
 import { AmountComposer, AmountSlider, sliderPercent } from "../AmountComposer";
 import { ConfirmSheet, useOnce } from "../flow";
-import { AssetMark } from "./Home";
+import { AssetMark, privateMarkId } from "./Home";
 import { PrivateAssetPicker } from "../sheets/PrivateAssetPicker";
-import { fractionOf, sendableAfterFee, composeAmount } from "../../../../core/chain/balances";
+import {
+  fractionOf,
+  sendableAfterFee,
+  composeAmount,
+  SOROBAN_FEE_RESERVE_STROOPS,
+} from "../../../../core/chain/balances";
 import { space } from "../theme";
 import type { PrivateOpSummary } from "../../../../core/messages";
-
-const BASE_FEE_STROOPS = BigInt(BASE_FEE);
 
 /** why there is nothing to move yet, in the words the rest of the product uses. */
 const NOT_READY: Record<string, string> = {
@@ -42,16 +44,19 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
   const w = useWallet();
   const t = w.t;
   const movingIn = kind === "shield";
-  // the private asset this move runs against: its symbol for display, its wrapper
-  // token for the op. defaults to the primary asset for a single-asset wallet or
-  // an older worker, so that case is unchanged.
-  const symbol = w.priv?.symbol ?? "XLM";
-  const assetToken = w.privateAsset ?? undefined;
+  // the private asset this move runs against, chosen LOCALLY (default primary): no
+  // global selection, so picking here changes only this form. its pocket carries the
+  // symbol for display, the wrapper token for the op, and the state.
+  const [privToken, setPrivToken] = useState<string | null>(null);
+  const privList = w.privAssets ?? [];
+  const localPriv = privList.find((p) => p.token === privToken) ?? privList[0] ?? null;
+  const symbol = localPriv?.symbol ?? "XLM";
+  const assetToken = localPriv?.token ?? undefined;
   const isNativeAsset = symbol === "XLM";
   // native wears its real logo; a wrapped classic asset falls to the safe monogram,
   // because its verified issuer is not on the wire and a code-matched logo could be
   // the wrong issuer's mark.
-  const markId = isNativeAsset ? "native" : symbol;
+  const markId = privateMarkId(symbol, w.status?.network);
   // an asset picker once more than one is configured, so a shield/unshield opened
   // from the FAB can switch asset in the form rather than being stuck on the last
   // selected one.
@@ -104,11 +109,11 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
   const publicForAsset = isNativeAsset
     ? nativeBalance
     : ((w.balances ?? []).find((b) => b.code === symbol && b.authorized) ?? null);
-  const spendable = movingIn ? (publicForAsset?.amount ?? null) : (w.priv?.spendable ?? null);
+  const spendable = movingIn ? (publicForAsset?.amount ?? null) : (localPriv?.spendable ?? null);
 
   // the private account must exist for either direction: you cannot deposit into
   // a pocket that is not open, and there is nothing to withdraw from one either.
-  const blocked = w.priv?.state !== "ready";
+  const blocked = localPriv?.state !== "ready";
 
   const review = async () => {
     setError(null);
@@ -198,7 +203,13 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
     const part = fractionOf(spendable, numerator, denominator);
     const whole = numerator === denominator;
     const raw =
-      whole && movingIn && isNativeAsset ? sendableAfterFee(part, BASE_FEE_STROOPS) : part;
+      // A SOROBAN operation, so the reserve is the Soroban one. `BASE_FEE` is 100
+      // stroops and pays for a classic payment; this call pays a resource fee decided
+      // by simulation, measured in the hundreds of thousands. Reserving 100 stroops
+      // produced a "use max" amount that left nothing for the real fee.
+      whole && movingIn && isNativeAsset
+        ? sendableAfterFee(part, SOROBAN_FEE_RESERVE_STROOPS)
+        : part;
     // four fraction digits is enough on the compose screen; truncated, not rounded.
     setAmount(composeAmount(raw, 4));
   };
@@ -240,8 +251,13 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
             >
               {blocked ? (
                 <Notice t={t}>
-                  {w.priv
-                    ? NOT_READY[w.priv.state]
+                  {localPriv
+                    ? localPriv.state === "unregistered" && !isNativeAsset
+                      ? // registration is PER ASSET: a not-open USDC pocket is not "the
+                        // private pocket is not set up" when XLM is already live, so name
+                        // the asset rather than implying the whole pocket is closed.
+                        `Setting up ${symbol} in your private pocket takes two transactions, and you review the second one.`
+                      : NOT_READY[localPriv.state]
                     : "Pocket is still reading this account. Try again in a moment."}
                 </Notice>
               ) : (
@@ -253,7 +269,10 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
                     t={t}
                     code={symbol}
                     amount={amount}
-                    onAmount={setAmount}
+                    onAmount={(v) => {
+                      setAmount(v);
+                      setError(null);
+                    }}
                     spendable={spendable}
                     fiat={fiat}
                     onMax={() => setFraction(1n, 1n)}
@@ -288,13 +307,18 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
                   t={t}
                   onClick={() => {
                     onClose();
-                    w.openSheet("move");
+                    if (localPriv) w.openMove(localPriv);
                   }}
                 >
                   Open the private pocket
                 </Button>
               ) : (
-                <Button t={t} disabled={!ready} busy={building} onClick={() => void review()}>
+                <Button
+                  t={t}
+                  disabled={!ready || Boolean(error)}
+                  busy={building}
+                  onClick={() => void review()}
+                >
                   {building ? "Checking" : "Continue"}
                 </Button>
               )}
@@ -303,7 +327,11 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
         )}
       </Frame>
 
-      <PrivateAssetPicker open={pickingPrivate} onClose={() => setPickingPrivate(false)} />
+      <PrivateAssetPicker
+        open={pickingPrivate}
+        onClose={() => setPickingPrivate(false)}
+        onPick={setPrivToken}
+      />
 
       <ConfirmSheet
         t={t}

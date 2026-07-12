@@ -21,7 +21,21 @@ export type SubmitOutcome =
   | { kind: "rejected"; hash: string; reason: string }
   /** The RPC did not queue it. Consumes no sequence and costs no fee: retry now. */
   | { kind: "notAccepted"; hash: string }
-  | { kind: "pending"; hash: string }
+  /**
+   * Not included yet, or not knowably included.
+   *
+   * `answered` separates the two, and they are not the same fact. True means
+   * the RPC replied NOT_FOUND, which is real evidence: at this moment the
+   * ledger does not have it. False means no poll ever got through, which is
+   * evidence of nothing at all, and in particular is NOT evidence that the
+   * transaction did not land.
+   *
+   * The distinction decides whether `maxTime` passing is safe to act on.
+   * Without it, a network outage spanning a three-minute timeBounds window was
+   * read as "expired, can never apply", and the staged consequence of a
+   * transaction that may well have SUCCEEDED was deleted on that reading.
+   */
+  | { kind: "pending"; hash: string; answered: boolean }
   | {
       kind: "succeeded";
       hash: string;
@@ -108,6 +122,26 @@ export interface InFlightSink {
 }
 
 /**
+ * Who owns the in-flight record once the ledger has decided.
+ *
+ * "chain" is the default and is right for a plain payment: the ledger's answer
+ * IS the whole outcome, so the record has nothing left to point at.
+ *
+ * "caller" is for a submission with a LOCAL consequence still to be written,
+ * which for this wallet means a confidential operation whose new opening only
+ * this device will ever hold. Those two settle at different moments, and
+ * treating them as one moment lost money: the record was cleared here the
+ * instant the ledger said SUCCESS, the caller then tried to write the opening,
+ * and a chain read that failed in between left a landed operation with its
+ * consequence unwritten and nothing on disk pointing at it. The staged record
+ * survived; the only thing that reads it is keyed on the record just deleted.
+ *
+ * `reconcileInFlight` already had this right, writing the consequence first and
+ * clearing second. This is the same ordering on the live path.
+ */
+export type Settles = "chain" | "caller";
+
+/**
  * Submit, then poll to a terminal state.
  *
  * `tx` must already carry timeBounds; without them expiry is undecidable and a
@@ -116,7 +150,7 @@ export interface InFlightSink {
 export async function submitAndConfirm(
   server: rpc.Server,
   tx: Transaction | FeeBumpTransaction,
-  opts: { attempts?: number; sleepMs?: number; inFlight?: InFlightSink } = {},
+  opts: { attempts?: number; sleepMs?: number; inFlight?: InFlightSink; settles?: Settles } = {},
 ): Promise<SubmitOutcome> {
   const hash = tx.hash().toString("hex");
   const maxTime = "timeBounds" in tx ? Number(tx.timeBounds?.maxTime ?? 0) : 0;
@@ -158,16 +192,27 @@ async function afterSend(
   server: rpc.Server,
   hash: string,
   maxTime: number,
-  opts: { attempts?: number; sleepMs?: number; inFlight?: InFlightSink },
+  opts: { attempts?: number; sleepMs?: number; inFlight?: InFlightSink; settles?: Settles },
 ): Promise<SubmitOutcome> {
   const outcome = await pollToTerminal(server, hash, opts);
   if (outcome.kind !== "pending") {
-    await opts.inFlight?.clear(hash);
+    // Success under `settles: "caller"` is the one outcome this function does
+    // not get to close out: the caller has a consequence to write and clears
+    // the record once it has. Every other terminal outcome leaves nothing to
+    // write, so it settles here as before. See `Settles`.
+    const ours = !(outcome.kind === "succeeded" && opts.settles === "caller");
+    if (ours) await opts.inFlight?.clear(hash);
     return outcome;
   }
   // Still not included. Once maxTime has passed the envelope can never apply,
   // so it becomes safe to rebuild; until then the caller must not resend.
-  if (maxTime > 0 && Math.floor(Date.now() / 1000) > maxTime) {
+  //
+  // `answered` is required, not decorative. The envelope being un-includable
+  // NOW says nothing about whether it was included BEFORE maxTime, and the
+  // only thing that rules that out is the ledger having actually told us it
+  // does not have it. An outage lasting longer than the three-minute window
+  // otherwise reads as "expired" for a transaction that succeeded.
+  if (outcome.answered && maxTime > 0 && Math.floor(Date.now() / 1000) > maxTime) {
     await opts.inFlight?.clear(hash);
     return { kind: "expired", hash };
   }
@@ -186,9 +231,13 @@ export async function pollToTerminal(
   const attempts = opts.attempts ?? 15;
   const sleepMs = opts.sleepMs ?? 1000;
 
+  // Did any poll get a real reply? A NOT_FOUND is an answer and counts; a
+  // fetch that threw does not. See the `pending` outcome.
+  let answered = false;
   for (let i = 0; i < attempts; i++) {
     try {
       const res = await server.getTransaction(hash);
+      answered = true;
       if (res.status === "SUCCESS") {
         return {
           kind: "succeeded",
@@ -210,9 +259,10 @@ export async function pollToTerminal(
     }
     if (i < attempts - 1) await new Promise((r) => setTimeout(r, sleepMs));
   }
-  // Still NOT_FOUND, or never answered. The caller must check timeBounds before
-  // deciding whether this is "expired, safe to rebuild" or "still in flight".
-  return { kind: "pending", hash };
+  // Still NOT_FOUND, or never answered, and the caller has to be able to tell
+  // those apart before deciding whether this is "expired, safe to rebuild" or
+  // "still in flight".
+  return { kind: "pending", hash, answered };
 }
 
 /** True once maxTime has passed, meaning the envelope can never be applied. */

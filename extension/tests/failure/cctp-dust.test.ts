@@ -17,32 +17,42 @@
 // the headline and the receipt.
 import { describe, it, expect, beforeEach } from "vitest";
 import { installChrome } from "../auth/_harness/chrome";
-import { fundedAccountResult } from "./_harness/ledger";
+import { ledgerAnswering } from "./_harness/ledger";
 
 const chrome = installChrome();
 const { WalletController } = await import("../../src/core/controller");
 const { KEYS, removeLocal } = await import("../../src/lib/storage");
 const { clearSession } = await import("../../src/core/session");
-const { Account } = await import("@stellar/stellar-sdk/base");
+const { Account, Asset } = await import("@stellar/stellar-sdk/base");
 const { CCTP, toCctpAmount, fromCctpAmount } = await import("../../src/core/integrations/cctp");
 
 const PASSWORD = "correct horse battery staple";
 // Ethereum's CCTP domain. Anything but Stellar's own would do.
 const ETHEREUM = 0;
 const RECIPIENT = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed";
+/** The classic USDC the bridge spends, from the same config the wallet reads. */
+const USDC = new Asset("USDC", CCTP.testnet.usdc.split("-")[1]!);
 
 async function wallet() {
   const c = new WalletController();
   await c.init();
   const { address } = await c.create(PASSWORD);
+  // Enough USDC that the dust arithmetic, not the balance, is what is measured.
+  const ledger = ledgerAnswering(address, {
+    trustlines: [{ asset: USDC, balance: 1_000_0000000n }],
+  });
   (c as unknown as { servers: Map<string, unknown> }).servers.set("testnet", {
     getAccount: async () => new Account(address, "100"),
     getLatestLedger: async () => ({ sequence: 1_000_000 }),
     // Returned unchanged: this test is about the arguments the wallet composes,
     // not about what simulation adds to them.
     prepareTransaction: async (tx: unknown) => tx,
-    getLedgerEntries: async () => fundedAccountResult(address, 100_0000000n),
-    _getLedgerEntries: async () => fundedAccountResult(address, 100_0000000n),
+    // A ledger that answers the key it is ASKED about. The bridge path reads
+    // the USDC trustline now, to refuse an over-balance bridge before the
+    // approve leg is built and charged for, so an account-only fixture answers
+    // the wrong entry and the read refuses.
+    getLedgerEntries: ledger,
+    _getLedgerEntries: async (key: Parameters<typeof ledger>[0]) => ledger(key),
   });
   return { c, address };
 }

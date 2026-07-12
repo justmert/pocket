@@ -3,6 +3,7 @@ import { call } from "../rpc";
 import { MonoBlock } from "../Address";
 import { Button, ButtonStack, Header, Label, Notice, Screen, Spinner } from "../primitives";
 import { space, text, type Theme } from "../theme";
+import { describeOutcome } from "../../../../core/chain/submit";
 
 /**
  * a transaction the worker submitted and never saw resolve.
@@ -43,7 +44,7 @@ export function InFlight({
     setOutcome(null);
     try {
       const result = await call({ type: "reconcileInFlight" });
-      if (!result || result.kind === "succeeded") {
+      if (!result) {
         onResolved();
         return;
       }
@@ -53,8 +54,28 @@ export function InFlight({
           text: "Still not confirmed. It may yet land, so it must not be resent.",
         });
       } else {
-        setOutcome({ tone: "positive", text: "Resolved: it will not land. You can carry on." });
-        resolveTimer.current = setTimeout(onResolved, 1500);
+        // Five terminal outcomes, and this branch used to collapse four of them
+        // into "Resolved: it will not land. You can carry on." One of the four
+        // is `failed`, which means the transaction WAS included, a fee WAS
+        // charged and the sequence number WAS used. Telling someone that did
+        // not land is not a softening, it is the opposite of what happened, on
+        // the one screen they came to specifically to find out.
+        //
+        // `describeOutcome` is the worker's own sentence for each kind, and it
+        // already said all five correctly; nothing on this path was reading it.
+        // Using it here also means the wording cannot drift from the wording
+        // the same outcome gets anywhere else.
+        //
+        // Tone follows cost, not finality: `failed` cost money, so it is not
+        // positive news even though it is resolved.
+        setOutcome({
+          tone: result.kind === "failed" ? "danger" : "positive",
+          text: describeOutcome(result),
+        });
+        // `succeeded` gets a beat too. It used to navigate away in silence, so
+        // the screen that exists to answer "what happened to my transaction?"
+        // answered it by vanishing.
+        resolveTimer.current = setTimeout(onResolved, result.kind === "failed" ? 4000 : 1500);
       }
     } catch (e) {
       setOutcome({ tone: "danger", text: e instanceof Error ? e.message : String(e) });

@@ -80,10 +80,18 @@ describe("reset removes what it says it removes", () => {
     expect(chrome.local.has(KEYS.vaultHeader)).toBe(false);
   });
 
-  it("leaves nothing carrying the erased address anywhere in storage", async () => {
+  it("leaves nothing carrying the erased address anywhere in CHROME storage", async () => {
     // The general form. The specific key above is the one that was found; this
     // is the property that was actually meant, and it is what a new key added
     // later would trip over.
+    //
+    // SCOPE, named because the old title said "anywhere in storage" and this
+    // reads `chrome.storage.local` alone. The popup also writes to its own
+    // `localStorage`, which the worker cannot reach and this cannot see, and
+    // exactly one thing lived there: the address book, the list of who this
+    // device had paid. It survived every erase until `ui/addressBook.ts` was
+    // given a `clear` and the popup started calling it. Anything else put in
+    // `localStorage` is outside this assertion too.
     const { address } = await walletWithRegistration();
     await asPopup({ type: "reset", password: PASSWORD });
 

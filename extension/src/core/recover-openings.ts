@@ -183,17 +183,17 @@ export async function recoverOpenings(
   try {
     events = stored.map(decodeStored).filter((e): e is ConfidentialEvent => e !== null);
 
-  // A received transfer replays only when the archive kept the INVOCATION
-  // payload alongside the event: the event carries enough to derive a candidate
-  // amount and nothing to check it against, and the check is `commit(v, r) ==
-  // C_transfer`, which the contract passes in the invocation without publishing
-  // it in the event.
-  //
-  // So this is reached by an archive that predates payload storage, or one whose
-  // Horizon lookup failed for that transaction. `replay` refuses rather than
-  // credit an unverifiable amount, which is right, and the refusal has to be
-  // readable: without this it reached the screen as "check your connection",
-  // sending someone to retry a network problem that does not exist.
+    // A received transfer replays only when the archive kept the INVOCATION
+    // payload alongside the event: the event carries enough to derive a candidate
+    // amount and nothing to check it against, and the check is `commit(v, r) ==
+    // C_transfer`, which the contract passes in the invocation without publishing
+    // it in the event.
+    //
+    // So this is reached by an archive that predates payload storage, or one whose
+    // Horizon lookup failed for that transaction. `replay` refuses rather than
+    // credit an unverifiable amount, which is right, and the refusal has to be
+    // readable: without this it reached the screen as "check your connection",
+    // sending someone to retry a network problem that does not exist.
     state = replay(INITIAL_STATE, events, { vk, address: account });
   } catch (e) {
     if (e instanceof UnreplayableEventError) {

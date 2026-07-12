@@ -5,23 +5,28 @@
 // the top. the review and signing path are the worker's buildSwap -> confirmSwap,
 // shown through the shared ConfirmSheet exactly like a payment.
 import { useEffect, useRef, useState } from "react";
-import { BASE_FEE } from "@stellar/stellar-sdk/base";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Frame, Header, Notice, Row, Sheet } from "../primitives";
 import { InfoTip } from "../Tooltip";
 import { fiatOf } from "../money";
 import { AmountComposer, withinSpendable } from "../AmountComposer";
+import { AssetPath } from "../AssetPath";
+import { findHeld, holdingAmount } from "../holdings";
 import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark } from "./Home";
 import { ArrowDown } from "../icons";
-import { fractionOf, sendableAfterFee, composeAmount } from "../../../../core/chain/balances";
+import {
+  fractionOf,
+  sendableAfterFee,
+  composeAmount,
+  SOROBAN_FEE_RESERVE_STROOPS,
+} from "../../../../core/chain/balances";
 import { NETWORKS, type NetworkId } from "../../../../core/config";
 import { radius, space, text, type Theme } from "../theme";
 import type { PublicBalance, SwapQuoteView, SwapSummary } from "../../../../core/messages";
 
 /** what a swap's network fee is charged in, in stroops, for the MAX buffer on XLM. */
-const BASE_FEE_STROOPS = BigInt(BASE_FEE);
 
 /** one asset the user can swap from or to: an id the worker resolves, a code to show. */
 interface SwapAsset {
@@ -76,9 +81,13 @@ export function Swap({ onClose }: { onClose: () => void }) {
 
   const inAsset = assets.find((a) => a.id === inId) ?? assets[0]!;
   const outAsset = assets.find((a) => a.id === outId) ?? assets[1] ?? assets[0]!;
-  const inBalance = balances.find((b) => b.id === inId) ?? null;
-  const outHeld = balances.some((b) => b.id === outId);
-  const spendable = inBalance?.amount ?? null;
+  // FOUR answers, not two. `(w.balances ?? []).find(...)` reads an unloaded or
+  // failed balance list as "you do not hold this", which the notice below then
+  // states as a fact and acts on by blocking Continue.
+  const inFound = findHeld(w.balances, w.balanceError, (b) => b.id === inId);
+  const outFound = findHeld(w.balances, w.balanceError, (b) => b.id === outId);
+  const outHeld = outFound.kind === "held";
+  const spendable = holdingAmount(inFound);
 
   // a price for the input, for the dollar readout under the amount, exactly as send
   // does it. absent leaves the figure in its own unit rather than a fabricated dollar.
@@ -139,7 +148,11 @@ export function Swap({ onClose }: { onClose: () => void }) {
     // swapping the whole XLM balance leaves nothing for the network fee; take it
     // off, the same as send's MAX. a classic asset pays its fee from XLM, so its
     // whole balance is swappable.
-    const raw = inId === "native" ? sendableAfterFee(part, BASE_FEE_STROOPS) : part;
+    // A SOROBAN operation, so the reserve is the Soroban one. `BASE_FEE` is 100
+    // stroops and pays for a classic payment; this call pays a resource fee decided
+    // by simulation, measured in the hundreds of thousands. Reserving 100 stroops
+    // produced a "use max" amount that left nothing for the real fee.
+    const raw = inId === "native" ? sendableAfterFee(part, SOROBAN_FEE_RESERVE_STROOPS) : part;
     setAmount(composeAmount(raw, 4));
   };
 
@@ -212,6 +225,10 @@ export function Swap({ onClose }: { onClose: () => void }) {
   // receiving a classic asset needs a trustline for it first, or the swap reverts;
   // XLM is native and always receivable. this gates Continue so the swap is never
   // offered when it cannot land.
+  //
+  // Not-yet-read blocks Continue too, and must: offering a swap whose output
+  // trustline is unknown is offering one that may revert. It just does not get
+  // TOLD to the user as a fact about their account.
   const canReceive = outAsset.code === "XLM" || outHeld;
   // Continue is offered only when the swap can be funded AND received: a positive
   // amount, two different assets, enough of the input asset (spendable is null
@@ -257,7 +274,10 @@ export function Swap({ onClose }: { onClose: () => void }) {
                 t={t}
                 code={inAsset.code}
                 amount={amount}
-                onAmount={setAmount}
+                onAmount={(v) => {
+                  setAmount(v);
+                  setError(null);
+                }}
                 spendable={spendable}
                 fiat={fiat}
                 onMax={setMax}
@@ -341,7 +361,7 @@ export function Swap({ onClose }: { onClose: () => void }) {
                   (Continue is disabled until it is resolved), and the way to
                   resolve it, Manage assets, is a link inside the sentence rather
                   than a second control below. */}
-              {inId !== outId && outAsset.code !== "XLM" && !outHeld && (
+              {inId !== outId && outAsset.code !== "XLM" && outFound.kind === "absent" && (
                 <div style={{ marginTop: space.md }}>
                   <Notice t={t} tone="danger" bare>
                     You do not hold {outAsset.code} yet. Add it in{" "}
@@ -363,6 +383,17 @@ export function Swap({ onClose }: { onClose: () => void }) {
                 </div>
               )}
 
+              {outFound.kind === "unreadable" && (
+                <div style={{ marginTop: space.md }}>
+                  {/* the worker's own sentence. sending someone to Manage assets
+                      to add an asset they may already hold is a specific
+                      instruction to do wasted work. */}
+                  <Notice t={t} tone="danger" bare>
+                    {outFound.message}
+                  </Notice>
+                </div>
+              )}
+
               {error && !confirming && (
                 <div style={{ marginTop: space.md }}>
                   <Notice t={t} tone="danger" bare>
@@ -375,7 +406,12 @@ export function Swap({ onClose }: { onClose: () => void }) {
             <div
               style={{ padding: `${space.md}px ${space.gutter}px ${space.lg}px`, background: t.bg }}
             >
-              <Button t={t} disabled={!ready} busy={building} onClick={() => void review()}>
+              <Button
+                t={t}
+                disabled={!ready || Boolean(error)}
+                busy={building}
+                onClick={() => void review()}
+              >
                 {building ? "Checking" : "Continue"}
               </Button>
             </div>
@@ -478,11 +514,7 @@ function ReceiveCard({
       >
         {est ? `${est}` : quoting ? "…" : "—"}
       </div>
-      {quote && quote.route.length > 2 && (
-        <div style={{ ...text.caption, color: t.faint, textAlign: "center", marginTop: space.xs }}>
-          via {quote.route.join(" → ")}
-        </div>
-      )}
+      {quote && quote.route.length > 2 && <AssetPath t={t} route={quote.route} />}
     </div>
   );
 }

@@ -3,13 +3,23 @@
 // FAB opens a form on the selected (or primary) asset, and this switches it, so
 // every asset is reachable from the compose screen and not only from its row.
 //
-// selecting sets the provider's `privateAsset`, which is what the form reads back
-// through `priv`, so the composer's mark, unit, spendable and price all follow.
+// selecting calls `onPick`, which the FORM keeps in its own local state: there is
+// no global selection, so switching the asset here never changes the home or the
+// next form, only this one.
 import { useWallet } from "../WalletProvider";
 import { Sheet } from "../primitives";
 import { PrivateAssetRow } from "../screens/Home";
 
-export function PrivateAssetPicker({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function PrivateAssetPicker({
+  open,
+  onClose,
+  onPick,
+}: {
+  open: boolean;
+  onClose: () => void;
+  /** the tapped asset's wrapper token; the caller holds its own selection. */
+  onPick: (token: string) => void;
+}) {
   const w = useWallet();
   const t = w.t;
   const assets = w.privAssets ?? [];
@@ -27,7 +37,7 @@ export function PrivateAssetPicker({ open, onClose }: { open: boolean; onClose: 
             price={null}
             hidden={w.hidden}
             onClick={() => {
-              if (p.token) w.setPrivateAsset(p.token);
+              if (p.token) onPick(p.token);
               onClose();
             }}
           />

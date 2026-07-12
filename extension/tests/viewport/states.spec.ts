@@ -24,6 +24,7 @@
 import { test, expect } from "../support/fixtures";
 import { WAITS } from "../support/wallet";
 import * as ledger from "../support/testnet";
+import { canRebuild } from "../../src/entrypoints/popup/ui/copy";
 import {
   atEveryViewport,
   collectFailures,
@@ -168,10 +169,23 @@ test("the private pocket's refusal to spend states itself fully inside the frame
       // account row, the pocket tabs and the bar, all of which are there
       // whatever the private pocket is doing, so it would pass on a prompt that
       // had rendered with no way out of the state at all.
-      await expectReachable(
-        page.getByRole("button", { name: "Rebuild", exact: true }),
-        `private/needsRecovery @ ${vp.name}: the way to rebuild`,
-      );
+      //
+      // The "Rebuild" chip is required only where a rebuild can actually
+      // happen. This used to demand it unconditionally, which is the assertion
+      // D-009 was recorded to remove: on a build with no archive that control
+      // leads to nothing but the worker refusing, and the block below already
+      // reasons exactly this way about the same control in the Move sheet.
+      // Demanding it here and excusing it there is the contradiction, not the
+      // absence.
+      //
+      // What must be reachable in EITHER build is the explanation, which is
+      // `said` above, and that is checked unconditionally.
+      if (canRebuild("testnet")) {
+        await expectReachable(
+          page.getByRole("button", { name: "Rebuild", exact: true }),
+          `private/needsRecovery @ ${vp.name}: the way to rebuild`,
+        );
+      }
     });
 
   // Half two, inside the Move sheet: what rebuilding actually is, and the

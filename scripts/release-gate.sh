@@ -393,6 +393,32 @@ fi
 (cd contracts && cargo fmt --check >/tmp/pocket-fmt.log 2>&1) && ok "contracts: formatting" \
   || { bad "contracts formatting"; sed -n '1,25p' /tmp/pocket-fmt.log | sed 's/^/        /'; }
 
+note "Gate 7: the browser suite runs against the package that was just built"
+# NO BROWSER TEST RAN ON ANY GATE. `npm run check`, and therefore the pre-commit
+# hook, is tsc + tsc(tests) + eslint + two vitest configs; Playwright appears in
+# neither. So every screen assertion in `tests/` had never blocked a commit or a
+# release, and four shared locators had gone stale against a rebuilt UI without
+# anything going red: each one timed out after 30 to 60 seconds and took every
+# spec that called it, which was more than thirty of them.
+#
+# Here rather than in `npm run check`, because the expensive part is the build
+# and Gate 6 has already done it. `POCKET_EXT_PATH` points the suite at that
+# exact package instead of building a second one, which is also the stronger
+# check: the browser tests then run against the artifact the other gates
+# inspected, not against a fresh build that might differ.
+if [ -f "$OUT/manifest.json" ]; then
+  if (cd extension && POCKET_EXT_PATH="$(cd "$(dirname "$0")/.." && pwd)/$OUT" \
+        npx playwright test -c playwright.tests.config.ts --reporter=line \
+        >/tmp/pocket-playwright.log 2>&1); then
+    ok "browser suite passes against the shipping package"
+  else
+    bad "browser suite failed against the shipping package"
+    tail -n 30 /tmp/pocket-playwright.log | sed 's/^/        /'
+  fi
+else
+  bad "no built package to run the browser suite against"
+fi
+
 printf '\n'
 if [ "$fail" = "0" ]; then
   printf 'All release gates passed.\n'

@@ -48,6 +48,47 @@ export class InboundCreditError extends Error {
   override readonly name = "InboundCreditError";
 }
 
+// The scan cursor, as two named functions rather than two pieces of arithmetic
+// inlined at the call site.
+//
+// It is worth the names because the two halves have to agree and they were
+// written twenty lines apart, where nothing made the disagreement visible. A
+// cursor is a claim about what is ALREADY CREDITED, and `creditInbound` below
+// is all-or-nothing, so an optimistic claim does not produce a stale balance,
+// it produces a permanent one: the next scan re-reads an event the opening
+// already contains, the sum overshoots the accumulator the contract holds, and
+// the refusal repeats identically forever.
+
+/**
+ * The ledger a scan resumes at, given what is already accounted for.
+ *
+ * PLUS ONE because `startLedger` is inclusive. Measured against the live RPC,
+ * not read off the docs: asking from ledger N returns N's own events.
+ */
+export function resumeFrom(syncedThrough: number): number {
+  // Zero means nothing has ever been accounted for. `findInbound` clamps up to
+  // the RPC's retention floor, so 1 asks for "as far back as you keep".
+  return syncedThrough > 0 ? syncedThrough + 1 : 1;
+}
+
+/**
+ * The cursor to store after a batch is credited: the newest ledger actually
+ * credited from, floored at whatever the cursor already claimed.
+ *
+ * Deliberately NOT the chain tip. The tip is read before a scan that pages the
+ * whole retained window with no upper bound, so a transfer landing mid-scan
+ * gets credited by that scan and left behind by that cursor. Anchoring on the
+ * events themselves closes the race by construction: this is only ever reached
+ * once the credited sum reproduces the on-chain accumulator, which is proof
+ * that every event at or below this ledger is in the opening. The cost is
+ * re-scanning the empty ledgers up to the tip, which finds nothing.
+ */
+export function cursorAfter(previous: number, credited: InboundTransfer[]): number {
+  let cursor = previous;
+  for (const t of credited) if (t.ledger > cursor) cursor = t.ledger;
+  return cursor;
+}
+
 /**
  * Derive the opening of a transfer addressed to this viewing key.
  *
@@ -115,6 +156,8 @@ interface RawEvent {
   ledger: number;
   id: string;
   value: xdr.ScVal | string;
+  /** Base64 ScVals: `[event name, from, to]`. */
+  topic?: string[];
 }
 
 /** The eight-field transfer body, decoded. */
@@ -138,6 +181,41 @@ function decodeTransferBody(data: xdr.ScVal): TransferBody | null {
   if (!(v instanceof Uint8Array) || v.length !== 32) return null;
   if (!(s instanceof Uint8Array) || s.length !== 32) return null;
   return { r_e_point: point, v_tilde: fromBytesBE(v), sigma: fromBytesBE(s) };
+}
+
+/** An ScVal that arrived as base64 from the raw endpoint, decoded to a string. */
+function topicString(topic: string[] | undefined, index: number): string | null {
+  const raw = topic?.[index];
+  if (typeof raw !== "string") return null;
+  try {
+    const v = scValToNative(xdr.ScVal.fromXDR(raw, "base64")) as unknown;
+    return typeof v === "string" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The opening a DEPOSIT addressed to us produces.
+ *
+ * A deposit is the one credit to a confidential account that is not
+ * confidential: `storage::deposit` commits `amount * G` with blinding ZERO
+ * (`storage.rs:512`) and the amount rides in the event body in the clear. So
+ * there is nothing to decrypt and nothing to derive, and the check that the
+ * candidate is real is the same accumulator check every other candidate faces.
+ *
+ * This exists because `deposit(from, to, amount)` calls `from.require_auth()`
+ * and nothing else (`mod.rs:291-296`), so ANYONE can deposit into your
+ * receiving commitment and none of it needs your key or your consent. The scan
+ * looked for `transfer` only, so those credits were invisible to the wallet: it
+ * reported the pocket diverged and blamed history older than the RPC's window,
+ * which was not the cause and pointed the user at a rebuild they could not run.
+ */
+function openDeposit(data: xdr.ScVal): Opening | null {
+  const native = scValToNative(data) as Record<string, unknown>;
+  const amount = native.amount;
+  if (typeof amount !== "bigint" || amount < 0n || amount >= MAX_AMOUNT) return null;
+  return { value: amount, randomness: 0n };
 }
 
 /**
@@ -184,11 +262,20 @@ export async function findInbound(
   // paginated call pulls every event the contract ever emitted, and the
   // all-or-nothing check downstream ends up reasoning about a different event
   // set than the first page did.
+  //
+  // TWO event names, because two things credit a receiving commitment. A
+  // `deposit` needs no proof and no permission from the recipient, so it is not
+  // an exotic case: it is how every shield works, and the contract lets anyone
+  // aim one at anyone. One filter object with both names, so the RPC still does
+  // the recipient filtering and the pagination stays a single cursor.
   const filters = [
     {
       type: "contract" as const,
       contractIds: [tokenId],
-      topics: [[xdr.ScVal.scvSymbol("transfer").toXDR("base64"), "*", me.toXDR("base64")]],
+      topics: [
+        [xdr.ScVal.scvSymbol("transfer").toXDR("base64"), "*", me.toXDR("base64")],
+        [xdr.ScVal.scvSymbol("deposit").toXDR("base64"), "*", me.toXDR("base64")],
+      ],
     },
   ];
 
@@ -228,6 +315,24 @@ export async function findInbound(
       // The raw endpoint hands back base64 XDR where the parsed one hands
       // back an ScVal.
       const val = typeof e.value === "string" ? xdr.ScVal.fromXDR(e.value, "base64") : e.value;
+
+      if (topicString(e.topic, 0) === "deposit") {
+        // OUR OWN shield, skipped. The staged "credit" resolution already
+        // applied it the moment the deposit landed, so counting it again
+        // overshoots the accumulator and the all-or-nothing check refuses,
+        // which would wedge the pocket rather than merely miscount it. `from`
+        // is exact for this: a deposit we authorised is one we sent.
+        //
+        // If that staged credit was itself lost, the recovery is the in-flight
+        // record, which now survives a failed write and leads `reconcileInFlight`
+        // back to the same consequence. It is not this scan's job.
+        if (topicString(e.topic, 1) === account) continue;
+        const opening = openDeposit(val);
+        if (!opening) continue;
+        found.push({ id: `${e.ledger}:${e.id}`, ledger: e.ledger, opening });
+        continue;
+      }
+
       const body = decodeTransferBody(val);
       if (!body) continue;
       let RE: Point;
