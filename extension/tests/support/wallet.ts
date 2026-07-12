@@ -124,7 +124,7 @@ export class Wallet {
 
   /** The pocket tabs are the one thing every unlocked home screen carries. */
   homeMarker(): Locator {
-    return this.page.getByRole("button", { name: "Public pocket" });
+    return this.page.getByRole("button", { name: "Public Pocket" });
   }
 
   async waitForHome(timeout = WAITS.onboarding): Promise<void> {
@@ -132,6 +132,9 @@ export class Wallet {
   }
 
   async lock(): Promise<void> {
+    // "Lock wallet" lives in the header's overflow (the ⋮ "More" menu), not on
+    // the home screen directly, so the menu has to be opened first.
+    await this.page.getByRole("button", { name: "More" }).click();
     await this.page.getByRole("button", { name: "Lock wallet" }).click();
     await expect(this.lockedNotice()).toBeVisible();
   }
@@ -176,7 +179,12 @@ export class Wallet {
    * is available, and a click that lands before then changes nothing.
    */
   async openPocket(which: "Public pocket" | "Private pocket"): Promise<void> {
-    const tab = this.page.getByRole("button", { name: which });
+    // `exact`: the pocket's InfoTip is a button named "About the private pocket",
+    // and a non-exact match on "Private pocket" is a substring of that, so the
+    // tab and its tooltip both resolve.
+    // the label capitalises "Pocket"; callers still pass the lower-case name.
+    const label = which === "Public pocket" ? "Public Pocket" : "Private Pocket";
+    const tab = this.page.getByRole("button", { name: label, exact: true });
     await expect(tab).toBeVisible({ timeout: WAITS.ledgerRead });
     await tab.click();
     await expect(tab).toHaveAttribute("aria-pressed", "true");
@@ -245,14 +253,16 @@ export class Wallet {
 
   /** Approve the reviewed payment and wait for the receipt. Returns its hash. */
   async confirmPayment(): Promise<string> {
-    await this.page.getByRole("button", { name: "Confirm and send" }).click();
+    await this.page.getByRole("button", { name: "Confirm" }).click();
     await expect(this.receipt()).toBeVisible({ timeout: WAITS.submission });
     return this.readHash();
   }
 
-  /** The line that only appears once the ledger has included a transaction. */
+  /** The heading that only appears once the ledger has included a transaction:
+   *  confirm* resolves after inclusion, so "Transaction successful" is a confirmed
+   *  fact. (The "Confirmed in ledger N" line it used to carry was removed.) */
   receipt(): Locator {
-    return this.page.getByText(/^Confirmed in ledger \d+\.$/);
+    return this.page.getByText("Transaction successful");
   }
 
   /**
@@ -262,15 +272,21 @@ export class Wallet {
    * modal and nothing on it is what the user is looking at.
    */
   async dismissReceipt(): Promise<void> {
-    await this.page.getByRole("button", { name: "Done" }).click();
+    await this.page.getByRole("button", { name: "Go to Home" }).click();
     await expect(this.page.getByRole("dialog")).toHaveCount(0);
   }
 
-  /** A 64-character transaction hash from a receipt. */
+  /**
+   * A 64-character transaction hash from a receipt.
+   *
+   * The receipt now shows a "Transaction ID" row with a copy control rather than
+   * printing the hex, but the full hash is carried in the accessibility tree (for
+   * a screen reader and for this), so it is read there: attached, not visible.
+   */
   async readHash(): Promise<string> {
     const block = this.surface().getByText(/^[0-9a-f]{64}$/);
-    await expect(block.first()).toBeVisible({ timeout: WAITS.submission });
-    return (await block.first().innerText()).replace(/\s/g, "");
+    await expect(block.first()).toBeAttached({ timeout: WAITS.submission });
+    return ((await block.first().textContent()) ?? "").replace(/\s/g, "");
   }
 
   // ------------------------------------------------------------- private pocket
@@ -303,7 +319,7 @@ export class Wallet {
     await this.page.getByRole("button", { name: "Set up the private pocket" }).click();
     await this.approve();
     await expect(this.receipt()).toBeVisible({ timeout: WAITS.submission });
-    await this.page.getByRole("button", { name: "Done" }).click();
+    await this.page.getByRole("button", { name: "Go to Home" }).click();
     // a sheet is on screen for the length of its exit, and anything read while
     // it is still there is read from the sheet rather than from the screen.
     await expect(this.page.getByRole("dialog")).toHaveCount(0);
@@ -312,17 +328,17 @@ export class Wallet {
   /**
    * Wait for the review step, check nothing, and take its affirmative control.
    *
-   * A send says "Confirm and send" and a move says "Approve", so the control is
+   * A send says "Confirm" and a move says "Approve", so the control is
    * found by which one the review is offering rather than by a caller having to
    * know which flow it is in.
    */
-  async approve(label?: "Approve" | "Confirm and send"): Promise<void> {
+  async approve(label?: "Approve" | "Confirm"): Promise<void> {
     await expect(this.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
     if (label) {
       await this.page.getByRole("button", { name: label }).click();
       return;
     }
-    const send = this.page.getByRole("button", { name: "Confirm and send" });
+    const send = this.page.getByRole("button", { name: "Confirm" });
     if ((await send.count()) > 0) {
       await send.click();
       return;
@@ -337,7 +353,7 @@ export class Wallet {
    * open, not a row inside the move sheet: spending is spending, and it is
    * reached the same way in both pockets.
    */
-  async openOp(kind: "Move in" | "Move out" | "Make spendable" | "Send privately"): Promise<void> {
+  async openOp(kind: "Shield" | "Unshield" | "Make spendable" | "Send privately"): Promise<void> {
     if (kind === "Send privately") {
       if ((await this.page.getByRole("dialog").count()) > 0) await this.close();
       await this.nav("Send privately").click();

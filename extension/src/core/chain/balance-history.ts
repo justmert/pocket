@@ -63,7 +63,8 @@ function stroops(text: string | undefined): bigint {
   const m = /^(-?)(\d+)(?:\.(\d*))?$/.exec(text.trim());
   if (!m) return 0n;
   const [, sign, whole, frac = ""] = m;
-  const raw = BigInt(whole as string) * STROOPS_PER_UNIT + BigInt(frac.padEnd(7, "0").slice(0, 7) || "0");
+  const raw =
+    BigInt(whole as string) * STROOPS_PER_UNIT + BigInt(frac.padEnd(7, "0").slice(0, 7) || "0");
   return sign === "-" ? -raw : raw;
 }
 
@@ -105,8 +106,7 @@ async function deltasFor(
   // When the account's own creation falls inside the window, the balance before
   // it is known exactly: zero. That turns into a free reconciliation below.
   let createdAt: number | null = null;
-  let url =
-    `${horizonUrl}/accounts/${account}/effects?order=desc&limit=${PAGE}`;
+  let url = `${horizonUrl}/accounts/${account}/effects?order=desc&limit=${PAGE}`;
 
   for (let p = 0; p < MAX_PAGES; p++) {
     const records = await page<EffectRecord>(url);
@@ -147,7 +147,9 @@ async function deltasFor(
       if (e.type === "trade" || e.type === "liquidity_pool_trade") {
         // A trade moves both sides. Each is checked independently because one
         // leg may be the asset being charted and the other may not.
-        if (assetIdOf(e.bought_asset_type, e.bought_asset_code, e.bought_asset_issuer) === assetId) {
+        if (
+          assetIdOf(e.bought_asset_type, e.bought_asset_code, e.bought_asset_issuer) === assetId
+        ) {
           deltas.push({ at, delta: stroops(e.bought_amount) });
         }
         if (assetIdOf(e.sold_asset_type, e.sold_asset_code, e.sold_asset_issuer) === assetId) {

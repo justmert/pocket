@@ -105,9 +105,11 @@ function stage(
   follow = false,
 ) {
   const handle = tx.hash().toString("hex");
-  (
-    c as unknown as { pending: Map<string, unknown> }
-  ).pending.set(handle, { xdr: tx.toXDR(), at: Date.now(), private: { resolve, follow } });
+  (c as unknown as { pending: Map<string, unknown> }).pending.set(handle, {
+    xdr: tx.toXDR(),
+    at: Date.now(),
+    private: { resolve, follow },
+  });
   return handle;
 }
 
@@ -287,7 +289,11 @@ describe("an unresolved submission blocks the next one", () => {
       maxTime: Math.floor(Date.now() / 1000) + 120,
     });
     await expect(
-      c.buildPayment({ to: "GDRXE2BQUC3AZNPVFSCEZ76NJ3WWL25FYFK6RGZGIEKWE4SOOHSUJUJ6", amount: "1", assetId: "native" }),
+      c.buildPayment({
+        to: "GDRXE2BQUC3AZNPVFSCEZ76NJ3WWL25FYFK6RGZGIEKWE4SOOHSUJUJ6",
+        amount: "1",
+        assetId: "native",
+      }),
     ).rejects.toThrow(/has not resolved yet/);
   });
 
@@ -297,7 +303,11 @@ describe("an unresolved submission blocks the next one", () => {
     // Gets past the guard and fails later, on the unfunded account, which is
     // the honest next failure rather than the in-flight refusal.
     await expect(
-      c.buildPayment({ to: "GDRXE2BQUC3AZNPVFSCEZ76NJ3WWL25FYFK6RGZGIEKWE4SOOHSUJUJ6", amount: "1", assetId: "native" }),
+      c.buildPayment({
+        to: "GDRXE2BQUC3AZNPVFSCEZ76NJ3WWL25FYFK6RGZGIEKWE4SOOHSUJUJ6",
+        amount: "1",
+        assetId: "native",
+      }),
     ).rejects.not.toThrow(/has not resolved yet/);
   });
 
@@ -352,7 +362,9 @@ describe("concurrency", () => {
 describe("state that must not outlive its session", () => {
   it("stops reporting a private pocket once locked", async () => {
     const { c } = await worker();
-    (c as unknown as { privateReady: boolean }).privateReady = true;
+    // Readiness is now per confidential asset (a Set of wrapper tokens), so
+    // "ready" means at least one token is in it.
+    (c as unknown as { readyAssets: Set<string> }).readyAssets.add("CXLMWRAPPER");
     expect((await c.status()).privateEnabled).toBe(true);
     await c.lock();
     // The home screen offers "Open private pocket" off this flag, and after a
@@ -367,15 +379,15 @@ describe("state that must not outlive its session", () => {
     // been locked and does not know it yet. Deliberately NOT awaited, because
     // the await is what would hide the bug.
     const { c } = await worker();
-    (c as unknown as { privateReady: boolean }).privateReady = true;
+    (c as unknown as { readyAssets: Set<string> }).readyAssets.add("CXLMWRAPPER");
     expect((await c.status()).privateEnabled).toBe(true);
 
     const locking = c.lock();
     // Same microtask the caller gets back control in.
     expect(
-      (c as unknown as { privateReady: boolean }).privateReady,
+      (c as unknown as { readyAssets: Set<string> }).readyAssets.size,
       "the private flag survived into lock()'s suspension",
-    ).toBe(false);
+    ).toBe(0);
     expect((await c.status()).privateEnabled).toBe(false);
     await locking;
   });

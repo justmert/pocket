@@ -327,9 +327,7 @@ describe("precision across the whole representable range", () => {
       expect(mine, `${seeded(String(v))}: formatAmount disagrees with the reference`).toBe(
         refFormat(v),
       );
-      expect(parseAmount(mine), `${seeded(String(v))}: parseAmount disagrees`).toBe(
-        refParse(mine),
-      );
+      expect(parseAmount(mine), `${seeded(String(v))}: parseAmount disagrees`).toBe(refParse(mine));
     }
   });
 
@@ -776,8 +774,7 @@ describe("addresses: every identifier a user can produce", () => {
     for (const address of [Keypair.random().publicKey(), Keypair.random().publicKey()]) {
       for (let i = 1; i < address.length - 1; i++) {
         if (address[i] === address[i + 1]) continue;
-        const mutated =
-          address.slice(0, i) + address[i + 1]! + address[i]! + address.slice(i + 2);
+        const mutated = address.slice(0, i) + address[i + 1]! + address[i]! + address.slice(i + 2);
         if (isValidAddress(mutated)) survivors.push(`${mutated} (swap at ${i})`);
       }
     }
@@ -857,10 +854,7 @@ describe("addresses: every identifier a user can produce", () => {
 
   it("distinguishes a bad checksum from a string that is not an address", () => {
     const good = Keypair.random().publicKey();
-    const flipped =
-      good.slice(0, 10) +
-      (good[10] === "A" ? "B" : "A") +
-      good.slice(11);
+    const flipped = good.slice(0, 10) + (good[10] === "A" ? "B" : "A") + good.slice(11);
     expect(() => parseAddress(flipped)).toThrow(
       expect.objectContaining({ reason: "checksum" }) as Error,
     );
@@ -928,7 +922,9 @@ describe("amounts: fuzzing the field a user types money into", () => {
       const reference = refParse(input);
       const want: bigint | "refused" = reference === null ? "refused" : reference;
       if (got !== want) {
-        wrong.push(`${seeded(JSON.stringify(input))}: got ${String(got)}, reference ${String(want)}`);
+        wrong.push(
+          `${seeded(JSON.stringify(input))}: got ${String(got)}, reference ${String(want)}`,
+        );
       }
       // and whatever was accepted must survive a round trip.
       if (typeof got === "bigint" && parseAmount(formatAmount(got)) !== got) {
@@ -1131,9 +1127,9 @@ describe("each property, pointed at an implementation that has the defect", () =
     expect(parseAmount(rebuilt)).not.toBe(12_345_678n);
     // the real one survives the same check.
     const good = splitAmount(text);
-    expect(
-      parseAmount(`${good.whole.replace(/,/g, "")}.${good.fraction.padEnd(7, "0")}`),
-    ).toBe(12_345_678n);
+    expect(parseAmount(`${good.whole.replace(/,/g, "")}.${good.fraction.padEnd(7, "0")}`)).toBe(
+      12_345_678n,
+    );
   });
 
   it("the address mutation property catches a validator that skips the checksum", () => {
@@ -1211,12 +1207,18 @@ const VALUE_PATH = [
   // to be scanned rather than trusted.
   "src/entrypoints/popup/ui/Chart.tsx",
   "src/entrypoints/popup/ui/sheets/AssetDetailSheet.tsx",
+  // the shared amount composer and the one dollar formatter, both extracted from
+  // the screens above: the fraction slider and the fiat display now live here, so
+  // the scan follows them here rather than trusting them.
+  "src/entrypoints/popup/ui/AmountComposer.tsx",
+  "src/entrypoints/popup/ui/money.ts",
   "src/core/chain/prices.ts",
   "src/core/chain/portfolio.ts",
   "src/core/chain/balance-history.ts",
 ];
 
-const FLOATING = /\b(?:Number|parseFloat|parseInt)\s*\(|\.to(?:Fixed|Precision|LocaleString)\s*\(|\bIntl\.NumberFormat\b|\bMath\.(?:round|floor|ceil|abs|max|min)\s*\(/;
+const FLOATING =
+  /\b(?:Number|parseFloat|parseInt)\s*\(|\.to(?:Fixed|Precision|LocaleString)\s*\(|\bIntl\.NumberFormat\b|\bMath\.(?:round|floor|ceil|abs|max|min)\s*\(/;
 
 /**
  * a float touch that has been read and judged harmless, keyed by the exact
@@ -1238,15 +1240,22 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
   { fragment: "fontSize: Math.round(px * codeOf)", why: "layout" },
   { fragment: "minHeight: Math.round(fontSizes.hero * 1.25)", why: "layout" },
   {
-    fragment: "<RollDigit key={i} digit={Number(ch)} />",
+    fragment: "Math.round((i * (n - 1)) / (target - 1))",
+    why: "an evenly-spaced array INDEX for chart decimation; it selects which points to keep, never touching a value",
+  },
+  {
+    fragment: "<RollDigit key={key} digit={Number(ch)} />",
     why: "one character, 0-9, into a CSS row offset; the value itself is rendered as text",
   },
   { fragment: "expired: e.maxTime > 0 && Math.floor(Date.now() / 1000)", why: "unix seconds" },
   {
-    fragment: 'if (outcome.kind === "pending" && e.maxTime > 0 && Math.floor(Date.now() / 1000)',
+    fragment: "Math.floor(Date.now() / 1000) > e.maxTime",
     why: "unix seconds",
   },
-  { fragment: "const id = `${Date.now()}-${Math.round(Math.random() * 1e9)}`", why: "a request id" },
+  {
+    fragment: "const id = `${Date.now()}-${Math.round(Math.random() * 1e9)}`",
+    why: "a request id",
+  },
   { fragment: "daysRemaining: Math.round(t.daysRemaining)", why: "days, not money" },
   {
     fragment: "if (a > BigInt(Number.MAX_SAFE_INTEGER))",
@@ -1297,7 +1306,7 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "a scrub position into an array index",
   },
   {
-    fragment: '{up ? "▲" : "▼"} {Math.abs(pct).toFixed(2)}%',
+    fragment: '{up ? "▲" : "▼"} {Math.abs(shown).toFixed(2)}%',
     why: "a percentage change, which is a ratio and not a balance",
   },
   // the asset detail's dollar figures. a price is a float by nature, so an
@@ -1318,8 +1327,8 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
   },
   { fragment: "return `$${v.toFixed(2)}`;", why: "renders a USD volume" },
   {
-    fragment: "? Number(asset.total ?? asset.amount) * market.price",
-    why: "holdings times a market price, for the estimate row only; the balance itself is rendered from its ledger string by Amount and is never routed through this",
+    fragment: 'const n = typeof amount === "string" ? Number(amount) : amount;',
+    why: "ui/money.ts parses the decimal-string amount to a number solely to multiply by the price for the display dollar (usdOf); the string is what is transacted",
   },
   // ---- the price feed ------------------------------------------------------
   {
@@ -1332,7 +1341,10 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "a market price, which the DEX quotes as a decimal and which is a float by nature",
   },
   { fragment: "const price = Number(today.close);", why: "a market price" },
-  { fragment: "const volume = Number(today.counter_volume);", why: "a traded volume, not a holding" },
+  {
+    fragment: "const volume = Number(today.counter_volume);",
+    why: "a traded volume, not a holding",
+  },
   {
     fragment: "const prev = yesterday ? Number(yesterday.close) : NaN;",
     why: "yesterday's market price; NaN when absent, which the caller turns into a null change",
@@ -1355,16 +1367,87 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "clamps the scrub position to an array index",
   },
   {
-    fragment: "const pillX = dot ? Math.max(30, Math.min(width - 30, dot[0])) : 0;",
+    fragment: "const pillX = dot ? Math.max(30, Math.min(w - 30, dot[0])) : 0;",
     why: "keeps the scrub pill off the chart edges, in pixels",
   },
   {
-    fragment: "active && times && labelAt ? labelAt(times[Math.min(at, times.length - 1)]!) : null;",
-    why: "clamps a scrub index into the timestamps array",
+    fragment: "const w = Math.min(measured, width);",
+    why: "the chart's drawing width in pixels: the measured container width capped at the passed ceiling, so the curve reflows at high zoom; a layout measure, not a value",
   },
   {
-    fragment: "fontSize: Math.round(size * 0.42),",
-    why: "the asset badge's letter size, in pixels",
+    fragment:
+      "active && times && labelAt ? labelAt(times[Math.min(at, times.length - 1)]!) : null;",
+    why: "clamps a scrub index into the timestamps array",
+  },
+  // ---- the auto-lock setting (minutes, never money) ------------------------
+  {
+    fragment:
+      "return Math.min(MAX_AUTO_LOCK_MINUTES, Math.max(MIN_AUTO_LOCK_MINUTES, Math.round(minutes)));",
+    why: "clamps the idle-lock window in MINUTES to its allowed range; a preference, not a balance",
+  },
+  // ---- the history page size (a count, never money) ------------------------
+  {
+    fragment: "const lim = Math.min(100, Math.max(1, Math.floor(limit)));",
+    why: "clamps the history page size to a sane range; a row count, not a balance",
+  },
+  // ---- home's collapsing hero (pixels and opacity) ------------------------
+  {
+    fragment: "setP(Math.max(0, Math.min(1, p + e.deltaY / COLLAPSE_DIST)));",
+    why: "the header collapse PROGRESS, 0..1, advanced by the wheel; a scroll fraction, not a value",
+  },
+  // ---- send's amount field, fiat readout and slider -----------------------
+  // The amount actually sent is the decimal STRING `amount`, parsed to bigint
+  // stroops in the worker. Everything below is the compose screen's own display
+  // and slider math; none of it is signed, submitted or stored.
+  {
+    fragment: 'const fiat = price !== null && amount !== "" ? Number(amount) * price : null;',
+    why: "a fiat estimate under the field; the sent amount is the string, parsed to stroops in the worker",
+  },
+  {
+    fragment: "total += Number(p.spendable) * price;",
+    why: "the private pocket's dollar hero totals each asset's spendable at its price for display; the spendable strings are what transact, parsed to stroops in the worker",
+  },
+  {
+    fragment: "const a = Number(amount);",
+    why: "the slider's position from the typed amount, display only",
+  },
+  {
+    fragment: "const s = Number(spendable);",
+    why: "the slider's span from the spendable balance, display only",
+  },
+  {
+    fragment: "return Math.max(0, Math.min(100, Math.round((a / s) * 100)));",
+    why: "the slider percentage 0..100; the amount it sets is computed in bigint by fractionOf",
+  },
+  {
+    fragment: "size={Math.max(1, amount.length || 1)}",
+    why: "the input width in characters, a string length",
+  },
+  {
+    fragment: "const fitPx = Math.floor(430 / Math.max(1, amount.length));",
+    why: "the compose amount's font size in pixels, scaled down so a long figure fits the card; a layout measure, not the value (which stays the string)",
+  },
+  {
+    fragment: "const amountPx = Math.min(fontSizes.hero, Math.max(fontSizes.title, fitPx));",
+    why: "clamps that compose font size between the title and hero sizes; still pixels, not a value",
+  },
+  {
+    fragment: "onChange={(e) => onPercent(Number(e.target.value))}",
+    why: "the slider's 0..100 value; converted to a bigint fraction before it touches the amount",
+  },
+  // ---- the chart's resample and morph (array indices, animation) ----------
+  { fragment: "const a = Math.floor(x);", why: "a resample index into the source series" },
+  {
+    fragment: "const b = Math.min(arr.length - 1, a + 1);",
+    why: "the next resample index, clamped to the array",
+  },
+  {
+    fragment: "const N = Math.max(prev.length, values.length);",
+    why: "the longer of two series lengths, an array count",
+  },
+  {
+    fragment: "const p = Math.min(1, (now - start) / DUR);",
+    why: "the morph animation's progress, 0..1",
   },
 ];
 
@@ -1403,9 +1486,10 @@ describe("the source of the value path, read rather than assumed", () => {
     // shadows code that is not. this fails when an entry goes stale.
     const all = VALUE_PATH.map(read).join("\n");
     const stale = JUDGED_HARMLESS.filter((j) => !all.includes(j.fragment)).map((j) => j.fragment);
-    expect(stale, `these allowlist entries no longer match any source line:\n${stale.join("\n")}`).toEqual(
-      [],
-    );
+    expect(
+      stale,
+      `these allowlist entries no longer match any source line:\n${stale.join("\n")}`,
+    ).toEqual([]);
   });
 
   it("no module in the value path formats a number through the locale", () => {

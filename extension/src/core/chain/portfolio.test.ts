@@ -37,7 +37,11 @@ describe("valueSeries", () => {
       { at: 5000, price: 1 },
       { at: 9000, price: 1 },
     ];
-    expect(valueSeries(history, prices).map((p) => p.value).slice(0, 3)).toEqual([0, 0, 500]);
+    expect(
+      valueSeries(history, prices)
+        .map((p) => p.value)
+        .slice(0, 3),
+    ).toEqual([0, 0, 500]);
   });
 
   it("has no value to report without a price series", () => {

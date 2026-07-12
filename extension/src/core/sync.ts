@@ -233,9 +233,7 @@ function amountField(event: ConfidentialEvent, name: string): bigint {
     );
   }
   if (value < 0n) {
-    throw new MalformedEventError(
-      `${event.type} event ${event.id} field ${name} is negative`,
-    );
+    throw new MalformedEventError(`${event.type} event ${event.id} field ${name} is negative`);
   }
   return value;
 }
@@ -332,9 +330,7 @@ export function applyEvent(
         // Applied AFTER both refusals, so a self-transfer cannot leave the
         // sender half applied.
         const credited = { ...next, receiving: credit(state.receiving, opening) };
-        return from === me
-          ? { ...credited, spendable: openCheckpoint(event, keys.vk) }
-          : credited;
+        return from === me ? { ...credited, spendable: openCheckpoint(event, keys.vk) } : credited;
       }
       if (from !== me) return next;
       return { ...next, spendable: openCheckpoint(event, keys.vk) };

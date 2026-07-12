@@ -8,7 +8,7 @@
 // wallet that could not read enough, and a flat line at zero would say "you had
 // nothing", which is a claim about the user rather than about the request. a
 // stretch that predates the account IS drawn at zero, because that one is true.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { motion, radius, space, text, type Theme } from "./theme";
 import { Skeleton } from "./primitives";
@@ -18,6 +18,22 @@ export const RANGE_IDS = ["1D", "1W", "1M", "6M", "1Y"] as const;
 export type RangeId = (typeof RANGE_IDS)[number];
 
 const HEIGHT = 92;
+
+/** cap a series to a range-appropriate point count so a dense feed reads as a
+ *  smooth curve rather than noise: roughly hourly for a day, and a self-chosen
+ *  ratio for the wider ranges. endpoints are kept, so the curve still starts and
+ *  ends on the real values the headline reads. */
+const TARGET_POINTS: Record<RangeId, number> = { "1D": 24, "1W": 28, "1M": 30, "6M": 26, "1Y": 24 };
+function decimateChart(c: ValueChart, range: RangeId): ValueChart {
+  const n = c.points.length;
+  const target = TARGET_POINTS[range];
+  if (n <= target || target < 2) return c;
+  const points = [];
+  for (let i = 0; i < target; i++) {
+    points.push(c.points[Math.round((i * (n - 1)) / (target - 1))]!);
+  }
+  return { ...c, points };
+}
 
 /** map a series into svg space, with a flat series sitting on the baseline. */
 function points(values: number[], width: number, height: number): [number, number][] {
@@ -110,6 +126,23 @@ export function Sparkline({
   const box = useRef<HTMLDivElement>(null);
   const id = `chart-${t.pocket}`;
 
+  // the chart draws to its ACTUAL width, not a fixed 384: the passed `width` is a
+  // ceiling, and when the frame collapses under it (chrome zooms to 500%, leaving
+  // the popup ~160px) the container is narrower, so the curve reflows into it
+  // rather than overflowing the clipped frame. at the normal width the measured
+  // value is the ceiling, so nothing changes there.
+  const [measured, setMeasured] = useState(width);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const read = () => setMeasured(el.clientWidth || width);
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [width]);
+  const w = Math.min(measured, width);
+
   // the curve MORPHS to a new series on a range switch, instead of snapping. each
   // frame tweens the old shape toward the new one, so 1D flowing into 1W reads as
   // the line reshaping rather than a hard cut. keyed on a cheap signature of the
@@ -124,6 +157,13 @@ export function Sparkline({
       setDisplay(values);
       return;
     }
+    // the morph is a JS rAF tween, so the stylesheet's prefers-reduced-motion block
+    // cannot reach it; honour the preference here by landing on the new series at
+    // once, the way Avatar's blink does for its own JS motion.
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setDisplay(values);
+      return;
+    }
     const prev = displayRef.current;
     if (prev.length < 2) {
       setDisplay(values);
@@ -133,12 +173,22 @@ export function Sparkline({
     const from = resample(prev, N);
     const to = resample(values, N);
     const start = performance.now();
-    const DUR = 420;
+    // ease-OUT, not ease-in-out: an ease-in creeps through its first third, which
+    // read as a pause before the line moved at all. out starts at full speed and
+    // decelerates, so a range switch feels immediate rather than delayed.
+    const DUR = 300;
     const tick = (now: number) => {
       const p = Math.min(1, (now - start) / DUR);
-      const e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2; // easeInOutCubic
+      if (p >= 1) {
+        // land on the real series, not the resampled `to`: `display` then has the
+        // same length as `values`, so a scrub after the morph maps its reported
+        // index onto the right point instead of onto a stretched copy.
+        setDisplay(values);
+        return;
+      }
+      const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
       setDisplay(from.map((v, i) => v + (to[i]! - v) * e));
-      if (p < 1) raf.current = requestAnimationFrame(tick);
+      raf.current = requestAnimationFrame(tick);
     };
     if (raf.current) cancelAnimationFrame(raf.current);
     raf.current = requestAnimationFrame(tick);
@@ -149,13 +199,18 @@ export function Sparkline({
 
   if (values.length < 2) return null;
 
-  // draw the morphing series; scrub still reports indices against the real one.
-  const series = display.length >= 2 ? display : values;
-  const pts = points(series, width, height);
-  const area = `${pathOf(pts)} L${width},${height} L0,${height} Z`;
-  // a warm grey in light, a dim white in dark. the same "this is behind you"
-  // signal the reference paints past the cursor.
-  const muted = t.dark ? "rgba(255,255,255,0.26)" : "#CBC6BE";
+  // draw the morphing series while idle; the moment a scrub is live, draw the
+  // REAL series instead. during a morph `display` is resampled to the longer of
+  // the two curves, so its indices no longer line up with the value the scrub
+  // reports; drawing `values` under the cursor keeps the dot, the grey split and
+  // the pill all on the point the pointer is actually over.
+  const active = at !== null;
+  const series = active ? values : display.length >= 2 ? display : values;
+  const pts = points(series, w, height);
+  const area = `${pathOf(pts)} L${w},${height} L0,${height} Z`;
+  // the muted stop, now that the type neutrals are themselves grey: past the
+  // cursor is "behind you" and should not compete with the accent ahead of it.
+  const muted = t.hairline;
 
   const report = (index: number | null) => {
     setAt(index);
@@ -169,20 +224,21 @@ export function Sparkline({
     report(Math.round(frac * (values.length - 1)));
   };
 
-  const active = at !== null;
   const cut = active ? Math.min(at, pts.length - 1) : 0;
   const dot = active ? pts[cut]! : null;
   // the pill is clamped off the edges so it never clips at the ends of a scrub.
-  const pillX = dot ? Math.max(30, Math.min(width - 30, dot[0])) : 0;
-  const label =
-    active && times && labelAt ? labelAt(times[Math.min(at, times.length - 1)]!) : null;
+  const pillX = dot ? Math.max(30, Math.min(w - 30, dot[0])) : 0;
+  const label = active && times && labelAt ? labelAt(times[Math.min(at, times.length - 1)]!) : null;
 
   return (
     <div
       ref={box}
       style={{
         position: "relative",
-        width,
+        // fluid up to the ceiling: fills the frame at normal size, shrinks with it
+        // at high zoom. the drawing width `w` is measured from this box.
+        width: "100%",
+        maxWidth: width,
         touchAction: "none",
         // no cursor change on hover: the reveal follows the pointer, and swapping
         // the cursor to a resize handle read as "you can drag this", which is not
@@ -205,9 +261,9 @@ export function Sparkline({
       onPointerCancel={() => report(null)}
     >
       <svg
-        width={width}
+        width={w}
         height={height}
-        viewBox={`0 0 ${width} ${height}`}
+        viewBox={`0 0 ${w} ${height}`}
         // decorative: the figure above it is the number, and it is already read
         // out. a screen reader announcing ninety-six samples would bury it.
         aria-hidden
@@ -225,7 +281,7 @@ export function Sparkline({
             d={pathOf(pts)}
             fill="none"
             stroke={t.accent}
-            strokeWidth={2}
+            strokeWidth={2.5}
             strokeLinecap="round"
             strokeLinejoin="round"
           />
@@ -237,7 +293,7 @@ export function Sparkline({
               d={pathOf(pts.slice(cut))}
               fill="none"
               stroke={muted}
-              strokeWidth={2}
+              strokeWidth={2.5}
               strokeLinecap="round"
               strokeLinejoin="round"
             />
@@ -245,7 +301,7 @@ export function Sparkline({
               d={pathOf(pts.slice(0, cut + 1))}
               fill="none"
               stroke={t.accent}
-              strokeWidth={2}
+              strokeWidth={2.5}
               strokeLinecap="round"
               strokeLinejoin="round"
             />
@@ -254,7 +310,14 @@ export function Sparkline({
         {dot && (
           <>
             <line x1={dot[0]} y1={0} x2={dot[0]} y2={height} stroke={t.line} strokeWidth={1} />
-            <circle cx={dot[0]} cy={dot[1]} r={4.5} fill={t.accent} stroke={t.bg} strokeWidth={2.5} />
+            <circle
+              cx={dot[0]}
+              cy={dot[1]}
+              r={4.5}
+              fill={t.accent}
+              stroke={t.bg}
+              strokeWidth={2.5}
+            />
           </>
         )}
       </svg>
@@ -268,8 +331,7 @@ export function Sparkline({
             transform: "translateX(-50%)",
             background: t.accentSoft,
             color: t.dark ? t.accent : t.text,
-            ...text.caption,
-            fontWeight: 700,
+            ...text.chip,
             padding: "3px 9px",
             borderRadius: radius.pill,
             whiteSpace: "nowrap",
@@ -294,8 +356,12 @@ export function RangeTabs({
   onChange: (r: RangeId) => void;
 }) {
   return (
+    // aria-pressed toggle buttons, not a tablist: there is no tabpanel and no
+    // roving-tabindex/arrow-key model here, and role=tablist would promise "tab,
+    // 1 of 5" plus arrow navigation the control does not implement. a group of
+    // pressed/unpressed buttons is the honest contract for a range picker.
     <div
-      role="tablist"
+      role="group"
       aria-label="Chart range"
       style={{ display: "flex", gap: space.xs, justifyContent: "space-between" }}
     >
@@ -305,25 +371,33 @@ export function RangeTabs({
           <button
             key={r}
             type="button"
-            role="tab"
-            aria-selected={on}
+            aria-pressed={on}
             onClick={() => onChange(r)}
             style={{
               all: "unset",
               boxSizing: "border-box",
               cursor: "pointer",
               flex: 1,
-              textAlign: "center",
-              padding: `6px 0`,
-              borderRadius: radius.pill,
-              ...text.rowSub,
-              fontWeight: 700,
-              color: on ? (t.dark ? t.accent : t.text) : t.faint,
-              background: on ? t.accentSoft : "transparent",
-              transition: `background ${motion.instant} ${motion.enter}, color ${motion.instant} ${motion.enter}`,
+              display: "flex",
+              justifyContent: "center",
+              padding: `3px 0`,
             }}
           >
-            {r}
+            {/* the pill hugs the label instead of filling the whole cell, so the
+                selected background is the width of "1W", not the width of a fifth
+                of the row. */}
+            <span
+              style={{
+                padding: `5px 14px`,
+                borderRadius: radius.pill,
+                ...text.chip,
+                color: on ? (t.dark ? t.accent : t.text) : t.faint,
+                background: on ? t.accentSoft : "transparent",
+                transition: `background ${motion.instant} ${motion.enter}, color ${motion.instant} ${motion.enter}`,
+              }}
+            >
+              {r}
+            </span>
           </button>
         );
       })}
@@ -335,23 +409,34 @@ export function RangeTabs({
 export function ChangeChip({ t, pct }: { t: Theme; pct: number | null }) {
   // null is not zero. a range that starts before the wallet was funded has no
   // percentage to report, and "0.00%" would claim it held steady at nothing.
-  if (pct === null || !Number.isFinite(pct)) return null;
-  const up = pct >= 0;
+  //
+  // a SCRUB passes null for the length of the gesture, so a chip that unmounted on
+  // null flashed out and back on every hover. instead the last real value is held
+  // and the chip fades its opacity while the pointer is down, keeping its width so
+  // the figure beside it does not jump. it only truly returns null before it has
+  // ever had a value to show.
+  const held = useRef<number | null>(null);
+  const live = pct !== null && Number.isFinite(pct);
+  if (live) held.current = pct;
+  const shown = held.current;
+  if (shown === null) return null;
+  const up = shown >= 0;
   const tone = up ? t.positive : t.danger;
   return (
     <span
       style={{
-        ...text.rowSub,
-        fontWeight: 700,
+        ...text.chip,
         color: tone,
         background: up ? t.positiveSoft : t.dangerSoft,
         borderRadius: radius.pill,
         padding: "4px 10px",
         whiteSpace: "nowrap",
         fontVariantNumeric: "tabular-nums",
+        opacity: live ? 1 : 0,
+        transition: `opacity var(--pocket-instant) var(--pocket-enter)`,
       }}
     >
-      {up ? "▲" : "▼"} {Math.abs(pct).toFixed(2)}%
+      {up ? "▲" : "▼"} {Math.abs(shown).toFixed(2)}%
     </span>
   );
 }
@@ -469,7 +554,7 @@ export function useValueChart(
       .then((c) => {
         // a late answer for a range the user has already left must not paint
         // over the one they are looking at.
-        if (live) setChart(c);
+        if (live) setChart(decimateChart(c, range));
       })
       .catch(() => {
         if (live) setChart(null);

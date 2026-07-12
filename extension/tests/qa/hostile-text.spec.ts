@@ -499,18 +499,18 @@ test("a bidi override in a memo cannot reorder the address or the amount beside 
   ).toBe(REAL);
 
   // the figure. the hero splits into a whole part and a fraction, and the
-  // fraction is the run that carries the digits worth reordering.
+  // fraction is the run that carries the digits worth reordering. the point that
+  // separates them is its own text node, so the digits are measured on their own.
   expect(
-    await paintedOrder(page, ".2345678"),
+    await paintedOrder(page, "2345678"),
     "the fraction of the amount was painted out of order",
-  ).toBe(".2345678");
+  ).toBe("2345678");
 
-  // and the effect line, which is the one place an amount and an address sit in
-  // a SINGLE run of text. If an override could reach across a block, this is the
-  // sentence where it would do the most damage, because reordering it changes
-  // both how much and to whom in one stroke.
-  const effect = `1. Send 1.2345678 XLM to ${REAL}`;
-  expect(await paintedOrder(page, effect), "the effect line was painted out of order").toBe(effect);
+  // the amount and the address no longer share a single run of text: the confirm
+  // shows the figure as its own hero and the recipient as its own full-address
+  // block, and the "Send X to this address" effect line moved into the "what this
+  // does" tip. each is measured on its own above (the fraction and the address),
+  // which is where an override would have to land to change how much or to whom.
 
   // and the wallet's own words after the memo are still the right way round, so
   // the override did not escape the block the memo was put in.

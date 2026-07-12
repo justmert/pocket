@@ -89,7 +89,7 @@ function payloadOf(e: StoredEvent): { cTransfer: Point } | undefined {
  * lossy, versioned interpretation, and an archive that stores its own reading
  * of history cannot be re-checked against the chain later.
  */
-function decodeStored(e: StoredEvent): ConfidentialEvent | null {
+export function decodeStored(e: StoredEvent): ConfidentialEvent | null {
   if (!isReplayEvent(e.event_type)) return null;
   // `topics_xdr` is the ledger's own topic ScVals CONCATENATED, which is what
   // `indexer/src/ingest.ts` writes: `Buffer.concat(e.topic.map(t => t.toXDR()))`.
@@ -156,9 +156,7 @@ export async function recoverOpenings(
     cursor = page.cursor;
   }
 
-  const events = stored
-    .map(decodeStored)
-    .filter((e): e is ConfidentialEvent => e !== null);
+  const events = stored.map(decodeStored).filter((e): e is ConfidentialEvent => e !== null);
 
   // A received transfer replays only when the archive kept the INVOCATION
   // payload alongside the event: the event carries enough to derive a candidate

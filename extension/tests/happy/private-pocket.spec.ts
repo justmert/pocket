@@ -115,7 +115,7 @@ test.describe("private pocket operations", () => {
       ).toBeVisible();
       await expect(wallet.page.getByText(/not reversible/)).toBeVisible();
       await wallet.page.getByRole("button", { name: "Approve" }).click();
-      await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
+      await expect(wallet.page.getByText("Transaction successful")).toBeVisible({
         timeout: WAITS.submission,
       });
       await wallet.dismissReceipt();
@@ -147,7 +147,7 @@ test.describe("private pocket operations", () => {
       console.log("  recipient registered");
 
       // -------------------------------------------------------------------- shield
-      await wallet.openOp("Move in");
+      await wallet.openOp("Shield");
       await wallet.page.getByLabel("Amount (XLM)").fill("25");
       // The deposit amount is public. That has to be said before the review, not
       // discovered on the ledger afterwards.
@@ -194,8 +194,8 @@ test.describe("private pocket operations", () => {
       ).toBeVisible();
       // Never truncated at a confirm step.
       expect(await wallet.readAddress()).toBe(recipient);
-      await wallet.page.getByRole("button", { name: "Confirm and send" }).click();
-      await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
+      await wallet.page.getByRole("button", { name: "Confirm" }).click();
+      await expect(wallet.page.getByText("Transaction successful")).toBeVisible({
         timeout: WAITS.submission,
       });
       await wallet.dismissReceipt();
@@ -205,7 +205,7 @@ test.describe("private pocket operations", () => {
       console.log("  sent 5 XLM privately");
 
       // ------------------------------------------------------------------ unshield
-      await wallet.openOp("Move out");
+      await wallet.openOp("Unshield");
       await wallet.page.getByLabel("Amount (XLM)").fill("10");
       await expect(wallet.page.getByText(/This amount becomes public/)).toBeVisible();
       await wallet.page.getByRole("button", { name: "Review" }).click();
@@ -218,7 +218,7 @@ test.describe("private pocket operations", () => {
         wallet.page.getByText("This withdrawal amount becomes PUBLIC on the ledger"),
       ).toBeVisible();
       await wallet.page.getByRole("button", { name: "Approve" }).click();
-      await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
+      await expect(wallet.page.getByText("Transaction successful")).toBeVisible({
         timeout: WAITS.submission,
       });
       await wallet.dismissReceipt();
@@ -299,7 +299,7 @@ test.describe("private pocket operations", () => {
       await other.openPrivatePocket();
       await other.registerPrivatePocket();
 
-      await wallet.openOp("Move in");
+      await wallet.openOp("Shield");
       await wallet.page.getByLabel("Amount (XLM)").fill("25");
       await wallet.page.getByRole("button", { name: "Review" }).click();
       await wallet.approve();
@@ -312,7 +312,7 @@ test.describe("private pocket operations", () => {
       await wallet.page.getByLabel("Amount (XLM)").fill("5");
       await wallet.page.getByRole("button", { name: "Review" }).click();
       await wallet.approve();
-      await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
+      await expect(wallet.page.getByText("Transaction successful")).toBeVisible({
         timeout: WAITS.submission,
       });
       await wallet.dismissReceipt();
@@ -347,7 +347,7 @@ test.describe("private pocket operations", () => {
         other.page.getByText("Fold everything you have received into your spendable balance"),
       ).toBeVisible();
       await other.page.getByRole("button", { name: "Approve" }).click();
-      await expect(other.page.getByText(/Confirmed in ledger/)).toBeVisible({
+      await expect(other.page.getByText("Transaction successful")).toBeVisible({
         timeout: WAITS.submission,
       });
       await other.dismissReceipt();
@@ -359,11 +359,11 @@ test.describe("private pocket operations", () => {
 
       // And once it is spendable it can be spent, which is the only definition of
       // "received" that means anything.
-      await other.openOp("Move out");
+      await other.openOp("Unshield");
       await other.page.getByLabel("Amount (XLM)").fill("5");
       await other.page.getByRole("button", { name: "Review" }).click();
       await other.approve();
-      await expect(other.page.getByText(/Confirmed in ledger/)).toBeVisible({
+      await expect(other.page.getByText("Transaction successful")).toBeVisible({
         timeout: WAITS.submission,
       });
       await other.dismissReceipt();

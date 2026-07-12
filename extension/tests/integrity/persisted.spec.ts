@@ -21,7 +21,7 @@ import {
   type Sealed,
   type VaultHeader,
 } from "./oracle";
-import { launch, evictWorker, expectEvicted, open, ask, PASSWORD } from "./harness";
+import { launch, evictWorker, expectRestored, open, ask, PASSWORD } from "./harness";
 
 /**
  * SEP-0005 test vector 1, published in the standard.
@@ -74,10 +74,11 @@ test("an eviction and a browser restart change nothing on disk, and the wallet c
 
     const before = JSON.stringify(await storage(page), Object.keys(await storage(page)).sort());
 
-    // MV3 eviction first. The session lives only in the worker's heap, so this
-    // proves the next answer is read from disk rather than remembered.
+    // MV3 eviction first. The session survives it, restored from the DEK mirror
+    // in session storage (RAM), and must not rewrite anything on disk in the
+    // process. The browser restart below is what forces the true off-disk read.
     await evictWorker(install.ctx, page);
-    await expectEvicted(page);
+    await expectRestored(page);
     const afterEviction = JSON.stringify(
       await storage(page),
       Object.keys(await storage(page)).sort(),

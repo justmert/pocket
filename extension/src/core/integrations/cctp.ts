@@ -21,17 +21,65 @@ export const CCTP = {
     tokenMessengerMinter: "CAE2G5Z77UP7GYPYGFOWFGW7C7J6I4YP2AFGSADRKQY62SYUFLPNFTXL",
     messageTransmitter: "CACMENFFJPJMSDAJQLX4R7K3SFZIW2LJSE3R2UMLGSWHFHS353FVXAZV",
     usdc: "USDC-GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+    iris: "https://iris-api.circle.com",
   },
   testnet: {
     forwarder: "CA66Q2WFBND6V4UEB7RD4SAXSVIWMD6RA4X3U32ELVFGXV5PJK4T4VSZ",
     tokenMessengerMinter: "CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP",
     messageTransmitter: "CBJ6MTCKKZG73PMDZCJMSFRD7DQEMI4FKDH7CGDSV4W6FHCRBCQAVVJY",
     usdc: "USDC-GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    iris: "https://iris-api-sandbox.circle.com",
   },
 } as const;
 
+/**
+ * An EVM recipient address (20 bytes) as CCTP's 32-byte `mint_recipient`.
+ *
+ * CCTP addresses are a raw 32-byte field with no chain-specific encoding, and an
+ * EVM address is right-aligned in it (12 zero bytes, then the 20 address bytes).
+ * Getting this wrong sends the mint to the wrong address on the far side, so the
+ * input is validated as a 20-byte hex string first.
+ */
+export function evmAddressToBytes32(address: string): Uint8Array {
+  const hex = address.startsWith("0x") ? address.slice(2) : address;
+  if (!/^[0-9a-fA-F]{40}$/.test(hex)) {
+    throw new CctpParameterError(`not a 20-byte EVM address: ${address}`);
+  }
+  const out = new Uint8Array(32);
+  for (let i = 0; i < 20; i++) out[12 + i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
+/** The all-zero 32-byte value, used for a permissionless destination_caller. */
+export function zeroBytes32(): Uint8Array {
+  return new Uint8Array(32);
+}
+
 /** Stellar's CCTP domain. The protocol supports it; Circle's Bridge Kit SDK does not. */
 export const STELLAR_DOMAIN = 27;
+
+/**
+ * CCTP V2 domain ids to display names, for the approval screen. Only the common
+ * destinations; an unlisted domain is shown by number rather than guessed at.
+ */
+export const CCTP_DOMAIN_NAMES: Record<number, string> = {
+  0: "Ethereum",
+  1: "Avalanche",
+  2: "OP Mainnet",
+  3: "Arbitrum",
+  5: "Solana",
+  6: "Base",
+  7: "Polygon",
+  10: "Unichain",
+  11: "Linea",
+  16: "Sei",
+  17: "BNB Smart Chain",
+  27: "Stellar",
+};
+
+export function cctpDomainName(domain: number): string {
+  return CCTP_DOMAIN_NAMES[domain] ?? `domain ${domain}`;
+}
 
 /** 1000 = fast, 2000 = standard. */
 export const FINALITY = { fast: 1000, standard: 2000 } as const;
@@ -163,14 +211,23 @@ export function assertBurnParameters(p: BurnParams): void {
 }
 
 /**
- * Scale a fee to the SIX decimals `max_fee` takes.
+ * Scale a fee to the SIX decimals a canonical CCTP `max_fee` takes.
+ *
+ * CORRECTION (verified D10 against circlefin/stellar-cctp
+ * token-messenger-minter-v2/src/deposit.rs): the STELLAR `deposit_for_burn`
+ * takes BOTH `amount` and `max_fee` in LOCAL decimals (Stellar's 7), and the
+ * contract converts them to canonical internally and removes dust itself. So do
+ * NOT apply this to the Stellar `max_fee`: pass the 7-decimal value straight
+ * through (Pocket's outbound uses max_fee = 0, so it is moot on the live path).
+ * This helper, `assertBurnParameters`, and the hook-data builders describe the
+ * canonical/other-chain side and are NOT used by Pocket's Stellar-only flow.
  *
  * Named apart from toCctpAmount on purpose. Both divide by ten, and having one
  * function for both would let the two scales be confused silently, which is
  * exactly the failure this module exists to prevent.
  */
-export function toCctpFee(stellarStroops: bigint): bigint {
-  return stellarStroops / 10n;
+export function toCctpFee(canonicalStroops: bigint): bigint {
+  return canonicalStroops / 10n;
 }
 
 /**

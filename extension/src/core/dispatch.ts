@@ -59,6 +59,17 @@ function optionalStr(v: unknown, field: string): string | undefined {
   return v === undefined || v === null ? undefined : str(v, field);
 }
 
+function num(v: unknown, field: string): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) {
+    throw new Error(`malformed request: ${field} must be a number`);
+  }
+  return v;
+}
+
+function optionalNum(v: unknown, field: string): number | undefined {
+  return v === undefined || v === null ? undefined : num(v, field);
+}
+
 /**
  * A chart range, checked against the closed set rather than passed through.
  *
@@ -104,6 +115,8 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
       return c.status();
     case "setNetwork":
       return c.setNetwork(msg.network);
+    case "setAutoLock":
+      return c.setAutoLock(num(msg.minutes, "minutes"));
     case "balances":
       return c.balances();
     case "buildPayment":
@@ -117,10 +130,14 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
       return c.confirmPayment(str(msg.handle, "handle"));
     case "reset":
       return c.reset(str(msg.password, "password"));
+    case "revealPhrase":
+      return c.revealPhrase(str(msg.password, "password"));
     case "privatePocket":
-      return c.privatePocket();
+      return c.privatePocket(optionalStr(msg.asset, "asset"));
+    case "privatePockets":
+      return c.privatePockets();
     case "rebuildFromHistory":
-      return c.rebuildFromHistory();
+      return c.rebuildFromHistory(optionalStr(msg.asset, "asset"));
     case "dappSessions":
       return c.dappSessions();
     case "connectDapp":
@@ -129,6 +146,43 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
       return c.currentPhase();
     case "yieldPosition":
       return c.yieldPosition();
+    case "buildYieldMove":
+      return c.buildYieldMove(
+        msg.kind === "withdraw" ? "withdraw" : "deposit",
+        str(msg.amount, "amount"),
+      );
+    case "confirmYieldMove":
+      return c.confirmYieldMove(str(msg.handle, "handle"));
+    case "swapQuote":
+      return c.swapQuote(
+        str(msg.assetIn, "assetIn"),
+        str(msg.assetOut, "assetOut"),
+        str(msg.amount, "amount"),
+      );
+    case "buildSwap":
+      return c.buildSwap(
+        str(msg.assetIn, "assetIn"),
+        str(msg.assetOut, "assetOut"),
+        str(msg.amount, "amount"),
+        optionalNum(msg.slippageBps, "slippageBps"),
+      );
+    case "confirmSwap":
+      return c.confirmSwap(str(msg.handle, "handle"));
+    case "buildCctpSend":
+      return c.buildCctpSend(
+        num(msg.destinationDomain, "destinationDomain"),
+        str(msg.recipient, "recipient"),
+        str(msg.amount, "amount"),
+        msg.fast === true,
+      );
+    case "confirmCctpSend":
+      return c.confirmCctpSend(str(msg.handle, "handle"));
+    case "cctpAttestation":
+      return c.cctpAttestation(num(msg.sourceDomain, "sourceDomain"), str(msg.txHash, "txHash"));
+    case "buildCctpClaim":
+      return c.buildCctpClaim(num(msg.sourceDomain, "sourceDomain"), str(msg.txHash, "txHash"));
+    case "confirmCctpClaim":
+      return c.confirmCctpClaim(str(msg.handle, "handle"));
     case "pendingDappRequest":
       return c.pendingDappRequest();
     case "resolveDappRequest":
@@ -136,7 +190,7 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
     case "disconnectDapp":
       return c.disconnectDapp(str(msg.origin, "origin"));
     case "buildPrivateOp":
-      return c.buildPrivateOp(opRequest(msg.op));
+      return c.buildPrivateOp(opRequest(msg.op), optionalStr(msg.asset, "asset"));
     case "confirmPrivateOp":
       return c.confirmPrivateOp(str(msg.handle, "handle"));
     case "inFlight":
@@ -151,6 +205,13 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
       return c.assetMarket(str(msg.symbol, "symbol"));
     case "assetSeries":
       return c.assetSeries(str(msg.symbol, "symbol"), rangeId(msg.range));
+    case "history":
+      return c.history(
+        optionalStr(msg.cursor, "cursor"),
+        optionalNum(msg.limit, "limit"),
+        msg.pocket === "public" || msg.pocket === "private" ? msg.pocket : undefined,
+        optionalStr(msg.asset, "asset"),
+      );
     default: {
       // Without this, a message whose type is outside the union falls off the
       // end, resolves to undefined, and the worker answers {ok: true}. Any
@@ -173,6 +234,7 @@ const ACTIVITY = new Set([
   "buildPayment",
   "confirmPayment",
   "setNetwork",
+  "setAutoLock",
   "create",
   "import",
   // A private operation is user activity too: proving can take a moment and a
@@ -180,8 +242,22 @@ const ACTIVITY = new Set([
   "buildPrivateOp",
   "confirmPrivateOp",
   "privatePocket",
+  "privatePockets",
   "rebuildFromHistory",
   "recoverFromMnemonic",
+  // Yield deposit/withdraw are real user activity, like a payment.
+  "buildYieldMove",
+  "confirmYieldMove",
+  // A swap, and the quote a user is actively requesting before it.
+  "swapQuote",
+  "buildSwap",
+  "confirmSwap",
+  // CCTP bridges. `cctpAttestation` is deliberately absent: it is a poll the UI
+  // repeats while waiting, not user activity, so it must not postpone the lock.
+  "buildCctpSend",
+  "confirmCctpSend",
+  "buildCctpClaim",
+  "confirmCctpClaim",
 ]);
 
 export function isUserActivity(type: string): boolean {
@@ -210,6 +286,8 @@ const SAFE_ERRORS = new Set([
   "IncompleteHistoryError",
   "UnspendableBlindingError",
   "CctpParameterError",
+  "AquariusError",
+  "IrisError",
   "ConfidentialReadError",
   "InsufficientBalanceError",
   "VerificationKeyMismatchError",

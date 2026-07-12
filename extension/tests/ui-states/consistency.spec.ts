@@ -1,7 +1,7 @@
 // The A10 set: four places where the same idea was rendered two ways, and one
 // where the way out lost what had been typed.
 //
-// A10-15. The Move sheet titles itself "Moving in" at 24px, and the review it
+// A10-15. The Move sheet titles itself "Shielding" at 24px, and the review it
 // contains rendered the same string again immediately below at 12px uppercase.
 // A10-04. That review's way out went to the operation picker rather than to the
 // amount form, two steps back, and the amount is cleared only when the sheet
@@ -64,14 +64,14 @@ test("the move review does not repeat the sheet's own title", async ({ wallet })
   await stubReady(page, false);
 
   await wallet.openMove();
-  await page.getByRole("button", { name: /Move in/ }).click();
+  await page.getByRole("button", { name: /Shield/ }).click();
   await page.getByRole("textbox", { name: /Amount/ }).fill("3");
   await page.getByRole("button", { name: "Review" }).click();
   await expect(page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
 
   // The operation is named once on the screen, by the sheet that contains it.
   await expect(
-    page.getByText(/^Moving in$/i),
+    page.getByText(/^Shielding$/i),
     "the sheet title and the review's overline were the same word, stacked",
   ).toHaveCount(1);
 });
@@ -84,7 +84,7 @@ test("leaving the move review returns to the form, not past it", async ({ wallet
   await stubReady(page, false);
 
   await wallet.openMove();
-  await page.getByRole("button", { name: /Move in/ }).click();
+  await page.getByRole("button", { name: /Shield/ }).click();
   const amount = page.getByRole("textbox", { name: /Amount/ });
   await amount.fill("3");
   await page.getByRole("button", { name: "Review" }).click();
@@ -105,13 +105,13 @@ test("a row that cannot be pressed is not drawn like one that can", async ({ wal
   await stubReady(page, false);
 
   await wallet.openMove();
-  const live = page.getByRole("button", { name: "Move in" });
+  const live = page.getByRole("button", { name: "Shield" });
   await expect(live).toBeVisible({ timeout: WAITS.proving });
   const inert = page.getByText("Make spendable", { exact: true });
   await expect(inert).toBeVisible();
 
   const colours = await Promise.all(
-    [live.getByText("Move in", { exact: true }), inert].map((l) =>
+    [live.getByText("Shield", { exact: true }), inert].map((l) =>
       l.evaluate((el) => getComputedStyle(el).color),
     ),
   );

@@ -145,7 +145,7 @@ test("openings written by a previous version still open the balance the contract
     // Still usable, which is the only definition of "the record survived" that
     // means anything: the current build shields 25 XLM ON TOP of the previous
     // version's record, and the result opens the chain.
-    await w2.openOp("Move in");
+    await w2.openOp("Shield");
     await w2.submitOp({ amount: "25" });
     await w2.approve();
     await expect(upgraded.getByText(/Made spendable in a second transaction/)).toBeVisible({

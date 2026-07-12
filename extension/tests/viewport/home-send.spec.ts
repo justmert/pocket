@@ -3,7 +3,7 @@
 // Send's confirm step is the second-most content the wallet ever shows at once:
 // a full untruncated 56-character address, an amount, a memo block, a list of
 // effects and two buttons. Confirm is also the place where a control out of
-// reach is worst, because the two buttons are "Confirm and send" and "Back" and
+// reach is worst, because the two buttons are "Confirm" and "Back" and
 // the user has already decided.
 //
 // Send and Receive are now the bottom bar's, and what they open is a sheet over
@@ -136,8 +136,8 @@ test("the confirm step shows a full address, the longest memo and both buttons, 
     ).toBe(LONGEST_MEMO);
 
     await expectReachable(
-      page.getByRole("button", { name: "Confirm and send" }),
-      `send/confirm @ ${vp.name}: Confirm and send`,
+      page.getByRole("button", { name: "Confirm" }),
+      `send/confirm @ ${vp.name}: Confirm`,
     );
     await expectReachable(
       page.getByRole("button", { name: "Back" }),
@@ -165,28 +165,21 @@ test("the submitting wait stays on screen at every viewport", async ({ wallet, h
   // submission: the request is never dispatched, so nothing is signed onto the
   // ledger and the screen sits in the state under test for as long as needed.
   await hang(harness.context, RPC_HOST);
-  await page.getByRole("button", { name: "Confirm and send" }).click();
+  await page.getByRole("button", { name: "Confirm" }).click();
 
-  // The wait names itself, and the naming has to stay reachable at every
-  // viewport. The four steps appear once the worker is publishing phases; while
-  // it is not, the line says what the operation does instead. Both are the same
-  // region, so the region is what is followed, and whichever of the two it is
-  // carrying has to be reachable rather than scrolled out of the frame.
-  const progress = page.getByRole("status").filter({ hasText: /Prepare|ledger/ });
-  await expect(progress).toBeVisible();
+  // the processing view: the mark, "Processing", and the way home while the
+  // transaction lands. it has to stay reachable at every viewport rather than
+  // scrolled out of the frame, and its way out (Go to Home) with it.
+  const processing = page.getByText("Processing", { exact: true });
+  await expect(processing).toBeVisible({ timeout: WAITS.submission });
 
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
-    await expectReachable(progress, `send/sending @ ${vp.name}: the progress`);
-    const steps = progress.getByText("Prepare", { exact: true });
-    if ((await steps.count()) > 0) {
-      for (const step of ["Prepare", "Prove", "Submit", "Confirm"]) {
-        await expectReachable(
-          progress.getByText(step, { exact: true }),
-          `send/sending @ ${vp.name}: the ${step} step`,
-        );
-      }
-    }
+    await expectReachable(processing, `send/sending @ ${vp.name}: the processing view`);
+    await expectReachable(
+      page.getByRole("button", { name: "Go to Home" }),
+      `send/sending @ ${vp.name}: Go to Home`,
+    );
     await expectLayoutHolds(page, `send/sending @ ${vp.name}`);
   }
 });

@@ -144,6 +144,25 @@ describe("destructive-path guards (audit C1)", () => {
     await c.reset("pw");
     expect((await c.status()).initialised).toBe(false);
   });
+
+  it("shows the recovery phrase only with the current password, and changes no state", async () => {
+    const c = new WalletController();
+    const { mnemonic, address } = await c.create("pw");
+
+    // The wrong password never yields the phrase; it throws the same typed error
+    // the boundary maps to "Wrong password.", not the generic fallback.
+    await expect(c.revealPhrase("wrong")).rejects.toBeInstanceOf(WrongPasswordError);
+
+    // The right password returns exactly the phrase `create` issued.
+    expect(await c.revealPhrase("pw")).toBe(mnemonic);
+
+    // Revealing installs no session and destroys nothing: still the same wallet,
+    // still unlocked.
+    const status = await c.status();
+    expect(status.initialised).toBe(true);
+    expect(status.locked).toBe(false);
+    expect(status.address).toBe(address);
+  });
 });
 
 describe("balance honesty (audit H1)", () => {

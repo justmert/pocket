@@ -7,7 +7,7 @@
 // because then the front carries nothing, so the figure is set as one run.
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { FRAME, fontSizes, motion, space, type Theme } from "./theme";
+import { FRAME, fontSizes, fonts, motion, space, type Theme } from "./theme";
 
 export type Treatment = "plain" | "exposed";
 
@@ -20,7 +20,7 @@ const SIZES = {
 
 /** the popup's content column: the frame, less the gutter on either side. */
 const COLUMN = FRAME.width - space.gutter * 2;
-/** tabular figures at weight 800 measure close to this fraction of their size. */
+/** the display face's figures measure close to this fraction of their size. */
 const DIGIT_EM = 0.62;
 /** the flex gap between the figure and its code, as a fraction of the size. */
 const GAP_EM = 0.14;
@@ -68,8 +68,24 @@ export function Amount({
   code,
   size = "row",
   treatment = "plain",
-  /** rolls each digit to its new value instead of snapping. */
-  animate = false,
+  /** rolls each digit to its new value instead of snapping. ON by default: a figure
+   *  that changes under the user (a balance after a receive, a scrubbed value, a
+   *  spendable that just moved) should tally to its new value, and a figure that
+   *  never changes simply never rolls, so this is safe to leave on everywhere. the
+   *  review/receipt figures sit inside a `pocket-still` sheet, which freezes the
+   *  roll for the one place stillness is the point. */
+  animate = true,
+  /** "hide balance": the digits are replaced by a fixed run of asterisks, so the
+   *  magnitude is hidden too (not just the exact value), the way a masked balance
+   *  reads in every wallet. the currency sign, if any, stays. */
+  hidden = false,
+  /** show EVERY fraction digit, not the four-place display cap. a confirm and a
+   *  receipt must show the exact figure being signed: a shown value that differs
+   *  from the signed value, even by a truncated tail, is a shown != signed gap. */
+  full = false,
+  /** render the figure as ONE run at one size, never a demoted fraction. for a
+   *  value sitting in a row (a confirm fact) rather than as a hero. */
+  flat = false,
 }: {
   t: Theme;
   value: string;
@@ -77,9 +93,29 @@ export function Amount({
   size?: keyof typeof SIZES;
   treatment?: Treatment;
   animate?: boolean;
+  hidden?: boolean;
+  full?: boolean;
+  flat?: boolean;
 }) {
-  const { whole, fraction } = splitAmount(value);
+  const { whole, fraction: rawFraction } = splitAmount(value);
+  // the visible figure shows at most FOUR fraction digits: stellar's seven made a
+  // long, hard-to-read tail on every balance. it is a DISPLAY cap only, truncated
+  // (never rounded up); the exact value is still spoken to a screen reader from
+  // `value` below and is what the worker signs. `full` lifts the cap where the
+  // exact figure IS the point (the confirm, the receipt).
+  const fraction = full ? rawFraction : rawFraction.slice(0, 4);
   const big = size === "hero" || size === "display";
+  // the mask: a fixed three-star run per part, keeping the sign in front, so a
+  // hidden balance is "$***.***" rather than a length that leaks its magnitude.
+  const MASK = "∗∗∗";
+  const sign = whole.startsWith("$") ? "$" : whole.startsWith("-") ? "-" : "";
+  const dispWhole = hidden ? `${sign}${MASK}` : whole;
+  const dispFraction = hidden ? (fraction ? MASK : "") : fraction;
+  // never roll a figure being SIGNED: `full`/`flat` are the confirm and receipt,
+  // where the exact digits are the point and stillness is the treatment; rolling
+  // them would also swap the drawn glyphs for ten-deep digit columns. everything
+  // else (balances, heroes, spendables) is a live figure that should tally.
+  const doAnimate = animate && !hidden && !full && !flat;
 
   /*
    * a figure below one keeps everything that matters after the point, and the
@@ -88,7 +124,10 @@ export function Amount({
    * the figure is not split at all: it runs at a single size, stepped down to
    * whatever the column takes rather than left to wrap mid-number.
    */
-  const oneRun = big && fraction !== "" && (whole === "0" || whole === "-0");
+  // `flat` forces the whole figure onto one run at one size, no demoted fraction:
+  // a confirm row shows the exact amount being signed, and a faded, half-size tail
+  // on a value you are approving reads as less certain than the whole part.
+  const oneRun = fraction !== "" && (flat || (big && (whole === "0" || whole === "-0")));
 
   // the two demoted runs, as fractions of the base size. read once here so the
   // measurement below and the rendering further down cannot drift apart.
@@ -112,30 +151,43 @@ export function Amount({
         alignItems: "baseline",
         flexWrap: "wrap",
         gap: Math.round(px * GAP_EM),
-        fontVariantNumeric: "tabular-nums",
-        letterSpacing: big ? "-0.03em" : undefined,
-        fontWeight: big ? 800 : 700,
+        fontFamily: fonts.display,
+        // the integer sits at 700; the fraction run below drops to 400. lining
+        // figures so digits sit on the baseline, tabular so they never reflow.
+        fontVariantNumeric: "tabular-nums lining-nums",
+        // the hero balance tracks text.hero (-0.035em) so it is pixel-identical
+        // to the amount typed into Send/Move, which becomes this balance; the
+        // smaller display role keeps text.display's -0.03em.
+        letterSpacing: size === "hero" ? "-0.035em" : big ? "-0.03em" : undefined,
+        fontWeight: 700,
         fontSize: px,
         lineHeight: 1.1,
         minWidth: 0,
         ...tones[treatment],
+        ...(hidden ? { userSelect: "none" } : null),
       }}
     >
       {/* the exact figure, unsplit and ungrouped. reading a balance out of three
           separate spans gives "nine thousand, point, zero zero zero" and a
           grouped one gives the digits in the wrong groups, so the value a
           screen reader announces is this one, and it is also the one a test
-          can match. */}
-      <span style={EXACT}>{code ? `${value} ${code}` : value}</span>
+          can match. hidden: the value is not spoken either. */}
+      <span style={EXACT}>{hidden ? "Balance hidden" : code ? `${value} ${code}` : value}</span>
       <span aria-hidden style={{ display: "inline-flex", alignItems: "baseline" }}>
-        {oneRun ? (
-          animate ? <Rolling value={`${whole}.${fraction}`} /> : `${whole}.${fraction}`
+        {oneRun && !hidden ? (
+          doAnimate ? (
+            <Rolling value={`${whole}.${fraction}`} />
+          ) : (
+            `${whole}.${fraction}`
+          )
         ) : (
           <>
-            {animate ? <Rolling value={whole} /> : whole}
-            {fraction && (
-              <span style={{ fontSize: Math.round(px * fractionOf), opacity: 0.62 }}>
-                .{fraction}
+            {doAnimate ? <Rolling value={dispWhole} /> : dispWhole}
+            {dispFraction && (
+              <span
+                style={{ fontSize: Math.round(px * fractionOf), fontWeight: 400, opacity: 0.62 }}
+              >
+                {doAnimate ? <Rolling value={`.${dispFraction}`} /> : `.${dispFraction}`}
               </span>
             )}
           </>
@@ -144,7 +196,7 @@ export function Amount({
       {code && (
         <span
           aria-hidden
-          style={{ fontSize: Math.round(px * codeOf), fontWeight: 700, color: t.sub }}
+          style={{ fontSize: Math.round(px * codeOf), fontWeight: 600, color: t.sub }}
         >
           {code}
         </span>
@@ -171,17 +223,24 @@ const EXACT: CSSProperties = {
 
 /** each digit sits in a column that slides to its new value. */
 export function Rolling({ value }: { value: string }) {
+  const chars = value.split("");
   return (
     <span style={{ display: "inline-flex", alignItems: "flex-end", whiteSpace: "pre" }}>
-      {value.split("").map((ch, i) =>
-        ch >= "0" && ch <= "9" ? (
-          <RollDigit key={i} digit={Number(ch)} />
+      {chars.map((ch, i) => {
+        // key by distance from the END, not the start: when a value crosses a
+        // grouping boundary ("999" -> "1,000") the units digit must stay in the
+        // units column and roll 9->0, not shift left one place and animate to a
+        // digit that was never in that slot. from-end keys hold each column to its
+        // place value; the new leading digit and comma mount fresh on the left.
+        const key = chars.length - 1 - i;
+        return ch >= "0" && ch <= "9" ? (
+          <RollDigit key={key} digit={Number(ch)} />
         ) : (
-          <span key={i} style={{ display: "inline-block", height: "1em", lineHeight: "1em" }}>
+          <span key={key} style={{ display: "inline-block", height: "1em", lineHeight: "1em" }}>
             {ch}
           </span>
-        ),
-      )}
+        );
+      })}
     </span>
   );
 }
@@ -191,7 +250,14 @@ function RollDigit({ digit }: { digit: number }) {
   // as travelling rather than as ten stacked numbers.
   const [blur, setBlur] = useState(0);
   const [settling, setSettling] = useState(false);
-  const prev = useRef(digit);
+  // the column starts at 0 and travels to its value, so the FIRST paint rolls
+  // too, not only later scrubs: the balance visibly tallies up the moment the
+  // ledger answers (the null->number transition mounts a fresh Rolling). the
+  // rendered transform reads this state, and the effect walks it to `digit` on
+  // the next frame so the transition has a from-value to travel from. seeding
+  // prev at 0 (not `digit`) is what lets the mount animate rather than snap.
+  const [shown, setShown] = useState(0);
+  const prev = useRef(0);
 
   useEffect(() => {
     if (prev.current === digit) return;
@@ -201,6 +267,7 @@ function RollDigit({ digit }: { digit: number }) {
     const r = requestAnimationFrame(() => {
       setSettling(true);
       setBlur(0);
+      setShown(digit);
     });
     return () => cancelAnimationFrame(r);
   }, [digit]);
@@ -212,12 +279,19 @@ function RollDigit({ digit }: { digit: number }) {
     (settling ? `, filter ${motion.roll} ${motion.enter}` : "");
 
   return (
-    <span style={{ display: "inline-block", height: "1em", overflow: "hidden", verticalAlign: "bottom" }}>
+    <span
+      style={{
+        display: "inline-block",
+        height: "1em",
+        overflow: "hidden",
+        verticalAlign: "bottom",
+      }}
+    >
       <span
         style={{
           display: "flex",
           flexDirection: "column",
-          transform: `translateY(${-digit}em)`,
+          transform: `translateY(${-shown}em)`,
           transition,
           filter: blur ? `blur(${blur}px)` : undefined,
           willChange: "transform, filter",
@@ -239,11 +313,13 @@ export function HeroAmount({
   value,
   code,
   treatment = "plain",
+  hidden = false,
 }: {
   t: Theme;
   value: string | null;
   code: string;
   treatment?: Treatment;
+  hidden?: boolean;
 }) {
   return (
     <div
@@ -257,12 +333,28 @@ export function HeroAmount({
       {value === null ? (
         // a shimmer says "not yet" to someone looking. it says nothing at all to
         // someone listening, so the same fact is spelled out for them.
-        <span role="status" aria-live="polite" style={{ display: "block", width: 190, maxWidth: "100%" }}>
+        <span
+          role="status"
+          aria-live="polite"
+          style={{ display: "block", width: 190, maxWidth: "100%" }}
+        >
           <span style={EXACT}>Reading the ledger</span>
-          <span aria-hidden className="pocket-skeleton" style={{ display: "block", width: "100%", height: 38 }} />
+          <span
+            aria-hidden
+            className="pocket-skeleton"
+            style={{ display: "block", width: "100%", height: 38 }}
+          />
         </span>
       ) : (
-        <Amount t={t} value={value} code={code} size="hero" treatment={treatment} animate />
+        <Amount
+          t={t}
+          value={value}
+          code={code}
+          size="hero"
+          treatment={treatment}
+          animate
+          hidden={hidden}
+        />
       )}
     </div>
   );

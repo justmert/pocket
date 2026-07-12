@@ -29,7 +29,9 @@ function request<T>(method: string, params: unknown[]): Promise<Sep43Result<T>> 
     // generous; it exists to bound the wait, not to police it.
     setTimeout(() => {
       window.removeEventListener("message", onReply);
-      resolve({ error: { code: ERROR.INTERNAL, message: "Pocket did not respond." } } as Sep43Result<T>);
+      resolve({
+        error: { code: ERROR.INTERNAL, message: "Pocket did not respond." },
+      } as Sep43Result<T>);
     }, 300_000);
   });
 }

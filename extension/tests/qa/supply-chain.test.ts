@@ -48,7 +48,8 @@ const ALLOWED_HOST_PERMISSIONS = [
   "https://horizon-testnet.stellar.org/*",
   "https://horizon.stellar.org/trade_aggregations*",
 ];
-const REQUIRED_CSP = "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; img-src 'self' data:;";
+const REQUIRED_CSP =
+  "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; img-src 'self' data:;";
 
 /**
  * every host the shipped code is allowed to name.
@@ -63,6 +64,15 @@ const ALLOWED_HOSTS = [
   "horizon.stellar.org",
   "friendbot.stellar.org",
   "api.defindex.io",
+  // Aquarius swap: keyless routing API (testnet + mainnet hosts). The wallet
+  // POSTs a token pair and gets back routing data; it never sends a key.
+  "amm-api-testnet.aqua.network",
+  "amm-api.aqua.network",
+  // CCTP: Circle's attestation service (Iris), sandbox + mainnet. Read-only,
+  // keyless: the wallet fetches a burn's message + attestation to complete the
+  // Stellar-side mint.
+  "iris-api-sandbox.circle.com",
+  "iris-api.circle.com",
   "stellar.org",
   "www.w3.org", // svg namespace, not a request
 ];
@@ -90,6 +100,12 @@ const JUSTIFIED_UNFETCHED: Record<string, string> = {
   // documentation urls inside third-party error messages.
   "json-schema.org": "documentation url in an error message",
   "react.dev": "documentation url in an error message",
+  // the block explorer the activity detail links an address or tx to. it is the
+  // href of an <a target="_blank">, opened as a NEW TAB by the browser on a click,
+  // never fetched by the extension: no host permission is granted for it and no
+  // code path calls fetch() against it.
+  "stellar.expert":
+    "external explorer link (a new browser tab) from the activity detail, never fetched",
 };
 
 function manifest(): Record<string, unknown> {
@@ -103,7 +119,8 @@ function shippedFiles(dir = OUT, out: string[] = []): string[] {
     if (s.isDirectory()) shippedFiles(p, out);
     // the vendored SRS and circuit binaries are megabytes of field elements and
     // are not code; scanning them for URLs finds only noise.
-    else if (/\.(js|mjs|html|css|json)$/.test(e) && !/vendor\/(srs|circuits)\//.test(p)) out.push(p);
+    else if (/\.(js|mjs|html|css|json)$/.test(e) && !/vendor\/(srs|circuits)\//.test(p))
+      out.push(p);
   }
   return out;
 }
@@ -186,9 +203,10 @@ describe.runIf(built)("the shipped artifact", () => {
 
   it("ships no source map and no test vector", () => {
     const leaked = shippedFiles().filter((p) => /\.map$/.test(p));
-    expect(leaked.map((p) => p.replace(OUT, "")), "source maps expose the unminified worker").toEqual(
-      [],
-    );
+    expect(
+      leaked.map((p) => p.replace(OUT, "")),
+      "source maps expose the unminified worker",
+    ).toEqual([]);
     // A known BIP-39 test vector shipping inside the artifact would mean a
     // fixture leaked out of the tests and into the product.
     const vectors = ["abandon abandon abandon", "zoo zoo zoo", "legal winner thank"];

@@ -162,16 +162,17 @@ export async function collect<T>(
 }
 
 /**
- * Confirm the eviction actually happened.
+ * Confirm the worker restored its session after an eviction.
  *
- * An unlocked wallet holds its session in the worker's heap and nowhere else,
- * so `locked: true` from a cold worker is proof the heap is gone. Without this
- * check a no-op CDP call produces a green "survived a restart" test that
- * restarted nothing.
+ * An eviction inside the idle window is NOT a lock: the DEK is mirrored in
+ * session storage (RAM, wiped on browser close), so a fresh worker re-opens the
+ * vault without the password. `locked: false` here is the restore, and the
+ * downstream disk assertions (byte-identical blobs, balances off disk) are what
+ * prove the state came off disk rather than out of a heap that never died.
  */
-export async function expectEvicted(page: Page): Promise<void> {
+export async function expectRestored(page: Page): Promise<void> {
   const status = await ask<{ locked: boolean }>(page, { type: "status" });
-  expect(status.locked, "the worker must be cold after an eviction").toBe(true);
+  expect(status.locked, "an eviction inside the idle window must restore, not lock").toBe(false);
 }
 
 /**

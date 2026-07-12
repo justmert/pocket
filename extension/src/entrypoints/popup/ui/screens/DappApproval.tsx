@@ -1,21 +1,11 @@
 import { useState } from "react";
 import { call } from "../rpc";
-import { MonoBlock, OriginBlock } from "../Address";
-import { Amount } from "../Amount";
+import { OriginBlock } from "../Address";
 import { Button, ButtonRow, ButtonStack, Header, Label, Notice, Screen } from "../primitives";
-import { useOnce } from "../flow";
-import { NO_MEMO } from "../copy";
-import { space, text, type Theme } from "../theme";
+import { ConfirmBody, useOnce } from "../flow";
+import { formatAmount } from "../../../../core/chain/balances";
+import { space, type Theme } from "../theme";
 import type { TxSummary } from "../../../../core/provider/describe-tx";
-
-/** stroops to XLM. the envelope carries the fee in stroops and a wallet that
- *  labels seven digits of stroops as XLM is off by a factor of ten million. */
-function feeInXlm(stroops: string): string {
-  const n = BigInt(stroops || "0");
-  const whole = n / 10_000_000n;
-  const rest = (n % 10_000_000n).toString().padStart(7, "0");
-  return `${whole}.${rest}`;
-}
 
 export function DappApproval({
   t,
@@ -48,7 +38,7 @@ export function DappApproval({
   };
 
   return (
-    <Screen t={t}>
+    <Screen t={t} still>
       <Header t={t} title="Signature request" />
 
       <Label t={t}>This site is asking</Label>
@@ -58,7 +48,8 @@ export function DappApproval({
         <>
           <div style={{ marginTop: space.md }}>
             <Notice t={t} tone="danger">
-              {summary.warning ?? "Pocket could not read this transaction, so it will not offer to sign it."}
+              {summary.warning ??
+                "Pocket could not read this transaction, so it will not offer to sign it."}
             </Notice>
           </div>
           {error && (
@@ -73,56 +64,32 @@ export function DappApproval({
           </ButtonStack>
         </>
       ) : (
-        <>
-          {summary.warning && (
-            <div style={{ marginTop: space.md }}>
-              <Notice t={t} tone="danger">
-                {summary.warning}
-              </Notice>
-            </div>
-          )}
+        // the same confirm body every signing surface renders, so a dApp request
+        // reads exactly like an in-wallet send: one renderer, no near-copy to drift.
+        // the fee crosses as stroops and formatAmount turns it into XLM, the same
+        // path Send uses, so it is never off by a factor of ten million.
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: space.gutter,
+            marginTop: space.gutter,
+          }}
+        >
+          <ConfirmBody
+            t={t}
+            fee={formatAmount(BigInt(summary.fee))}
+            memo={{ value: summary.memo }}
+            effects={summary.effects}
+            warning={summary.warning}
+            error={error}
+          />
 
-          <div style={{ marginTop: space.gutter }}>
-            <Label t={t}>What this does</Label>
-            <ul
-              style={{
-                ...text.body,
-                color: t.text,
-                paddingLeft: space.gutter,
-                margin: `0 0 ${space.md}px`,
-                lineHeight: 1.55,
-                overflowWrap: "anywhere",
-              }}
-            >
-              {summary.effects.map((e, i) => (
-                <li key={i} style={{ marginBottom: 4 }}>
-                  {e}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <Label t={t}>Memo</Label>
-          {summary.memo ? (
-            <MonoBlock t={t}>{summary.memo}</MonoBlock>
-          ) : (
-            <div style={{ ...text.body, color: t.sub }}>{NO_MEMO}</div>
-          )}
-
-          <div style={{ marginTop: space.gutter }}>
-            <Label t={t}>Network fee</Label>
-            <Amount t={t} value={feeInXlm(summary.fee)} code="XLM" size="row" />
-          </div>
-
-          <div style={{ marginTop: space.gutter }}>
-            <Notice t={t}>Approving signs this once. It does not let the site sign anything else.</Notice>
-          </div>
-
-          {error && (
-            <Notice t={t} tone="danger">
-              {error}
-            </Notice>
-          )}
+          {/* the one dApp-specific fact ConfirmBody has no slot for: this approval
+              is single-use and grants the site no standing signing power. */}
+          <Notice t={t}>
+            Approving signs this once. It does not let the site sign anything else.
+          </Notice>
 
           <ButtonRow>
             <Button t={t} variant="quiet" busy={busy} onClick={() => void answer(false)}>
@@ -132,7 +99,7 @@ export function DappApproval({
               {busy ? "Signing" : "Approve"}
             </Button>
           </ButtonRow>
-        </>
+        </div>
       )}
     </Screen>
   );

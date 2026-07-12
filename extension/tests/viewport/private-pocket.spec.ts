@@ -85,11 +85,11 @@ async function atEveryViewport(
  * `Wallet.openOp()` is not used, and this is the one place in this tier that
  * departs from the page object. It looks the row up with `exact: true`, and a
  * `Row` renders its subtitle inside the same button, so the accessible name of
- * the Move-in row is "Move in Public pocket to private" and an exact match finds
+ * the Move-in row is "Shield Public pocket to private" and an exact match finds
  * nothing. Reported; the substring match below is the same intent spelled
  * against what the row now renders.
  */
-async function openMoveOp(wallet: Wallet, name: "Move in" | "Move out"): Promise<void> {
+async function openMoveOp(wallet: Wallet, name: "Shield" | "Unshield"): Promise<void> {
   await wallet.openMove();
   await wallet.page.getByRole("button", { name }).click();
 }
@@ -263,8 +263,8 @@ test("a ready pocket, its three op forms and the transfer review all fit the pop
     // the sheet's own Close. A form with no way out is the same defect either
     // way, which is why it is named rather than swept.
     for (const [op, title, wayOut] of [
-      ["Move in", "Moving in", "Back"],
-      ["Move out", "Moving out", "Back"],
+      ["Shield", "Shielding", "Back"],
+      ["Unshield", "Unshielding", "Back"],
       ["Send privately", "Send privately", "Close"],
     ] as const) {
       await page.setViewportSize(FRAME);
@@ -297,31 +297,33 @@ test("a ready pocket, its three op forms and the transfer review all fit the pop
     }
 
     // --------------------------------------------------------------- shield, for real
-    await openMoveOp(wallet, "Move in");
+    await openMoveOp(wallet, "Shield");
     await wallet.submitOp({ amount: "25" });
     await wallet.approve();
     await expect(wallet.receipt()).toBeVisible({ timeout: WAITS.submission });
 
-    // The receipt, in the sheet it happened in: the confirmation line, a
-    // 64-character hash and the way out, which is the busiest that sheet gets.
+    // The receipt, in the sheet it happened in: the confirmation line, the
+    // Transaction ID row (its copy control), and the way out. the hash itself is
+    // no longer printed as a block; it is copied from the row and read from the
+    // a11y tree, so what has to stay reachable is the confirmation and Go to Home.
     await audit.check(async () => {
       for (const vp of VIEWPORTS) {
         await page.setViewportSize({ width: vp.width, height: vp.height });
         await expectLayoutHolds(page, `private/receipt @ ${vp.name}`);
         await expectReachable(wallet.receipt(), `private/receipt @ ${vp.name}: the confirmation`);
         await expectReachable(
-          page.getByText(/^[0-9a-f]{64}$/),
-          `private/receipt @ ${vp.name}: the transaction hash`,
+          page.getByText("Transaction ID", { exact: true }),
+          `private/receipt @ ${vp.name}: the transaction id row`,
         );
         await expectReachable(
-          page.getByRole("button", { name: "Done" }),
-          `private/receipt @ ${vp.name}: Done`,
+          page.getByRole("button", { name: "Go to Home" }),
+          `private/receipt @ ${vp.name}: Go to Home`,
         );
       }
     });
 
     await page.setViewportSize(FRAME);
-    await page.getByRole("button", { name: "Done" }).click();
+    await page.getByRole("button", { name: "Go to Home" }).click();
     await expect(wallet.spendableMoney()).toHaveText(/^25\.0000000\s*XLM$/, {
       timeout: WAITS.ledgerRead,
     });
@@ -358,8 +360,8 @@ test("a ready pocket, its three op forms and the transfer review all fit the pop
           );
         }
         await expectReachable(
-          page.getByRole("button", { name: "Confirm and send" }),
-          `private/review (transfer) @ ${vp.name}: Confirm and send`,
+          page.getByRole("button", { name: "Confirm" }),
+          `private/review (transfer) @ ${vp.name}: Confirm`,
         );
         await expectReachable(
           page.getByRole("button", { name: "Back" }),
@@ -378,7 +380,7 @@ test("a ready pocket, its three op forms and the transfer review all fit the pop
     // once, which is a layout property, and it is checked on the recipient
     // because the recipient is who has both.
     await page.setViewportSize(FRAME);
-    await page.getByRole("button", { name: "Confirm and send" }).click();
+    await page.getByRole("button", { name: "Confirm" }).click();
     await expect(wallet.receipt()).toBeVisible({ timeout: WAITS.submission });
 
     await other.reopen();

@@ -13,79 +13,39 @@ import type { ReactNode } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Amount, Rolling } from "../Amount";
-import { Button, Sheet, Skeleton } from "../primitives";
+import { Button, IconDisc, Sheet, Skeleton, useRetained } from "../primitives";
 import { ChangeChip, ValueChartBlock, useValueChart } from "../Chart";
-import { Lock } from "../icons";
+import { AssetMark } from "../screens/Home";
 import { InfoTip } from "../Tooltip";
-import { FRAME, space, text, type Theme } from "../theme";
+import { compactUsd, price as priceUsd, usdOf } from "../money";
+import { FRAME, fontSizes, space, text, type Theme } from "../theme";
 import type { AssetMarketView, PublicBalance } from "../../../../core/messages";
 
-/** a dollar figure. sub-dollar prices keep more places so a cheap asset is not rounded to nothing. */
-function usd(v: number): string {
-  const places = Math.abs(v) >= 1 || v === 0 ? 2 : 6;
-  return `$${v.toFixed(places)}`;
-}
-
-/** a volume, which is large and does not need cents. */
-function compactUsd(v: number): string {
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K`;
-  return `$${v.toFixed(2)}`;
-}
-
 /**
- * a token's mark.
- *
- * a filled circle in the pocket's colour with the asset's initial, NOT a fetched
- * logo. the same stance the wallet takes everywhere: an image pulled per asset
- * from an issuer-controlled host would be a per-holding tracking pixel, so the
- * mark is drawn on the device from the code alone.
+ * a token's mark on the pocket-tinted tile every other surface draws it on. the
+ * mark itself is the shared AssetMark (Home, History, Send, Move all use it), so
+ * the detail header wears the same logo tile as the rows it opens from rather
+ * than a bespoke white plate. AssetMark owns the logo-vs-initial choice and the
+ * vendored, never-fetched artwork; this wrapper only owns the round tile shape
+ * and its accentSoft fill, which is the colour every other tile uses.
  */
-function AssetBadge({ t, code, size }: { t: Theme; code: string; size: number }) {
+function AssetTile({ t, id, code, size }: { t: Theme; id: string; code: string; size: number }) {
   return (
-    <span
-      aria-hidden
-      style={{
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        flex: "0 0 auto",
-        background: t.accent,
-        color: t.onAccent,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontWeight: 800,
-        fontSize: Math.round(size * 0.42),
-        lineHeight: 1,
-      }}
-    >
-      {code.slice(0, 1)}
-    </span>
+    <IconDisc t={t} size={size} tone="accentSoft">
+      <AssetMark t={t} id={id} code={code} />
+    </IconDisc>
   );
 }
 
-/** a small circled glyph for a detail row. */
+/** a small circled glyph for a detail row. the disc is the shared IconDisc on
+ *  its neutral `field` plate, so the row mark cannot drift from the discs the
+ *  rest of the product draws; this only adds the bold, on-scale type the "$"
+ *  glyph reads at (harmless on the svg volume glyph, which sizes itself). */
 function RowIcon({ t, children }: { t: Theme; children: ReactNode }) {
   return (
-    <span
-      aria-hidden
-      style={{
-        width: 28,
-        height: 28,
-        borderRadius: "50%",
-        flex: "0 0 auto",
-        background: t.field,
-        color: t.sub,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontWeight: 800,
-        fontSize: 13,
-      }}
-    >
-      {children}
-    </span>
+    <IconDisc t={t} size={28} tone="field">
+      <span style={{ fontWeight: 700, fontSize: fontSizes.small }}>{children}</span>
+    </IconDisc>
   );
 }
 
@@ -123,7 +83,15 @@ function DetailRow({
     <div style={{ display: "flex", alignItems: "center", gap: space.md, minHeight: 44 }}>
       {icon}
       <div
-        style={{ flex: 1, minWidth: 0, ...text.rowTitle, color: t.sub, display: "flex", alignItems: "center", gap: 6 }}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          ...text.rowTitle,
+          color: t.sub,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}
       >
         {label}
         {labelTip && (
@@ -149,7 +117,11 @@ export function AssetDetailSheet({
 }) {
   const w = useWallet();
   const t = w.t;
-  const code = asset?.code ?? "";
+  // hold the last asset through the close, so the sheet slides DOWN still showing it
+  // instead of emptying to a blank card the instant `asset` is nulled. `asset` (live)
+  // drives open/close; `shown` drives the body.
+  const shown = useRetained(asset, 300);
+  const code = shown?.code ?? "";
 
   const [market, setMarket] = useState<AssetMarketView | null>(null);
   // whether the market fetch has come back yet, so the price can shimmer while
@@ -185,38 +157,61 @@ export function AssetDetailSheet({
     };
   }, [code]);
 
-  if (!asset) return null;
+  if (!shown) return null;
 
   const scrubbed = scrubAt === null ? null : (chart?.points[scrubAt]?.value ?? null);
   const price = scrubbed ?? market?.price ?? null;
-  // holdings * price, and only when there is a price to multiply by. an absent
-  // market must not render as a zero-dollar holding.
-  const holdingsValue =
-    market?.price !== null && market?.price !== undefined
-      ? Number(asset.total ?? asset.amount) * market.price
-      : null;
+  // holdings * price through the shared money formatter, so this fiat value
+  // rounds the same as every other dollar figure in the product. null (no price)
+  // renders as a dash, not a fabricated zero-dollar holding.
+  const holdingsValue = usdOf(shown.total ?? shown.amount, market?.price ?? null);
 
   return (
     // `full`: the sheet opens at full height from the first frame. without it the
     // sheet sized to its content, then grew as the chart and market loaded, so it
     // "became" a full page a beat after opening instead of arriving as one.
-    <Sheet t={t} open={asset !== null} onClose={onClose} focusKey={code} full>
-      <div style={{ paddingBottom: space.gutter }}>
-        {/* identity, stacked like the reference: the badge on its own line at the
-            top, then the name, then the price, with the change chip floated to
-            the right. the old row centred everything beside a big badge, which
-            pushed the name and price down the screen. */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: space.md }}>
-          <AssetBadge t={t} code={code} size={44} />
-          <ChangeChip t={t} pct={scrubAt === null ? (market?.change24h ?? null) : null} />
-        </div>
+    //
+    // the Send action rides the sheet's `footer` slot, which pins it to the true
+    // bottom of the full-height sheet. it used to be a `position: sticky` div at
+    // the end of the content, and on the short, few-row detail view sticky had
+    // nothing to stick against, so the button floated in the middle of the sheet.
+    <Sheet
+      t={t}
+      open={asset !== null}
+      onClose={onClose}
+      focusKey={code}
+      full
+      footer={
+        <Button t={t} onClick={() => onSend(shown)}>
+          Send
+        </Button>
+      }
+    >
+      <div>
+        {/* the badge, then the name with its change on one line so the percent
+            reads against the token it belongs to, then the price beneath. */}
+        <AssetTile t={t} id={shown.id} code={code} size={44} />
         <div style={{ marginTop: space.md }}>
-          <div style={{ ...text.screenTitle, color: t.text, lineHeight: 1.1 }}>{code}</div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: space.md,
+            }}
+          >
+            <div style={{ ...text.screenTitle, color: t.text, lineHeight: 1.1, minWidth: 0 }}>
+              {code}
+            </div>
+            <ChangeChip t={t} pct={scrubAt === null ? (market?.change24h ?? null) : null} />
+          </div>
           <div style={{ marginTop: 3 }}>
             {price !== null ? (
               <span style={{ ...text.heading, color: t.text, fontVariantNumeric: "tabular-nums" }}>
-                {/* rolls its digits on a scrub, the same as the home hero. */}
-                <Rolling value={usd(price)} />
+                {/* rolls its digits on a scrub, the same as the home hero. the
+                    per-unit price keeps six sub-dollar places via money.price;
+                    the holding VALUE below goes through money.usdOf (four). */}
+                <Rolling value={priceUsd(price)} />
               </span>
             ) : marketLoaded ? (
               <span style={{ ...text.heading, color: t.faint }}>Price unavailable</span>
@@ -239,13 +234,15 @@ export function AssetDetailSheet({
           style={{ marginTop: space.lg }}
         />
 
-        <div style={{ marginTop: space.xl, display: "flex", flexDirection: "column", gap: space.lg }}>
+        <div
+          style={{ marginTop: space.xl, display: "flex", flexDirection: "column", gap: space.sm }}
+        >
           <DetailRow
             t={t}
-            icon={<AssetBadge t={t} code={code} size={28} />}
+            icon={<AssetTile t={t} id={shown.id} code={code} size={28} />}
             label="Your holdings"
           >
-            <Amount t={t} value={asset.amount} code={code} size="row" />
+            <Amount t={t} value={shown.amount} code={code} size="row" />
           </DetailRow>
 
           {/* market rows shimmer while the fetch is in flight instead of popping
@@ -253,28 +250,13 @@ export function AssetDetailSheet({
               absent. */}
           <DetailRow t={t} icon={<RowIcon t={t}>$</RowIcon>} label="Holdings value">
             {holdingsValue !== null ? (
-              usd(holdingsValue)
+              holdingsValue
             ) : marketLoaded ? (
               <span style={{ color: t.faint }}>—</span>
             ) : (
               <Skeleton width={64} height={16} />
             )}
           </DetailRow>
-
-          {asset.reserved && /[1-9]/.test(asset.reserved) && (
-            <DetailRow
-              t={t}
-              icon={
-                <RowIcon t={t}>
-                  <Lock size={14} />
-                </RowIcon>
-              }
-              label="Held as reserve"
-              labelTip="Locked by the network as the account's minimum balance. It cannot be sent."
-            >
-              <Amount t={t} value={asset.reserved} code={code} size="row" />
-            </DetailRow>
-          )}
 
           <DetailRow
             t={t}
@@ -294,26 +276,6 @@ export function AssetDetailSheet({
             )}
           </DetailRow>
         </div>
-      </div>
-
-      {/* the send action is a sticky footer, always visible, on an opaque bar
-          that hides whatever scrolls under it, the same behaviour as the bottom
-          nav. sticky within the sheet's own scroll area; the negative margins let
-          the bar span the full sheet width. */}
-      <div
-        style={{
-          position: "sticky",
-          bottom: 0,
-          zIndex: 1,
-          margin: `0 -${space.lg}px`,
-          padding: `${space.md}px ${space.lg}px ${space.lg}px`,
-          background: t.sheet,
-          boxShadow: `0 -16px 20px -14px ${t.sheet}`,
-        }}
-      >
-        <Button t={t} onClick={() => onSend(asset)}>
-          Send
-        </Button>
       </div>
     </Sheet>
   );

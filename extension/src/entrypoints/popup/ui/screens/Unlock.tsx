@@ -120,7 +120,7 @@ export function Unlock({
                 // narrows with the frame: at 160px a fixed 14px each side is 28px
                 // of the 124px available, taken from the one control that needs it.
                 padding: "clamp(6px, 4vw, 14px)",
-                boxShadow: t.dark ? "none" : "0 18px 40px -28px rgba(20,21,26,0.55)",
+                boxShadow: t.shadow,
               }}
             >
               <Field

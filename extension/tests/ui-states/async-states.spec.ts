@@ -247,7 +247,7 @@ test.describe("send", () => {
     await expect(
       sheet.getByText("GBHEDQ5XUXCWK5I32NVDSGAL6BIX2X7DUWQYC2MLXV27N44JLDQFGT73"),
     ).toBeVisible();
-    await expect(sheet.getByRole("button", { name: "Confirm and send" })).toBeEnabled();
+    await expect(sheet.getByRole("button", { name: "Confirm" })).toBeEnabled();
   });
 });
 

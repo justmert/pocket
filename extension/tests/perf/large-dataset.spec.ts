@@ -65,7 +65,7 @@ test("a received transfer is found by scanning the retained window, and the scre
     await other.registerPrivatePocket();
 
     // Money in, then money across. The recipient knows nothing about either.
-    await wallet.openOp("Move in");
+    await wallet.openOp("Shield");
     await wallet.page.getByLabel("Amount (XLM)").fill("25");
     await wallet.page.getByRole("button", { name: "Review" }).click();
     await wallet.approve();
@@ -82,7 +82,7 @@ test("a received transfer is found by scanning the retained window, and the scre
     await wallet.page.getByLabel("Amount (XLM)").fill("5");
     await wallet.page.getByRole("button", { name: "Review" }).click();
     await wallet.approve();
-    await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
+    await expect(wallet.page.getByText("Transaction successful")).toBeVisible({
       timeout: WAITS.submission,
     });
     await wallet.dismissReceipt();

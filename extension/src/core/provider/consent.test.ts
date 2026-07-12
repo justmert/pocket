@@ -74,7 +74,8 @@ describe("the granted address is the consent", () => {
 
     // Forge the situation directly: the stored grant names a different account.
     const sessions = (await readLocal<Record<string, { address: string }>>(KEYS.dappSessions))!;
-    sessions["https://app.example"]!.address = "GB43MNLS6IL77FIZHOBLYILQIQP5MPQVF77O5JOAYCSWX3TUHAL6Z3F7";
+    sessions["https://app.example"]!.address =
+      "GB43MNLS6IL77FIZHOBLYILQIQP5MPQVF77O5JOAYCSWX3TUHAL6Z3F7";
     await chrome.storage.local.set({ [KEYS.dappSessions]: sessions });
 
     const res = (await c.sep43("https://app.example", "getAddress", [])) as {

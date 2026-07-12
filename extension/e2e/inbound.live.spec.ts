@@ -58,10 +58,10 @@ async function fundPrivate(w: Wallet, amount: string): Promise<void> {
   await w.page.getByRole("button", { name: "Set up the private pocket" }).click();
   await expect(w.page.getByText(/What this does/)).toBeVisible({ timeout: 180_000 });
   await w.page.getByRole("button", { name: "Approve" }).click();
-  await expect(w.page.getByText(/Confirmed in ledger/)).toBeVisible({ timeout: 240_000 });
+  await expect(w.page.getByText("Transaction successful")).toBeVisible({ timeout: 240_000 });
 
   await expect(w.page.getByText(/SPENDABLE/)).toBeVisible({ timeout: 120_000 });
-  await w.page.getByRole("button", { name: "Move in" }).click();
+  await w.page.getByRole("button", { name: "Shield" }).click();
   await w.page.getByRole("textbox", { name: "Amount" }).fill(amount);
   await w.page.getByRole("button", { name: "Review" }).click();
   await expect(w.page.getByText(/deposit amount is PUBLIC/)).toBeVisible({ timeout: 120_000 });
@@ -89,7 +89,7 @@ test("a received confidential transfer is credited, not reported as diverged", a
     await sender.page.getByRole("button", { name: "Review" }).click();
     await expect(sender.page.getByText(/AMOUNT is hidden/)).toBeVisible({ timeout: 120_000 });
     await sender.page.getByRole("button", { name: "Approve" }).click();
-    await expect(sender.page.getByText(/Confirmed in ledger/)).toBeVisible({
+    await expect(sender.page.getByText("Transaction successful")).toBeVisible({
       timeout: 240_000,
     });
 

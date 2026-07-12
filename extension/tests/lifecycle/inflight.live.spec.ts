@@ -43,7 +43,7 @@ async function review(page: Page, to: string, amount = AMOUNT): Promise<void> {
   await page.getByRole("textbox", { name: "To", exact: true }).fill(to);
   await page.getByRole("textbox", { name: "Amount (XLM)" }).fill(amount);
   await page.getByRole("button", { name: "Review" }).click();
-  await expect(page.getByRole("button", { name: "Confirm and send" })).toBeVisible({
+  await expect(page.getByRole("button", { name: "Confirm" })).toBeVisible({
     timeout: 60_000,
   });
 }
@@ -56,7 +56,7 @@ test("a payment records its hash before submitting and clears it on success", as
     await review(page, to);
 
     // Not awaited: the record has to be caught while the payment is running.
-    void page.getByRole("button", { name: "Confirm and send" }).click();
+    void page.getByRole("button", { name: "Confirm" }).click();
 
     const during = await waitForStorage(
       page,
@@ -104,7 +104,7 @@ test("the worker dying mid-poll leaves the hash on disk and the wallet never res
     });
 
     await review(page, to);
-    void page.getByRole("button", { name: "Confirm and send" }).click();
+    void page.getByRole("button", { name: "Confirm" }).click();
 
     const during = await waitForStorage(
       page,
@@ -152,7 +152,7 @@ test("no second payment can be built while an earlier one is unresolved", async 
   try {
     const to = await fundedStranger();
     await review(page, to);
-    void page.getByRole("button", { name: "Confirm and send" }).click();
+    void page.getByRole("button", { name: "Confirm" }).click();
     await waitForStorage(page, (s) => !!s["pocket.inflight"], "no in-flight record was written");
     await killWorker(w, page);
 
@@ -305,7 +305,7 @@ test("reloading the popup mid-payment does not send it again", async () => {
     });
 
     await review(page, to);
-    void page.getByRole("button", { name: "Confirm and send" }).click();
+    void page.getByRole("button", { name: "Confirm" }).click();
     const during = await waitForStorage(
       page,
       (s) => !!s["pocket.inflight"],

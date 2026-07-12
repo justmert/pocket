@@ -260,7 +260,12 @@ describe("checkpoints", () => {
   });
 
   it("ignores a checkpoint belonging to someone else", () => {
-    const theirs = ev({ id: "t", type: "transfer", topics: [THEM, "GA".padEnd(56, "X")], data: body });
+    const theirs = ev({
+      id: "t",
+      type: "transfer",
+      topics: [THEM, "GA".padEnd(56, "X")],
+      data: body,
+    });
     const stale = { ...INITIAL_STATE, spendable: { value: 999999n, randomness: 5n } };
     expect(applyEvent(stale, theirs, KEYS).spendable.value).toBe(999999n);
   });

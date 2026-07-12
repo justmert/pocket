@@ -208,7 +208,9 @@ export const EVERY_REQUEST: { type: string; msg: Record<string, unknown> }[] = [
   },
   { type: "confirmPayment", msg: { type: "confirmPayment", handle: "h" } },
   { type: "reset", msg: { type: "reset", password: "pw" } },
+  { type: "revealPhrase", msg: { type: "revealPhrase", password: "pw" } },
   { type: "privatePocket", msg: { type: "privatePocket" } },
+  { type: "privatePockets", msg: { type: "privatePockets" } },
   { type: "buildPrivateOp", msg: { type: "buildPrivateOp", op: { kind: "merge" } } },
   { type: "confirmPrivateOp", msg: { type: "confirmPrivateOp", handle: "h" } },
   { type: "inFlight", msg: { type: "inFlight" } },
@@ -218,6 +220,7 @@ export const EVERY_REQUEST: { type: string; msg: Record<string, unknown> }[] = [
     msg: { type: "recoverFromMnemonic", mnemonic: "x", password: "pw" },
   },
   { type: "setNetwork", msg: { type: "setNetwork", network: "testnet" } },
+  { type: "setAutoLock", msg: { type: "setAutoLock", minutes: 15 } },
   // The SEP-43 dApp surface, added mid-pass. None of these is on the
   // locked-state allowlist, and all four reach key material or reveal the
   // address, so all four must refuse while locked.
@@ -229,6 +232,33 @@ export const EVERY_REQUEST: { type: string; msg: Record<string, unknown> }[] = [
   // `resolveDappRequest` is the single most consequential message here: it is a
   // user saying yes to something a website asked for.
   { type: "yieldPosition", msg: { type: "yieldPosition" } },
+  {
+    type: "buildYieldMove",
+    msg: { type: "buildYieldMove", kind: "deposit", amount: "1" },
+  },
+  { type: "confirmYieldMove", msg: { type: "confirmYieldMove", handle: "h" } },
+  {
+    type: "swapQuote",
+    msg: { type: "swapQuote", assetIn: "native", assetOut: "native", amount: "1" },
+  },
+  {
+    type: "buildSwap",
+    msg: { type: "buildSwap", assetIn: "native", assetOut: "native", amount: "1" },
+  },
+  { type: "confirmSwap", msg: { type: "confirmSwap", handle: "h" } },
+  {
+    type: "buildCctpSend",
+    msg: {
+      type: "buildCctpSend",
+      destinationDomain: 6,
+      recipient: "0x0000000000000000000000000000000000000000",
+      amount: "1",
+    },
+  },
+  { type: "confirmCctpSend", msg: { type: "confirmCctpSend", handle: "h" } },
+  { type: "cctpAttestation", msg: { type: "cctpAttestation", sourceDomain: 6, txHash: "h" } },
+  { type: "buildCctpClaim", msg: { type: "buildCctpClaim", sourceDomain: 6, txHash: "h" } },
+  { type: "confirmCctpClaim", msg: { type: "confirmCctpClaim", handle: "h" } },
   { type: "pendingDappRequest", msg: { type: "pendingDappRequest" } },
   {
     type: "resolveDappRequest",
@@ -245,6 +275,10 @@ export const EVERY_REQUEST: { type: string; msg: Record<string, unknown> }[] = [
   { type: "valueSeries", msg: { type: "valueSeries", range: "1W" } },
   { type: "assetMarket", msg: { type: "assetMarket", symbol: "XLM" } },
   { type: "assetSeries", msg: { type: "assetSeries", symbol: "XLM", range: "1W" } },
+  // The merged public+private transaction history. Reads the account, so it is
+  // refused while locked; not activity, so a background load does not postpone
+  // the idle lock, exactly like the chart reads.
+  { type: "history", msg: { type: "history" } },
 ];
 
 /** The six the worker answers while locked. Everything else must be refused. */

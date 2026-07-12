@@ -1,7 +1,10 @@
 // chrome.storage wrappers.
 //
-// Everything sensitive goes in `local` and encrypted. Nothing sensitive goes in
-// `session`, and the opening store is explicitly NOT a cache: per SDK.md 10.1,
+// Everything sensitive on DISK goes in `local` and encrypted. The one secret
+// that touches `session` is the DEK, mirrored there by core/session.ts so the
+// wallet survives worker eviction without re-prompting; `session` is RAM-only
+// and wiped on browser close, so nothing sensitive is ever written to disk in
+// the clear. The opening store is explicitly NOT a cache: per SDK.md 10.1,
 // discarding it loses the receiving-side openings permanently, so it must never
 // be evicted or rebuilt on demand.
 export const KEYS = {

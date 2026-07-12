@@ -5,14 +5,22 @@
 // of the balance, and the confirm is a popup over the top. the review and the
 // signing path are untouched underneath; this only changes how the compose step
 // looks and hands off to ConfirmSheet.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BASE_FEE } from "@stellar/stellar-sdk/base";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Frame, Header, Notice, Sheet, Row } from "../primitives";
-import { ConfirmSheet, useOnce, usePhase } from "../flow";
+import { InfoTip } from "../Tooltip";
+import { AmountComposer, AmountSlider, sliderPercent } from "../AmountComposer";
+import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark } from "./Home";
-import { fractionOf, sendableAfterFee, formatAmount } from "../../../../core/chain/balances";
+import { PrivateAssetPicker } from "../sheets/PrivateAssetPicker";
+import {
+  capDecimals,
+  fractionOf,
+  sendableAfterFee,
+  formatAmount,
+} from "../../../../core/chain/balances";
 import { fonts, radius, space, text, type Theme } from "../theme";
 import type { PrivateOpSummary, PublicBalance, TransferSummary } from "../../../../core/messages";
 
@@ -53,15 +61,26 @@ export function Send({ onClose }: { onClose: () => void }) {
   const [privateSummary, setPrivateSummary] = useState<PrivateOpSummary | null>(null);
   const [result, setResult] = useState<{ hash: string; ledger: number } | null>(null);
   const [picking, setPicking] = useState(false);
+  // the private pocket has an asset picker too once more than one is configured,
+  // so a private send opened from the FAB can switch asset in the form rather than
+  // being stuck on whichever one was last selected.
+  const [pickingPrivate, setPickingPrivate] = useState(false);
+  const multiPrivate = (w.status?.privateAssets?.length ?? 0) > 1;
   const [assetId, setAssetId] = useState("native");
   const [price, setPrice] = useState<number | null>(null);
-  const [asFiat, setAsFiat] = useState(false);
   const once = useOnce();
-  const phase = usePhase(busy);
+  // the id of the background-op record for the send in flight, so the confirm's
+  // resolver can flip it to done (or failed) even after this screen has gone to
+  // home and unmounted. the closure outlives the component; the provider does too.
+  const opId = useRef<string | null>(null);
 
   const balances = w.balances ?? [];
   const asset = balances.find((b) => b.id === assetId) ?? balances[0] ?? null;
-  const code = isPrivate ? "XLM" : (asset?.code ?? "XLM");
+  // the private send runs against the selected private asset; the public send
+  // against the picked balance. symbol for display/price, token for the op.
+  const privSymbol = w.priv?.symbol ?? "XLM";
+  const privMarkId = privSymbol === "XLM" ? "native" : privSymbol;
+  const code = isPrivate ? privSymbol : (asset?.code ?? "XLM");
 
   // what can actually leave, which is not the same as what is held. the public
   // pocket's spendable already excludes the network reserve.
@@ -89,11 +108,21 @@ export function Send({ onClose }: { onClose: () => void }) {
     setBuilding(true);
     try {
       if (isPrivate) {
-        const r = await call({ type: "buildPrivateOp", op: { kind: "transfer", to, amount } });
+        const r = await call({
+          type: "buildPrivateOp",
+          op: { kind: "transfer", to, amount },
+          asset: w.privateAsset ?? undefined,
+        });
         setHandle(r.handle);
         setPrivateSummary(r.summary);
       } else {
-        const r = await call({ type: "buildPayment", to, amount, assetId, memo: memo || undefined });
+        const r = await call({
+          type: "buildPayment",
+          to,
+          amount,
+          assetId,
+          memo: memo || undefined,
+        });
         setHandle(r.xdr);
         setPublicSummary(r.summary);
       }
@@ -109,25 +138,67 @@ export function Send({ onClose }: { onClose: () => void }) {
     if (!handle || !once.claim()) return;
     setBusy(true);
     setError(null);
+    // record the send the moment it is submitted, so leaving the sheet (Go to
+    // home) leaves behind a watch record rather than losing the transaction from
+    // view. the worker runs the confirm to completion either way; this is what
+    // lets the popup show it as processing and reconcile it when it lands.
+    const id = w.beginOp({
+      verb: isPrivate ? "Send privately" : "Send",
+      pocket: w.pocket,
+      code: publicSummary?.assetCode ?? code,
+      amount: publicSummary?.amount ?? privateSummary?.amount ?? amount,
+      fiat,
+      to: publicSummary?.to ?? privateSummary?.to ?? to,
+      // the public summary carries fee in stroops; the private one is already XLM.
+      fee: publicSummary ? formatAmount(BigInt(publicSummary.fee)) : privateSummary?.fee,
+      network: w.status?.network,
+    });
+    opId.current = id;
     try {
       const r = isPrivate
         ? await call({ type: "confirmPrivateOp", handle })
         : await call({ type: "confirmPayment", handle });
+      // the resolver may run after this screen has unmounted (went to home): it
+      // touches only the provider, never this screen's state, so both paths are
+      // safe. the completion updates the watched op wherever it is being shown.
+      w.completeOp(id, { hash: r.hash, ledger: r.ledger });
       setResult({ hash: r.hash, ledger: r.ledger });
       setBusy(false);
-      void w.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const reason = e instanceof Error ? e.message : String(e);
+      w.failOp(id, reason);
+      setError(reason);
       setBusy(false);
       once.release();
     }
   };
 
+  // both Cancel and the receipt's Done slide the sheet DOWN; where we land is
+  // decided after the slide finishes. `leaving` remembers a completed op so
+  // `onConfirmClosed` (fired by the sheet once it has animated out) leaves the
+  // route to home, while a cancel returns to the compose screen. popping the route
+  // mid-slide (the old code) unmounted the sheet and cut the animation, which read
+  // as a glitch; the compose behind is blanked while a result is up, so the slide
+  // reveals the clean canvas, not the form.
+  const leaving = useRef(false);
   const closeConfirm = () => {
     if (busy) return;
-    setConfirming(false);
     once.release();
-    if (result) onClose();
+    if (result) {
+      // the receipt was seen and dismissed, so the watch record has served its
+      // purpose: drop it rather than leave a done row in the processing list next
+      // to the same transaction the history will show once it reconciles.
+      leaving.current = true;
+      if (opId.current) w.dropOp(opId.current);
+      opId.current = null;
+    }
+    setConfirming(false);
+  };
+  const onConfirmClosed = () => {
+    if (leaving.current) {
+      leaving.current = false;
+      onClose();
+    }
   };
 
   /**
@@ -141,7 +212,10 @@ export function Send({ onClose }: { onClose: () => void }) {
     if (!spendable) return;
     const part = fractionOf(spendable, numerator, denominator);
     const whole = numerator === denominator;
-    setAmount(whole && !isPrivate ? sendableAfterFee(part, BASE_FEE_STROOPS) : part);
+    const raw = whole && !isPrivate ? sendableAfterFee(part, BASE_FEE_STROOPS) : part;
+    // four fraction digits is enough on the compose screen; the extra stellar
+    // places only made a long, hard-to-read number. truncated, never rounded up.
+    setAmount(capDecimals(raw, 4));
   };
 
   const paste = async () => {
@@ -163,92 +237,145 @@ export function Send({ onClose }: { onClose: () => void }) {
           pinned to the bottom on an opaque bar. the button no longer floats in
           the middle with a random gap below it; its bottom padding is the same
           as every other footer in the wallet. */}
-      <Frame t={t}>
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: `${space.gutter}px ${space.gutter}px ${space.sm}px` }}>
-            <Header t={t} title={isPrivate ? "Send privately" : "Send"} onBack={onClose} />
-          </div>
-
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              overflowX: "hidden",
-              overflowY: "auto",
-              padding: `0 ${space.gutter}px`,
-            }}
-          >
-            {blocked ? (
-              <Notice t={t}>
-                {w.priv
-                  ? PRIVATE_NOT_READY[w.priv.state]
-                  : "Pocket is still reading this account. Try again in a moment."}
-              </Notice>
-            ) : (
-              <>
-                <AmountCard
-                  t={t}
-                  code={code}
-                  amount={amount}
-                  onAmount={setAmount}
-                  spendable={spendable}
-                  fiat={fiat}
-                  asFiat={asFiat}
-                  onToggleFiat={price !== null ? () => setAsFiat((v) => !v) : undefined}
-                  onMax={() => setFraction(1n, 1n)}
-                  onPick={isPrivate ? undefined : () => setPicking(true)}
-                  mark={<AssetMark t={t} code={code} />}
-                  onSubmit={() => ready && void review()}
-                />
-
-                <RecipientField t={t} value={to} onChange={setTo} onPaste={() => void paste()} />
-
-                {!isPrivate && (
-                  <div style={{ marginTop: space.md }}>
-                    <MemoField t={t} value={memo} onChange={setMemo} />
-                  </div>
-                )}
-
-                <AmountSlider
-                  t={t}
-                  code={code}
-                  disabled={!spendable}
-                  percent={sliderPercent(amount, spendable)}
-                  onPercent={(p) => setFraction(BigInt(p), 100n)}
-                />
-
-                {isPrivate && (
-                  <Notice t={t}>
-                    The amount is hidden. Both addresses stay public on the ledger.
-                  </Notice>
-                )}
-                {error && !confirming && (
-                  <Notice t={t} tone="danger">
-                    {error}
-                  </Notice>
-                )}
-              </>
-            )}
-          </div>
-
-          <div style={{ padding: `${space.md}px ${space.gutter}px ${space.lg}px`, background: t.bg }}>
-            {blocked ? (
-              <Button
+      <Frame t={t} className="pocket-page">
+        {/* blanked once a result is up: when the receipt slides away it reveals the
+            clean canvas, not the filled form, then the route leaves to home. */}
+        {!result && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: `${space.gutter}px ${space.gutter}px ${space.sm}px` }}>
+              <Header
                 t={t}
-                onClick={() => {
-                  onClose();
-                  w.openSheet("move");
-                }}
-              >
-                Open the private pocket
-              </Button>
-            ) : (
-              <Button t={t} disabled={!ready} busy={building} onClick={() => void review()}>
-                {building ? "Checking" : "Continue"}
-              </Button>
-            )}
+                title={isPrivate ? "Send privately" : "Send"}
+                onBack={onClose}
+                right={
+                  isPrivate ? (
+                    <InfoTip t={t} label="About sending privately">
+                      The amount is hidden. Both addresses stay public on the ledger.
+                    </InfoTip>
+                  ) : undefined
+                }
+              />
+            </div>
+
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                overflowX: "hidden",
+                overflowY: "auto",
+                padding: `0 ${space.gutter}px`,
+              }}
+            >
+              {blocked ? (
+                <Notice t={t}>
+                  {w.priv
+                    ? PRIVATE_NOT_READY[w.priv.state]
+                    : "Pocket is still reading this account. Try again in a moment."}
+                </Notice>
+              ) : (
+                <>
+                  <AmountComposer
+                    t={t}
+                    code={code}
+                    amount={amount}
+                    onAmount={setAmount}
+                    spendable={spendable}
+                    fiat={fiat}
+                    onMax={() => setFraction(1n, 1n)}
+                    onPick={
+                      isPrivate
+                        ? multiPrivate
+                          ? () => setPickingPrivate(true)
+                          : undefined
+                        : () => setPicking(true)
+                    }
+                    mark={
+                      <AssetMark
+                        t={t}
+                        id={isPrivate ? privMarkId : (asset?.id ?? "native")}
+                        code={code}
+                      />
+                    }
+                    onSubmit={() => ready && void review()}
+                  />
+
+                  <RecipientField t={t} value={to} onChange={setTo} onPaste={() => void paste()} />
+
+                  {/* the local address book, used from here: while the field is
+                      empty, the addresses saved from past receipts are one tap away.
+                      the chip is truncated (a convenience, not an approval); tapping
+                      fills the field with the full address. */}
+                  {to === "" && w.savedAddresses.length > 0 && (
+                    <div style={{ marginTop: space.sm }}>
+                      <div style={{ ...text.caption, color: t.faint, marginBottom: 6 }}>Saved</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: space.xs }}>
+                        {w.savedAddresses.slice(0, 4).map((addr) => (
+                          <button
+                            key={addr}
+                            type="button"
+                            onClick={() => setTo(addr)}
+                            style={{
+                              all: "unset",
+                              cursor: "pointer",
+                              ...text.chip,
+                              fontFamily: fonts.mono,
+                              color: t.accent,
+                              background: t.field,
+                              borderRadius: radius.pill,
+                              padding: "6px 12px",
+                            }}
+                          >
+                            {addr.slice(0, 6)}…{addr.slice(-4)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {!isPrivate && (
+                    <div style={{ marginTop: space.md }}>
+                      <MemoField t={t} value={memo} onChange={setMemo} />
+                    </div>
+                  )}
+
+                  <AmountSlider
+                    t={t}
+                    code={code}
+                    disabled={!spendable}
+                    percent={sliderPercent(amount, spendable)}
+                    onPercent={(p) => setFraction(BigInt(p), 100n)}
+                  />
+
+                  {error && !confirming && (
+                    <Notice t={t} tone="danger">
+                      {error}
+                    </Notice>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div
+              style={{ padding: `${space.md}px ${space.gutter}px ${space.lg}px`, background: t.bg }}
+            >
+              {blocked ? (
+                <Button
+                  t={t}
+                  onClick={() => {
+                    onClose();
+                    w.openSheet("move");
+                  }}
+                >
+                  Open the private pocket
+                </Button>
+              ) : (
+                <Button t={t} disabled={!ready} busy={building} onClick={() => void review()}>
+                  {building ? "Checking" : "Continue"}
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </Frame>
 
       <AssetPicker
@@ -262,10 +389,13 @@ export function Send({ onClose }: { onClose: () => void }) {
         onClose={() => setPicking(false)}
       />
 
+      <PrivateAssetPicker open={pickingPrivate} onClose={() => setPickingPrivate(false)} />
+
       <ConfirmSheet
         t={t}
         open={confirming}
         heading={isPrivate ? "Confirm private send" : "Confirm send"}
+        mark={<AssetMark t={t} id={isPrivate ? privMarkId : (asset?.id ?? "native")} code={code} />}
         amount={publicSummary?.amount ?? privateSummary?.amount}
         code={publicSummary?.assetCode ?? code}
         to={publicSummary?.to ?? privateSummary?.to}
@@ -273,10 +403,9 @@ export function Send({ onClose }: { onClose: () => void }) {
         fee={
           // the public summary carries fee in STROOPS; the private one is
           // already XLM. normalise here so the row is never off by 10^7.
-          publicSummary
-            ? formatAmount(BigInt(publicSummary.fee))
-            : privateSummary?.fee
+          publicSummary ? formatAmount(BigInt(publicSummary.fee)) : privateSummary?.fee
         }
+        fiat={fiat}
         effects={publicSummary?.effects ?? privateSummary?.effects ?? []}
         warning={publicSummary?.warning}
         blocked={
@@ -286,196 +415,18 @@ export function Send({ onClose }: { onClose: () => void }) {
         }
         error={error}
         busy={busy}
-        phase={phase}
         result={result}
+        network={w.status?.network}
         onApprove={() => void approve()}
         onCancel={closeConfirm}
         onDone={closeConfirm}
+        onGoHome={onClose}
+        onSaveAddress={w.saveAddress}
+        onClosed={onConfirmClosed}
       />
     </>
   );
 }
-
-/** the fraction a typed amount is of the spendable balance, 0..100, for the slider. */
-function sliderPercent(amount: string, spendable: string | null): number {
-  if (!spendable || amount === "") return 0;
-  const a = Number(amount);
-  const s = Number(spendable);
-  if (!Number.isFinite(a) || !Number.isFinite(s) || s <= 0) return 0;
-  return Math.max(0, Math.min(100, Math.round((a / s) * 100)));
-}
-
-/** the amount, as the largest thing on the page, in a soft card with no hard border. */
-function AmountCard({
-  t,
-  code,
-  amount,
-  onAmount,
-  spendable,
-  fiat,
-  asFiat,
-  onToggleFiat,
-  onMax,
-  onPick,
-  mark,
-  onSubmit,
-}: {
-  t: Theme;
-  code: string;
-  amount: string;
-  onAmount: (v: string) => void;
-  spendable: string | null;
-  fiat: number | null;
-  asFiat: boolean;
-  onToggleFiat?: () => void;
-  onMax: () => void;
-  onPick?: () => void;
-  mark: React.ReactNode;
-  onSubmit: () => void;
-}) {
-  return (
-    <div
-      style={{
-        background: t.field,
-        borderRadius: radius.lg,
-        padding: space.gutter,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: space.sm }}>
-        <button
-          type="button"
-          onClick={onPick}
-          disabled={!onPick}
-          aria-label={onPick ? `Asset: ${code}. Choose another` : `Asset: ${code}`}
-          style={{
-            all: "unset",
-            boxSizing: "border-box",
-            cursor: onPick ? "pointer" : "default",
-            display: "flex",
-            alignItems: "center",
-            gap: space.sm,
-            padding: `6px 12px`,
-            borderRadius: radius.pill,
-            background: t.surface,
-            minWidth: 0,
-          }}
-        >
-          <span
-            aria-hidden
-            style={{
-              width: 24,
-              height: 24,
-              borderRadius: "50%",
-              background: t.accent,
-              color: t.onAccent,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            {mark}
-          </span>
-          <span style={{ ...text.rowTitle, color: t.text }}>{code}</span>
-          {onPick && <span style={{ color: t.faint, fontSize: 11 }}>▼</span>}
-        </button>
-        <div style={{ flex: 1 }} />
-        <button
-          type="button"
-          onClick={onMax}
-          disabled={!spendable}
-          style={{
-            all: "unset",
-            boxSizing: "border-box",
-            cursor: spendable ? "pointer" : "not-allowed",
-            padding: "6px 14px",
-            borderRadius: radius.pill,
-            background: t.accentSoft,
-            color: t.dark ? t.accent : t.text,
-            ...text.rowSub,
-            fontWeight: 700,
-          }}
-        >
-          Use max
-        </button>
-      </div>
-
-      {/* the big number. no visible box and no focus ring: a full-width bordered
-          input drew a hard rectangle around the figure, which the caret already
-          marks as focused. */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "center",
-          gap: space.sm,
-          marginTop: space.lg,
-        }}
-      >
-        <input
-          className="pocket-bare"
-          inputMode="decimal"
-          value={amount}
-          onChange={(e) => onAmount(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") onSubmit();
-          }}
-          placeholder="0"
-          aria-label="Amount (XLM)"
-          autoFocus
-          size={Math.max(1, amount.length || 1)}
-          style={{
-            all: "unset",
-            boxSizing: "content-box",
-            textAlign: "right",
-            maxWidth: "70%",
-            fontFamily: fonts.sans,
-            fontSize: 44,
-            fontWeight: 800,
-            letterSpacing: "-0.035em",
-            color: amount ? t.text : t.faint,
-            caretColor: t.accent,
-            fontVariantNumeric: "tabular-nums",
-          }}
-        />
-        <span style={{ ...text.heading, color: t.sub, fontWeight: 800 }}>{code}</span>
-      </div>
-
-      {/* the fiat readout, and a toggle to type in it instead. absent price means
-          no line rather than a fabricated dollar. */}
-      <button
-        type="button"
-        onClick={onToggleFiat}
-        disabled={!onToggleFiat}
-        style={{
-          all: "unset",
-          boxSizing: "border-box",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 6,
-          width: "100%",
-          marginTop: space.xs,
-          cursor: onToggleFiat ? "pointer" : "default",
-          color: t.faint,
-          ...text.caption,
-          minHeight: 18,
-        }}
-      >
-        {fiat !== null ? (
-          <>
-            <span>{asFiat ? `${amount || "0"} ${code}` : `$${fiat.toFixed(2)}`}</span>
-            {onToggleFiat && <span aria-hidden>⇅</span>}
-          </>
-        ) : spendable ? (
-          `${spendable} ${code} can be sent`
-        ) : (
-          " "
-        )}
-      </button>
-    </div>
-  );
-}
-
 /** the recipient, with a Paste affordance in the field. */
 function RecipientField({
   t,
@@ -490,6 +441,7 @@ function RecipientField({
 }) {
   return (
     <div
+      className="pk-field"
       style={{
         display: "flex",
         alignItems: "center",
@@ -511,28 +463,17 @@ function RecipientField({
           flex: 1,
           minWidth: 0,
           padding: `${space.md}px 0`,
-          fontFamily: fonts.mono,
           ...text.rowSub,
+          // the recipient is a stellar address: verbatim data, so mono wins over
+          // the role's body face, at the mono weight of 500.
+          fontFamily: fonts.mono,
+          fontWeight: 500,
           color: t.text,
         }}
       />
-      <button
-        type="button"
-        onClick={onPaste}
-        style={{
-          all: "unset",
-          boxSizing: "border-box",
-          cursor: "pointer",
-          padding: "8px 14px",
-          borderRadius: radius.pill,
-          background: t.accentSoft,
-          color: t.dark ? t.accent : t.text,
-          ...text.rowSub,
-          fontWeight: 700,
-        }}
-      >
+      <Button t={t} size="pill" onClick={onPaste}>
         Paste
-      </button>
+      </Button>
     </div>
   );
 }
@@ -553,6 +494,7 @@ function MemoField({
       onChange={(e) => onChange(e.target.value)}
       placeholder="Memo (optional)"
       aria-label="Memo (optional)"
+      className="pk-field"
       style={{
         all: "unset",
         boxSizing: "border-box",
@@ -567,52 +509,6 @@ function MemoField({
     />
   );
 }
-
-/** a slider that sets the amount to a percentage of what can be sent. */
-function AmountSlider({
-  t,
-  code,
-  disabled,
-  percent,
-  onPercent,
-}: {
-  t: Theme;
-  code: string;
-  disabled: boolean;
-  percent: number;
-  onPercent: (p: number) => void;
-}) {
-  return (
-    <div style={{ marginTop: space.lg }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          ...text.rowSub,
-          color: t.sub,
-          marginBottom: space.sm,
-        }}
-      >
-        <span>Send {percent}%</span>
-        <span>Max</span>
-      </div>
-      <input
-        className="pocket-bare"
-        type="range"
-        min={0}
-        max={100}
-        value={percent}
-        disabled={disabled}
-        aria-label={`Send ${percent}% of your ${code}`}
-        onChange={(e) => onPercent(Number(e.target.value))}
-        // no outline box around the track: the global input:focus rule drew a
-        // hard rectangle around the whole slider. accent-color paints the fill.
-        style={{ width: "100%", accentColor: t.accent, cursor: disabled ? "not-allowed" : "pointer" }}
-      />
-    </div>
-  );
-}
-
 /** which asset is being sent. a sheet, because it is an aside from composing. */
 function AssetPicker({
   t,
@@ -635,7 +531,8 @@ function AssetPicker({
             key={b.id}
             t={t}
             index={i}
-            icon={<AssetMark t={t} code={b.code} />}
+            iconRing
+            icon={<AssetMark t={t} id={b.id} code={b.code} />}
             title={b.code}
             sub={b.id === "native" ? "Stellar Lumens" : undefined}
             value={b.amount}

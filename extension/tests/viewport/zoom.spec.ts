@@ -132,8 +132,8 @@ test("at 200% zoom the screen's title is still on screen when its button is", as
   });
 
   await page.setViewportSize(ZOOM_200);
-  const approve = page.getByRole("button", { name: "Confirm and send" });
-  await expectReachable(approve, "send/confirm @ 200% zoom: Confirm and send");
+  const approve = page.getByRole("button", { name: "Confirm" });
+  await expectReachable(approve, "send/confirm @ 200% zoom: Confirm");
 
   // Having scrolled to the button, what is the user looking at? The sheet's own
   // title is the only thing on this surface that names what is being signed.

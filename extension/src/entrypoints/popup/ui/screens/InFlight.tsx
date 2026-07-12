@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { call } from "../rpc";
 import { MonoBlock } from "../Address";
 import { Button, ButtonStack, Header, Label, Notice, Screen, Spinner } from "../primitives";
@@ -21,7 +21,22 @@ export function InFlight({
   onResolved: () => void;
 }) {
   const [checking, setChecking] = useState(false);
-  const [outcome, setOutcome] = useState<{ tone: "neutral" | "danger"; text: string } | null>(null);
+  // the outcome tones are chosen so Notice attaches a live region: only
+  // danger/positive/exposed announce to a screen reader, and this screen exists
+  // to tell the user whether a transaction landed, so the answer must be spoken.
+  const [outcome, setOutcome] = useState<{
+    tone: "exposed" | "positive" | "danger";
+    text: string;
+  } | null>(null);
+  // the resolved branch auto-advances after a beat. hold the timer so it can be
+  // cleared if the screen unmounts first, otherwise onResolved fires into a gone tree.
+  const resolveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (resolveTimer.current !== null) clearTimeout(resolveTimer.current);
+    },
+    [],
+  );
 
   const check = async () => {
     setChecking(true);
@@ -33,10 +48,13 @@ export function InFlight({
         return;
       }
       if (result.kind === "pending") {
-        setOutcome({ tone: "neutral", text: "Still not confirmed. It may yet land, so it must not be resent." });
+        setOutcome({
+          tone: "exposed",
+          text: "Still not confirmed. It may yet land, so it must not be resent.",
+        });
       } else {
-        setOutcome({ tone: "neutral", text: "Resolved: it will not land. You can carry on." });
-        setTimeout(onResolved, 1500);
+        setOutcome({ tone: "positive", text: "Resolved: it will not land. You can carry on." });
+        resolveTimer.current = setTimeout(onResolved, 1500);
       }
     } catch (e) {
       setOutcome({ tone: "danger", text: e instanceof Error ? e.message : String(e) });
@@ -46,7 +64,7 @@ export function InFlight({
   };
 
   return (
-    <Screen t={t}>
+    <Screen t={t} still>
       <Header t={t} title="Unfinished transaction" />
       <Notice t={t} tone="exposed">
         Pocket submitted a transaction and did not see whether it confirmed. Do not send it again

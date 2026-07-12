@@ -142,8 +142,13 @@ export class DefindexClient {
       // failure this module exists to avoid.
       throw new DefindexError("the vault balance response carried no dfTokens");
     }
-    const underlying = Array.isArray(body.underlyingBalance) ? body.underlyingBalance[0] : undefined;
-    return { shares: body.dfTokens, underlying: typeof underlying === "string" ? underlying : undefined };
+    const underlying = Array.isArray(body.underlyingBalance)
+      ? body.underlyingBalance[0]
+      : undefined;
+    return {
+      shares: body.dfTokens,
+      underlying: typeof underlying === "string" ? underlying : undefined,
+    };
   }
 
   /**

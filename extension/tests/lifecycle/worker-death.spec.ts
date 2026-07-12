@@ -18,7 +18,7 @@ import {
 // asks the same question of a different moment: the worker just died. What
 // survived, what did not, and is the user told the truth about which?
 
-test("worker death drops the session and keeps everything needed to get back in", async () => {
+test("a worker eviction inside the idle window comes back unlocked", async () => {
   const w = await launch();
   try {
     const page = await w.popup();
@@ -28,24 +28,29 @@ test("worker death drops the session and keeps everything needed to get back in"
 
     await killWorker(w, page);
 
-    // The lock. Not a bug: the keys lived only in the worker's heap.
-    const status = await send<{ locked: boolean; initialised: boolean }>(page, {
+    // NOT a lock. MV3 evicts the worker constantly, and the DEK is mirrored in
+    // session storage (RAM, wiped on browser close) so a fresh worker re-opens
+    // the vault without the password, up to the idle deadline. This is the
+    // MetaMask model, and the point of the mirror.
+    const status = await send<{ locked: boolean; initialised: boolean; address?: string }>(page, {
       type: "status",
     });
     expect(status.ok, JSON.stringify(status)).toBe(true);
-    expect(status.data?.locked).toBe(true);
-    expect(status.data?.initialised).toBe(true);
+    expect(status.data?.locked, "an eviction inside the window must not lock").toBe(false);
+    expect(status.data?.address).toBe(address);
 
-    // And nothing that gets the user back in was taken with it.
+    // Nothing on DISK changed, and nothing on disk unlocks it: the mirror is in
+    // session storage, not local. `storageKeys` reads local only.
     expect(await storageKeys(page)).toEqual(before);
     expect(before).toContain("pocket.vault");
     expect(before).toContain("pocket.state");
     expect(before).toContain("pocket.address");
 
+    // A reopened page lands on Home, still unlocked, on the same account.
     const reopened = await w.popup();
-    await expect(reopened.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
-    await unlockUi(reopened);
-    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
+    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({
+      timeout: 60_000,
+    });
     expect(await addressOf(reopened)).toBe(address);
   } finally {
     await w.close();
@@ -151,6 +156,7 @@ test("a second tab left on Home after the first locked cannot spend", async () =
     const b = await w.popup();
     await expect(b.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
 
+    await a.getByRole("button", { name: "More" }).click();
     await a.getByRole("button", { name: "Lock wallet" }).click();
     await expect(a.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
 
@@ -161,7 +167,7 @@ test("a second tab left on Home after the first locked cannot spend", async () =
       .getByRole("textbox", { name: "To", exact: true })
       .fill("GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7");
     await b.getByRole("textbox", { name: "Amount (XLM)" }).fill("1");
-    await b.getByRole("button", { name: "Review" }).click();
+    await b.getByRole("button", { name: "Continue" }).click();
     await expect(b.getByText("Wallet is locked.")).toBeVisible({ timeout: 30_000 });
 
     // Nothing was built, nothing was staged.

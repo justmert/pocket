@@ -146,7 +146,7 @@ test("nothing is shown as spent until the ledger has said so", async ({ wallet }
     .fill("GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H");
   await page.getByRole("textbox", { name: /Amount/ }).fill("3");
   await page.getByRole("button", { name: "Review" }).click();
-  await page.getByRole("button", { name: "Confirm and send" }).click();
+  await page.getByRole("button", { name: "Confirm" }).click();
 
   await expect(page.getByText(/network refused/i)).toBeVisible({ timeout: WAITS.proving });
   await page.keyboard.press("Escape");

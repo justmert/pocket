@@ -22,6 +22,9 @@ const TO = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H";
 
 /** `fontSizes.body`. the receipt's hash sits one step below it, at 14. */
 const BODY = 16;
+/** `fontSizes.small`. the confirm's address block is packed to this one step down
+ *  from body, still mono and legible, so 56 characters do not fill two tall lines. */
+const SMALL = 14;
 
 async function stubBuild(page: import("@playwright/test").Page, amount: string): Promise<void> {
   await page.evaluate(
@@ -62,7 +65,7 @@ test("a sub-one amount is set as one run, not as a giant zero", async ({ wallet 
   await wallet.page.getByRole("button", { name: "Send" }).click();
   await wallet.page.getByRole("textbox", { name: "To", exact: true }).fill(TO);
   await wallet.page.getByRole("textbox", { name: /Amount/ }).fill("0.5");
-  await wallet.page.getByRole("button", { name: "Review" }).click();
+  await wallet.page.getByRole("button", { name: "Continue" }).click();
   await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
 
   // The figure is announced whole regardless of how it is drawn, so the visual
@@ -101,15 +104,19 @@ test("the recipient address is no smaller than the type scale allows", async ({ 
   await wallet.page.getByRole("button", { name: "Send" }).click();
   await wallet.page.getByRole("textbox", { name: "To", exact: true }).fill(TO);
   await wallet.page.getByRole("textbox", { name: /Amount/ }).fill("1");
-  await wallet.page.getByRole("button", { name: "Review" }).click();
+  await wallet.page.getByRole("button", { name: "Continue" }).click();
 
+  // the confirm packs the address one step down from body (the full 56 characters
+  // at body size filled two tall lines), so the floor here is the small step, not
+  // body. it is still mono and still legible character by character; what is not
+  // allowed is smaller than the smallest text role, or truncated.
   const shown = wallet.page.getByText(TO).first();
   await expect(shown).toBeVisible({ timeout: WAITS.proving });
   const size = await shown.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
   expect(
     size,
-    `the address someone checks before approving was set at ${size}px, below the ${BODY}px the scale gives ordinary body text`,
-  ).toBeGreaterThanOrEqual(BODY);
+    `the address someone checks before approving was set at ${size}px, below the ${SMALL}px small text role`,
+  ).toBeGreaterThanOrEqual(SMALL);
 
   // And it is still the whole address: shrinking is not the only way to lose it.
   await expect(shown).toHaveText(TO);

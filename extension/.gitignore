@@ -1,1 +1,4 @@
 .env.development
+
+# local dev browser launch: names a binary path on this machine
+web-ext.config.ts

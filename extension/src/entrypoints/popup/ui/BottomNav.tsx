@@ -3,11 +3,12 @@
 // five slots, the same five in both pockets, so switching pockets never moves a
 // control out from under a finger. what the middle action MEANS changes with the
 // pocket, and the accent it is wearing is what says which.
-import { useEffect, useState } from "react";
-import type { CSSProperties } from "react";
-import { useWallet } from "./WalletProvider";
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
+import { useWallet, type SheetId } from "./WalletProvider";
+import { useLeave } from "./primitives";
 import { radius, space, type Theme } from "./theme";
-import { Gear, HomeIcon, QrIcon, Send, Shield } from "./icons";
+import { Clock, Gear, HomeIcon, Plus, QrIcon, Send, Shield, Unshield } from "./icons";
 
 export function BottomNav() {
   const w = useWallet();
@@ -16,37 +17,85 @@ export function BottomNav() {
   // their normal size cannot fit that, and a control that does not fit is a
   // control that is gone, so they shrink with the window rather than spill.
   const compact = useCompact();
+  const [menuOpen, setMenuOpen] = useState(false);
   const tile = compact ? 30 : 50;
   const glyph = compact ? 18 : 22;
   const fab = compact ? 36 : 54;
   const onHome = w.tab === "home";
+  const onHistory = w.tab === "history";
   const onSettings = w.tab === "settings";
   const receiveOpen = w.sheets.includes("receive");
-  const moveOpen = w.sheets.includes("move");
+  // moving in and out is a PRIVATE-pocket feature, so the FAB only opens a menu
+  // there. in the public pocket the only move is Send, so the FAB IS the send
+  // button and opens it straight away, with no menu.
+  const isPrivate = w.pocket === "private";
+  const showMenu = menuOpen && isPrivate;
+  // keep the menu mounted through its exit so it fades out instead of blinking away
+  // while the FAB un-rotates over empty space.
+  const menu = useLeave(showMenu, 200);
+
+  const pick = (sheet: SheetId) => {
+    setMenuOpen(false);
+    w.openSheet(sheet);
+  };
+  const onFab = () => (isPrivate ? setMenuOpen((open) => !open) : w.openSheet("send"));
+
+  // Escape closes the open menu, the same as a tap on the catcher behind it: a
+  // popup menu the keyboard cannot dismiss is a trap for anyone not on a mouse.
+  useEffect(() => {
+    if (!showMenu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showMenu]);
 
   return (
     <>
       <div aria-hidden style={fade(t)} />
-      <nav aria-label="Wallet" style={bar(t, compact)}>
+      {menu.render && (
+        <>
+          {/* a transparent catcher: one tap outside closes the menu, and the
+              screen behind it is NOT dimmed. */}
+          <div
+            aria-hidden
+            onClick={() => setMenuOpen(false)}
+            style={{ position: "absolute", inset: 0, zIndex: 8 }}
+          />
+          <FabMenu t={t} onPick={pick} leaving={menu.leaving} />
+        </>
+      )}
+      {/* the bar rises above the menu's scrim so its own controls stay lit. */}
+      <nav aria-label="Wallet" style={{ ...bar(t, compact), zIndex: showMenu ? 9 : 7 }}>
         <Tile
           t={t}
           width={tile}
           label="Home"
           active={onHome && w.sheets.length === 0}
           onClick={() => {
+            setMenuOpen(false);
             w.closeAllSheets();
             w.setTab("home");
           }}
         >
           <HomeIcon size={glyph} />
         </Tile>
-        <Tile t={t} width={tile} label="Receive" active={receiveOpen} onClick={() => w.openSheet("receive")}>
+        <Tile
+          t={t}
+          width={tile}
+          label="Receive"
+          active={receiveOpen}
+          onClick={() => w.openSheet("receive")}
+        >
           <QrIcon size={glyph} />
         </Tile>
         <button
           type="button"
-          aria-label={w.pocket === "private" ? "Send privately" : "Send"}
-          onClick={() => w.openSheet("send")}
+          aria-label={isPrivate ? "Move value" : "Send"}
+          aria-haspopup={isPrivate ? "menu" : undefined}
+          aria-expanded={isPrivate ? showMenu : undefined}
+          onClick={onFab}
           style={{
             all: "unset",
             boxSizing: "border-box",
@@ -60,13 +109,46 @@ export function BottomNav() {
             alignItems: "center",
             justifyContent: "center",
             flex: "0 0 auto",
-            boxShadow: `0 0 22px -2px ${t.accentLine}`,
+            // a bright accent halo around the action button, the way Umbra lights
+            // its own: a wide soft glow in the pocket's accent, not the thin line
+            // it used to carry.
+            boxShadow: `0 0 30px 1px ${hexAlpha(t.accent, 0.6)}, 0 6px 16px -4px ${hexAlpha(t.accent, 0.45)}`,
           }}
         >
-          <Send size={Math.round(glyph * 1.1)} />
+          {/* the rotate lives on an inner span, not the button: the global press
+              rule sets `transform: scale(.96)` on the button on :active, and a
+              button cannot hold both a scale and a rotate on one property, so the X
+              used to snap back to a plus mid-press. composed on two elements, the
+              press scales the button while the glyph keeps its rotation. */}
+          <span
+            aria-hidden
+            style={{
+              display: "flex",
+              // in the private pocket the plus turns into a close as the menu opens;
+              // in the public pocket it is a static send.
+              transform: showMenu ? "rotate(45deg)" : "none",
+              transition: `transform var(--pocket-quick) var(--pocket-enter)`,
+            }}
+          >
+            {isPrivate ? (
+              <Plus size={Math.round(glyph * 1.1)} />
+            ) : (
+              <Send size={Math.round(glyph * 1.1)} />
+            )}
+          </span>
         </button>
-        <Tile t={t} width={tile} label="Move" active={moveOpen} onClick={() => w.openSheet("move")}>
-          <Shield size={glyph} />
+        <Tile
+          t={t}
+          width={tile}
+          label="History"
+          active={onHistory && w.sheets.length === 0}
+          onClick={() => {
+            setMenuOpen(false);
+            w.closeAllSheets();
+            w.setTab("history");
+          }}
+        >
+          <Clock size={glyph} />
         </Tile>
         <Tile
           t={t}
@@ -74,6 +156,7 @@ export function BottomNav() {
           label="Settings"
           active={onSettings && w.sheets.length === 0}
           onClick={() => {
+            setMenuOpen(false);
             w.closeAllSheets();
             w.setTab("settings");
           }}
@@ -82,6 +165,117 @@ export function BottomNav() {
         </Tile>
       </nav>
     </>
+  );
+}
+
+/**
+ * the three ways value leaves or enters a pocket, raised above the FAB.
+ *
+ * move-in and move-out open straight into their own form; the picker menu they
+ * used to share is gone, because a menu that then shows another menu is two
+ * taps where one would do.
+ */
+function FabMenu({
+  t,
+  onPick,
+  leaving,
+}: {
+  t: Theme;
+  onPick: (sheet: SheetId) => void;
+  leaving: boolean;
+}) {
+  const items: { key: SheetId; label: string; icon: ReactNode }[] = [
+    { key: "moveIn", label: "Shield", icon: <Shield size={24} /> },
+    { key: "send", label: "Send", icon: <Send size={24} /> },
+    { key: "moveOut", label: "Unshield", icon: <Unshield size={24} /> },
+  ];
+  // the menu only mounts while open, so focusing the first item on mount is
+  // focusing it on open: a keyboard user lands inside the menu rather than being
+  // left on the FAB, and Left/Right (or Up/Down) walk the row. Escape is handled
+  // by the parent, which closes the menu. this brings the FAB menu up to the
+  // keyboard contract every Sheet already honours.
+  const btns = useRef<(HTMLButtonElement | null)[]>([]);
+  useEffect(() => {
+    btns.current[0]?.focus();
+  }, []);
+  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const i = btns.current.findIndex((b) => b === document.activeElement);
+    if (i < 0) return;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      e.preventDefault();
+      btns.current[(i + 1) % items.length]?.focus();
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      e.preventDefault();
+      btns.current[(i - 1 + items.length) % items.length]?.focus();
+    }
+  };
+  return (
+    // a full-width centring track: the card is centred by flexbox, NOT by a
+    // transform, because the `pocket-row-in` entrance animates `transform` and
+    // would otherwise clobber a translateX and shove the card off to one side.
+    <div
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        // clear of the bar (66 tall, sitting space.md off the bottom) with a gap.
+        bottom: 66 + space.md + space.sm,
+        zIndex: 10,
+        display: "flex",
+        justifyContent: "center",
+        pointerEvents: "none",
+      }}
+    >
+      <div
+        role="menu"
+        aria-label="Move value"
+        className={leaving ? "pocket-fade-out" : "pocket-row-in"}
+        onKeyDown={onKey}
+        style={{
+          pointerEvents: "auto",
+          // a compact horizontal row of icons, not a stacked list: the three ways
+          // value moves, side by side above the action they came from.
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          gap: space.xs,
+          padding: `${space.xs}px ${space.sm}px`,
+          borderRadius: radius.lg,
+          background: t.sheet,
+          boxShadow: t.dark
+            ? `0 18px 46px -12px rgba(0,0,0,0.75), 0 0 26px -6px ${t.accent}`
+            : `0 18px 46px -14px rgba(20,21,26,0.32), 0 0 24px -6px ${t.accent}`,
+        }}
+      >
+        {items.map((it, idx) => (
+          <button
+            key={it.key}
+            ref={(el) => {
+              btns.current[idx] = el;
+            }}
+            type="button"
+            role="menuitem"
+            aria-label={it.label}
+            onClick={() => onPick(it.key)}
+            className="pk-tap"
+            style={{
+              all: "unset",
+              boxSizing: "border-box",
+              cursor: "pointer",
+              width: 52,
+              height: 52,
+              borderRadius: radius.md,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: t.text,
+            }}
+          >
+            {it.icon}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -114,7 +308,9 @@ function Tile({
         height: 44,
         minWidth: 0,
         borderRadius: radius.md,
-        background: active ? t.accentSoft : "transparent",
+        // the active tile must read against the bar it sits on: the accent tint
+        // is too faint on the dark bar, so there it steps up to the raised fill.
+        background: active ? (t.dark ? t.field : t.accentSoft) : "transparent",
         color: active ? (t.dark ? t.accent : t.text) : t.faint,
         display: "flex",
         alignItems: "center",
@@ -149,7 +345,7 @@ function bar(t: Theme, compact: boolean): CSSProperties {
     right: compact ? space.xs : space.md,
     bottom: compact ? space.xs : space.md,
     height: 66,
-    borderRadius: radius.xl,
+    borderRadius: radius.lg,
     display: "flex",
     alignItems: "center",
     justifyContent: "space-around",
@@ -158,10 +354,16 @@ function bar(t: Theme, compact: boolean): CSSProperties {
     background: t.bar,
     backdropFilter: "blur(24px) saturate(1.7)",
     WebkitBackdropFilter: "blur(24px) saturate(1.7)",
-    border: t.dark ? "1px solid rgba(255,255,255,0.07)" : "1px solid rgba(20,21,26,0.05)",
+    // a UNIFORM accent halo (0/0 offset, so it is the same on every side) is the
+    // bar's signature in both pockets. the light pocket ALSO carries a soft dark
+    // ambient for lift; the dark pocket does NOT — a black drop shadow below the
+    // bar is not just invisible on the dark page, it DARKENS the strip under the
+    // bar and cancels the glow exactly where the user saw it missing. so on dark
+    // the halo stands alone, wider and stronger, and reaches all the way round
+    // including below.
     boxShadow: t.dark
-      ? "0 10px 38px -8px rgba(0,0,0,0.7)"
-      : "0 10px 34px -12px rgba(20,21,26,0.28)",
+      ? `0 0 40px 0px ${hexAlpha(t.accent, 0.7)}`
+      : `0 10px 34px -12px rgba(20,21,26,0.28), 0 0 34px -3px ${hexAlpha(t.accent, 0.55)}`,
   };
 }
 

@@ -105,7 +105,7 @@ test("a payment can be composed and reviewed with the keyboard alone", async ({ 
   });
   // Reaching the signature is the point: an approval screen a keyboard user
   // cannot activate is an approval they cannot give.
-  expect(await tabTo(wallet.page, "Confirm and send")).toBe(true);
+  expect(await tabTo(wallet.page, "Confirm")).toBe(true);
 });
 
 test("the private pocket can be opened and its set-up reached with the keyboard alone", async ({

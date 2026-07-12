@@ -269,3 +269,20 @@ export function sendableAfterFee(text: string, feeStroops: bigint): string {
   const left = total - feeStroops;
   return formatAmount(left > 0n ? left : 0n);
 }
+
+/**
+ * cap a decimal amount to at most `places` fraction digits, TRUNCATING rather
+ * than rounding: a value derived for "use max" or a slider must never be nudged
+ * ABOVE what is spendable, so the extra digits are dropped, not rounded. this is
+ * a compose-screen nicety (four places reads cleaner than seven); the amount is
+ * still a decimal string, and the worker parses the full thing to stroops. pure
+ * string work, no float.
+ */
+export function capDecimals(value: string, places: number): string {
+  const dot = value.indexOf(".");
+  if (dot < 0) return value;
+  return value
+    .slice(0, dot + 1 + places)
+    .replace(/0+$/, "")
+    .replace(/\.$/, "");
+}

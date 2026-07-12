@@ -1,25 +1,36 @@
 import { useEffect, useRef, useState } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
-import { Button, ButtonStack, Field, Label, Notice, Row, Sheet } from "../primitives";
+import { Button, ButtonStack, Label, Notice, Sheet } from "../primitives";
 import { Held } from "../Held";
 import { canRebuild } from "../copy";
-import { Receipt, ReviewPanel, useOnce, usePhase } from "../flow";
+import { Receipt, ReviewPanel, useOnce } from "../flow";
 import { Progress } from "../Progress";
-import { ArrowDown, ArrowUp, Check } from "../icons";
 import { space, text } from "../theme";
 import type { PrivateOpRequest, PrivateOpSummary } from "../../../../core/messages";
 
 type Kind = PrivateOpRequest["kind"];
-type Stage = "menu" | "form" | "review" | "running" | "done";
+// move-in and move-out are their own pages now (screens/Move.tsx); this sheet is
+// only the states that are not a plain amount: setup, make-spendable, rebuild.
+type Stage = "menu" | "review" | "running" | "done";
 
 /** the words the user sees. the protocol's own names never reach a screen. */
 const HEADING: Record<Kind, string> = {
   register: "Setting up",
-  shield: "Moving in",
+  shield: "Shielding",
   merge: "Making spendable",
   transfer: "Sending privately",
-  unshield: "Moving out",
+  unshield: "Unshielding",
+};
+
+/** the verb for the processing-list row, so a backgrounded setup or make-spendable
+ *  reads as itself rather than borrowing a send's words. */
+const VERB: Record<Kind, string> = {
+  register: "Set up private pocket",
+  shield: "Shield",
+  merge: "Make spendable",
+  transfer: "Send privately",
+  unshield: "Unshield",
 };
 
 export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -27,10 +38,14 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const t = w.t;
   const priv = w.priv;
   const refresh = w.refresh;
+  // the setup/make-spendable/rebuild here all act on the selected private asset,
+  // set by the asset row that opened this sheet. symbol for display, token for the
+  // op; both default to the primary asset for a single-asset wallet.
+  const symbol = priv?.symbol ?? "XLM";
+  const assetToken = w.privateAsset ?? undefined;
 
   const [stage, setStage] = useState<Stage>("menu");
-  const [kind, setKind] = useState<Kind>("shield");
-  const [amount, setAmount] = useState("");
+  const [kind, setKind] = useState<Kind>("merge");
   const [error, setError] = useState<string | null>(null);
   const [building, setBuilding] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -40,7 +55,9 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     null,
   );
   const once = useOnce();
-  const phase = usePhase(busy);
+  // id of the background-op record for the op in flight, so the confirm's resolver
+  // can flip it to done even after the sheet has been sent to the background.
+  const opId = useRef<string | null>(null);
   // set the moment a register build returns, because by then its first
   // transaction is on the ledger and the disclosure below must stop describing
   // it in the future tense.
@@ -48,7 +65,6 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
 
   const reset = () => {
     setStage("menu");
-    setAmount("");
     setError(null);
     setHandle(null);
     setSummary(null);
@@ -71,7 +87,15 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     wasOpen.current = open;
   });
 
-  const close = () => onClose();
+  const close = () => {
+    // a dismissed receipt has served the watch record's purpose; drop it so it
+    // does not linger in the processing list beside the same history row.
+    if (result && opId.current) {
+      w.dropOp(opId.current);
+      opId.current = null;
+    }
+    onClose();
+  };
 
   // The countdown lives in a ref because the effect is re-created whenever the
   // provider re-renders, and `refresh` re-renders the provider. Held in a local
@@ -100,7 +124,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setError(null);
     setBuilding(true);
     try {
-      const r = await call({ type: "buildPrivateOp", op });
+      const r = await call({ type: "buildPrivateOp", op, asset: assetToken });
       if (op.kind === "register") setRegisterStarted(true);
       setHandle(r.handle);
       setSummary(r.summary);
@@ -117,15 +141,27 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     if (!handle || !once.claim()) return;
     setBusy(true);
     setError(null);
+    const id = w.beginOp({
+      verb: VERB[kind],
+      pocket: w.pocket,
+      code: symbol,
+      amount: summary?.amount,
+      to: summary?.to,
+      fee: summary?.fee,
+      network: w.status?.network,
+    });
+    opId.current = id;
     try {
       const r = await call({ type: "confirmPrivateOp", handle });
+      w.completeOp(id, { hash: r.hash, ledger: r.ledger });
       setResult(r);
       // the work is over, so the sheet stops refusing to close.
       setBusy(false);
       setStage("done");
-      void w.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const reason = e instanceof Error ? e.message : String(e);
+      w.failOp(id, reason);
+      setError(reason);
       setBusy(false);
       once.release();
     }
@@ -135,7 +171,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setError(null);
     setBusy(true);
     try {
-      await call({ type: "rebuildFromHistory" });
+      await call({ type: "rebuildFromHistory", asset: assetToken });
       void w.refresh();
       close();
     } catch (e) {
@@ -145,98 +181,68 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     }
   };
 
-  const title =
-    stage === "menu" ? "Move" : stage === "done" ? HEADING[kind] : HEADING[kind];
+  const title = stage === "menu" ? "Move" : HEADING[kind];
 
   return (
-    <Sheet t={t} open={open} onClose={busy ? () => undefined : close} title={title} full={stage === "review" || stage === "done"} focusKey={stage} still={stage === "review"}>
-      {stage === "menu" &&
-        menu({
-          priv,
-          building,
-          error,
-          onShield: () => {
-            setKind("shield");
-            setStage("form");
-          },
-          onUnshield: () => {
-            setKind("unshield");
-            setStage("form");
-          },
-          onMerge: () => void build({ kind: "merge" }),
-          onRegister: () => void build({ kind: "register" }),
-          onRebuild: () => void rebuild(),
-          rebuilding: busy,
-        })}
+    <Sheet
+      t={t}
+      open={open}
+      onClose={busy ? () => undefined : close}
+      title={title}
+      full={stage === "review" || stage === "done"}
+      focusKey={stage}
+      still={stage === "review"}
+    >
+      {/* the body fades in on each stage change (menu -> review -> done); the key
+          remounts it so pocket-fade-in replays. review is `still`, which freezes the
+          fade there, which is the point. */}
+      <div key={stage} className="pocket-fade-in">
+        {stage === "menu" &&
+          menu({
+            priv,
+            building,
+            error,
+            onMerge: () => void build({ kind: "merge" }),
+            onRegister: () => void build({ kind: "register" }),
+            onRebuild: () => void rebuild(),
+            rebuilding: busy,
+          })}
 
-      {stage === "form" && (
-        <>
-          <Notice t={t} tone="exposed">
-            {kind === "shield"
-              ? "This amount is public. Moving in hides what you do next, not the fact that you moved this much in."
-              : "This amount becomes public when it lands in the public pocket."}
-          </Notice>
-          <Field
+        {stage === "review" && summary && (
+          <ReviewPanel
             t={t}
-            label="Amount (XLM)"
-            value={amount}
-            onChange={setAmount}
-            placeholder="0.0000000"
-            autoFocus
-            onSubmit={() => amount.trim() && void build({ kind, amount } as PrivateOpRequest)}
+            amount={summary.amount}
+            treatment={
+              summary.kind === "shield" || summary.kind === "unshield" ? "exposed" : "plain"
+            }
+            to={summary.to}
+            fee={summary.fee}
+            effects={summary.effects}
+            alreadyDone={
+              summary.kind === "register"
+                ? "Your auditor key is already registered on the ledger, and the fee for it is paid. This step creates the confidential account."
+                : undefined
+            }
+            cancelLabel={summary.kind === "register" ? "Leave this for now" : "Back"}
+            error={error}
+            busy={busy}
+            approveLabel="Approve"
+            onApprove={() => void approve()}
+            onCancel={() => setStage("menu")}
+            onGoHome={close}
           />
-          {error && (
-            <Notice t={t} tone="danger">
-              {error}
-            </Notice>
-          )}
-          <ButtonStack>
-            <Button
-              t={t}
-              disabled={!amount.trim()}
-              busy={building}
-              onClick={() => void build({ kind, amount } as PrivateOpRequest)}
-            >
-              {building ? "Checking" : "Review"}
-            </Button>
-            <Button t={t} variant="quiet" onClick={() => setStage("menu")}>
-              Back
-            </Button>
-          </ButtonStack>
-        </>
-      )}
+        )}
 
-      {stage === "review" && summary && (
-        <ReviewPanel
-          t={t}
-          amount={summary.amount}
-          treatment={summary.kind === "shield" || summary.kind === "unshield" ? "exposed" : "plain"}
-          to={summary.to}
-          effects={summary.effects}
-          alreadyDone={
-            summary.kind === "register"
-              ? "Your auditor key is already registered on the ledger, and the fee for it is paid. This step creates the confidential account."
-              : undefined
-          }
-          cancelLabel={summary.kind === "register" ? "Leave this for now" : "Back"}
-          error={error}
-          busy={busy}
-          phase={phase}
-          approveLabel="Approve"
-          onApprove={() => void approve()}
-          onCancel={() => setStage(summary.kind === "register" ? "menu" : "form")}
-        />
-      )}
-
-      {stage === "done" && result && (
-        <Receipt
-          t={t}
-          hash={result.hash}
-          ledger={result.ledger}
-          note={result.followed ? "Made spendable in a second transaction." : undefined}
-          onDone={close}
-        />
-      )}
+        {stage === "done" && result && (
+          <Receipt
+            t={t}
+            hash={result.hash}
+            note={result.followed ? "Made spendable in a second transaction." : undefined}
+            network={w.status?.network}
+            onDone={close}
+          />
+        )}
+      </div>
     </Sheet>
   );
 
@@ -246,8 +252,6 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     priv,
     building,
     error,
-    onShield,
-    onUnshield,
     onMerge,
     onRegister,
     onRebuild,
@@ -256,8 +260,6 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     priv: typeof w.priv;
     building: boolean;
     error: string | null;
-    onShield: () => void;
-    onUnshield: () => void;
     onMerge: () => void;
     onRegister: () => void;
     onRebuild: () => void;
@@ -283,7 +285,9 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     }
 
     if (building) {
-      return <Progress t={t} phase={phase} label="Building" fallback="Checking this against the ledger." />;
+      // no "Go to Home" while building: nothing is submitted yet, so there is
+      // nothing to continue in the background.
+      return <Progress t={t} title="Preparing" subtitle="Checking this against the ledger." />;
     }
 
     const body = () => {
@@ -295,7 +299,11 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
         case "unregistered":
           return (
             <>
-              {priv.message && <Notice t={t} tone="exposed">{priv.message}</Notice>}
+              {priv.message && (
+                <Notice t={t} tone="exposed">
+                  {priv.message}
+                </Notice>
+              )}
               <Label t={t}>Before you start</Label>
               <ul
                 style={{
@@ -355,11 +363,15 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
               t={t}
               label="Dormant"
               amount={priv.spendable}
-              code="XLM"
+              code={symbol}
               holding="This pocket went dormant from not being used. Reactivating wakes it up. Your balance is on the ledger either way; it is this device's access to it that has lapsed."
               action={{ label: "Reactivate", onClick: onMerge }}
             >
-              {priv.message && <Notice t={t} tone="exposed">{priv.message}</Notice>}
+              {priv.message && (
+                <Notice t={t} tone="exposed">
+                  {priv.message}
+                </Notice>
+              )}
             </Held>
           );
 
@@ -370,7 +382,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
               t={t}
               label={priv.state === "diverged" ? "Out of step" : "Needs rebuilding"}
               amount={priv.spendable}
-              code="XLM"
+              code={symbol}
               holding={
                 canRebuild(w.status?.network ?? "testnet")
                   ? "Rebuilding replays your history and checks the result against what the contract holds, so an incomplete history is refused rather than accepted."
@@ -398,47 +410,19 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
             </Held>
           );
 
+        // moving in and out are their own pages, reached from the bar's action
+        // menu; the only thing this sheet does in the ready state is fold in what
+        // has arrived. when nothing has, it says so rather than offering a
+        // control that would do nothing.
         case "ready":
-          return (
-            <>
-              {priv.mergeAvailable && (
-                <>
-                  <ButtonStack>
-                    <Button t={t} onClick={onMerge}>
-                      Make spendable
-                    </Button>
-                  </ButtonStack>
-                  <div style={{ height: space.gutter }} />
-                </>
-              )}
-              <Row
-                t={t}
-                index={0}
-                icon={<ArrowDown size={19} />}
-                title="Move in"
-                sub="Public pocket to private"
-                onClick={onShield}
-              />
-              <Row
-                t={t}
-                index={1}
-                icon={<ArrowUp size={19} />}
-                title="Move out"
-                sub="Private pocket to public"
-                onClick={onUnshield}
-              />
-              {!priv.mergeAvailable && (
-                <Row
-                  t={t}
-                  index={2}
-                  icon={<Check size={19} />}
-                  title="Make spendable"
-                  sub="Nothing is waiting right now"
-                  tone="inert"
-                  onClick={undefined}
-                />
-              )}
-            </>
+          return priv.mergeAvailable ? (
+            <ButtonStack>
+              <Button t={t} onClick={onMerge}>
+                Make spendable
+              </Button>
+            </ButtonStack>
+          ) : (
+            <Notice t={t}>Nothing is waiting to be made spendable.</Notice>
           );
       }
     };

@@ -1,30 +1,39 @@
 import { useWallet } from "../WalletProvider";
 import { NAV_SPACE } from "../BottomNav";
-import { Overline, Row, ScrollArea } from "../primitives";
+import { Header, Overline, Row, ScrollArea } from "../primitives";
 import { canRebuild } from "../copy";
 import { Chip } from "../primitives";
-import { Alert, ChevronRight, External, Key, Lock, Refresh, Trash } from "../icons";
-import { space, text } from "../theme";
+import { autoLockLabel } from "../sheets/SettingsSheets";
+import { Alert, ChevronRight, Clock, External, Key, Lock, Refresh, Trash } from "../icons";
+import { space } from "../theme";
 
 export function Settings() {
   const w = useWallet();
   const t = w.t;
 
-  return (
-    <ScrollArea background={t.canvas}>
-      <div style={{ padding: `${space.gutter}px ${space.gutter}px ${NAV_SPACE}px` }}>
-        <h1 style={{ ...text.screenTitle, color: t.text, margin: `${space.xs}px 0 ${space.lg}px` }}>
-          Settings
-        </h1>
+  // one running counter, incremented only for rows actually rendered, so the
+  // entrance stagger stays contiguous. hardcoded 0..5 left a 90ms gap in the
+  // cascade whenever the conditional Rebuild row (index 2) was absent, which is
+  // the common case: no archive, or no private pocket.
+  let i = 0;
 
-        <Overline t={t}>Network</Overline>
+  return (
+    <ScrollArea className="pocket-page" background={t.canvas}>
+      <div style={{ padding: `${space.gutter}px ${space.gutter}px ${NAV_SPACE}px` }}>
+        <Header t={t} title="Settings" />
+
+        <Overline t={t}>Connection</Overline>
         <Row
           t={t}
-          index={0}
+          index={i++}
           icon={<External size={19} />}
           title="Network"
           sub="Where this wallet reads and writes"
-          value={<Chip t={t} tone="accent">{w.status?.network ?? "…"}</Chip>}
+          value={
+            <Chip t={t} tone="accent">
+              {w.status?.network ?? "…"}
+            </Chip>
+          }
           onClick={() => w.openSheet("network")}
         />
 
@@ -32,7 +41,7 @@ export function Settings() {
           <Overline t={t}>Sites</Overline>
           <Row
             t={t}
-            index={1}
+            index={i++}
             icon={<Key size={19} />}
             title="Connected sites"
             sub="What can ask this wallet to sign"
@@ -51,7 +60,7 @@ export function Settings() {
             <Overline t={t}>Private pocket</Overline>
             <Row
               t={t}
-              index={2}
+              index={i++}
               icon={<Refresh size={19} />}
               title="Rebuild from history"
               sub="Replay your event history from the archive"
@@ -65,7 +74,20 @@ export function Settings() {
           <Overline t={t}>This device</Overline>
           <Row
             t={t}
-            index={3}
+            index={i++}
+            icon={<Clock size={19} />}
+            title="Auto-lock"
+            sub="Lock automatically after inactivity"
+            value={
+              <Chip t={t} tone="accent">
+                {autoLockLabel(w.status?.autoLockMinutes)}
+              </Chip>
+            }
+            onClick={() => w.openSheet("autolock")}
+          />
+          <Row
+            t={t}
+            index={i++}
             icon={<Lock size={19} />}
             title="Lock now"
             sub="Clears the keys from memory"
@@ -73,7 +95,16 @@ export function Settings() {
           />
           <Row
             t={t}
-            index={4}
+            index={i++}
+            icon={<Key size={19} />}
+            title="Recovery phrase"
+            sub="Show the words that back up this wallet"
+            value={<ChevronRight size={17} />}
+            onClick={() => w.openSheet("phrase")}
+          />
+          <Row
+            t={t}
+            index={i}
             tone="danger"
             icon={<Trash size={19} />}
             title="Erase this wallet"

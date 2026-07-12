@@ -992,6 +992,7 @@ test("locking clears the session rather than hiding it", async ({ wallet, harnes
     { type: "dappSessions" },
     { type: "connectDapp", origin: "https://example.com" },
     { type: "reset", password: PASSWORD },
+    { type: "revealPhrase", password: PASSWORD },
     { type: "setNetwork", network: "testnet" },
   ];
 
@@ -1019,7 +1020,7 @@ test("locking clears the session rather than hiding it", async ({ wallet, harnes
   expect(after.ok, "the same request must succeed once unlocked").toBe(true);
 });
 
-test("a locked wallet reveals nothing through any of the 24 message types", async ({
+test("a locked wallet reveals nothing through any of the 38 message types", async ({
   wallet,
   harness,
 }) => {
@@ -1064,7 +1065,17 @@ test("a locked wallet reveals nothing through any of the 24 message types", asyn
     },
     { type: "confirmPayment", message: { type: "confirmPayment", handle: "h" }, allowed: false },
     { type: "reset", message: { type: "reset", password: PASSWORD }, allowed: false },
+    // Even WITH the correct password, a locked wallet must refuse to reveal the
+    // phrase: the seed is exactly what the lock guards, and `revealPhrase` is
+    // deliberately absent from ALLOWED_WHILE_LOCKED. This is the one entry whose
+    // answer, were it wrong, would hand over the whole wallet.
+    {
+      type: "revealPhrase",
+      message: { type: "revealPhrase", password: PASSWORD },
+      allowed: false,
+    },
     { type: "privatePocket", message: { type: "privatePocket" }, allowed: false },
+    { type: "privatePockets", message: { type: "privatePockets" }, allowed: false },
     { type: "rebuildFromHistory", message: { type: "rebuildFromHistory" }, allowed: false },
     { type: "dappSessions", message: { type: "dappSessions" }, allowed: false },
     {
@@ -1078,6 +1089,53 @@ test("a locked wallet reveals nothing through any of the 24 message types", asyn
       allowed: false,
     },
     { type: "yieldPosition", message: { type: "yieldPosition" }, allowed: false },
+    {
+      type: "buildYieldMove",
+      message: { type: "buildYieldMove", kind: "deposit", amount: "1" },
+      allowed: false,
+    },
+    {
+      type: "confirmYieldMove",
+      message: { type: "confirmYieldMove", handle: "h" },
+      allowed: false,
+    },
+    {
+      type: "swapQuote",
+      message: { type: "swapQuote", assetIn: "native", assetOut: "native", amount: "1" },
+      allowed: false,
+    },
+    {
+      type: "buildSwap",
+      message: { type: "buildSwap", assetIn: "native", assetOut: "native", amount: "1" },
+      allowed: false,
+    },
+    { type: "confirmSwap", message: { type: "confirmSwap", handle: "h" }, allowed: false },
+    {
+      type: "buildCctpSend",
+      message: {
+        type: "buildCctpSend",
+        destinationDomain: 6,
+        recipient: "0x0000000000000000000000000000000000000000",
+        amount: "1",
+      },
+      allowed: false,
+    },
+    { type: "confirmCctpSend", message: { type: "confirmCctpSend", handle: "h" }, allowed: false },
+    {
+      type: "cctpAttestation",
+      message: { type: "cctpAttestation", sourceDomain: 6, txHash: "h" },
+      allowed: false,
+    },
+    {
+      type: "buildCctpClaim",
+      message: { type: "buildCctpClaim", sourceDomain: 6, txHash: "h" },
+      allowed: false,
+    },
+    {
+      type: "confirmCctpClaim",
+      message: { type: "confirmCctpClaim", handle: "h" },
+      allowed: false,
+    },
     { type: "currentPhase", message: { type: "currentPhase" }, allowed: false },
     { type: "pendingDappRequest", message: { type: "pendingDappRequest" }, allowed: false },
     {
@@ -1098,11 +1156,15 @@ test("a locked wallet reveals nothing through any of the 24 message types", asyn
     { type: "inFlight", message: { type: "inFlight" }, allowed: false },
     { type: "reconcileInFlight", message: { type: "reconcileInFlight" }, allowed: false },
     { type: "setNetwork", message: { type: "setNetwork", network: "testnet" }, allowed: false },
+    { type: "setAutoLock", message: { type: "setAutoLock", minutes: 15 }, allowed: false },
+    { type: "history", message: { type: "history" }, allowed: false },
   ];
 
-  // The contract is 24 types. If one is ever added, this list stops covering it
-  // and the count is what says so.
-  expect(new Set(contract.map((c) => c.type)).size, "every request type must be asked").toBe(24);
+  // If a type is ever added, this list stops covering it and the count is what
+  // says so. (The three chart reads valueSeries/assetMarket/assetSeries are
+  // covered by their own locked-refusal checks and are intentionally not
+  // duplicated here.)
+  expect(new Set(contract.map((c) => c.type)).size, "every request type must be asked").toBe(38);
 
   const said: string[] = [];
   for (const entry of contract) {

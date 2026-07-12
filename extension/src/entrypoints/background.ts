@@ -1,6 +1,9 @@
 // Service worker. Owns the encrypted vault and every network call; the popup is
-// a thin UI. Keys never leave this worker and are dropped whenever it restarts,
-// which makes worker death an automatic lock rather than a bug.
+// a thin UI. The plaintext seed lives in this worker's memory only. To keep the
+// wallet usable across MV3's constant worker eviction, the DEK that re-opens the
+// vault is mirrored into chrome.storage.session (RAM, wiped on browser close)
+// and restored on startup, up to the user's idle-lock deadline. See
+// core/session.ts for the durability model.
 import "../lib/polyfill"; // must run before any stellar-sdk import
 import { WalletController } from "../core/controller";
 import { dispatch, describeError, isAllowedWhileLocked, isUserActivity } from "../core/dispatch";
@@ -9,12 +12,27 @@ import { isExtensionPage } from "../core/provider/session";
 import type { WalletRequest, WalletResponse } from "../core/messages";
 
 const AUTO_LOCK_ALARM = "pocket.autolock";
-const AUTO_LOCK_MINUTES = 15;
 const KEEP_ALIVE_ALARM = "pocket.keepalive";
+
+// The port an open wallet page holds while it is on screen. It carries no data
+// and grants nothing; its only job is to tell the worker "a page is open", so
+// the worker can keep itself alive across MV3 eviction while the user is
+// actually looking at an unlocked wallet. See `keepWarm` below.
+const UI_PORT = "pocket.ui";
+
+// How often to poke an extension API to reset MV3's idle-eviction timer, which
+// is about thirty seconds. Comfortably under it, and only ever ticking while
+// there is something to keep alive for.
+const KEEP_WARM_MS = 20_000;
 
 export default defineBackground(() => {
   const controller = new WalletController();
   const ready = controller.init();
+
+  // Pin the session mirror to trusted contexts (the default, made explicit): a
+  // content script running in a web page must never be able to read the DEK the
+  // wallet stashes there. Guarded for the test harness that has no setAccessLevel.
+  void chrome.storage.session?.setAccessLevel?.({ accessLevel: "TRUSTED_CONTEXTS" });
 
   /**
    * Operations running right now in this worker.
@@ -25,6 +43,60 @@ export default defineBackground(() => {
    * place, so an operation holding a reference to it is not spared either.
    */
   let running = 0;
+
+  /**
+   * Pages currently holding the worker open, and the timer that keeps it alive.
+   *
+   * Staying unlocked across worker eviction is the DEK mirror's job (session.ts),
+   * not this. Keep-warm is a narrower optimization on top of it:
+   *   - while an operation is in flight (`running > 0`), so a proof or a submit
+   *     finishes in ONE worker lifetime rather than being killed mid-flight; the
+   *     mirror restores a SESSION, but not a half-finished operation, and
+   *   - while an unlocked page is on screen (`uiPorts`), so the popup stays
+   *     responsive instead of paying a cold restore on every interaction.
+   *
+   * It touches neither storage nor the idle-lock alarm. A page connects the port
+   * only while unlocked and drops it on close; when nothing needs the worker warm
+   * the timer stops and MV3 may evict as usual, which the mirror makes safe.
+   */
+  const uiPorts = new Set<chrome.runtime.Port>();
+  let keepWarmTimer: ReturnType<typeof setInterval> | undefined;
+
+  function keepWarm() {
+    const wanted = running > 0 || (uiPorts.size > 0 && isUnlocked());
+    if (wanted && keepWarmTimer === undefined) {
+      keepWarmTimer = setInterval(() => {
+        // Any extension API call counts as worker activity and resets the
+        // eviction timer. getPlatformInfo has no side effects and needs no
+        // permission. Optional-chained so a test harness without it is a no-op.
+        void chrome.runtime.getPlatformInfo?.();
+      }, KEEP_WARM_MS);
+    } else if (!wanted && keepWarmTimer !== undefined) {
+      clearInterval(keepWarmTimer);
+      keepWarmTimer = undefined;
+    }
+  }
+
+  // A wallet page connects this port while it is on screen. Guarded with `?.`
+  // because a non-browser test harness has no `onConnect`; there the worker
+  // simply has no page holding it open, which is what those tests assume.
+  chrome.runtime.onConnect?.addListener?.((port) => {
+    if (port.name !== UI_PORT) return;
+    // Only our own extension pages may pin the worker open. A content script
+    // runs inside a web page and carries our id but is NOT an extension page, so
+    // it must not be able to hold the worker (and the keys it guards) alive.
+    const base = chrome.runtime.getURL("/");
+    if (port.sender?.id !== chrome.runtime.id || !isExtensionPage(port.sender ?? {}, base)) {
+      port.disconnect();
+      return;
+    }
+    uiPorts.add(port);
+    keepWarm();
+    port.onDisconnect.addListener(() => {
+      uiPorts.delete(port);
+      keepWarm();
+    });
+  });
 
   chrome.runtime.onMessage.addListener(
     (msg: WalletRequest, sender, sendResponse: (r: WalletResponse<unknown>) => void) => {
@@ -57,7 +129,10 @@ export default defineBackground(() => {
             await ready;
             const { senderOrigin } = await import("../core/provider/session");
             const origin = senderOrigin(sender);
-            sendResponse({ ok: true, data: await controller.sep43(origin, call.method, call.params) });
+            sendResponse({
+              ok: true,
+              data: await controller.sep43(origin, call.method, call.params),
+            });
           } catch (e) {
             sendResponse({ ok: false, error: describeError(e) });
           }
@@ -71,7 +146,10 @@ export default defineBackground(() => {
       if (typeof msg?.type !== "string") return false;
 
       const activity = isUserActivity(msg.type);
-      if (activity) running++;
+      if (activity) {
+        running++;
+        keepWarm();
+      }
 
       void (async () => {
         try {
@@ -82,13 +160,22 @@ export default defineBackground(() => {
           }
           const data = await dispatch(controller, msg);
           // Only real user activity postpones the lock. A status poll or an
-          // unrecognised message must not keep a funded wallet open forever.
-          if (isUnlocked() && activity) armAutoLock(AUTO_LOCK_MINUTES);
+          // unrecognised message must not keep a funded wallet open forever. The
+          // window is the user's setting, and the mirror's deadline slides with
+          // the alarm so both enforcers agree.
+          if (isUnlocked() && activity) {
+            armAutoLock(controller.autoLockMinutes());
+            controller.slideDeadline();
+          }
           sendResponse({ ok: true, data });
         } catch (e) {
           sendResponse({ ok: false, error: describeError(e) });
         } finally {
           if (activity) running--;
+          // running may have hit zero, or this message may have locked or
+          // unlocked the wallet; re-evaluate whether the worker still needs to
+          // be kept warm.
+          keepWarm();
         }
       })();
 
@@ -117,7 +204,23 @@ export default defineBackground(() => {
       // exists for: the user has walked away from the machine.
       // Awaited via the alarm handler's own promise: an idle lock that has not
       // finished clearing grants has not finished locking.
-      void controller.lock();
+      void controller.lock().then(() => {
+        // Tell any page still on screen that it just locked, so a popup that sat
+        // open through the timeout switches to the lock screen rather than
+        // showing balances for a wallet whose keys are gone. Before the keep-warm
+        // above, the worker would simply have died here and the page would have
+        // found out on its next call; now the worker survives the idle period, so
+        // it has to say so itself.
+        for (const port of uiPorts) {
+          try {
+            port.postMessage({ type: "locked" });
+          } catch {
+            /* the page went away between the lock and this post; its disconnect
+               handler has already dropped it, or will. */
+          }
+        }
+        keepWarm();
+      });
     }
     if (alarm.name === KEEP_ALIVE_ALARM) void keepAlive();
   });
@@ -173,4 +276,13 @@ export default defineBackground(() => {
   }
 
   void ensureKeepAliveScheduled();
+
+  // On worker start, init() may have restored a session from the RAM mirror. A
+  // fresh worker has no alarm armed of its own, so match one to the restored
+  // deadline; otherwise a restored session would have no idle lock behind it.
+  void ready.then(() => {
+    const deadline = controller.sessionDeadline();
+    if (deadline === null) return;
+    armAutoLock(Math.max(1, Math.ceil((deadline - Date.now()) / 60_000)));
+  });
 });

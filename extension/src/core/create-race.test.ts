@@ -140,7 +140,8 @@ describe("every path that installs a seed is serialised, not just create", () =>
     }>;
     const opened = new WalletController();
     await opened.init();
-    const pw = winner.value.address === (await a.status()).address ? "password one" : "password two";
+    const pw =
+      winner.value.address === (await a.status()).address ? "password one" : "password two";
     await expect(opened.unlock(pw)).resolves.toBeDefined();
     expect((await opened.status()).address).toBe(winner.value.address);
   });
@@ -153,7 +154,10 @@ describe("every path that installs a seed is serialised, not just create", () =>
 
     const c = new WalletController();
     await c.init();
-    const results = await Promise.allSettled([c.create("via create"), c.import("via import", phrase)]);
+    const results = await Promise.allSettled([
+      c.create("via create"),
+      c.import("via import", phrase),
+    ]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     expect(await readLocal(KEYS.vaultHeader)).toBeDefined();
     expect(await readLocal(KEYS.state)).toBeDefined();

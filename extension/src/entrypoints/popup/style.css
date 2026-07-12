@@ -3,13 +3,10 @@
 :root {
   --pocket-enter: cubic-bezier(0.2, 0.8, 0.2, 1);
   --pocket-exit: cubic-bezier(0.4, 0, 1, 1);
-  --pocket-wash-ease: cubic-bezier(0.33, 0, 0.2, 1);
   --pocket-instant: 140ms;
   --pocket-quick: 200ms;
   --pocket-page: 260ms;
-  --pocket-page-out: 200ms;
   --pocket-sheet: 280ms;
-  --pocket-sheet-out: 240ms;
   --pocket-settle: 320ms;
   --pocket-pocket: 620ms;
   --pocket-ambient: 1300ms;
@@ -17,6 +14,8 @@
   --pocket-spin: 700ms;
   --pocket-spin-calm: 1600ms;
   --pocket-shimmer-calm: 2400ms;
+  --pocket-roll: 560ms;
+  --pocket-hover-veil: rgba(128, 128, 128, 0.1);
 }
 
 * {
@@ -31,7 +30,9 @@ body {
   /* the "fi" ligature drops the dot on the i, so "Confirm" loses a letter shape
    * that a wallet cannot afford to blur. */
   font-variant-ligatures: no-common-ligatures;
-  font-feature-settings: "liga" 0, "clig" 0;
+  font-feature-settings:
+    "liga" 0,
+    "clig" 0;
 }
 
 #root {
@@ -75,36 +76,169 @@ button {
   scrollbar-width: none;
 }
 
-/* every tappable answers a press, wherever it was built. */
+/* every tappable answers a press, wherever it was built. the transition names all
+ * four properties an interactive control actually changes (transform for the press,
+ * plus fill, ink and filter for hover/selection/state), because this rule is
+ * `!important` and a shorthand: declared as `transform` alone it silently narrowed
+ * transition-property to transform and killed every inline colour/fill transition a
+ * `<button>` tried to set (the nav tile, the pocket tab, the .pk-btn hover). */
 button,
-[role="button"] {
-  transition: transform var(--pocket-instant) var(--pocket-enter) !important;
+[role="button"],
+a {
+  transition:
+    transform var(--pocket-instant) var(--pocket-enter),
+    background-color var(--pocket-instant) var(--pocket-enter),
+    color var(--pocket-instant) var(--pocket-enter),
+    box-shadow var(--pocket-instant) var(--pocket-enter),
+    opacity var(--pocket-instant) var(--pocket-enter),
+    filter var(--pocket-instant) var(--pocket-enter) !important;
   -webkit-tap-highlight-color: transparent;
 }
 button:active:not(:disabled),
-[role="button"]:active {
+[role="button"]:active,
+a:active {
   transform: scale(0.96) !important;
 }
 
+/* one hover for every tappable, however it was built: a translucent veil laid over
+ * whatever fill the element already has, so an icon button, a row, a tile or a chip
+ * says "pressable" the way the solid buttons do with brightness. box-shadow, not
+ * background, because these controls set their fill inline and a class cannot beat
+ * that; an inset shadow is a separate property and rides over any inline fill while
+ * respecting the element's own border-radius. hover-capable pointers only, so a
+ * touch does not leave the veil stuck on. */
+@media (hover: hover) {
+  .pk-tap:not([aria-disabled]):not(:disabled):hover {
+    box-shadow: inset 0 0 0 999px var(--pocket-hover-veil);
+  }
+}
+
 /* keyboard focus ring for the things that have no other focus signal: buttons,
- * tiles, tabs. most are built with `all: unset`, an inline declaration, so the
- * ring says `!important` or a keyboard user has nothing to follow.
+ * tiles, tabs, links. most are built with `all: unset`, an inline declaration,
+ * so the ring says `!important` or a keyboard user has nothing to follow.
  *
- * TEXT INPUTS are deliberately NOT here. a text field shows focus with its
- * caret, which is the native and expected signal, and a hard ring around a field
- * drew a black rectangle the product does not want. the caret is enough. */
-:focus-visible,
+ * TEXT INPUTS, TEXTAREAS AND SLIDERS are deliberately NOT here, and there must
+ * be no bare `:focus-visible` in this list: a bare selector matches an <input>
+ * too, and it drew a hard black rectangle around the focused amount field (which
+ * autofocuses, so it showed the instant Send opened). a text field shows focus
+ * with its caret, and a range shows it with its thumb; both are the native
+ * signal. the ring is scoped to element kinds that have no such signal. */
 button:focus-visible,
 [role="button"]:focus-visible,
-[tabindex]:focus-visible {
+[tabindex]:not([tabindex="-1"]):focus-visible,
+a:focus-visible {
   outline: 2px solid var(--pocket-ring, currentColor) !important;
   outline-offset: 2px;
   border-radius: 6px;
 }
 
+/* tabindex="-1" is a PROGRAMMATIC focus target, not a keyboard stop: the sheet
+ * <section> and the scroll containers take focus so a dialog announces itself or
+ * a screen scrolls to its field, and they must NOT draw the keyboard ring. it was
+ * rendering as a hard dark rectangle around the rounded top of every sheet. */
+[tabindex="-1"]:focus,
+[tabindex="-1"]:focus-visible {
+  outline: none !important;
+}
+
+/* the amount slider: a light accent-tinted track and an accent thumb ringed in
+ * white with a soft halo, instead of the browser's default range control. the
+ * track and accent come from theme.ts through custom properties, per pocket. */
+.pocket-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 22px;
+  background: transparent;
+  cursor: pointer;
+}
+.pocket-slider:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.pocket-slider::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--pocket-slider-track, currentColor);
+}
+.pocket-slider::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--pocket-slider-track, currentColor);
+}
+.pocket-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--pocket-accent);
+  border: 3px solid #fff;
+  box-shadow:
+    0 1px 5px rgba(0, 0, 0, 0.25),
+    0 0 0 4px var(--pocket-slider-halo, transparent);
+}
+.pocket-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--pocket-accent);
+  border: 3px solid #fff;
+  box-shadow:
+    0 1px 5px rgba(0, 0, 0, 0.25),
+    0 0 0 4px var(--pocket-slider-halo, transparent);
+}
+
+/* placeholder text sat at the browser's faint default over the blue-tinted
+ * fields, which read as barely there; the secondary-text stop (written per pocket
+ * from theme.ts) gives it contrast without matching the typed value. opacity:1
+ * because firefox dims placeholders to 0.54 by default. */
+input::placeholder,
+textarea::placeholder {
+  color: var(--pocket-placeholder, currentColor);
+  opacity: 1;
+}
+
+/* a soft accent ring on the field a text caret is in. the inputs are built with
+ * `all: unset` and are kept off the hard keyboard ring (it drew a black rectangle
+ * around the autofocused amount), so a field otherwise says which one has focus
+ * only through its blinking caret. this lifts a gentle accent outline on the
+ * WRAPPER via :focus-within, eased in, so a filled field answers the focus the way
+ * a button answers a press. the amount composer opts out on purpose: its figure is
+ * the hero and a box around it competes with the number. */
+.pk-field {
+  transition: box-shadow var(--pocket-instant) var(--pocket-enter);
+}
+.pk-field:focus-within {
+  box-shadow: 0 0 0 2px var(--pocket-accent);
+}
+
 @keyframes pocket-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* the header overflow dropdown: a quick scale-and-fade from its top-right corner,
+ * so it reads as unfolding from the button it is anchored to. */
+.pocket-menu-in {
+  animation: pocket-menu-in var(--pocket-instant) var(--pocket-enter, ease-out);
+  transform-origin: top right;
+}
+/* the same unfold, running out: for a dropdown that dismisses instead of vanishing. */
+.pocket-menu-out {
+  animation: pocket-menu-in var(--pocket-instant) var(--pocket-exit) reverse forwards;
+  transform-origin: top right;
+  pointer-events: none;
+}
+@keyframes pocket-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
@@ -137,15 +271,6 @@ button:focus-visible,
   }
 }
 
-@keyframes pocket-sheet-down {
-  from {
-    transform: translateY(0);
-  }
-  to {
-    transform: translateY(100%);
-  }
-}
-
 /* full screens are a different move from sheets: they settle into place. */
 @keyframes pocket-page-in {
   from {
@@ -158,17 +283,6 @@ button:focus-visible,
   }
 }
 
-@keyframes pocket-page-out {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: scale(0.97);
-  }
-}
-
 @keyframes pocket-row-in {
   from {
     opacity: 0;
@@ -177,22 +291,6 @@ button:focus-visible,
   to {
     opacity: 1;
     transform: none;
-  }
-}
-
-/* switching pockets is the one moment worth marking. the accent washes out
- * from the switch as the surface crosses light to dark. */
-@keyframes pocket-wash {
-  0% {
-    opacity: 0;
-    transform: scale(0.55);
-  }
-  35% {
-    opacity: 0.45;
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.8);
   }
 }
 
@@ -218,31 +316,20 @@ button:focus-visible,
 .pocket-page {
   animation: pocket-page-in var(--pocket-page) var(--pocket-enter);
 }
-.pocket-page-out {
-  animation: pocket-page-out var(--pocket-page-out) var(--pocket-exit) forwards;
-  pointer-events: none;
-}
 .pocket-sheet-in {
   animation: pocket-sheet-up var(--pocket-sheet) var(--pocket-enter);
 }
-.pocket-sheet-out {
-  animation: pocket-sheet-down var(--pocket-sheet-out) var(--pocket-exit) forwards;
-  pointer-events: none;
-}
 .pocket-fade-in {
-  animation: pocket-fade-in var(--pocket-quick) ease;
+  animation: pocket-fade-in var(--pocket-quick) var(--pocket-enter);
 }
 .pocket-fade-out {
-  animation: pocket-fade-out var(--pocket-quick) ease forwards;
+  /* the one place the "anything leaving" easing is spent, so a fade out reads as
+   * settling away rather than easing in reverse. */
+  animation: pocket-fade-out var(--pocket-quick) var(--pocket-exit) forwards;
   pointer-events: none;
 }
 .pocket-row-in {
   animation: pocket-row-in var(--pocket-settle) var(--pocket-enter) both;
-}
-.pocket-wash {
-  animation: pocket-wash var(--pocket-pocket) var(--pocket-wash-ease) forwards;
-  pointer-events: none;
-  transform-origin: 50% 18%;
 }
 .pocket-spinner {
   animation: pocket-spin var(--pocket-spin) linear infinite;
@@ -251,23 +338,86 @@ button:focus-visible,
   animation: pocket-pulse var(--pocket-ambient) ease-in-out infinite;
 }
 
-/* a balance that has not arrived is a shimmer, never a zero. */
+/* a balance that has not arrived is a shimmer, never a zero. the two stops are
+ * per-pocket custom properties written by WalletProvider from theme.ts (a light
+ * sheen on the dark private canvas, a dark one on the light public surface), so a
+ * mid-grey no longer sits dead on the near-black private pocket. the base rides
+ * the sweep's edges and the brighter peak its centre, keeping the old rhythm. */
 .pocket-skeleton {
   background-image: linear-gradient(
     90deg,
-    rgba(140, 140, 150, 0.09) 25%,
-    rgba(140, 140, 150, 0.2) 37%,
-    rgba(140, 140, 150, 0.09) 63%
+    var(--pocket-skel-a) 25%,
+    var(--pocket-skel-b) 37%,
+    var(--pocket-skel-a) 63%
   );
   background-size: 200% 100%;
   animation: pocket-shimmer var(--pocket-ambient-slow) ease-in-out infinite;
   border-radius: 8px;
 }
 
+/* the receipt mark lands in two beats: the accent disc pops, then the tick draws
+ * across it. the RESTING state is the complete mark (dashoffset 0), so a still sheet
+ * or reduced motion shows it finished rather than as an invisible gap; the animation
+ * supplies the hidden start through `both`. (there is no separate ring: the disc is
+ * a filled circle, not a stroked ring, so only the tick has a path to draw.) */
+.pocket-success {
+  transform-origin: center;
+  animation: pocket-pop var(--pocket-page) var(--pocket-enter) both;
+}
+.pocket-success-check {
+  --len: 46;
+  stroke-dasharray: 46;
+  stroke-dashoffset: 0;
+  animation: pocket-draw var(--pocket-page) var(--pocket-page) var(--pocket-enter) both;
+}
+@keyframes pocket-draw {
+  from {
+    stroke-dashoffset: var(--len);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes pocket-pop {
+  from {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* the processing disc's three dots pulse in turn: a waiting ellipsis inside the
+ * same accent disc the receipt draws its tick in, so the sheet keeps one mark. */
+@keyframes pocket-proc-dot {
+  0%,
+  70%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.72);
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+.pocket-proc-dot {
+  transform-origin: center;
+  animation: pocket-proc-dot 1.25s ease-in-out infinite both;
+}
+
 /* nothing moves while someone is reading the thing they are about to make
- * permanent. applied to the phrase step, the review steps and the erase sheets. */
-.pocket-still,
-.pocket-still * {
+ * permanent. applied to the phrase step, the review steps and the erase sheets.
+ *
+ * only DESCENDANTS are frozen, not the still element itself: the sheet panel and
+ * the screen root carry this class alongside their own entrance (pocket-sheet-in /
+ * pocket-page), and freezing the element too made the panel TELEPORT instead of
+ * sliding in and out. and the spinner and the processing dots are exempt: a still
+ * sheet still needs to say it is working, and freezing them turned "Checking the
+ * ledger" into a static ring, silently undoing the reduced-motion carve-out below. */
+.pocket-still *:not(.pocket-spinner):not(.pocket-proc-dot) {
   animation: none !important;
   transition: none !important;
 }
@@ -298,7 +448,35 @@ button:focus-visible,
   .pocket-spinner {
     animation: pocket-spin var(--pocket-spin-calm) linear infinite !important;
   }
+  /* the three dots stop pulsing but stay fully lit, so the processing disc still
+   * reads as itself rather than three dim dots frozen mid-fade. */
+  .pocket-proc-dot {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
   .pocket-skeleton {
     animation: pocket-shimmer var(--pocket-shimmer-calm) ease-in-out infinite !important;
   }
+}
+
+/* the accent buttons lighten on hover: the one trait the reference wallet's
+ * `.btn` had that Pocket's did not. the rest of the port is inline on the
+ * element (primitives.tsx Button) -- the 14px rounded rect and the flat solid
+ * accent -- and :hover is the single thing an inline style cannot say.
+ *
+ * the press (scale on :active) is deliberately NOT repeated here: every tappable
+ * already presses, from the global `button:active` rule near the top of this
+ * file, and that rule is `!important` so a copy here would only be dead weight.
+ * reduced motion is likewise handled there. */
+.pk-btn:not([aria-disabled]):hover {
+  filter: brightness(1.04);
+}
+
+/* the quiet button is not a solid accent, it is the pale `field` fill, and
+ * brightening that just washes it toward white (the hover looked broken). it
+ * gets its own hover instead: no brightness, a step to the deeper `tint` fill. */
+.pk-btn-quiet:not([aria-disabled]):hover {
+  filter: none;
+  background: var(--pocket-quiet-hover);
 }

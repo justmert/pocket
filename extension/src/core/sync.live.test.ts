@@ -17,7 +17,6 @@ function deployment() {
 const dep = deployment();
 const server = new rpc.Server(NETWORKS.testnet.rpcUrl);
 
-
 /**
  * Every event our token emitted that the RPC still holds.
  *

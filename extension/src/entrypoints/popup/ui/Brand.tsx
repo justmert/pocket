@@ -57,7 +57,7 @@ export function BrandRow({ t, size = 40 }: { t: Theme; size?: number }) {
       <span
         style={{
           fontSize: Math.round(size * 0.5),
-          fontWeight: 800,
+          fontWeight: 700,
           letterSpacing: "-0.03em",
           color: t.text,
           overflowWrap: "anywhere",

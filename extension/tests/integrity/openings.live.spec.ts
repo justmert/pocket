@@ -27,7 +27,7 @@ import {
   samePoint,
   type StoredOpenings,
 } from "./oracle";
-import { evictWorker, expectEvicted, PASSWORD } from "./harness";
+import { evictWorker, expectRestored, PASSWORD } from "./harness";
 import type { Page } from "@playwright/test";
 
 /**
@@ -89,7 +89,7 @@ test("every private balance the screen shows is money the record on disk can act
   }
 
   // ---------------------------------------------------------------- shield
-  await wallet.openOp("Move in");
+  await wallet.openOp("Shield");
   await wallet.submitOp({ amount: "25" });
   await wallet.approve();
   await expect(wallet.page.getByText(/Made spendable in a second transaction/)).toBeVisible({
@@ -124,11 +124,13 @@ test("every private balance the screen shows is money the record on disk can act
   const blobBefore = JSON.stringify((await storage(harness.popup))[openingKeyFor(address)]);
 
   await evictWorker(harness.context, harness.popup);
-  await expectEvicted(harness.popup);
+  await expectRestored(harness.popup);
 
+  // The eviction restored the session from the DEK mirror, so this reopens
+  // straight to Home. The openings still come off disk: they live encrypted in
+  // local storage, decrypted with the restored DEK, and the byte-identical check
+  // below proves nothing was re-derived.
   await wallet.reopen();
-  await expect(wallet.lockedNotice()).toBeVisible();
-  await wallet.unlock(PASSWORD);
   await wallet.waitForHome(WAITS.onboarding);
   await wallet.openPrivatePocket();
   await expect(wallet.spendableMoney()).toHaveText(/^25\.0000000\s*XLM$/, {
@@ -150,10 +152,10 @@ test("every private balance the screen shows is money the record on disk can act
   expect(afterRestart.spendable.randomness).toBe(afterShield.spendable.randomness);
 
   // -------------------------------------------------------------- unshield
-  await wallet.openOp("Move out");
+  await wallet.openOp("Unshield");
   await wallet.submitOp({ amount: "10" });
   await wallet.approve();
-  await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
+  await expect(wallet.page.getByText("Transaction successful")).toBeVisible({
     timeout: WAITS.submission,
   });
   await expect(wallet.spendableMoney()).toHaveText(/^15\.0000000\s*XLM$/, {
@@ -223,7 +225,7 @@ test("money received privately is written to disk, not re-read from an event win
       (await storage(second.popup))[openingKeyFor(recipient)],
     );
 
-    await wallet.openOp("Move in");
+    await wallet.openOp("Shield");
     await wallet.submitOp({ amount: "25" });
     await wallet.approve();
     await expect(wallet.page.getByText(/Made spendable in a second transaction/)).toBeVisible({
@@ -233,7 +235,7 @@ test("money received privately is written to disk, not re-read from an event win
     await wallet.openOp("Send privately");
     await wallet.submitOp({ amount: "5", to: recipient });
     await wallet.approve();
-    await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
+    await expect(wallet.page.getByText("Transaction successful")).toBeVisible({
       timeout: WAITS.submission,
     });
     console.log("  sent 5 XLM privately");
@@ -268,7 +270,7 @@ test("money received privately is written to disk, not re-read from an event win
     // on every read rather than persisted, this is where it disappears, which
     // is what a wallet opened eight days later would experience.
     await evictWorker(second.context, second.popup);
-    await expectEvicted(second.popup);
+    await expectRestored(second.popup);
 
     let eventsAsked = 0;
     await intercept(second.context, RPC_HOST, async (route) => {
@@ -286,8 +288,6 @@ test("money received privately is written to disk, not re-read from an event win
     });
 
     await other.reopen();
-    await expect(other.lockedNotice()).toBeVisible();
-    await other.unlock(PASSWORD);
     await other.waitForHome(WAITS.onboarding);
     await other.openPrivatePocket();
     await expect(
@@ -319,7 +319,7 @@ test("money received privately is written to disk, not re-read from an event win
     // ------------------------------------------------------ make it spendable
     await openMoveAction(other.page, "Make spendable");
     await other.approve();
-    await expect(other.page.getByText(/Confirmed in ledger/)).toBeVisible({
+    await expect(other.page.getByText("Transaction successful")).toBeVisible({
       timeout: WAITS.submission,
     });
     await expect(other.spendableMoney()).toHaveText(/^5\.0000000\s*XLM$/, {

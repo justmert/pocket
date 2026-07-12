@@ -4,9 +4,9 @@
 // as part of the product instead of a pasted-in bitmap. error correction is at
 // level m, which tolerates the rounded corners without needing a larger code.
 import qrcode from "qrcode-generator";
-import { radius, type Theme } from "./theme";
+import { fixed, radius } from "./theme";
 
-export function Qr({ t, value, size = 214 }: { t: Theme; value: string; size?: number }) {
+export function Qr({ value, size = 214 }: { value: string; size?: number }) {
   const qr = qrcode(0, "M");
   qr.addData(value);
   qr.make();
@@ -39,7 +39,7 @@ export function Qr({ t, value, size = 214 }: { t: Theme; value: string; size?: n
       style={{
         // the code keeps a light field of its own so a scanner still reads it
         // when the private pocket has taken the surface dark.
-        background: "#FFFFFF",
+        background: fixed.qrBg,
         borderRadius: radius.lg,
         padding: 12,
         display: "inline-block",
@@ -61,21 +61,21 @@ export function Qr({ t, value, size = 214 }: { t: Theme; value: string; size?: n
         aria-label="Your address as a QR code"
         style={{ maxWidth: "100%", height: "auto", display: "block" }}
       >
-        <path d={dots.join(" ")} fill="#14151A" />
+        <path d={dots.join(" ")} fill={fixed.qrFg} />
         {finders.map(([row, col], i) => {
           const x = (col + margin) * cell;
           const y = (row + margin) * cell;
           const s = cell * 7;
           return (
             <g key={i}>
-              <rect x={x} y={y} width={s} height={s} rx={cell * 2.1} fill="#14151A" />
+              <rect x={x} y={y} width={s} height={s} rx={cell * 2.1} fill={fixed.qrFg} />
               <rect
                 x={x + cell}
                 y={y + cell}
                 width={s - cell * 2}
                 height={s - cell * 2}
                 rx={cell * 1.5}
-                fill="#FFFFFF"
+                fill={fixed.qrBg}
               />
               <rect
                 x={x + cell * 2}
@@ -83,7 +83,7 @@ export function Qr({ t, value, size = 214 }: { t: Theme; value: string; size?: n
                 width={s - cell * 4}
                 height={s - cell * 4}
                 rx={cell * 1.05}
-                fill={t.dark ? "#14151A" : "#14151A"}
+                fill={fixed.qrFg}
               />
             </g>
           );

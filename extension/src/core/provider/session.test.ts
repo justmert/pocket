@@ -91,34 +91,61 @@ describe("the sender boundary is structural, not a property of one relay", () =>
 
   it("an extension page is recognised by its URL, not by its id", () => {
     // Every one of these carries `sender.id === chrome.runtime.id`.
-    expect(S.isExtensionPage({ url: `${BASE} as chrome.runtime.MessageSenderpopup.html` }, BASE)).toBe(true);
-    expect(S.isExtensionPage({ url: `${BASE} as chrome.runtime.MessageSenderoffscreen.html` }, BASE)).toBe(true);
+    expect(
+      S.isExtensionPage({ url: `${BASE} as chrome.runtime.MessageSenderpopup.html` }, BASE),
+    ).toBe(true);
+    expect(
+      S.isExtensionPage({ url: `${BASE} as chrome.runtime.MessageSenderoffscreen.html` }, BASE),
+    ).toBe(true);
     // A content script. Same id, hostile process.
-    expect(S.isExtensionPage({ url: "https://evil.example/x", id: "abcdefghijklmnop" } as chrome.runtime.MessageSender, BASE)).toBe(
-      false,
-    );
+    expect(
+      S.isExtensionPage(
+        { url: "https://evil.example/x", id: "abcdefghijklmnop" } as chrome.runtime.MessageSender,
+        BASE,
+      ),
+    ).toBe(false);
     // No URL at all is not a page we can name, so it is not one of ours.
-    expect(S.isExtensionPage({ id: "abcdefghijklmnop" } as chrome.runtime.MessageSender, BASE)).toBe(false);
+    expect(
+      S.isExtensionPage({ id: "abcdefghijklmnop" } as chrome.runtime.MessageSender, BASE),
+    ).toBe(false);
   });
 
   it("a prefix that merely looks like ours is not ours", () => {
     // The failure a naive `includes` would allow.
-    expect(S.isExtensionPage({ url: "https://x.test/chrome-extension://abcdefghijklmnop/" } as chrome.runtime.MessageSender, BASE)).toBe(
-      false,
-    );
-    expect(S.isExtensionPage({ url: "chrome-extension://abcdefghijklmnopQQQ/popup.html" } as chrome.runtime.MessageSender, BASE)).toBe(
-      false,
-    );
+    expect(
+      S.isExtensionPage(
+        {
+          url: "https://x.test/chrome-extension://abcdefghijklmnop/",
+        } as chrome.runtime.MessageSender,
+        BASE,
+      ),
+    ).toBe(false);
+    expect(
+      S.isExtensionPage(
+        {
+          url: "chrome-extension://abcdefghijklmnopQQQ/popup.html",
+        } as chrome.runtime.MessageSender,
+        BASE,
+      ),
+    ).toBe(false);
   });
 
   it("the wallet's own origin can never hold a dApp session", () => {
     // Otherwise the popup is an origin like any other, and the one sender that
     // skips every origin check could grant itself a standing connection.
-    expect(() => S.senderOrigin({ origin: "chrome-extension://abcdefghijklmnop" } as chrome.runtime.MessageSender)).toThrow(
-      S.OriginRefusedError,
+    expect(() =>
+      S.senderOrigin({
+        origin: "chrome-extension://abcdefghijklmnop",
+      } as chrome.runtime.MessageSender),
+    ).toThrow(S.OriginRefusedError);
+    expect(() =>
+      S.senderOrigin({ url: "file:///Users/x/a.html" } as chrome.runtime.MessageSender),
+    ).toThrow(S.OriginRefusedError);
+    expect(S.senderOrigin({ origin: "https://a.example" } as chrome.runtime.MessageSender)).toBe(
+      "https://a.example",
     );
-    expect(() => S.senderOrigin({ url: "file:///Users/x/a.html" } as chrome.runtime.MessageSender)).toThrow(S.OriginRefusedError);
-    expect(S.senderOrigin({ origin: "https://a.example" } as chrome.runtime.MessageSender)).toBe("https://a.example");
-    expect(S.senderOrigin({ url: "http://localhost:3000/app" } as chrome.runtime.MessageSender)).toBe("http://localhost:3000");
+    expect(
+      S.senderOrigin({ url: "http://localhost:3000/app" } as chrome.runtime.MessageSender),
+    ).toBe("http://localhost:3000");
   });
 });

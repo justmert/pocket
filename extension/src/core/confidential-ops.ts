@@ -84,7 +84,9 @@ export async function deriveConfidentialKeys(ctx: OpContext): Promise<{
  * holding aud_sk would have to forge a signature over a different message to
  * reach sk. The separation is structural rather than conventional.
  */
-export async function deriveOwnAuditorKey(ctx: OpContext): Promise<{ audSk: bigint; publicKey: Point }> {
+export async function deriveOwnAuditorKey(
+  ctx: OpContext,
+): Promise<{ audSk: bigint; publicKey: Point }> {
   const account = ctx.keypair.publicKey();
   const root = auditorSignerRoot(ctx.keypair, ctx.tokenId, account);
   // Same guard as the spending root, for the same reason: a signature from a
@@ -128,10 +130,7 @@ export async function buildRegisterAuditor(ctx: OpContext): Promise<Transaction>
   const { publicKey } = await deriveOwnAuditorKey(ctx);
   const account = ctx.keypair.publicKey();
   const source = await ctx.server.getAccount(account);
-  return invokeRegistry(ctx, source, "register", [
-    addr(account),
-    bytes(encodePoint(publicKey)),
-  ]);
+  return invokeRegistry(ctx, source, "register", [addr(account), bytes(encodePoint(publicKey))]);
 }
 
 /** Build an invocation of the confidential token. */

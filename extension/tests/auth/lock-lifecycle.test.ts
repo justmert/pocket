@@ -16,8 +16,12 @@ const chrome = installChrome();
 
 await import("../../src/entrypoints/background");
 const { NETWORKS } = await import("../../src/core/config");
+const { WalletController } = await import("../../src/core/controller");
 const { getSession, isUnlocked, clearSession } = await import("../../src/core/session");
 const { KEYS } = await import("../../src/lib/storage");
+
+/** Flush the fire-and-forget mirror write so the RAM store can be read back. */
+const settle = () => new Promise((r) => setTimeout(r, 0));
 
 const PASSWORD = "correct horse battery staple";
 const AUTO_LOCK = "pocket.autolock";
@@ -92,10 +96,14 @@ describe("the idle lock is armed by activity and only by activity", () => {
 
   it("re-arms on the next genuine operation, so an active session stays open", async () => {
     const address = await createWallet();
+    // Answer like a real RPC: the account key returns the account entry, any
+    // other key (balances() now also reads a USDC trustline) returns empty, so
+    // the trustline is omitted rather than read back as the wrong entry.
     const server = await FaultServer.start({
-      fallback: rpcOk(
-        entriesResult([entryFor(accountKey(address), accountEntry(address, 100_0000000n))]),
-      ),
+      fallback: (req) =>
+        req.body.includes(accountKey(address).toXDR("base64"))
+          ? rpcOk(entriesResult([entryFor(accountKey(address), accountEntry(address, 100_0000000n))]))
+          : rpcOk(entriesResult([])),
     });
     open.push(server);
     NETWORKS.testnet.rpcUrl = server.url;
@@ -245,21 +253,28 @@ describe("nothing sensitive survives the lock", () => {
     expect(getSession()).toBeNull();
   });
 
-  it("never puts anything in chrome.storage.session", async () => {
-    const address = await createWallet();
-    const server = await FaultServer.start({
-      fallback: rpcOk(
-        entriesResult([entryFor(accountKey(address), accountEntry(address, 100_0000000n))]),
-      ),
-    });
-    open.push(server);
-    NETWORKS.testnet.rpcUrl = server.url;
+  it("mirrors only the DEK to session storage, and clears it on lock", async () => {
+    // The unlocked session survives worker eviction by mirroring the DEK, and
+    // ONLY the DEK, into chrome.storage.session (RAM, wiped on browser close).
+    // The seed and the phrase must never be mirrored, and a real lock must take
+    // the mirror with it or a restart would come straight back unlocked.
+    await createWallet();
+    await settle();
 
-    await send({ type: "balances" });
-    await send({ type: "status" });
+    const rec = chrome.session.get("pocket.session") as
+      | { dek?: unknown; lockAt?: unknown }
+      | undefined;
+    expect(rec, "the DEK must be mirrored while unlocked").toBeTruthy();
+    expect(typeof rec!.dek).toBe("string");
+    expect(typeof rec!.lockAt).toBe("number");
+
+    const dump = JSON.stringify([...chrome.session.entries()]);
+    // Never the seed, never the mnemonic. 24 words in a row would be a phrase.
+    expect(dump).not.toMatch(/"seed"/);
+    expect(dump).not.toMatch(/"mnemonic"/);
+    expect(dump).not.toMatch(/\b([a-z]{3,8} ){23}[a-z]{3,8}\b/);
+
     await send({ type: "lock" });
-    // Session storage is readable by any extension page and survives lock. The
-    // design keeps keys in worker memory only, so this must stay empty.
     expect([...chrome.session.keys()]).toEqual([]);
   });
 
@@ -295,19 +310,51 @@ describe("nothing sensitive survives the lock", () => {
     expect(s.address).toBeUndefined();
   });
 
-  it("treats a worker restart as a lock", async () => {
-    // MV3 evicts the worker constantly. Keys live in its memory only, so death
-    // is an automatic lock; that is a feature and it must stay one.
+  it("restores from the RAM mirror when the worker restarts inside the window", async () => {
+    // MV3 evicts the worker constantly, but a routine eviction is not a lock: the
+    // DEK mirror lets a fresh worker re-open the vault without the password, up to
+    // the idle deadline. This is the MetaMask model, and the point of the mirror.
     await createWallet();
+    await settle();
     expect(isUnlocked()).toBe(true);
 
-    // A restart: the module-level session is gone, the disk is not.
+    // A restart: the module-level session is gone; the disk and the RAM mirror
+    // are not.
     clearSession();
     expect(isUnlocked()).toBe(false);
     expect(chrome.local.has(KEYS.vaultHeader)).toBe(true);
 
-    const s = (await send({ type: "status" }))!.data as { initialised: boolean; locked: boolean };
-    expect(s).toMatchObject({ initialised: true, locked: true });
+    // A fresh worker runs init(), which restores from the mirror.
+    await new WalletController().init();
+    expect(isUnlocked(), "a restart inside the window must restore").toBe(true);
+  });
+
+  it("stays locked when the worker restarts after the deadline", async () => {
+    await createWallet();
+    await settle();
+    // Expire the mirror's deadline, as if the idle window had elapsed while the
+    // worker was dead.
+    const rec = chrome.session.get("pocket.session") as { dek: string; lockAt: number };
+    chrome.session.set("pocket.session", { ...rec, lockAt: Date.now() - 1 });
+    clearSession();
+
+    await new WalletController().init();
+    expect(isUnlocked(), "an expired session must not restore").toBe(false);
+    // The stale record is purged rather than left to be tried again.
+    expect(chrome.session.has("pocket.session")).toBe(false);
+  });
+
+  it("cannot restore after an explicit lock cleared the mirror", async () => {
+    // An explicit lock, or a browser close (which wipes session storage), leaves
+    // nothing to restore from. The password is required again.
+    await createWallet();
+    await settle();
+    await send({ type: "lock" });
+    expect(chrome.session.has("pocket.session")).toBe(false);
+    clearSession();
+
+    await new WalletController().init();
+    expect(isUnlocked(), "an explicit lock must survive a restart").toBe(false);
   });
 
   it("needs the password again, not just a reopened popup", async () => {

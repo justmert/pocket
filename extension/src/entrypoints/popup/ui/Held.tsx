@@ -56,18 +56,24 @@ export function Held({
   return (
     <Card t={t} tone="accent">
       {children}
-      <span style={{ ...text.rowSub, color: t.sub, display: "block" }}>{label}</span>
+      {/* accentOnSoft, not sub: this card is `tone="accent"` (accentSoft fill), and
+          the secondary-text stop misses readable contrast on it, badly in the dark
+          pocket where teal-sub on teal[800] is ~2.6:1. accentOnSoft is the stop made
+          to read on exactly this fill. */}
+      <span style={{ ...text.rowSub, color: t.accentOnSoft, display: "block" }}>{label}</span>
       {amount !== undefined ? (
         // the same numeric style as a spendable balance: never dimmed, never
         // approximated. it is the user's money and it is not less real for
         // being stuck.
         <Amount t={t} value={amount} code={code} size="row" />
       ) : (
-        <span style={{ ...text.rowTitle, color: t.sub, display: "block" }}>
+        <span style={{ ...text.rowTitle, color: t.accentOnSoft, display: "block" }}>
           Not readable on this device yet
         </span>
       )}
-      <div style={{ ...text.caption, color: t.sub, marginTop: space.xs, lineHeight: 1.45 }}>
+      <div
+        style={{ ...text.caption, color: t.accentOnSoft, marginTop: space.xs, lineHeight: 1.45 }}
+      >
         {holding}
       </div>
       {(action || secondary) && (

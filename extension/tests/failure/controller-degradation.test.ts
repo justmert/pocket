@@ -85,6 +85,18 @@ async function wallet(
 const fundedAccount = (address: string, stroops = 100_0000000n): Fault =>
   rpcOk(entriesResult([entryFor(accountKey(address), accountEntry(address, stroops))]));
 
+// A funded account answered the way a REAL RPC does: the account key returns the
+// account entry, and ANY OTHER key (e.g. a USDC trustline the account does not
+// hold) returns empty. balances() now reads known-asset trustlines too, and a
+// real RPC returns nothing for one that does not exist, so the asset is omitted
+// rather than read back as a wrong entry.
+const fundedAccountOnly =
+  (address: string, stroops = 100_0000000n) =>
+  (req: RecordedRequest): Fault =>
+    req.body.includes(accountKey(address).toXDR("base64"))
+      ? fundedAccount(address, stroops)
+      : rpcOk(entriesResult([]));
+
 const simError = (message: string): Fault =>
   rpcOk({ latestLedger: 1_000, error: message, events: [] });
 
@@ -149,7 +161,7 @@ describe("balances(): a zero on screen is a claim about the ledger", () => {
 
   it("renders the real balance, less the reserve, when the RPC is healthy", async () => {
     const { controller, server, address } = await wallet();
-    server.heal({ fallback: fundedAccount(address) });
+    server.heal({ fallback: fundedAccountOnly(address) });
     const b = await controller.balances();
     // 100 XLM held, 2 base reserves of 0.5 locked, so 99 spendable.
     expect(b[0]?.amount).toBe("99.0000000");
@@ -160,7 +172,7 @@ describe("balances(): a zero on screen is a claim about the ledger", () => {
   it("recovers on the next call once the RPC comes back", async () => {
     const { controller, server, address } = await wallet({ fallback: { kind: "rateLimited" } });
     await expect(controller.balances()).rejects.toThrow();
-    server.heal({ fallback: fundedAccount(address, 50_0000000n) });
+    server.heal({ fallback: fundedAccountOnly(address, 50_0000000n) });
     expect((await controller.balances())[0]?.amount).toBe("49.0000000");
   });
 

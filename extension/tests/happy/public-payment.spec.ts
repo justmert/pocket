@@ -67,22 +67,23 @@ test("a payment leaves one wallet, arrives in another, and the ledger agrees", a
     expect(confirmed).toHaveLength(56);
 
     await expect(wallet.page.getByText("To", { exact: true })).toBeVisible();
-    // The amount, as money rather than as prose. The effects list says it too,
-    // a few lines further down, and both have to be right.
+    // The amount, as money and the exact figure signed (the confirm shows every
+    // fraction digit, not the four-place display cap).
     await expect(wallet.money().first()).toHaveText(/^100\.0000000\s*XLM$/);
     // The memo is signed, so it is reviewed. Corrupting it is the most reliable
     // way to lose funds at an exchange deposit address.
     await expect(wallet.page.getByText("pocket-t1", { exact: true })).toBeVisible();
-    await expect(wallet.page.getByText("Send 100.0000000 XLM to this address")).toBeVisible();
-    await expect(wallet.page.getByText('Attach the memo "pocket-t1"')).toBeVisible();
-    await expect(wallet.page.getByText(/Pay a network fee of [\d.]+ XLM/)).toBeVisible();
+    // the signed facts are rows now (the amount and memo above, the fee here); the
+    // "what this does" enumeration moved into an info tip named by this label.
+    await expect(wallet.page.getByText("What this does")).toBeVisible();
+    await expect(wallet.page.getByText("Network fee", { exact: true })).toBeVisible();
     await expect(
       wallet.page.getByText(/could not determine what this transaction does/i),
     ).toHaveCount(0);
 
     const hash = await wallet.confirmPayment();
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
-    await expect(wallet.page.getByText(/Confirmed in ledger \d+/)).toBeVisible();
+    await expect(wallet.page.getByText("Transaction successful")).toBeVisible();
 
     // "Sent" on a screen is a claim. This is the evidence.
     const tx = await ledger.waitForTransaction(hash);

@@ -34,7 +34,11 @@ export function Onboarding({
       <div style={{ paddingTop: space.md, textAlign: "center", marginBottom: space.xl }}>
         <Brand t={t} size={64} />
         <h1
-          style={{ ...text.screenTitle, color: t.text, margin: `${space.gutter}px 0 ${space.xs}px` }}
+          style={{
+            ...text.screenTitle,
+            color: t.text,
+            margin: `${space.gutter}px 0 ${space.xs}px`,
+          }}
         >
           {step === "choose" ? "Pocket" : step === "create" ? "New wallet" : "Restore wallet"}
         </h1>
@@ -77,7 +81,8 @@ function Choose({
   return (
     <>
       <Notice t={t}>
-        Pocket hides <strong>amounts</strong>, not addresses. Who you pay stays public on the ledger.
+        Pocket hides <strong>amounts</strong>, not addresses. Who you pay stays public on the
+        ledger.
       </Notice>
       <ButtonStack>
         <Button t={t} onClick={onCreate}>
@@ -231,14 +236,7 @@ function Backup({
   }, [copy]);
 
   if (checking) {
-    return (
-      <Verify
-        t={t}
-        words={words}
-        onBack={() => setChecking(false)}
-        onDone={onDone}
-      />
-    );
+    return <Verify t={t} words={words} onBack={() => setChecking(false)} onDone={onDone} />;
   }
 
   return (
@@ -277,10 +275,16 @@ function Backup({
           {words.map((word, i) => (
             <span
               key={i}
-              style={{ ...text.body, fontFamily: fonts.mono, color: t.text, display: "flex", gap: 6 }}
+              style={{
+                ...text.body,
+                fontFamily: fonts.mono,
+                fontWeight: 500,
+                color: t.text,
+                display: "flex",
+                gap: 6,
+              }}
             >
-              <span style={{ color: t.faint, userSelect: "none" }}>{i + 1}.</span>{" "}
-              {word}{" "}
+              <span style={{ color: t.faint, userSelect: "none" }}>{i + 1}.</span> {word}{" "}
             </span>
           ))}
         </div>
@@ -310,7 +314,6 @@ function Backup({
                 display: "inline-flex",
                 alignItems: "center",
                 gap: space.sm,
-                fontFamily: "inherit",
               }}
             >
               <Eye size={18} />
@@ -412,8 +415,7 @@ function Verify({
               // genuinely finished, and the only one at which another window may
               // say so.
               void clearOnboardingUnfinished().then(onDone);
-            }
-            else setWrong(true);
+            } else setWrong(true);
           }}
         >
           Confirm

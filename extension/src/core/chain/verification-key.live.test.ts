@@ -87,26 +87,24 @@ describe.skipIf(!SECRET)("the verifier the token is actually bound to", () => {
   }, 60_000);
 
   it("accepts the configured pair", async () => {
-    await expect(
-      assertVerifierBinding(server, dep.token, dep.verifier),
-    ).resolves.toBeUndefined();
+    await expect(assertVerifierBinding(server, dep.token, dep.verifier)).resolves.toBeUndefined();
   }, 60_000);
 
   it("refuses a verifier the token does not route to", async () => {
     // The auditor registry is a real, live contract that is simply not this
     // token's verifier. Checking a key it does not hold would otherwise be a
     // pass on a config we chose, agreeing with a hash we chose.
-    await expect(
-      assertVerifierBinding(server, dep.token, dep.auditor),
-    ).rejects.toBeInstanceOf(VerificationKeyMismatchError);
+    await expect(assertVerifierBinding(server, dep.token, dep.auditor)).rejects.toBeInstanceOf(
+      VerificationKeyMismatchError,
+    );
   }, 60_000);
 
   it("refuses when the binding cannot be read at all", async () => {
     // The verifier contract is not a confidential token, so it has no Verifier
     // entry in its instance storage. Fail closed, never wave through.
-    await expect(
-      assertVerifierBinding(server, dep.verifier, dep.verifier),
-    ).rejects.toBeInstanceOf(VerificationKeyMismatchError);
+    await expect(assertVerifierBinding(server, dep.verifier, dep.verifier)).rejects.toBeInstanceOf(
+      VerificationKeyMismatchError,
+    );
   }, 60_000);
 
   it("rejects the whole assertion when the token is bound elsewhere", async () => {

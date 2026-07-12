@@ -20,8 +20,8 @@ import type { NetworkId } from "../../../core/config";
  */
 export function privateLossAfterErase(network: NetworkId): string {
   return NETWORKS[network].archiveUrl
-    ? "Your private balances are opened by keys held only here. They can be rebuilt afterwards by replaying your history from the archive."
-    : "Your private balances are opened by keys held only here. Rebuilding them needs a durable archive, and this build has none configured, so they cannot be rebuilt yet.";
+    ? "Your private balances are on the ledger too, but only this device holds the keys that unlock them. Erasing deletes those keys; they can be rebuilt afterwards by replaying your history from the archive."
+    : "Your private balances are on the ledger too, but only this device holds the keys that unlock them. Erasing deletes those keys, and rebuilding them would need a durable archive of your history to replay. This build has none, so those balances could not be recovered.";
 }
 
 /**

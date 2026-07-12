@@ -4,10 +4,19 @@ import { rpc } from "@stellar/stellar-sdk";
 import { Account, Asset, Keypair, type Transaction } from "@stellar/stellar-sdk/base";
 import { generateMnemonic, mnemonicToSeed, validateMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
-import { NETWORKS, DEFAULT_NETWORK, type NetworkId } from "./config";
+import { NETWORKS, DEFAULT_NETWORK, type NetworkId, type ConfidentialDeployment } from "./config";
 import { createVault, unlockVault, WrongPasswordError } from "./vault/vault";
 import type { VaultHeader, Bytes } from "./vault/envelope";
-import { setSession, clearSession, getSession, requireSession } from "./session";
+import {
+  setSession,
+  clearSession,
+  clearPersistedSession,
+  getSession,
+  requireSession,
+  readPersistedUnlock,
+  sessionDeadline,
+  touchDeadline,
+} from "./session";
 import { KEYS, readLocal, writeLocal, removeLocal, openingKey, openingKeys } from "../lib/storage";
 import {
   readNative,
@@ -45,6 +54,12 @@ import type {
   PrivatePocket,
   ValueChart,
   AssetMarketView,
+  HistoryEntry,
+  HistoryPage,
+  YieldMoveSummary,
+  SwapSummary,
+  SwapQuoteView,
+  CctpSummary,
 } from "./messages";
 import { readConfidentialAccount, readAuditorKey } from "./chain/confidential";
 import { assertVerificationKey, type CircuitName } from "./chain/verification-key";
@@ -146,7 +161,12 @@ interface StagedAfter {
  * a crash safe.
  */
 type StagedResolution =
-  | { kind: "openings"; spendable: [string, string]; receiving: [string, string]; syncedThrough: number }
+  | {
+      kind: "openings";
+      spendable: [string, string];
+      receiving: [string, string];
+      syncedThrough: number;
+    }
   /** A deposit credits the receiving side by a public amount, blinding zero. */
   | { kind: "credit"; amount: string }
   /** A merge folds the whole receiving side into spendable. */
@@ -168,12 +188,57 @@ interface StagedRecord {
  */
 const STAGED_KEY = "pocket.staged";
 
+/**
+ * The idle-lock window, in minutes, and the bounds it is clamped to.
+ *
+ * Configurable like MetaMask/Rabby/Phantom, but bounded: "never" is deliberately
+ * not offered, since a funded wallet that never idle-locks is the single outcome
+ * this timer exists to prevent.
+ */
+const DEFAULT_AUTO_LOCK_MINUTES = 15;
+const MIN_AUTO_LOCK_MINUTES = 1;
+const MAX_AUTO_LOCK_MINUTES = 8 * 60;
+
 interface PersistedSettings {
   network: NetworkId;
+  /** Idle auto-lock in minutes. Absent on installs that predate the setting. */
+  autoLockMinutes?: number;
+}
+
+/**
+ * The contract ids a transaction's invocations target.
+ *
+ * Used to verify an envelope built by an external service (the yield vault, a
+ * swap router) actually invokes the contract we expect, before Pocket signs it.
+ * Only `invokeHostFunction` ops that call a contract contribute; anything else
+ * is ignored, so an envelope with no recognised target simply matches nothing
+ * and is refused by the caller.
+ */
+async function invokedContractIds(tx: Transaction): Promise<string[]> {
+  const { Address } = await import("@stellar/stellar-sdk/base");
+  const out: string[] = [];
+  for (const op of tx.operations) {
+    if (op.type !== "invokeHostFunction") continue;
+    try {
+      const fn = (
+        op as unknown as {
+          func: { switch(): { name: string }; invokeContract(): { contractAddress(): unknown } };
+        }
+      ).func;
+      if (fn.switch().name === "hostFunctionTypeInvokeContract") {
+        out.push(Address.fromScAddress(fn.invokeContract().contractAddress() as never).toString());
+      }
+    } catch {
+      // Not a contract-invoke host function (e.g. upload/create), so it names no
+      // target to check. Skipped rather than failing the whole verification.
+    }
+  }
+  return out;
 }
 
 export class WalletController {
   private network: NetworkId = DEFAULT_NETWORK;
+  private autoLockMinutes_ = DEFAULT_AUTO_LOCK_MINUTES;
   private servers = new Map<NetworkId, rpc.Server>();
 
   private server(): rpc.Server {
@@ -192,6 +257,27 @@ export class WalletController {
   async init(): Promise<void> {
     const settings = await readLocal<PersistedSettings>(KEYS.settings);
     if (settings?.network) this.network = settings.network;
+    if (settings?.autoLockMinutes) {
+      this.autoLockMinutes_ = this.clampAutoLock(settings.autoLockMinutes);
+    }
+    // A worker restart within the idle window comes back UNLOCKED, from the DEK
+    // mirrored in session storage (RAM, wiped on browser close). Past the
+    // deadline, or after an explicit lock or a browser close, the mirror is gone
+    // and this is a no-op, which is the lock.
+    await this.restoreSession();
+  }
+
+  /** Re-open the vault from the mirrored DEK after a worker restart. */
+  private async restoreSession(): Promise<void> {
+    const rec = await readPersistedUnlock(Date.now());
+    if (!rec) return;
+    try {
+      await this.hydrate(rec.dek, rec.lockAt);
+    } catch {
+      // The mirror did not match the vault on disk (a reset under a still-warm
+      // mirror, say). Fail closed: purge it and stay locked.
+      await clearPersistedSession();
+    }
   }
 
   /**
@@ -243,7 +329,11 @@ export class WalletController {
       // Still not included, and it can never be included now. Left as "pending"
       // the record is unclearable, and the screen that renders it sits in front
       // of the whole wallet on every popup mount, forever.
-      if (outcome.kind === "pending" && e.maxTime > 0 && Math.floor(Date.now() / 1000) > e.maxTime) {
+      if (
+        outcome.kind === "pending" &&
+        e.maxTime > 0 &&
+        Math.floor(Date.now() / 1000) > e.maxTime
+      ) {
         outcome = { kind: "expired", hash: e.hash };
       }
       if (outcome.kind === "pending") return outcome;
@@ -320,18 +410,30 @@ export class WalletController {
   async status(): Promise<WalletStatus> {
     const header = await readLocal<VaultHeader>(KEYS.vaultHeader);
     const session = getSession();
+    const confidential = NETWORKS[this.network].confidential;
     return {
       initialised: header !== undefined,
       locked: session === null,
       network: this.network,
       address: session?.address,
-      privateEnabled: this.privateReady,
-      privateAvailable: NETWORKS[this.network].confidential.length > 0,
+      privateEnabled: this.readyAssets.size > 0,
+      privateAvailable: confidential.length > 0,
+      privateAssets: confidential.map((c) => ({
+        symbol: c.symbol,
+        token: c.token,
+        underlying: c.underlying,
+      })),
+      autoLockMinutes: this.autoLockMinutes_,
     };
   }
 
-  /** Cached across calls so `status` stays cheap; refreshed by privatePocket(). */
-  private privateReady = false;
+  /**
+   * Confidential wrapper tokens known ready this session, so `status` stays
+   * cheap. A Set, not a boolean, because readiness is PER ASSET: a wallet can
+   * have XLM ready and USDC unregistered at once. Refreshed per token by
+   * privatePocket(), cleared on lock/erase/network change.
+   */
+  private readyAssets = new Set<string>();
 
   /**
    * The private pocket's state for this account.
@@ -341,12 +443,21 @@ export class WalletController {
    * NOT silently resync: a silent resync would mask exactly the archive
    * integrity failure the design relies on catching.
    */
-  async privatePocket(): Promise<PrivatePocket> {
+  async privatePocket(asset?: string): Promise<PrivatePocket> {
     const { address } = requireSession();
-    const cfg = NETWORKS[this.network].confidential[0];
+    const list = NETWORKS[this.network].confidential;
+    // No asset named means the primary (first configured), so callers that
+    // predate multi-asset are unchanged. A named asset resolves by wrapper
+    // token, underlying SAC, or symbol.
+    const cfg = asset
+      ? list.find((c) => c.token === asset || c.underlying === asset || c.symbol === asset)
+      : list[0];
     if (!cfg) {
       return { state: "unavailable", message: "No private pocket is deployed on this network." };
     }
+    // Every non-"unavailable" return carries this, so a caller holding several
+    // pockets (privatePockets) can tell them apart.
+    const id = { symbol: cfg.symbol, token: cfg.token, underlying: cfg.underlying };
 
     // A brand-new wallet has no ledger entry at all. That is a normal state,
     // not a failure: the private pocket is simply unregistered, and the user
@@ -362,9 +473,12 @@ export class WalletController {
       await readNative(this.server(), address);
     } catch (e) {
       if (!(e instanceof AccountNotFoundError)) throw e;
-      this.privateReady = false;
+      this.readyAssets.delete(cfg.token);
       return {
+        ...id,
         state: "unfunded",
+        // XLM, not the pocket's symbol: the account needs an XLM reserve to
+        // exist on the network at all, whichever asset this pocket wraps.
         message:
           "This account does not exist on the network yet. Receive some XLM first, " +
           "then you can set up a private pocket.",
@@ -381,18 +495,20 @@ export class WalletController {
     );
 
     if (!account) {
-      this.privateReady = false;
+      this.readyAssets.delete(cfg.token);
       const ttl = await readAccountTtl(this.server(), cfg.token, address, this.network);
       // An archived account reads as absent, so distinguish by whether we have
       // ever seen it registered.
       if (ttl.kind === "archived") {
         return {
+          ...id,
           state: "archived",
           message:
             "Your private pocket is dormant. Reactivating it costs a small fee and restores access.",
         };
       }
       return {
+        ...id,
         state: "unregistered",
         message:
           "Setting up a private pocket is a one-time, publicly visible transaction. " +
@@ -400,7 +516,7 @@ export class WalletController {
       };
     }
 
-    this.privateReady = true;
+    this.readyAssets.add(cfg.token);
     const ttl = await readAccountTtl(this.server(), cfg.token, address, this.network);
 
     // Openings live in the encrypted vault; without them the commitments on
@@ -409,6 +525,7 @@ export class WalletController {
     const stored = await this.readOpenings(address, cfg.token);
     if (!stored) {
       return {
+        ...id,
         state: "needsRecovery",
         auditorId: account.auditorId,
         ...ttlFields(ttl),
@@ -435,6 +552,7 @@ export class WalletController {
     const check = verifyAgainstChain(credited, account);
     if (!check.ok) {
       return {
+        ...id,
         state: "diverged",
         auditorId: account.auditorId,
         ...ttlFields(ttl),
@@ -455,6 +573,7 @@ export class WalletController {
     })!;
 
     return {
+      ...id,
       state: "ready",
       spendable: formatAmount(b.spendable),
       receiving: formatAmount(b.receiving),
@@ -462,6 +581,22 @@ export class WalletController {
       auditorId: account.auditorId,
       ...ttlFields(ttl),
     };
+  }
+
+  /**
+   * Every private pocket this network has, one per configured confidential
+   * asset (XLM, USDC, ...), in config order. The plural of privatePocket, for a
+   * UI that shows more than one. Serial rather than parallel: each call may
+   * credit inbound transfers, which takes the write queue, and one shared RPC
+   * should not be hit with N concurrent replays.
+   */
+  async privatePockets(): Promise<PrivatePocket[]> {
+    requireSession();
+    const out: PrivatePocket[] = [];
+    for (const c of NETWORKS[this.network].confidential) {
+      out.push(await this.privatePocket(c.token));
+    }
+    return out;
   }
 
   /**
@@ -504,12 +639,12 @@ export class WalletController {
    * configured, when the archive cannot serve a gap-free window, or when the
    * replayed result does not reproduce the commitments the contract holds.
    */
-  async rebuildFromHistory(): Promise<PrivatePocket> {
+  async rebuildFromHistory(asset?: string): Promise<PrivatePocket> {
+    const cfg = this.confidentialConfig(asset);
     await this.exclusive(async () => {
       const { address } = requireSession();
-      const cfg = this.confidentialConfig();
       const account = await this.readOwnAccount(address, cfg);
-      const ctx = await this.opContext();
+      const ctx = await this.opContext(cfg.token);
       const { deriveConfidentialKeys } = await import("./confidential-ops");
       const { vk } = await deriveConfidentialKeys(ctx);
       const { recoverOpenings } = await import("./recover-openings");
@@ -527,7 +662,7 @@ export class WalletController {
     // OUTSIDE the queue. `privatePocket` credits inbound transfers on its way
     // through, and that write is serialised too, so calling it from inside
     // would have the queue wait on itself.
-    return this.privatePocket();
+    return this.privatePocket(cfg.token);
   }
 
   /**
@@ -569,6 +704,520 @@ export class WalletController {
       balance: position.shares,
       underlying: vault.assets?.[0]?.symbol ?? "XLM",
     };
+  }
+
+  /**
+   * Build a yield deposit or withdrawal, returning what the approval screen
+   * renders. Nothing is signed here.
+   *
+   * DeFindex builds the envelope server-side, so the bytes are decoded and
+   * VERIFIED before they are ever offered for signing: same rule as signing for
+   * a dApp. The source must be this account and the invocation must target the
+   * configured vault, or Pocket refuses it rather than sign an envelope it
+   * cannot vouch for.
+   */
+  async buildYieldMove(
+    kind: "deposit" | "withdraw",
+    amountStr: string,
+  ): Promise<{ handle: string; summary: YieldMoveSummary }> {
+    return this.exclusive(async () => {
+      const { address } = requireSession();
+      const cfg = NETWORKS[this.network].defindex;
+      const { DefindexClient, DefindexError } = await import("./integrations/defindex");
+      if (!cfg?.vault || !cfg.apiKey) {
+        throw new DefindexError("Yield is not configured for this network.");
+      }
+      const amount = parseAmount(amountStr);
+      if (amount <= 0n) throw new DefindexError("Enter an amount greater than zero.");
+
+      const client = new DefindexClient({
+        baseUrl: cfg.baseUrl,
+        apiKey: cfg.apiKey,
+        network: this.network,
+      });
+      const built =
+        kind === "deposit"
+          ? await client.buildDeposit(cfg.vault, { caller: address, amounts: [amount] })
+          : await client.buildWithdraw(cfg.vault, { caller: address, amounts: [amount] });
+
+      const decoded = await this.decodeOwnEnvelope(built.xdr, address);
+      const targets = await invokedContractIds(decoded);
+      if (!targets.includes(cfg.vault)) {
+        throw new DefindexError(
+          "The yield transaction does not target the configured vault, so Pocket will not sign it.",
+        );
+      }
+
+      const handle = decoded.hash().toString("hex");
+      this.pending.set(handle, { xdr: decoded.toXDR(), at: Date.now(), kind: `yield:${kind}` });
+      this.prunePending();
+      return {
+        handle,
+        summary: {
+          kind,
+          amount: formatAmount(amount),
+          fee: formatAmount(BigInt(decoded.fee)),
+          effects: [
+            kind === "deposit"
+              ? `Deposit ${formatAmount(amount)} into the yield vault`
+              : `Withdraw ${formatAmount(amount)} from the yield vault`,
+            "This is in the PUBLIC pocket and is visible on the ledger",
+            `Pay a network fee of ${formatAmount(BigInt(decoded.fee))} XLM`,
+          ],
+        },
+      };
+    });
+  }
+
+  /** Sign and submit a yield move this controller built and verified. */
+  async confirmYieldMove(handle: string): Promise<{ hash: string; ledger: number }> {
+    return this.exclusive(async () => {
+      this.prunePending();
+      const entry = this.pending.get(handle);
+      if (!entry || !entry.kind?.startsWith("yield:")) {
+        const { DefindexError } = await import("./integrations/defindex");
+        throw new DefindexError(
+          "That yield operation is no longer pending confirmation. Build it again and review it.",
+        );
+      }
+      this.pending.delete(handle);
+      const decoded = await this.decodeOwnEnvelope(entry.xdr, requireSession().address);
+      // No openings to stage: yield lives in the public pocket, so a landed
+      // transaction has no local secret to write. Submit is the whole job.
+      const outcome = await this.signAndSubmit(decoded, null, entry.kind);
+      if (outcome.kind !== "succeeded") {
+        throw new SubmitOutcomeError(describeOutcome(outcome), outcome);
+      }
+      return { hash: outcome.hash, ledger: outcome.ledger };
+    });
+  }
+
+  /**
+   * Decode an envelope this controller is about to sign, refusing anything it
+   * cannot vouch for. A fee-bump wraps someone else's transaction; a mismatched
+   * source is not ours to sign. Returns the classic Transaction on success.
+   */
+  private async decodeOwnEnvelope(xdr: string, expectedSource: string): Promise<Transaction> {
+    const { TransactionBuilder, Transaction: Tx } = await import("@stellar/stellar-sdk/base");
+    const decoded = TransactionBuilder.fromXDR(xdr, NETWORKS[this.network].passphrase);
+    if (!(decoded instanceof Tx)) {
+      throw new Error("refusing to sign a fee-bump envelope here");
+    }
+    if (decoded.source !== expectedSource) {
+      throw new Error("refusing to sign a transaction from a different source account");
+    }
+    return decoded;
+  }
+
+  /**
+   * A swap quote to show before building. A read: it hits Aquarius for a route
+   * and returns amounts. Nothing is signed or staged.
+   */
+  async swapQuote(assetIn: string, assetOut: string, amountStr: string): Promise<SwapQuoteView> {
+    requireSession();
+    const cfg = NETWORKS[this.network].aquarius;
+    const { AquariusClient, AquariusError } = await import("./integrations/aquarius");
+    if (!cfg) throw new AquariusError("Swaps are not available on this network.");
+    const amount = parseAmount(amountStr);
+    if (amount <= 0n) throw new AquariusError("Enter an amount greater than zero.");
+    const inA = this.assetSac(assetIn);
+    const outA = this.assetSac(assetOut);
+    const path = await new AquariusClient({ apiUrl: cfg.apiUrl }).findPath(
+      inA.sac,
+      outA.sac,
+      amount,
+    );
+    return {
+      assetIn: inA.code,
+      assetOut: outA.code,
+      amountIn: formatAmount(amount),
+      estOut: formatAmount(path.amount),
+      route: path.tokens,
+    };
+  }
+
+  /**
+   * Build a swap, returning what the approval screen renders. Aquarius supplies
+   * only the ROUTE (swap_chain_xdr); this method BUILDS the swap_chained call
+   * itself, so the bytes signed are Pocket's own invocation of the configured
+   * router, not a server-built envelope.
+   */
+  async buildSwap(
+    assetIn: string,
+    assetOut: string,
+    amountStr: string,
+    slippageBps = 100,
+  ): Promise<{ handle: string; summary: SwapSummary }> {
+    return this.exclusive(async () => {
+      const { address } = requireSession();
+      const net = NETWORKS[this.network];
+      const cfg = net.aquarius;
+      const { AquariusClient, AquariusError } = await import("./integrations/aquarius");
+      if (!cfg) throw new AquariusError("Swaps are not available on this network.");
+      const amount = parseAmount(amountStr);
+      if (amount <= 0n) throw new AquariusError("Enter an amount greater than zero.");
+      if (slippageBps < 0 || slippageBps > 10_000) {
+        throw new AquariusError("Slippage must be between 0 and 100%.");
+      }
+      const inA = this.assetSac(assetIn);
+      const outA = this.assetSac(assetOut);
+
+      // Receiving a classic asset needs a trustline, or the swap reverts at
+      // submit with an opaque error. Check first and refuse clearly.
+      if (!outA.asset.isNative()) {
+        const tl = await readTrustline(this.server(), address, outA.asset);
+        if (!tl) {
+          throw new AquariusError(
+            `You need a ${outA.code} trustline before you can receive it. Add ${outA.code} first, then swap.`,
+          );
+        }
+      }
+
+      const path = await new AquariusClient({ apiUrl: cfg.apiUrl }).findPath(
+        inA.sac,
+        outA.sac,
+        amount,
+      );
+      // out_min = estimate * (1 - slippage), integer math on stroops.
+      const outMin = (path.amount * BigInt(10_000 - slippageBps)) / 10_000n;
+
+      const { TransactionBuilder, Contract, Address, nativeToScVal, xdr, BASE_FEE } = await import(
+        "@stellar/stellar-sdk/base"
+      );
+      const source = await this.server().getAccount(address);
+      const tx = new TransactionBuilder(source, {
+        fee: BASE_FEE,
+        networkPassphrase: net.passphrase,
+      })
+        .addOperation(
+          new Contract(cfg.router).call(
+            "swap_chained",
+            nativeToScVal(Address.fromString(address)),
+            // The route, verbatim from find-path: decoded to an ScVal, never
+            // re-encoded, so a wrong route cannot be constructed here.
+            xdr.ScVal.fromXDR(path.swapChainXdr, "base64"),
+            nativeToScVal(Address.fromString(inA.sac)),
+            // u128, per the deployed contract's signature (NOT i128).
+            nativeToScVal(amount, { type: "u128" }),
+            nativeToScVal(outMin, { type: "u128" }),
+          ),
+        )
+        .setTimeout(180)
+        .build();
+
+      const handle = tx.hash().toString("hex");
+      this.pending.set(handle, { xdr: tx.toXDR(), at: Date.now(), kind: "swap" });
+      this.prunePending();
+      return {
+        handle,
+        summary: {
+          assetIn: inA.code,
+          assetOut: outA.code,
+          amountIn: formatAmount(amount),
+          estOut: formatAmount(path.amount),
+          minOut: formatAmount(outMin),
+          fee: formatAmount(BigInt(tx.fee)),
+          route: path.tokens,
+          effects: [
+            `Swap ${formatAmount(amount)} ${inA.code} for about ${formatAmount(path.amount)} ${outA.code}`,
+            `You receive at least ${formatAmount(outMin)} ${outA.code}, or the swap reverts`,
+            "This is in the PUBLIC pocket and is visible on the ledger",
+            `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
+          ],
+        },
+      };
+    });
+  }
+
+  /** Sign and submit a swap this controller built and staged. */
+  async confirmSwap(handle: string): Promise<{ hash: string; ledger: number }> {
+    return this.exclusive(async () => {
+      this.prunePending();
+      const entry = this.pending.get(handle);
+      if (!entry || entry.kind !== "swap") {
+        const { AquariusError } = await import("./integrations/aquarius");
+        throw new AquariusError(
+          "That swap is no longer pending confirmation. Get a fresh quote and review it.",
+        );
+      }
+      this.pending.delete(handle);
+      const decoded = await this.decodeOwnEnvelope(entry.xdr, requireSession().address);
+      const outcome = await this.signAndSubmit(decoded, null, "swap");
+      if (outcome.kind !== "succeeded") {
+        throw new SubmitOutcomeError(describeOutcome(outcome), outcome);
+      }
+      return { hash: outcome.hash, ledger: outcome.ledger };
+    });
+  }
+
+  /** Map an assetId ("native" or "CODE:ISSUER") to its SAC id and display code. */
+  private assetSac(assetId: string): { sac: string; code: string; asset: Asset } {
+    const asset = assetId === "native" ? Asset.native() : this.assetFromId(assetId);
+    return {
+      sac: asset.contractId(NETWORKS[this.network].passphrase),
+      code: asset.isNative() ? "XLM" : asset.getCode(),
+      asset,
+    };
+  }
+
+  // ---- CCTP: cross-chain USDC (public pocket, Stellar legs only) ----
+
+  /** The USDC SAC (SEP-41 contract) for this network, from the classic asset. */
+  private cctpUsdcSac(usdcClassic: string): string {
+    const issuer = usdcClassic.split("-")[1];
+    if (!issuer) throw new Error("CCTP USDC asset is misconfigured");
+    return new Asset("USDC", issuer).contractId(NETWORKS[this.network].passphrase);
+  }
+
+  /**
+   * Bridge USDC OUT to another chain. Two Stellar transactions: approve the
+   * TokenMessengerMinter, then burn. Only the approve is built here; the burn is
+   * built at confirm from the spec stored on the pending entry, exactly like a
+   * shield's follow-merge. Completion on the destination chain needs a tx THERE,
+   * which this Stellar wallet cannot make, so the summary says so plainly.
+   */
+  async buildCctpSend(
+    destinationDomain: number,
+    recipient: string,
+    amountStr: string,
+    fast = false,
+  ): Promise<{ handle: string; summary: CctpSummary }> {
+    return this.exclusive(async () => {
+      const { address } = requireSession();
+      const net = NETWORKS[this.network];
+      const cctp = await import("./integrations/cctp");
+      const chain = cctp.CCTP[this.network];
+      if (destinationDomain === cctp.STELLAR_DOMAIN) {
+        throw new cctp.CctpParameterError(
+          "That is Stellar's own domain; choose a different chain.",
+        );
+      }
+      const amount = parseAmount(amountStr);
+      if (amount <= 0n) throw new cctp.CctpParameterError("amount must be positive");
+      const mintRecipient = cctp.evmAddressToBytes32(recipient); // throws on a bad address
+      const { cctpAmount, dust } = cctp.toCctpAmount(amount);
+      if (cctpAmount <= 0n) {
+        throw new cctp.CctpParameterError(
+          "That is below the smallest bridgeable amount (0.000001 USDC).",
+        );
+      }
+      const maxFee = 0n; // standard transfer; no fast-transfer fee
+      const minFinality = fast ? cctp.FINALITY.fast : cctp.FINALITY.standard;
+      const usdcSac = this.cctpUsdcSac(chain.usdc);
+
+      const { TransactionBuilder, Contract, Address, nativeToScVal, BASE_FEE } = await import(
+        "@stellar/stellar-sdk/base"
+      );
+      const source = await this.server().getAccount(address);
+      const latest = await this.server().getLatestLedger();
+      const expiration = latest.sequence + 6 * 3600; // generous window; burn follows now
+      const approveTx = new TransactionBuilder(source, {
+        fee: BASE_FEE,
+        networkPassphrase: net.passphrase,
+      })
+        .addOperation(
+          new Contract(usdcSac).call(
+            "approve",
+            nativeToScVal(Address.fromString(address)),
+            nativeToScVal(Address.fromString(chain.tokenMessengerMinter)),
+            nativeToScVal(amount, { type: "i128" }),
+            nativeToScVal(expiration, { type: "u32" }),
+          ),
+        )
+        .setTimeout(180)
+        .build();
+
+      const handle = approveTx.hash().toString("hex");
+      this.pending.set(handle, {
+        xdr: approveTx.toXDR(),
+        at: Date.now(),
+        kind: "cctpSend",
+        cctpBurn: {
+          destinationDomain,
+          mintRecipient: Buffer.from(mintRecipient).toString("hex"),
+          amount: amount.toString(),
+          maxFee: maxFee.toString(),
+          minFinality,
+          burnToken: usdcSac,
+        },
+      });
+      this.prunePending();
+      const chainName = cctp.cctpDomainName(destinationDomain);
+      return {
+        handle,
+        summary: {
+          direction: "out",
+          chain: chainName,
+          amount: formatAmount(amount),
+          dust: dust > 0n ? formatAmount(dust) : undefined,
+          fee: formatAmount(BigInt(approveTx.fee)),
+          effects: [
+            `Bridge ${formatAmount(amount)} USDC from Stellar to ${chainName}`,
+            "This burns the USDC on Stellar; the amount and both addresses are PUBLIC",
+            ...(dust > 0n
+              ? [`${formatAmount(dust)} USDC of dust stays on Stellar (CCTP uses 6 decimals)`]
+              : []),
+            `It is minted on ${chainName} by a separate transaction THERE, which this wallet ` +
+              "cannot make: you need gas on that chain, or a relayer, to finish it",
+            "Two Stellar signatures: approve, then burn",
+          ],
+        },
+      };
+    });
+  }
+
+  /** Sign and submit a CCTP outbound bridge: approve, then burn. */
+  async confirmCctpSend(
+    handle: string,
+  ): Promise<{ approveHash: string; hash: string; ledger: number }> {
+    return this.exclusive(async () => {
+      this.prunePending();
+      const entry = this.pending.get(handle);
+      const cctp = await import("./integrations/cctp");
+      if (!entry || entry.kind !== "cctpSend" || !entry.cctpBurn) {
+        throw new cctp.CctpParameterError(
+          "That bridge is no longer pending confirmation. Build it again and review it.",
+        );
+      }
+      this.pending.delete(handle);
+      const { address } = requireSession();
+      const net = NETWORKS[this.network];
+      const chain = cctp.CCTP[this.network];
+
+      const approve = await this.decodeOwnEnvelope(entry.xdr, address);
+      const approveOut = await this.signAndSubmit(approve, null, "cctpApprove");
+      if (approveOut.kind !== "succeeded") {
+        throw new SubmitOutcomeError(describeOutcome(approveOut), approveOut);
+      }
+
+      const spec = entry.cctpBurn;
+      const { TransactionBuilder, Contract, Address, nativeToScVal, xdr, BASE_FEE } = await import(
+        "@stellar/stellar-sdk/base"
+      );
+      const source = await this.server().getAccount(address);
+      const burnTx = new TransactionBuilder(source, {
+        fee: BASE_FEE,
+        networkPassphrase: net.passphrase,
+      })
+        .addOperation(
+          new Contract(chain.tokenMessengerMinter).call(
+            "deposit_for_burn",
+            nativeToScVal(Address.fromString(address)),
+            nativeToScVal(BigInt(spec.amount), { type: "i128" }),
+            nativeToScVal(spec.destinationDomain, { type: "u32" }),
+            xdr.ScVal.scvBytes(Buffer.from(spec.mintRecipient, "hex")),
+            nativeToScVal(Address.fromString(spec.burnToken)),
+            xdr.ScVal.scvBytes(Buffer.from(cctp.zeroBytes32())),
+            nativeToScVal(BigInt(spec.maxFee), { type: "i128" }),
+            nativeToScVal(spec.minFinality, { type: "u32" }),
+          ),
+        )
+        .setTimeout(180)
+        .build();
+      const burnOut = await this.signAndSubmit(burnTx, null, "cctpBurn");
+      if (burnOut.kind !== "succeeded") {
+        // The approve landed, so the allowance is set; only the burn need retry.
+        throw new cctp.CctpParameterError(
+          `The approval landed but the burn did not (${describeOutcome(burnOut)}). ` +
+            "Nothing has been bridged; try the bridge again.",
+        );
+      }
+      return { approveHash: approveOut.hash, hash: burnOut.hash, ledger: burnOut.ledger };
+    });
+  }
+
+  /** Poll Circle's attestation service for a burn, by source domain and tx hash. */
+  async cctpAttestation(
+    sourceDomain: number,
+    txHash: string,
+  ): Promise<{ status: string; ready: boolean }> {
+    requireSession();
+    const { IrisClient } = await import("./integrations/iris");
+    const { CCTP } = await import("./integrations/cctp");
+    const att = await new IrisClient({ baseUrl: CCTP[this.network].iris }).attestation(
+      sourceDomain,
+      txHash,
+    );
+    return { status: att.status, ready: att.ready };
+  }
+
+  /**
+   * Build a claim of USDC bridged TO Stellar: fetch the attestation for the
+   * source burn, then mint_and_forward on the CctpForwarder. The burn was on the
+   * source chain (not this wallet); this is the self-serviceable Stellar leg.
+   */
+  async buildCctpClaim(
+    sourceDomain: number,
+    txHash: string,
+  ): Promise<{ handle: string; summary: CctpSummary }> {
+    return this.exclusive(async () => {
+      const { address } = requireSession();
+      const net = NETWORKS[this.network];
+      const { IrisClient, IrisError } = await import("./integrations/iris");
+      const cctp = await import("./integrations/cctp");
+      const chain = cctp.CCTP[this.network];
+      const att = await new IrisClient({ baseUrl: chain.iris }).attestation(sourceDomain, txHash);
+      if (!att.ready || !att.message || !att.attestation) {
+        throw new IrisError(
+          "This transfer is not ready to claim yet: Circle has not published its attestation. " +
+            "Try again shortly.",
+        );
+      }
+
+      const { TransactionBuilder, Contract, xdr, BASE_FEE } = await import(
+        "@stellar/stellar-sdk/base"
+      );
+      const source = await this.server().getAccount(address);
+      const claimTx = new TransactionBuilder(source, {
+        fee: BASE_FEE,
+        networkPassphrase: net.passphrase,
+      })
+        .addOperation(
+          new Contract(chain.forwarder).call(
+            "mint_and_forward",
+            xdr.ScVal.scvBytes(Buffer.from(att.message.replace(/^0x/, ""), "hex")),
+            xdr.ScVal.scvBytes(Buffer.from(att.attestation.replace(/^0x/, ""), "hex")),
+          ),
+        )
+        .setTimeout(180)
+        .build();
+      const handle = claimTx.hash().toString("hex");
+      this.pending.set(handle, { xdr: claimTx.toXDR(), at: Date.now(), kind: "cctpClaim" });
+      this.prunePending();
+      const chainName = cctp.cctpDomainName(sourceDomain);
+      return {
+        handle,
+        summary: {
+          direction: "in",
+          chain: chainName,
+          fee: formatAmount(BigInt(claimTx.fee)),
+          effects: [
+            `Claim the USDC you bridged from ${chainName} into this account`,
+            "This completes the mint on Stellar; the amount is set by your source burn",
+            "The USDC arrives in your PUBLIC pocket",
+          ],
+        },
+      };
+    });
+  }
+
+  /** Sign and submit a CCTP claim (mint_and_forward). */
+  async confirmCctpClaim(handle: string): Promise<{ hash: string; ledger: number }> {
+    return this.exclusive(async () => {
+      this.prunePending();
+      const entry = this.pending.get(handle);
+      if (!entry || entry.kind !== "cctpClaim") {
+        const { IrisError } = await import("./integrations/iris");
+        throw new IrisError("That claim is no longer pending confirmation. Build it again.");
+      }
+      this.pending.delete(handle);
+      const decoded = await this.decodeOwnEnvelope(entry.xdr, requireSession().address);
+      const outcome = await this.signAndSubmit(decoded, null, "cctpClaim");
+      if (outcome.kind !== "succeeded") {
+        throw new SubmitOutcomeError(describeOutcome(outcome), outcome);
+      }
+      return { hash: outcome.hash, ledger: outcome.ledger };
+    });
   }
 
   /**
@@ -882,7 +1531,7 @@ export class WalletController {
     await writeLocal(KEYS.vaultHeader, header);
     await writeLocal(KEYS.state, await this.sealState(dek, { mnemonic }));
 
-    setSession({ dek, seed, address: kp.publicKey(), unlockedAt: Date.now() });
+    this.beginSession(dek, seed, kp.publicKey());
     return kp.publicKey();
   }
 
@@ -895,6 +1544,18 @@ export class WalletController {
     const header = await readLocal<VaultHeader>(KEYS.vaultHeader);
     if (!header) throw new Error("no wallet to unlock");
     const dek = await unlockVault(header, password); // throws WrongPasswordError
+    return this.hydrate(dek);
+  }
+
+  /**
+   * Open the vault with a DEK already in hand and install the session.
+   *
+   * Shared by `unlock` (DEK derived from the password) and `restoreSession` (DEK
+   * from the RAM mirror after a worker restart). On restore `lockAt` is passed
+   * through so the idle window is not extended by a mere restart; a fresh unlock
+   * passes none and gets a full window.
+   */
+  private async hydrate(dek: Bytes, lockAt?: number): Promise<WalletStatus> {
     const sealed = await readLocal<Parameters<typeof this.openState>[1]>(KEYS.state);
     if (!sealed) throw new Error("vault header exists but wallet state is missing");
     const { mnemonic } = await this.openState(dek, sealed);
@@ -906,21 +1567,76 @@ export class WalletController {
     //
     // The address is what authorises `recoverFromMnemonic`, which now refuses
     // outright without it. Writing it here is safe precisely because getting
-    // this far required the password: the value is derived from the seed the
-    // vault just yielded, so it cannot be planted by anyone who could not have
-    // opened the vault anyway. This is what makes that refusal a one-unlock
-    // migration instead of a permanent dead end.
+    // this far required the DEK: the value is derived from the seed the vault
+    // just yielded, so it cannot be planted by anyone who could not have opened
+    // the vault anyway. This is what makes that refusal a one-unlock migration
+    // instead of a permanent dead end.
     if ((await readLocal<string>(KEYS.publicAddress)) !== kp.publicKey()) {
       await writeLocal(KEYS.publicAddress, kp.publicKey());
     }
 
-    setSession({ dek, seed, address: kp.publicKey(), unlockedAt: Date.now() });
+    this.beginSession(dek, seed, kp.publicKey(), lockAt);
     return this.status();
   }
 
   private async openState(dek: Bytes, sealed: { v: number; iv: string; ct: string }) {
     const { openPayload } = await import("./vault/vault");
     return openPayload<{ mnemonic: string }>(dek, sealed);
+  }
+
+  /** Install the in-memory session and mirror its DEK, with a fresh or restored deadline. */
+  private beginSession(dek: Bytes, seed: Bytes, address: string, lockAt?: number): void {
+    const now = Date.now();
+    setSession({ dek, seed, address, unlockedAt: now, lockAt: lockAt ?? now + this.autoLockMs() });
+  }
+
+  /** The idle-lock window in minutes, for the alarm the worker arms. */
+  autoLockMinutes(): number {
+    return this.autoLockMinutes_;
+  }
+
+  /** The epoch-ms deadline the current session locks at, or null when locked. */
+  sessionDeadline(): number | null {
+    return sessionDeadline();
+  }
+
+  /** Slide the idle deadline forward by the current window, on real activity. */
+  slideDeadline(): void {
+    touchDeadline(Date.now() + this.autoLockMs());
+  }
+
+  private autoLockMs(): number {
+    return this.autoLockMinutes_ * 60_000;
+  }
+
+  private clampAutoLock(minutes: number): number {
+    if (!Number.isFinite(minutes)) return DEFAULT_AUTO_LOCK_MINUTES;
+    return Math.min(MAX_AUTO_LOCK_MINUTES, Math.max(MIN_AUTO_LOCK_MINUTES, Math.round(minutes)));
+  }
+
+  /**
+   * Change the idle-lock window. Clamped to the allowed range, persisted, and
+   * applied to the live session at once so it takes effect now rather than at the
+   * next unlock. The worker re-arms its alarm off this value on the activity that
+   * carried the change.
+   */
+  async setAutoLock(minutes: number): Promise<WalletStatus> {
+    this.autoLockMinutes_ = this.clampAutoLock(minutes);
+    await this.writeSettings();
+    if (getSession()) this.slideDeadline();
+    return this.status();
+  }
+
+  /**
+   * Persist BOTH device settings together. A partial write (`{ network }`
+   * alone) would drop the auto-lock preference, and vice versa, since each write
+   * replaces the whole record.
+   */
+  private async writeSettings(): Promise<void> {
+    await writeLocal(KEYS.settings, {
+      network: this.network,
+      autoLockMinutes: this.autoLockMinutes_,
+    } satisfies PersistedSettings);
   }
 
   async lock(): Promise<void> {
@@ -932,7 +1648,13 @@ export class WalletController {
     // the home screen offers to open a pocket it cannot reach. It is cleared
     // HERE rather than at the end because everything below awaits: a status
     // read landing in that window would otherwise see the stale flag.
-    this.privateReady = false;
+    this.readyAssets.clear();
+    // Decrypted history entries must not outlive the session either.
+    this.privHistoryMemo = undefined;
+    // The RAM mirror is what a restart would restore from, so a real lock must
+    // take it too, or the wallet would come straight back unlocked. `clearSession`
+    // above only dropped the in-memory copy.
+    await clearPersistedSession();
     // A session grants seeing the address and asking to sign. Neither is true
     // of a locked wallet, so the grant goes with it.
     //
@@ -957,6 +1679,33 @@ export class WalletController {
   }
 
   /**
+   * Show the recovery phrase again, gated on the current password.
+   *
+   * The phrase IS the seed, so this re-authenticates against the vault rather
+   * than trusting the live session: an already-unlocked wallet still has to
+   * prove the password to see its own words, the same gate `reset` stands
+   * behind. The DEK is derived from the password, never read from the session,
+   * and the method installs no session and writes nothing. It opens the sealed
+   * state, reads the mnemonic, and returns it. A wrong password throws
+   * WrongPasswordError, which dispatch maps to "Wrong password."; the phrase
+   * never reaches an error string.
+   *
+   * NOT in ALLOWED_WHILE_LOCKED: a locked wallet refuses this outright, because
+   * the lock is exactly the guard on the seed. Re-deriving the DEK here means a
+   * correct password is required even so, so an idle-locked screen left open
+   * cannot be made to cough up the words without it.
+   */
+  async revealPhrase(password: string): Promise<string> {
+    const header = await readLocal<VaultHeader>(KEYS.vaultHeader);
+    if (!header) throw new Error("no wallet to reveal");
+    const dek = await unlockVault(header, password); // throws WrongPasswordError
+    const sealed = await readLocal<Parameters<typeof this.openState>[1]>(KEYS.state);
+    if (!sealed) throw new Error("vault header exists but wallet state is missing");
+    const { mnemonic } = await this.openState(dek, sealed);
+    return mnemonic;
+  }
+
+  /**
    * Remove everything this device holds about the wallet.
    *
    * The openings must go with it. A new vault gets a fresh random DEK, so a
@@ -967,7 +1716,10 @@ export class WalletController {
    */
   private async erase(): Promise<void> {
     clearSession();
-    this.privateReady = false;
+    this.readyAssets.clear();
+    // The RAM mirror goes with the rest of the wallet, so nothing can restore a
+    // session for a device that no longer holds a vault.
+    await clearPersistedSession();
     // ONE call, not seven awaits in a row.
     //
     // Interrupted between separate removes this left a half-erased device, and
@@ -1017,7 +1769,9 @@ export class WalletController {
   private async doRecoverFromMnemonic(mnemonic: string, password: string): Promise<string> {
     const phrase = mnemonic.trim().toLowerCase().replace(/\s+/g, " ");
     if (!validateMnemonic(phrase, wordlist)) {
-      throw new RecoveryError("That is not a valid recovery phrase. Check the words and the order.");
+      throw new RecoveryError(
+        "That is not a valid recovery phrase. Check the words and the order.",
+      );
     }
 
     // The authorisation, and it MUST fail closed.
@@ -1066,8 +1820,8 @@ export class WalletController {
     this.network = network;
     // Registration is per deployment, so what was true on the old network says
     // nothing about the new one. Report unknown rather than the last answer.
-    this.privateReady = false;
-    await writeLocal(KEYS.settings, { network });
+    this.readyAssets.clear();
+    await this.writeSettings();
     return this.status();
   }
 
@@ -1075,6 +1829,7 @@ export class WalletController {
   async balances(): Promise<PublicBalance[]> {
     const { address } = requireSession();
     const out: PublicBalance[] = [];
+    let exists = true;
     try {
       const native = await readNative(this.server(), address);
       // The reserve is locked by the protocol and cannot be sent. Presenting
@@ -1096,7 +1851,28 @@ export class WalletController {
       // propagate, or a network hiccup shows a funded user a confident
       // 0.0000000 with no spinner and no error.
       if (!(e instanceof AccountNotFoundError)) throw e;
+      exists = false;
       out.push({ id: "native", code: "XLM", amount: "0.0000000", authorized: true });
+    }
+
+    // Known credit assets (e.g. USDC), read only once the account exists. A
+    // trustline the account does not hold reads as null and is OMITTED, never
+    // shown as zero: "you do not trust this asset" and "you hold zero of it" are
+    // different facts. A read error propagates like the native one rather than
+    // fabricating a balance. This is the same reserve-and-authorized shape the
+    // native entry uses, so the UI renders each asset identically.
+    if (exists) {
+      for (const known of NETWORKS[this.network].knownAssets ?? []) {
+        const tl = await readTrustline(this.server(), address, new Asset(known.code, known.issuer));
+        if (!tl) continue;
+        out.push({
+          id: tl.id,
+          code: tl.code,
+          issuer: tl.issuer,
+          amount: formatAmount(tl.raw),
+          authorized: tl.authorized,
+        });
+      }
     }
     return out;
   }
@@ -1179,6 +1955,127 @@ export class WalletController {
     const prices = await readPriceSeries(symbol, range);
     const points = prices.map((p) => ({ at: p.at, value: p.price }));
     return { points, changePct: changePct(points) };
+  }
+
+  /** Cached full private history, keyed by account+network, short-lived. */
+  private privHistoryMemo?: { key: string; at: number; entries: HistoryEntry[] };
+
+  /**
+   * The account's transaction history, newest first, merged across both pockets.
+   *
+   * Public entries come from Horizon (full history, exact amounts). Private
+   * entries come from the confidential archive, replayed to decrypt this
+   * account's own amounts; they are simply absent when there is no private
+   * pocket or no archive, rather than failing the whole list. One (at, id)
+   * cursor paginates both sources together.
+   */
+  async history(
+    cursor?: string,
+    limit = 30,
+    pocket?: "public" | "private",
+    asset?: string,
+  ): Promise<HistoryPage> {
+    const { address } = requireSession();
+    const net = NETWORKS[this.network];
+    const { decodeCursor, encodeCursor, beforeCursor, byRecency, publicHistory } = await import(
+      "./chain/history"
+    );
+    const lim = Math.min(100, Math.max(1, Math.floor(limit)));
+    const before = decodeCursor(cursor);
+
+    // Each pocket's Activity shows only its own movements. Restricting to one
+    // pocket is not just a filter: viewing the PUBLIC pocket then never triggers
+    // the private replay (key derivation + a full archive decrypt), which is the
+    // heavy work. `pocket` undefined keeps the merged view.
+    const wantPrivate = pocket !== "public";
+    const wantPublic = pocket !== "private";
+
+    // The private list is computed whole (a stateful replay cannot be paged) and
+    // memoised, so scrolling does not re-fetch and re-replay the archive per page.
+    // A failed private read is not fatal: the public half still shows.
+    const priv = wantPrivate ? await this.privateHistoryAll(address, asset).catch(() => []) : [];
+    const privBelow = priv.filter((e) => beforeCursor(e.at, e.id, before));
+
+    // Public is paged from Horizon. A failed public read is not fatal: the
+    // private half still shows, and vice versa.
+    // Every confidential wrapper's deposit/withdraw legs are the private side's
+    // story, so exclude them all from the public list, not just the first.
+    const confidentialTokens = net.confidential.map((c) => c.token);
+    const pub = wantPublic
+      ? await publicHistory({
+          horizonUrl: net.horizonUrl,
+          account: address,
+          excludeCounterparties: confidentialTokens,
+          before,
+          limit: lim,
+        }).catch(() => ({ entries: [] as HistoryEntry[], more: false }))
+      : { entries: [] as HistoryEntry[], more: false };
+
+    const merged = [...privBelow, ...pub.entries].sort(byRecency);
+    const entries = merged.slice(0, lim);
+    // There is more when the merge overflowed the page, or Horizon stopped at its
+    // page cap with entries still below the cursor.
+    const more = merged.length > lim || pub.more;
+    const last = entries[entries.length - 1];
+    const nextCursor = last && more ? encodeCursor({ at: last.at, id: last.id }) : null;
+    return { entries, cursor: nextCursor };
+  }
+
+  private async privateHistoryAll(address: string, asset?: string): Promise<HistoryEntry[]> {
+    // Asset in the key: a filtered view and the merged view are different lists
+    // and must not share a memo slot.
+    const key = `${this.network}:${address}:${asset ?? "all"}`;
+    const memo = this.privHistoryMemo;
+    if (memo && memo.key === key && Date.now() - memo.at < 20_000) return memo.entries;
+    const entries = await this.computePrivateHistory(address, asset).catch(() => []);
+    this.privHistoryMemo = { key, at: Date.now(), entries };
+    return entries;
+  }
+
+  /**
+   * Private history across every configured confidential asset (or one, when
+   * `asset` is given), merged. Each wrapper has its own event stream, its own
+   * viewing key and its own symbol, so each is replayed separately; one asset
+   * failing (an archive gap, say) drops only that asset, not the others.
+   */
+  private async computePrivateHistory(address: string, asset?: string): Promise<HistoryEntry[]> {
+    const net = NETWORKS[this.network];
+    // No archive to replay from: there is simply no private history to show,
+    // which is not an error.
+    if (!net.archiveUrl) return [];
+    const assets = asset
+      ? net.confidential.filter(
+          (c) => c.token === asset || c.underlying === asset || c.symbol === asset,
+        )
+      : net.confidential;
+    if (assets.length === 0) return [];
+
+    const { deriveConfidentialKeys } = await import("./confidential-ops");
+    const { ArchiveClient } = await import("./chain/archive");
+    const { privateHistory } = await import("./private-history");
+    const client = new ArchiveClient(net.archiveUrl);
+
+    const all: HistoryEntry[] = [];
+    for (const cfg of assets) {
+      try {
+        const ctx = await this.opContext(cfg.token);
+        const { vk } = await deriveConfidentialKeys(ctx);
+        const stored: import("./chain/archive-types").StoredEvent[] = [];
+        let pageCursor: string | undefined;
+        for (;;) {
+          // `events` throws IncompleteHistoryError on a gap; caught per asset
+          // below so one asset's gap does not blank the whole private history.
+          const page = await client.events(cfg.token, address, { cursor: pageCursor, limit: 200 });
+          stored.push(...page.events);
+          if (!page.cursor || page.cursor === pageCursor) break;
+          pageCursor = page.cursor;
+        }
+        all.push(...privateHistory(stored, { vk, address }, cfg.symbol));
+      } catch {
+        // This asset's history is unavailable right now; the others still show.
+      }
+    }
+    return all;
   }
 
   private keypair(): Keypair {
@@ -1303,15 +2200,34 @@ export class WalletController {
     return new Asset(code, issuer);
   }
 
-  /** The deployment this account's private pocket lives in. */
-  private confidentialConfig() {
-    const cfg = NETWORKS[this.network].confidential[0];
+  /**
+   * The deployment a private op runs against.
+   *
+   * With more than one confidential wrapper configured (XLM, USDC, ...), the
+   * caller names which via `asset`: the wrapper token (preferred), the underlying
+   * SAC, or the symbol. No asset means the primary (first configured), so every
+   * pre-multi-asset caller resolves exactly as before.
+   */
+  private confidentialConfig(asset?: string): ConfidentialDeployment {
+    const list = NETWORKS[this.network].confidential;
+    if (asset) {
+      const found = list.find(
+        (c) => c.token === asset || c.underlying === asset || c.symbol === asset,
+      );
+      if (!found) {
+        throw new PrivatePocketError(
+          "No private pocket is deployed for that asset on this network.",
+        );
+      }
+      return found;
+    }
+    const cfg = list[0];
     if (!cfg) throw new PrivatePocketError("No private pocket is deployed on this network.");
     return cfg;
   }
 
-  private async opContext(): Promise<OpContext> {
-    const cfg = this.confidentialConfig();
+  private async opContext(asset?: string): Promise<OpContext> {
+    const cfg = this.confidentialConfig(asset);
     const { BundledCircuits } = await import("./circuits");
     return {
       server: this.server(),
@@ -1332,10 +2248,13 @@ export class WalletController {
    * envelope is retained by handle exactly as buildPayment does, so the bytes
    * signed at confirm are the bytes summarised here.
    */
-  async buildPrivateOp(req: PrivateOpRequest): Promise<{ handle: string; summary: PrivateOpSummary }> {
+  async buildPrivateOp(
+    req: PrivateOpRequest,
+    asset?: string,
+  ): Promise<{ handle: string; summary: PrivateOpSummary }> {
     return this.exclusive(async () => {
       try {
-        return await this.doBuildPrivateOp(req);
+        return await this.doBuildPrivateOp(req, asset);
       } finally {
         // Whatever happened, the worker is no longer mid-phase. Leaving a
         // stale phase behind would have the popup narrate a step that ended.
@@ -1346,6 +2265,7 @@ export class WalletController {
 
   private async doBuildPrivateOp(
     req: PrivateOpRequest,
+    asset?: string,
   ): Promise<{ handle: string; summary: PrivateOpSummary }> {
     const { address } = requireSession();
     // When a shield's deposit lands and its merge does not, the wallet tells
@@ -1372,7 +2292,7 @@ export class WalletController {
     if (req.kind !== "merge" || !(await this.unresolvedIsMerge())) {
       await this.assertNothingUnresolved();
     }
-    const cfg = this.confidentialConfig();
+    const cfg = this.confidentialConfig(asset);
     // Trap 14: refuse to prove against a deployment whose verification key is
     // not the one this build proves against. A mismatch otherwise surfaces as
     // an opaque contract error at submit time, after the user has waited
@@ -1385,7 +2305,7 @@ export class WalletController {
       await this.assertVk(cfg, circuit);
     }
     this.setPhase("Loading the circuit…");
-    const ctx = await this.opContext();
+    const ctx = await this.opContext(cfg.token);
     const ops = await import("./confidential-ops");
 
     switch (req.kind) {
@@ -1402,15 +2322,18 @@ export class WalletController {
           tx,
           {
             kind: "register",
-          effects: [
-            "Create a confidential account for this address",
-            "Bind your OWN auditor key, derived from your recovery phrase. " +
-              "Nobody else can read your amounts",
-            "This binding is permanent and cannot be changed for this account",
-            "Publish that this address has a private pocket. This is not reversible",
-            `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
-          ],
-        }, { resolve: openingsResolution({ ...openings, syncedThrough: 0 }) });
+            effects: [
+              "Create a confidential account for this address",
+              "Bind your OWN auditor key, derived from your recovery phrase. " +
+                "Nobody else can read your amounts",
+              "This binding is permanent and cannot be changed for this account",
+              "Publish that this address has a private pocket. This is not reversible",
+              `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
+            ],
+          },
+          { resolve: openingsResolution({ ...openings, syncedThrough: 0 }) },
+          cfg.token,
+        );
       }
 
       case "shield": {
@@ -1421,16 +2344,21 @@ export class WalletController {
         // time against the sequence the deposit actually consumed, which is why
         // the envelope built alongside it was never signed.
         const { deposit } = await ops.buildShield(ctx, amount);
-        return this.stagePrivate(deposit, {
-          kind: "shield",
-          amount: formatAmount(amount),
-          effects: [
-            `Move ${formatAmount(amount)} XLM from the public pocket into the private one`,
-            "This deposit amount is PUBLIC on the ledger. Only later transfers hide amounts",
-            "A second signature then makes it spendable",
-            `Pay a network fee of ${formatAmount(BigInt(deposit.fee))} XLM`,
-          ],
-        }, { resolve: { kind: "credit", amount: amount.toString() }, follow: true });
+        return this.stagePrivate(
+          deposit,
+          {
+            kind: "shield",
+            amount: formatAmount(amount),
+            effects: [
+              `Move ${formatAmount(amount)} ${cfg.symbol} from the public pocket into the private one`,
+              "This deposit amount is PUBLIC on the ledger. Only later transfers hide amounts",
+              "A second signature then makes it spendable",
+              `Pay a network fee of ${formatAmount(BigInt(deposit.fee))} XLM`,
+            ],
+          },
+          { resolve: { kind: "credit", amount: amount.toString() }, follow: true },
+          cfg.token,
+        );
       }
 
       case "merge": {
@@ -1443,12 +2371,15 @@ export class WalletController {
           tx,
           {
             kind: "merge",
-          effects: [
-            "Fold everything you have received into your spendable balance",
-            "Amounts stay hidden. This proves nothing and reveals nothing",
-            `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
-          ],
-        }, { resolve: { kind: "merge" } });
+            effects: [
+              "Fold everything you have received into your spendable balance",
+              "Amounts stay hidden. This proves nothing and reveals nothing",
+              `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
+            ],
+          },
+          { resolve: { kind: "merge" } },
+          cfg.token,
+        );
       }
 
       case "transfer": {
@@ -1462,7 +2393,7 @@ export class WalletController {
         const stored = await this.requireOpenings(address, cfg.token);
         if (amount > stored.spendable.value) {
           throw new PrivatePocketError(
-            `That is more than your spendable balance of ${formatAmount(stored.spendable.value)} XLM. ` +
+            `That is more than your spendable balance of ${formatAmount(stored.spendable.value)} ${cfg.symbol}. ` +
               `Received funds must be made spendable first.`,
           );
         }
@@ -1482,27 +2413,30 @@ export class WalletController {
           tx,
           {
             kind: "transfer",
-          to: to.value,
-          amount: formatAmount(amount),
-          effects: [
-            `Send ${formatAmount(amount)} XLM privately to this address`,
-            "The AMOUNT is hidden. Both addresses are PUBLIC on the ledger, permanently",
-            // Under D8 each side's auditor is itself, so the honest statement
-            // is who can read this, not two opaque integers. A7 found this
-            // printing "Auditor #0 and auditor #0", which told the user
-            // nothing and hid that both were the operator's key.
-            recipient.auditorId === mine.auditorId
-              ? `You and the recipient share auditor #${mine.auditorId}, which can read this amount`
-              : "Your auditor key and the recipient's can each read this amount. Yours is your own",
-            `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
-          ],
-        }, {
-          resolve: openingsResolution({
-            spendable: newSpendable,
-            receiving: stored.receiving,
-            syncedThrough: stored.syncedThrough,
-          }),
-        });
+            to: to.value,
+            amount: formatAmount(amount),
+            effects: [
+              `Send ${formatAmount(amount)} ${cfg.symbol} privately to this address`,
+              "The AMOUNT is hidden. Both addresses are PUBLIC on the ledger, permanently",
+              // Under D8 each side's auditor is itself, so the honest statement
+              // is who can read this, not two opaque integers. A7 found this
+              // printing "Auditor #0 and auditor #0", which told the user
+              // nothing and hid that both were the operator's key.
+              recipient.auditorId === mine.auditorId
+                ? `You and the recipient share auditor #${mine.auditorId}, which can read this amount`
+                : "Your auditor key and the recipient's can each read this amount. Yours is your own",
+              `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
+            ],
+          },
+          {
+            resolve: openingsResolution({
+              spendable: newSpendable,
+              receiving: stored.receiving,
+              syncedThrough: stored.syncedThrough,
+            }),
+          },
+          cfg.token,
+        );
       }
 
       case "unshield": {
@@ -1510,7 +2444,7 @@ export class WalletController {
         const stored = await this.requireOpenings(address, cfg.token);
         if (amount > stored.spendable.value) {
           throw new PrivatePocketError(
-            `That is more than your spendable balance of ${formatAmount(stored.spendable.value)} XLM.`,
+            `That is more than your spendable balance of ${formatAmount(stored.spendable.value)} ${cfg.symbol}.`,
           );
         }
         const chain = await this.readOwnAccount(address, cfg);
@@ -1526,19 +2460,22 @@ export class WalletController {
           tx,
           {
             kind: "unshield",
-          amount: formatAmount(amount),
-          effects: [
-            `Move ${formatAmount(amount)} XLM from the private pocket back to the public one`,
-            "This withdrawal amount becomes PUBLIC on the ledger",
-            `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
-          ],
-        }, {
-          resolve: openingsResolution({
-            spendable: newSpendable,
-            receiving: stored.receiving,
-            syncedThrough: stored.syncedThrough,
-          }),
-        });
+            amount: formatAmount(amount),
+            effects: [
+              `Move ${formatAmount(amount)} ${cfg.symbol} from the private pocket back to the public one`,
+              "This withdrawal amount becomes PUBLIC on the ledger",
+              `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
+            ],
+          },
+          {
+            resolve: openingsResolution({
+              spendable: newSpendable,
+              receiving: stored.receiving,
+              syncedThrough: stored.syncedThrough,
+            }),
+          },
+          cfg.token,
+        );
       }
     }
   }
@@ -1613,6 +2550,7 @@ export class WalletController {
     tx: Transaction,
     summary: Omit<PrivateOpSummary, "fee">,
     after: StagedAfter,
+    token: string,
   ): { handle: string; summary: PrivateOpSummary } {
     const handle = tx.hash().toString("hex");
     this.pending.set(handle, {
@@ -1620,6 +2558,10 @@ export class WalletController {
       at: Date.now(),
       private: after,
       kind: summary.kind,
+      // The op's OWN confidential token, so confirm (and the shield follow-merge,
+      // and the staged record) act on this asset, not whatever is configured
+      // first. Without it a USDC op would stage and merge against XLM.
+      token,
     });
     this.prunePending();
     return { handle, summary: { ...summary, fee: formatAmount(BigInt(tx.fee)) } };
@@ -1633,7 +2575,9 @@ export class WalletController {
    * trusted. A mismatch is reported rather than stored: a wrong opening is
    * indistinguishable from a lost one later, and both make funds unspendable.
    */
-  async confirmPrivateOp(handle: string): Promise<{ hash: string; ledger: number; followed?: string }> {
+  async confirmPrivateOp(
+    handle: string,
+  ): Promise<{ hash: string; ledger: number; followed?: string }> {
     return this.exclusive(async () => {
       try {
         return await this.doConfirmPrivateOp(handle);
@@ -1664,8 +2608,17 @@ export class WalletController {
 
     // The summary already names the operation, so the kind is taken from there
     // rather than duplicated onto the staged record where the two could drift.
-    const outcome = await this.submitStaged(decoded, entry.private.resolve, entry.kind);
-    if (outcome.kind !== "succeeded") throw new SubmitOutcomeError(describeOutcome(outcome), outcome);
+    const outcome = await this.submitStaged(
+      decoded,
+      entry.private.resolve,
+      entry.kind,
+      entry.token,
+    );
+    if (outcome.kind !== "succeeded")
+      throw new SubmitOutcomeError(describeOutcome(outcome), outcome);
+    // A new confidential event exists now; the cached history is stale (it will
+    // repopulate from the archive once that event is ingested).
+    this.privHistoryMemo = undefined;
 
     if (!entry.private.follow) return { hash: outcome.hash, ledger: outcome.ledger };
 
@@ -1676,19 +2629,26 @@ export class WalletController {
     // wallet diverged from the chain by exactly the deposit, unspendable, and
     // pointing the user at a button the diverged screen does not offer.
     const ops = await import("./confidential-ops");
-    const ctx = await this.opContext();
+    // The SAME asset as the deposit. Rebuilding via the default deployment here
+    // would prove and merge against the first-configured wrapper, not the one
+    // the user shielded into.
+    const ctx = await this.opContext(entry.token);
     const mergeTx = await ops.buildMerge(ctx);
-      // A shield is TWO transactions, each with its own confirmation poll. The
-      // user learned about the second one afterwards, in the receipt. Name it
-      // while it is happening instead.
-      this.setPhase("Deposit confirmed. Making it spendable, one more transaction…");
-      const second = await this.submitStaged(mergeTx, { kind: "merge" }, "merge");
+    // A shield is TWO transactions, each with its own confirmation poll. The
+    // user learned about the second one afterwards, in the receipt. Name it
+    // while it is happening instead.
+    this.setPhase("Deposit confirmed. Making it spendable, one more transaction…");
+    const second = await this.submitStaged(mergeTx, { kind: "merge" }, "merge", entry.token);
     if (second.kind !== "succeeded") {
       const deposited =
-        entry.private.resolve.kind === "credit" ? formatAmount(BigInt(entry.private.resolve.amount)) : null;
+        entry.private.resolve.kind === "credit"
+          ? formatAmount(BigInt(entry.private.resolve.amount))
+          : null;
       throw new PrivatePocketError(
         `The deposit succeeded (${outcome.hash}) but making it spendable did not. ` +
-          (deposited ? `Your ${deposited} XLM is in the receiving balance` : "Your funds are in the receiving balance") +
+          (deposited
+            ? `Your ${deposited} XLM is in the receiving balance`
+            : "Your funds are in the receiving balance") +
           `, and Pocket has recorded it. Press "Make spendable" to finish.`,
       );
     }
@@ -1710,8 +2670,9 @@ export class WalletController {
     tx: Transaction,
     resolve: StagedResolution | null,
     kind?: string,
+    token?: string,
   ): Promise<SubmitOutcome> {
-    const outcome = await this.signAndSubmit(tx, resolve, kind);
+    const outcome = await this.signAndSubmit(tx, resolve, kind, token);
     if (outcome.kind === "succeeded") await this.applyStaged(outcome.hash);
     else if (outcome.kind !== "pending") await this.discardStaged(outcome.hash);
     return outcome;
@@ -1721,6 +2682,7 @@ export class WalletController {
     tx: Transaction,
     resolve: StagedResolution | null = null,
     kind?: string,
+    token?: string,
   ): Promise<SubmitOutcome> {
     // A Soroban invocation needs its footprint and auth entries populated, and
     // simulation is the only thing that can do it. Signing before this would
@@ -1737,7 +2699,10 @@ export class WalletController {
       const { address } = requireSession();
       await this.writeStaged({
         hash: prepared.hash().toString("hex"),
-        token: this.confidentialConfig().token,
+        // The op's own token, threaded from confirm. Falls back to the primary
+        // only for a staged write with no token supplied, which today never
+        // happens on the private path.
+        token: token ?? this.confidentialConfig().token,
         address,
         resolve,
       });
@@ -1803,8 +2768,8 @@ export class WalletController {
 
   private async doRunKeepAlive(): Promise<KeepAlivePlan> {
     const session = getSession();
-    const cfg = NETWORKS[this.network].confidential[0];
-    if (!session || !cfg) return { due: false, nextCheckMs: jitteredDelayMs(7) };
+    const list = NETWORKS[this.network].confidential;
+    if (!session || list.length === 0) return { due: false, nextCheckMs: jitteredDelayMs(7) };
 
     // An alarm fires whenever it likes, including on top of an unresolved user
     // submission. Two envelopes against one sequence number means one of them
@@ -1812,18 +2777,29 @@ export class WalletController {
     const unresolved = await this.inFlight();
     if (unresolved && !unresolved.expired) return { due: false, nextCheckMs: jitteredDelayMs(1) };
 
-    const ttl = await readAccountTtl(this.server(), cfg.token, session.address, this.network);
-    const plan = planKeepAlive(ttl, this.recentlyActive());
-    if (!plan.due) return plan;
-
-    const source = await this.server().getAccount(session.address);
-    const tx = buildKeepAlive(source, cfg.token, session.address, NETWORKS[this.network].passphrase);
-    // Goes through the same path as every other invocation, so it is simulated
-    // for its footprint and auth entries before being signed. Building one
-    // without that produces an envelope the network rejects outright.
-    const outcome = await this.signAndSubmit(tx);
-    if (outcome.kind === "succeeded") this.lastKeepAlive = Date.now();
-    return { ...plan, due: false, nextCheckMs: jitteredDelayMs(7) };
+    // Each configured wrapper is its OWN confidential account with its OWN TTL.
+    // Bumping only the first would let every other asset's account archive
+    // silently. They run one at a time (each awaits its own confirmation), so
+    // the account sequence a later bump reads already reflects the earlier one.
+    for (const cfg of list) {
+      const ttl = await readAccountTtl(this.server(), cfg.token, session.address, this.network);
+      const plan = planKeepAlive(ttl, this.recentlyActive());
+      if (!plan.due) continue;
+      // Fetched per bump: two bumps from one stale source object would collide
+      // on the sequence number.
+      const source = await this.server().getAccount(session.address);
+      const tx = buildKeepAlive(
+        source,
+        cfg.token,
+        session.address,
+        NETWORKS[this.network].passphrase,
+      );
+      // Same path as every other invocation, so it is simulated for its footprint
+      // and auth entries before signing.
+      const outcome = await this.signAndSubmit(tx);
+      if (outcome.kind === "succeeded") this.lastKeepAlive = Date.now();
+    }
+    return { due: false, nextCheckMs: jitteredDelayMs(7) };
   }
 
   /** Verification keys already confirmed this session, per (deployment, circuit). */
@@ -1842,9 +2818,18 @@ export class WalletController {
    * ever named in a confidential register, because that binding is immutable
    * for the life of the account and there is no second chance at it.
    */
-  private async ownAuditorId(ctx: OpContext, cfg: { auditor: string }): Promise<number> {
+  private async ownAuditorId(
+    ctx: OpContext,
+    cfg: { auditor: string; token: string },
+  ): Promise<number> {
     const { address } = requireSession();
-    const key = `${KEYS.auditorId}.${cfg.auditor}.${address}`;
+    // Keyed by the TOKEN as well as the shared registry. The auditor registry is
+    // shared across wrappers, but the account's own auditor key is derived per
+    // token (keys/auditor.ts binds the wrapper address), so XLM and USDC produce
+    // different keys. Without the token here they would collide on one id slot,
+    // and registering the second asset would reuse the first's id, whose
+    // on-chain key does not match, so the bind check refuses it.
+    const key = `${KEYS.auditorId}.${cfg.auditor}.${cfg.token}.${address}`;
     const ops = await import("./confidential-ops");
     const { publicKey } = await ops.deriveOwnAuditorKey(ctx);
 
@@ -1915,7 +2900,10 @@ export class WalletController {
     cfg: { verifier: string; token: string },
     circuit: CircuitName,
   ): Promise<void> {
-    const key = `${cfg.verifier}:${circuit}`;
+    // Per (token, verifier, circuit): the verifier is shared across wrappers,
+    // but the check reads the binding out of THIS token's instance storage, so a
+    // pass for one wrapper is not a pass for another.
+    const key = `${cfg.verifier}:${cfg.token}:${circuit}`;
     if (this.vkChecked.has(key)) return;
     const { address } = requireSession();
     const source = await this.server().getAccount(address);
@@ -1953,7 +2941,7 @@ export class WalletController {
     if (verifyAgainstChain(stored, account).ok) return stored;
 
     try {
-      const ctx = await this.opContext();
+      const ctx = await this.opContext(cfg.token);
       const { deriveConfidentialKeys } = await import("./confidential-ops");
       const { vk } = await deriveConfidentialKeys(ctx);
       const { findInbound, creditInbound } = await import("./inbound");
@@ -2022,7 +3010,26 @@ export class WalletController {
   /** Envelopes this controller built, awaiting confirmation. Keyed by tx hash. */
   private pending = new Map<
     string,
-    { xdr: string; at: number; private?: StagedAfter; kind?: string }
+    {
+      xdr: string;
+      at: number;
+      private?: StagedAfter;
+      kind?: string;
+      token?: string;
+      /**
+       * The burn to build after a CCTP `approve` lands. Carried here because
+       * CCTP outbound is two transactions (approve, then deposit_for_burn) and
+       * only the approve is built up front, exactly like a shield's follow-merge.
+       */
+      cctpBurn?: {
+        destinationDomain: number;
+        mintRecipient: string; // 32-byte hex
+        amount: string; // stroops (7dp)
+        maxFee: string; // 6dp CCTP units
+        minFinality: number;
+        burnToken: string; // USDC SAC
+      };
+    }
   >();
   private static readonly PENDING_TTL_MS = 10 * 60_000;
 
@@ -2134,7 +3141,6 @@ function resolveStaged(
   }
   return { ...applyMerge(stored), syncedThrough: stored.syncedThrough };
 }
-
 
 export { WrongPasswordError, readTrustline };
 

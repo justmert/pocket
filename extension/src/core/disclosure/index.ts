@@ -1,5 +1,20 @@
 // Selective disclosure.
 //
+// STATUS: scaffolding, not a shipped feature. What lives here is the off-chain
+// binding and sealing MATH (disclosureBinding, sealDisclosedAmount/open) plus
+// the type surface (DisclosureBundle, VerificationOutcome). What is MISSING is
+// everything that makes a disclosed number trustworthy: no producer fills
+// DisclosureBundle.proof, no verifier returns a VerificationOutcome, there is no
+// wire format, and no disclosure circuit is vendored (public/vendor/circuits
+// holds only the six core circuits). The proving and verifying circuits
+// (disclose_recipient, disclose_sender) exist only upstream, unported, at
+// resources/upstream/stellar-confidential-token-demo/packages/disclosure.
+//
+// Therefore: do NOT surface a "produce a proof" flow over these primitives. It
+// would hand a counterparty a bundle with an empty `proof`, an unverifiable
+// number dressed as a proven one, which is the one thing a privacy wallet must
+// never do. Shipping the feature means porting the two circuits first.
+//
 // An entirely OFF-CHAIN layer. The contract is untouched; proving and verifying
 // both happen client-side with the chain as a read-only source of truth.
 // Disclosure circuits MUST NOT be registered with the on-chain verifier set.

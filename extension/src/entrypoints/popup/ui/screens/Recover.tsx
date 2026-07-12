@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { call } from "../rpc";
-import { Button, ButtonStack, Field, Header, Notice, Screen } from "../primitives";
+import { Button, ButtonStack, Field, Header, Notice, Screen, TextButton } from "../primitives";
 import { space, text, type Theme } from "../theme";
 import type { NetworkId } from "../../../../core/config";
 import { privateLossAfterErase } from "../copy";
@@ -50,7 +50,7 @@ export function Recover({
 
   if (!acknowledged) {
     return (
-      <Screen t={t}>
+      <Screen t={t} still>
         <Header t={t} title="Erase and restore" onBack={onCancel} />
         <Notice t={t} tone="danger">
           This erases the wallet on this device. Everything it holds goes with it.
@@ -82,8 +82,11 @@ export function Recover({
         </Notice>
 
         <ButtonStack>
+          {/* the safe exit is the loud accent button and states the outcome
+              rather than a direction, matching the erase-wallet door in
+              settings so the same act reads the same way from both places. */}
           <Button t={t} onClick={onCancel}>
-            Go back
+            Keep this wallet
           </Button>
           <Button t={t} variant="danger" onClick={() => setAcknowledged(true)}>
             I understand, continue
@@ -94,7 +97,7 @@ export function Recover({
   }
 
   return (
-    <Screen t={t}>
+    <Screen t={t} still>
       <Header t={t} title="Erase and restore" onBack={() => setAcknowledged(false)} />
       <form
         onSubmit={(e) => {
@@ -104,7 +107,11 @@ export function Recover({
       >
         <Field
           t={t}
-          label={words ? `Recovery phrase (${words} ${words === 1 ? "word" : "words"})` : "Recovery phrase"}
+          label={
+            words
+              ? `Recovery phrase (${words} ${words === 1 ? "word" : "words"})`
+              : "Recovery phrase"
+          }
           value={phrase}
           onChange={setPhrase}
           placeholder="12 or 24 words, separated by spaces"
@@ -146,9 +153,11 @@ export function Recover({
           <Button t={t} type="submit" variant="danger" disabled={!ready} busy={busy}>
             {busy ? "Restoring" : "Erase and restore"}
           </Button>
-          <Button t={t} variant="quiet" onClick={onCancel}>
-            Cancel
-          </Button>
+          {/* the quiet abandon-step control is a text link, matching the "Back"
+              affordance the onboarding create/import flows use for the same role. */}
+          <TextButton t={t} tone="sub" onClick={onCancel}>
+            Back
+          </TextButton>
         </ButtonStack>
       </form>
     </Screen>

@@ -316,7 +316,7 @@ test.describe("the public balance", () => {
       timeout: WAITS.ledgerRead,
     });
     await expect(sheet.getByText(/^50000\.0000000\s*XLM$/)).toBeVisible();
-    await expect(sheet.getByRole("button", { name: "Confirm and send" })).toBeEnabled();
+    await expect(sheet.getByRole("button", { name: "Confirm" })).toBeEnabled();
   });
 
   test("TRUSTED: a deflated figure refuses a payment the account can afford", async ({
@@ -625,13 +625,17 @@ test.describe("submission", () => {
     await wallet.composePayment({ to: RECIPIENT, amount: "1.5", memo: "never-happened" });
     const hash = await wallet.confirmPayment();
 
-    // A receipt, stating a ledger number the wallet did not verify and cannot.
-    await expect(wallet.page.getByText(`Confirmed in ledger ${FABRICATED_LEDGER}.`)).toBeVisible();
+    // A receipt for a confirmation the wallet did not verify and cannot: confirm*
+    // resolves on the provider's "included" verdict, so "Transaction successful"
+    // is shown for a transaction that only the provider claims happened. (The
+    // ledger number the receipt used to print, of the provider's choosing, is no
+    // longer surfaced; the trusted verdict it stood on is what this documents.)
+    await expect(wallet.receipt()).toBeVisible();
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
 
     // The oracle shares no code with the wallet and has never heard of this
-    // transaction. The user is holding a hash, a ledger number and a receipt for
-    // a payment that does not exist.
+    // transaction. The user is holding a hash and a receipt for a payment that
+    // does not exist.
     expect(await ledger.transaction(hash)).toBeNull();
   });
 
@@ -656,7 +660,7 @@ test.describe("submission", () => {
 
     await wallet.openSend();
     await wallet.composePayment({ to: RECIPIENT, amount: "1.5" });
-    await wallet.page.getByRole("button", { name: "Confirm and send" }).click();
+    await wallet.page.getByRole("button", { name: "Confirm" }).click();
 
     // The verdict is believed whole: charged, sequence consumed. That is the
     // right sentence for a real failure and it is unverifiable here, so a
@@ -693,7 +697,7 @@ test.describe("submission", () => {
 
     await wallet.openSend();
     await wallet.composePayment({ to: RECIPIENT, amount: "1.5" });
-    await wallet.page.getByRole("button", { name: "Confirm and send" }).click();
+    await wallet.page.getByRole("button", { name: "Confirm" }).click();
 
     // The one instruction that must follow an unresolved submission.
     await expect(wallet.page.getByText(/It has not confirmed yet/)).toBeVisible({
@@ -749,7 +753,7 @@ test.describe("submission", () => {
 
     await wallet.openSend();
     await wallet.composePayment({ to: RECIPIENT, amount: "1.5", memo: "did-land" });
-    await wallet.page.getByRole("button", { name: "Confirm and send" }).click();
+    await wallet.page.getByRole("button", { name: "Confirm" }).click();
 
     await expect(wallet.page.getByText(/The network rejected it \(txBadSeq\)/)).toBeVisible({
       timeout: WAITS.submission,
@@ -796,7 +800,7 @@ test.describe("submission", () => {
     // a classic payment is never simulated, so there is nothing for an RPC to
     // inflate here.
     await expect(sheet.getByText("Pay a network fee of 0.0000100 XLM")).toBeVisible();
-    await wallet.page.getByRole("button", { name: "Confirm and send" }).click();
+    await wallet.page.getByRole("button", { name: "Confirm" }).click();
     await expect(wallet.page.getByText(/It has not confirmed yet/)).toBeVisible({
       timeout: WAITS.submission,
     });
@@ -864,7 +868,7 @@ test.describe("submission", () => {
 
     await wallet.openSend();
     await wallet.composePayment({ to: RECIPIENT, amount: "1.5" });
-    await wallet.page.getByRole("button", { name: "Confirm and send" }).click();
+    await wallet.page.getByRole("button", { name: "Confirm" }).click();
     await expect(wallet.page.getByText(/It has not confirmed yet/)).toBeVisible({
       timeout: WAITS.submission,
     });

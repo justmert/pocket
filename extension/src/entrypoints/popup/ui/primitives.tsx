@@ -1,11 +1,7 @@
 // the shared visual vocabulary. every screen and sheet composes these, so a
 // button, a field or a sheet is the same object wherever it appears.
 import { useEffect, useId, useRef, useState } from "react";
-import type {
-  ButtonHTMLAttributes,
-  CSSProperties,
-  ReactNode,
-} from "react";
+import type { ButtonHTMLAttributes, CSSProperties, Ref, ReactNode, UIEventHandler } from "react";
 import { FRAME, fonts, motion, radius, ROW_STAGGER_MS, space, text, type Theme } from "./theme";
 import { Back as BackIcon, Close as CloseIcon } from "./icons";
 
@@ -18,21 +14,39 @@ import { Back as BackIcon, Close as CloseIcon } from "./icons";
  * toolbar popup is sized from its own document, so a viewport unit resolves
  * against a 25px first layout and crushes the frame chrome is about to measure.
  */
-export function Frame({ t, children }: { t: Theme; children: ReactNode }) {
+export function Frame({
+  t,
+  children,
+  className,
+}: {
+  t: Theme;
+  children: ReactNode;
+  /** full-frame ROUTES (Send, Move) pass `pocket-page` so they enter like a screen
+   *  instead of hard-cutting into place; Screen animates its inner ScrollArea. */
+  className?: string;
+}) {
   const cap = useWindowCap();
   return (
     <div
+      className={className}
       style={{
         position: "relative",
+        // a FIXED pixel width, and nothing viewport-relative: chrome sizes the
+        // toolbar popup to the frame's used width, and the root chain (#root/body)
+        // has no width of its own. `width:100%` had nothing to resolve against and
+        // `maxWidth:100vw` clamped against a `vw` that is ~0 during the popup's
+        // initial auto-size; either one collapsed the whole popup to a few pixels.
+        // 384 is the popup's identity and it must be a plain length.
         width: FRAME.width,
         height: FRAME.height,
         maxHeight: cap,
         overflow: "hidden",
         background: t.bg,
         color: t.text,
-        fontFamily: fonts.sans,
-        // the surface crossfades under the wash instead of hard cutting.
-        transition: `background ${motion.pocket} ease`,
+        fontFamily: fonts.body,
+        // the surface crossfades on a pocket switch instead of hard cutting, on the
+        // pocket-crossing duration and the shared "arriving" easing (not bare ease).
+        transition: `background ${motion.pocket} ${motion.enter}`,
       }}
     >
       {children}
@@ -63,15 +77,25 @@ export function ScrollArea({
   background,
   className,
   style,
+  onScroll,
+  ref,
 }: {
   children: ReactNode;
   background?: string;
   className?: string;
   style?: CSSProperties;
+  /** the scroll position drives the home screen's collapsing header. */
+  onScroll?: UIEventHandler<HTMLDivElement>;
+  /** Home attaches a NATIVE (non-passive) wheel listener here to collapse/expand
+   *  its header on the wheel intent, before the browser scrolls, which a passive
+   *  React onWheel cannot do. */
+  ref?: Ref<HTMLDivElement>;
 }) {
   return (
     <div
+      ref={ref}
       className={className}
+      onScroll={onScroll}
       style={{
         position: "absolute",
         inset: 0,
@@ -118,14 +142,15 @@ export function Screen({
 export function Header({
   t,
   title,
+  subtitle,
   onBack,
-  onClose,
   right,
 }: {
   t: Theme;
   title?: string;
+  /** a quiet second line under the title, e.g. the direction a Move is headed. */
+  subtitle?: ReactNode;
   onBack?: () => void;
-  onClose?: () => void;
   right?: ReactNode;
 }) {
   return (
@@ -140,14 +165,14 @@ export function Header({
     >
       {onBack && <IconButton t={t} glyph="back" onClick={onBack} label="Back" />}
       {title ? (
-        <h1 style={{ ...text.screenTitle, color: t.text, minWidth: 0, flex: 1, margin: 0 }}>
-          {title}
-        </h1>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h1 style={{ ...text.screenTitle, color: t.text, minWidth: 0, margin: 0 }}>{title}</h1>
+          {subtitle && <div style={{ ...text.rowSub, color: t.sub, marginTop: 2 }}>{subtitle}</div>}
+        </div>
       ) : (
         <div style={{ flex: 1 }} />
       )}
       {right}
-      {onClose && <IconButton t={t} glyph="close" onClick={onClose} label="Close" />}
     </div>
   );
 }
@@ -162,13 +187,16 @@ export function IconButton({
   t,
   glyph,
   label,
-  size = 38,
+  size = 34,
   children,
+  style,
+  className,
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   t: Theme;
-  /** the two the product ships. anything else comes in as children. */
-  glyph?: "back" | "close";
+  /** "back" is the one built-in glyph; anything else (e.g. the close X) is passed
+   *  as children. */
+  glyph?: "back";
   label: string;
   size?: number;
   children?: ReactNode;
@@ -179,6 +207,9 @@ export function IconButton({
       {...rest}
       type="button"
       aria-label={label}
+      // pk-tap gives the wallet's most-used control (back / close / refresh / more)
+      // the same hover veil every tappable now carries.
+      className={["pk-tap", className].filter(Boolean).join(" ")}
       style={{
         all: "unset",
         boxSizing: "border-box",
@@ -187,17 +218,71 @@ export function IconButton({
         height: size,
         borderRadius: "50%",
         background: t.accentSoft,
-        color: t.dark ? t.accent : t.text,
+        // the glyph must clear 4.5:1 on accentSoft in BOTH pockets; the raw accent
+        // does not on the dark fill, so this reads from the dedicated stop.
+        color: t.accentOnSoft,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         flex: "0 0 auto",
+        // callers may position the button (e.g. the sheet's absolute close X);
+        // their style merges on top of the base rather than being dropped.
+        ...style,
       }}
     >
       {glyph === "back" && <BackIcon size={inner} sw={2.4} />}
-      {glyph === "close" && <CloseIcon size={inner} sw={2.4} />}
       {!glyph && children}
     </button>
+  );
+}
+
+/**
+ * a round disc holding a centred glyph or mark.
+ *
+ * this shape (a circle filled with the accent, its ink drawn on top, flex
+ * centred) was hand-rolled at four sizes across Home, Send, Move and the asset
+ * detail sheet, so a colour or a radius fix had to be made in each. one
+ * primitive owns it; `tone` picks the fill from tokens: `accent` for the lit
+ * disc every screen shows, `field` for the neutral plate the detail rows use.
+ */
+export function IconDisc({
+  t,
+  size,
+  tone = "accent",
+  children,
+}: {
+  t: Theme;
+  size: number;
+  tone?: "accent" | "accentSoft" | "field";
+  children: ReactNode;
+}) {
+  const tones: Record<string, { bg: string; fg: string }> = {
+    accent: { bg: t.accent, fg: t.onAccent },
+    // the pocket-tinted tile the asset marks sit on: the same soft accent every
+    // list row draws them over, so the detail header matches the list.
+    accentSoft: { bg: t.accentSoft, fg: t.accentOnSoft },
+    field: { bg: t.field, fg: t.sub },
+  };
+  const c = tones[tone]!;
+  return (
+    <span
+      aria-hidden
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        flex: "0 0 auto",
+        background: c.bg,
+        color: c.fg,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        // a mark can never be the thing that overflows the disc.
+        overflow: "hidden",
+      }}
+    >
+      {children}
+    </span>
   );
 }
 
@@ -206,6 +291,7 @@ export function IconButton({
 export function Button({
   t,
   variant = "primary",
+  size = "lg",
   busy = false,
   disabled,
   children,
@@ -213,7 +299,14 @@ export function Button({
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   t: Theme;
-  variant?: "primary" | "quiet" | "danger";
+  variant?: "primary" | "soft" | "quiet" | "danger";
+  /**
+   * `lg` is the full-width 52px call to action; `pill` is a compact auto-width
+   * action for the same solid-accent look at chip scale (Use max, an inline
+   * action). the variant (primary/quiet/danger) picks the fill either way, so the
+   * five hand-rolled `all: unset` accent pills stop each re-deriving that fill.
+   */
+  size?: "lg" | "pill";
   /** shows a spinner in place of the label and blocks a second press. */
   busy?: boolean;
   children: ReactNode;
@@ -224,42 +317,67 @@ export function Button({
   // the document body, which is exactly where they were left every time they
   // pressed the button that starts the slow work.
   const off = disabled || busy;
+  // primary is a solid accent with an inner white glow for the lit look. the glow
+  // STAYS on the full-width CTA. what read as a border was the `border: 1px solid
+  // transparent` below: a border sits OUTSIDE the inset glow, so it left a 1px hair
+  // of the un-lit base accent right around the rim. the fix is to drop the border,
+  // not the glow, so the glow reaches the very edge and there is no ring.
+  //
+  // the small pill drops the glow: at chip scale the inner white sheen read as a
+  // soft gradient rather than a button, and "Use max" / "Paste" want a plain solid
+  // fill with white text. danger carries the same glow as primary, so the two
+  // choices on a destructive confirm ("Keep this wallet" / "I understand") share
+  // one treatment and differ only in colour.
+  const glow = size === "pill" ? undefined : "inset 0 0 14px rgba(255,255,255,0.65)";
   const fills: Record<string, CSSProperties> = {
-    primary: {
-      background: t.accentFill,
-      color: t.onAccent,
-      boxShadow: t.dark ? "none" : "0 3px 10px -6px rgba(120,90,0,0.45)",
-    },
+    primary: { background: t.accentFill, color: t.onAccent, boxShadow: glow },
+    soft: { background: t.accentSoft, color: t.accentOnSoft },
     quiet: { background: t.field, color: t.text, border: `1px solid ${t.line}` },
-    danger: { background: t.danger, color: t.onDanger },
+    danger: { background: t.danger, color: t.onDanger, boxShadow: glow },
   };
+  // one place decides scale: the block CTA fills its column at 52px on the button
+  // role; the pill hugs its label at chip scale. everything else (fill, radius,
+  // reset) is shared below, so the two sizes cannot drift in anything but size.
+  const sized: CSSProperties =
+    size === "pill"
+      ? { ...text.chip, width: "auto", padding: "8px 14px" }
+      : { ...text.button, width: "100%", minHeight: 52, padding: "14px 18px" };
   return (
     <button
       {...rest}
+      // pk-btn adds the reference button's hover-lighten; :hover cannot be
+      // inline. the press is already global to every button. see popup/style.css.
+      // the quiet variant opts out of the brightness lighten (which washes its pale
+      // fill toward white) and gets its own deeper-fill hover.
+      className={variant === "quiet" ? "pk-btn pk-btn-quiet" : "pk-btn"}
       type={type}
       disabled={disabled && !busy}
       aria-disabled={off || undefined}
       aria-busy={busy || undefined}
       onClick={off ? undefined : rest.onClick}
       style={{
-        ...text.button,
+        ...sized,
+        // reset the native button chrome, or the browser draws its own faint
+        // bevel/border on the pill (a dark bottom-right edge) over our fill.
+        appearance: "none",
+        WebkitAppearance: "none",
         boxSizing: "border-box",
-        width: "100%",
         minWidth: 0,
-        minHeight: 52,
-        padding: "14px 18px",
+        // a pill: the reference's ctaRadius is 30, which at this height rounds
+        // the ends fully, so radius.pill is the same shape and stays one whether
+        // the label wraps to a second line or not.
         borderRadius: radius.pill,
-        border: "1px solid transparent",
-        fontFamily: "inherit",
+        // no base border. a border (even transparent) sits outside the primary's
+        // inset glow and shows a 1px ring of the un-lit base accent, which read as
+        // a border at zoom. the quiet variant sets its own visible border below.
+        border: "none",
         cursor: off ? "not-allowed" : "pointer",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         gap: space.sm,
         overflowWrap: "anywhere",
-        ...(off
-          ? { background: t.field, color: t.faint, border: `1px solid ${t.line}` }
-          : fills[variant]),
+        ...(off ? { background: t.field, color: t.faint } : fills[variant]),
       }}
     >
       {busy && <Spinner size={17} />}
@@ -376,7 +494,9 @@ export function Field({
     background: t.field,
     color: t.text,
     border: `1px solid ${invalid ? t.danger : "transparent"}`,
-    fontFamily: mono ? fonts.mono : "inherit",
+    fontFamily: mono ? fonts.mono : fonts.body,
+    // verbatim data (the phrase import) is mono at 500; prose inputs keep 400.
+    fontWeight: 500,
     // deliberately no `outline: none`. the stylesheet owns the focus ring, and
     // an inline reset here beats it, which left a focused field with nothing to
     // show for it.
@@ -400,7 +520,10 @@ export function Field({
       {/* the hint sits OUTSIDE the label and is pointed at instead. inside it,
           a rule that appears while you type becomes part of the field's own
           name, so the field stops being findable by the name it had. */}
-      <label htmlFor={id} style={{ ...text.label, color: t.sub, display: "block", marginBottom: space.xs }}>
+      <label
+        htmlFor={id}
+        style={{ ...text.label, color: t.sub, display: "block", marginBottom: space.xs }}
+      >
         {label}
       </label>
       {multiline ? (
@@ -426,9 +549,19 @@ export function Field({
         //
         // With no trailing control the input keeps the field chrome itself, so
         // every other field in the product renders exactly as it did.
-        <div style={trailing ? { ...base, display: "flex", alignItems: "center", // the frame is 160px at chrome's maximum zoom, and a fixed 16px here plus
-            // the control's own width left the field 28px wide. it gives way first.
-            padding: "0 4px 0 clamp(8px, 4vw, 16px)" } : undefined}>
+        <div
+          style={
+            trailing
+              ? {
+                  ...base,
+                  display: "flex",
+                  alignItems: "center", // the frame is 160px at chrome's maximum zoom, and a fixed 16px here plus
+                  // the control's own width left the field 28px wide. it gives way first.
+                  padding: "0 4px 0 clamp(8px, 4vw, 16px)",
+                }
+              : undefined
+          }
+        >
           <input
             {...verbatim}
             id={id}
@@ -498,7 +631,9 @@ export function Card({
     field: { background: t.field, border: "1px solid transparent" },
   };
   return (
-    <div style={{ borderRadius: radius.lg, padding: space.md, minWidth: 0, ...tones[tone], ...style }}>
+    <div
+      style={{ borderRadius: radius.lg, padding: space.md, minWidth: 0, ...tones[tone], ...style }}
+    >
       {children}
     </div>
   );
@@ -514,6 +649,7 @@ export function Row({
   valueSub,
   onClick,
   tone = "plain",
+  iconRing = false,
   index,
 }: {
   t: Theme;
@@ -523,6 +659,9 @@ export function Row({
   value?: ReactNode;
   valueSub?: ReactNode;
   onClick?: () => void;
+  /** a token's own artwork sits in a neutral bordered frame, not an accent fill:
+   *  the logo carries the colour, so a tint behind it only competes with it. */
+  iconRing?: boolean;
   /**
    * `inert` is a row that is present but cannot be pressed.
    *
@@ -545,12 +684,19 @@ export function Row({
       {icon && (
         <span
           style={{
+            boxSizing: "border-box",
             width: 40,
             height: 40,
             borderRadius: radius.md,
-            background:
-              tone === "danger" ? t.dangerSoft : tone === "inert" ? t.field : t.accentSoft,
-            color: tone === "danger" ? t.danger : tone === "inert" ? t.faint : t.dark ? t.accent : t.text,
+            background: iconRing
+              ? "transparent"
+              : tone === "danger"
+                ? t.dangerSoft
+                : tone === "inert"
+                  ? t.field
+                  : t.accentSoft,
+            border: iconRing ? `1px solid ${t.line}` : undefined,
+            color: tone === "danger" ? t.danger : tone === "inert" ? t.faint : t.accentOnSoft,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -584,7 +730,9 @@ export function Row({
         )}
       </span>
       {(value || valueSub) && (
-        <span style={{ textAlign: "right", minWidth: 0, flex: "0 1 auto", overflowWrap: "anywhere" }}>
+        <span
+          style={{ textAlign: "right", minWidth: 0, flex: "0 1 auto", overflowWrap: "anywhere" }}
+        >
           {value && (
             <span id={valueId} style={{ ...text.value, color: t.text, display: "block" }}>
               {value}
@@ -627,8 +775,16 @@ export function Row({
       // say. named, it reads "Network Testnet, button".
       aria-labelledby={value ? `${titleId} ${valueId}` : titleId}
       aria-describedby={sub ? subId : undefined}
-      className={index != null ? "pocket-row-in" : undefined}
-      style={{ all: "unset", cursor: "pointer", boxSizing: "border-box", ...style }}
+      // pk-tap gives a pressable row the hover veil, so it reads as pressable before
+      // it is pressed; the radius rounds that veil rather than filling a hard slab.
+      className={["pk-tap", index != null ? "pocket-row-in" : null].filter(Boolean).join(" ")}
+      style={{
+        all: "unset",
+        cursor: "pointer",
+        boxSizing: "border-box",
+        borderRadius: radius.md,
+        ...style,
+      }}
     >
       {inner}
     </button>
@@ -636,19 +792,15 @@ export function Row({
 }
 
 export function Overline({ t, children }: { t: Theme; children: ReactNode }) {
-  return (
-    <div style={{ ...text.overline, color: t.faint, textTransform: "uppercase", marginBottom: space.sm }}>
-      {children}
-    </div>
-  );
+  // a section header, not a tiny eyebrow: these read at the heading size and
+  // weight in the pocket's own ink, so "Assets" and "Yield" look like headings.
+  return <div style={{ ...text.heading, color: t.text, marginBottom: space.sm }}>{children}</div>;
 }
 
 /** a field or section label inside a screen. sentence case: a review is read,
  *  not shouted. */
 export function Label({ t, children }: { t: Theme; children: ReactNode }) {
-  return (
-    <div style={{ ...text.label, color: t.sub, marginBottom: space.xs }}>{children}</div>
-  );
+  return <div style={{ ...text.label, color: t.sub, marginBottom: space.xs }}>{children}</div>;
 }
 
 export function Chip({
@@ -658,14 +810,14 @@ export function Chip({
 }: {
   t: Theme;
   children: ReactNode;
-  tone?: "neutral" | "accent" | "danger" | "positive" | "exposed";
+  // only the two tones the product actually renders. Notice carries the full
+  // danger/positive/exposed set for its 100+ call sites; Chip is a Settings
+  // eyebrow and never needed them, so the union states what it draws.
+  tone?: "neutral" | "accent";
 }) {
   const tones: Record<string, { bg: string; fg: string }> = {
     neutral: { bg: t.field, fg: t.sub },
-    accent: { bg: t.accentSoft, fg: t.dark ? t.accent : t.text },
-    danger: { bg: t.dangerSoft, fg: t.danger },
-    positive: { bg: t.positiveSoft, fg: t.positive },
-    exposed: { bg: t.exposedSoft, fg: t.exposed },
+    accent: { bg: t.accentSoft, fg: t.accentOnSoft },
   };
   const c = tones[tone]!;
   return (
@@ -690,10 +842,19 @@ export function Chip({
 export function Notice({
   t,
   tone = "neutral",
+  bare = false,
   children,
 }: {
   t: Theme;
   tone?: "neutral" | "danger" | "positive" | "exposed";
+  /**
+   * drops the built-in bottom margin so the caller owns the spacing.
+   *
+   * the default margin is right when Notices stack, but a caller that wraps the
+   * Notice to control spacing (a `marginTop` wrapper) then fights it and gets a
+   * double gap; `bare` lets a flex/grid parent set the rhythm instead.
+   */
+  bare?: boolean;
   children: ReactNode;
 }) {
   const tones: Record<string, { bg: string; fg: string }> = {
@@ -710,18 +871,22 @@ export function Notice({
   // announcement at all, so a screen-reader user who pressed "Confirm and send"
   // hears the progress phases and then silence, and cannot tell a sent payment
   // from a stuck one.
-  const live = tone === "danger" ? "alert" : tone === "positive" || tone === "exposed" ? "status" : undefined;
+  const live =
+    tone === "danger" ? "alert" : tone === "positive" || tone === "exposed" ? "status" : undefined;
   return (
     <div
       role={live}
       aria-live={live === "status" ? "polite" : undefined}
+      // a banner that interrupts a screen should announce itself visually the way
+      // the toast beside it does; it fades in rather than snapping into the layout.
+      className="pocket-fade-in"
       style={{
         ...text.body,
         background: c.bg,
         color: c.fg,
         padding: `${space.sm}px ${space.md}px`,
         borderRadius: radius.md,
-        marginBottom: space.md,
+        marginBottom: bare ? undefined : space.md,
         overflowWrap: "anywhere",
         lineHeight: 1.45,
       }}
@@ -759,34 +924,112 @@ export function Spinner({ size = 20, color }: { size?: number; color?: string })
  * a shimmer rather than a zero, because a zero is a number the user could act
  * on and it would be the wrong one.
  */
-export function Skeleton({ width, height = 16 }: { width: number | string; height?: number }) {
+export function Skeleton({
+  width,
+  height = 16,
+  radius: r = 8,
+}: {
+  width: number | string;
+  height?: number;
+  /** the corner radius of what this stands in for, so a card-shaped placeholder
+   *  does not visibly change shape when the real, more-rounded card lands. */
+  radius?: number;
+}) {
   return (
-    <span className="pocket-skeleton" style={{ display: "block", width, maxWidth: "100%", height }} />
+    <span
+      className="pocket-skeleton"
+      style={{ display: "block", width, maxWidth: "100%", height, borderRadius: r }}
+    />
   );
 }
 
-export function Toast({ t, children }: { t: Theme; children: ReactNode }) {
+/**
+ * keep a boolean-gated overlay mounted through its exit.
+ *
+ * a bare `{open && <Menu/>}` vanishes on close, cutting whatever entrance it played.
+ * this holds it mounted for `ms` after `open` goes false so it can animate out;
+ * `render` says whether to mount it, `leaving` says to play the exit class.
+ */
+export function useLeave(open: boolean, ms = 200): { render: boolean; leaving: boolean } {
+  const [render, setRender] = useState(open);
+  useEffect(() => {
+    if (open) {
+      setRender(true);
+      return;
+    }
+    if (render) {
+      const id = setTimeout(() => setRender(false), ms);
+      return () => clearTimeout(id);
+    }
+  }, [open, render, ms]);
+  return { render, leaving: render && !open };
+}
+
+/**
+ * hold the last non-null value through an exit.
+ *
+ * a detail sheet keyed on `asset != null` empties the instant the value is cleared,
+ * so it slides down showing a blank card. this returns the live value while it is
+ * set and the LAST value for `ms` after it is cleared, so `<Sheet open={v != null}>`
+ * can close while its body still renders what it was showing.
+ */
+export function useRetained<T>(value: T | null, ms = 300): T | null {
+  const [held, setHeld] = useState<T | null>(value);
+  useEffect(() => {
+    if (value != null) {
+      setHeld(value);
+      return;
+    }
+    const id = setTimeout(() => setHeld(null), ms);
+    return () => clearTimeout(id);
+  }, [value, ms]);
+  return value ?? held;
+}
+
+/**
+ * a transient status line over the app.
+ *
+ * it manages its own mount so it can LEAVE rather than vanish: while `message` is
+ * set it fades in; when the caller clears it to null the last message is held
+ * through a fade-out before the node unmounts, the same mount-through-exit the
+ * Sheet uses. so the caller renders `<Toast message={x}/>` unconditionally.
+ */
+export function Toast({ t, message }: { t: Theme; message: string | null }) {
+  const [shown, setShown] = useState<string | null>(message);
+  useEffect(() => {
+    if (message != null) {
+      setShown(message);
+      return;
+    }
+    if (shown != null) {
+      const id = setTimeout(() => setShown(null), 200);
+      return () => clearTimeout(id);
+    }
+  }, [message, shown]);
+  if (shown == null) return null;
+  const leaving = message == null;
   return (
     <div
       role="status"
-      className="pocket-fade-in"
+      className={leaving ? "pocket-fade-out" : "pocket-fade-in"}
       style={{
         ...text.body,
         position: "absolute",
         left: "50%",
         bottom: 104,
         transform: "translateX(-50%)",
-        background: t.dark ? "#2A2733" : "#14151A",
-        color: "#FFFFFF",
+        // an inverse of the surface, so the toast reads as a layer over the app.
+        background: t.text,
+        color: t.bg,
         padding: "11px 18px",
         borderRadius: radius.pill,
         zIndex: 60,
         maxWidth: FRAME.width - 48,
         textAlign: "center",
-        boxShadow: "0 12px 30px -12px rgba(0,0,0,0.55)",
+        boxShadow: t.shadow,
       }}
     >
-      {children}
+      {shown}
     </div>
   );
 }
@@ -794,6 +1037,19 @@ export function Toast({ t, children }: { t: Theme; children: ReactNode }) {
 /* --------------------------------------------------------------- sheets -- */
 
 const SHEET_MS = 280;
+
+/** the drag pill at the top of every sheet, one definition so the title'd and the
+ *  headerless layout draw the identical handle. */
+function grabHandle(t: Theme): CSSProperties {
+  return {
+    width: 38,
+    height: 4,
+    borderRadius: radius.pill,
+    background: t.line,
+    margin: "0 auto",
+    flex: "0 0 auto",
+  };
+}
 
 /**
  * a bottom sheet.
@@ -808,6 +1064,17 @@ export function Sheet({
   onClose,
   title,
   children,
+  /**
+   * a primary action pinned to the bottom of the sheet.
+   *
+   * it is a flex SIBLING of the scroll body, not the last thing inside it, so it
+   * sits at the very bottom of the sheet whether the content overflows or barely
+   * fills it. `position: sticky` inside the scroll body could not do this: sticky
+   * only holds an element against the viewport edge while there is content to
+   * scroll, so on a short sheet the button floated in the middle with blank sheet
+   * beneath it, which is exactly what it looked like on the asset detail sheet.
+   */
+  footer,
   /** fills the frame, for a step that needs the room. */
   full = false,
   /**
@@ -817,15 +1084,31 @@ export function Sheet({
   focusKey,
   /** nothing moves while someone is reading the thing they are confirming. */
   still = false,
+  /** a small info affordance rendered beside the title, e.g. an InfoTip whose
+   *  hover carries a consequence that used to sit as a paragraph in the body. */
+  info,
+  /** fired once the sheet has finished its slide-down and unmounted its content.
+   *  lets a caller sequence something AFTER the exit (e.g. leaving a full-frame
+   *  route) rather than during it, so the close animates instead of being cut. */
+  onClosed,
+  /** drop the close X. for a sheet whose own buttons are the only way out (a
+   *  confirm: Cancel while reviewing, Go to Home while it works, Done after), so a
+   *  stray X does not offer a fourth, ambiguous exit. the backdrop still obeys
+   *  `onClose`, which the confirm makes a no-op while it is working. */
+  hideClose = false,
 }: {
   t: Theme;
   open: boolean;
   onClose: () => void;
   title?: string;
   children: ReactNode;
+  footer?: ReactNode;
   full?: boolean;
   focusKey?: string;
   still?: boolean;
+  info?: ReactNode;
+  onClosed?: () => void;
+  hideClose?: boolean;
 }) {
   const [mounted, setMounted] = useState(open);
   // ONE transform drives entrance, exit AND drag, in pixels, so a drag-to-close
@@ -860,6 +1143,7 @@ export function Sheet({
       timer.current = setTimeout(() => {
         setMounted(false);
         setY(0);
+        onClosed?.();
       }, SHEET_MS);
     }
     return () => {
@@ -901,7 +1185,9 @@ export function Sheet({
     if (!open || !mounted) return;
     const root = panel.current;
     if (!root) return;
-    const field = root.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled])");
+    const field = root.querySelector<HTMLElement>(
+      "input:not([disabled]), textarea:not([disabled])",
+    );
     // preventScroll is load-bearing, not a nicety. focusing an element makes the
     // browser scroll its scrollable ancestor to reveal it, and the sheet sits at
     // bottom: 0 inside the frame's scroll container, so revealing it dragged the
@@ -947,6 +1233,8 @@ export function Sheet({
 
   if (!mounted) return null;
 
+  const hasTitle = Boolean(title && title.trim());
+
   return (
     <>
       <div
@@ -955,7 +1243,7 @@ export function Sheet({
         style={{
           position: "absolute",
           inset: 0,
-          background: t.dark ? "rgba(4,3,10,0.42)" : "rgba(20,21,26,0.14)",
+          background: t.scrim,
           backdropFilter: "blur(6px) saturate(1.1)",
           WebkitBackdropFilter: "blur(6px) saturate(1.1)",
           zIndex: 30,
@@ -968,7 +1256,10 @@ export function Sheet({
         aria-modal="true"
         aria-label={title}
         onKeyDown={keepFocusInside}
-        className={`${entering && !grabbing ? "pocket-sheet-in" : ""}${still ? " pocket-still" : ""}`.trim() || undefined}
+        className={
+          `${entering && !grabbing ? "pocket-sheet-in" : ""}${still ? " pocket-still" : ""}`.trim() ||
+          undefined
+        }
         style={{
           position: "absolute",
           left: 0,
@@ -997,36 +1288,72 @@ export function Sheet({
           style={{
             cursor: grabbing ? "grabbing" : "grab",
             touchAction: "none",
-            padding: `${space.sm}px ${space.lg}px 0`,
+            position: "relative",
+            // one horizontal gutter shared with every full page (Screen/Home/
+            // Settings all pad with space.gutter), so a Row inside a sheet sits
+            // the same distance from the frame edge as the same Row on a page.
+            padding: `${space.sm}px ${space.gutter}px 0`,
             flex: "0 0 auto",
           }}
         >
-          {!full && (
+          {/* drag-to-dismiss and tap-outside are how a sheet is closed, and the
+              handle says so. the grab area holds ONLY the handle, so the whole
+              strip drags: an interactive control here (the close X used to sit on
+              this line) makes part of the drag strip refuse the drag. */}
+          <div aria-hidden style={grabHandle(t)} />
+          {hasTitle && (
+            // the close X rides the SAME row as the title, right-aligned, so a
+            // title'd sheet keeps one header row, now with a way out.
             <div
-              aria-hidden
-              style={{
-                width: 38,
-                height: 4,
-                borderRadius: radius.pill,
-                background: t.line,
-                margin: "0 auto",
-              }}
-            />
-          )}
-          <div style={{ display: "flex", alignItems: "center", gap: space.md, marginTop: full ? 0 : space.md }}>
-            {title ? (
-              <h2 style={{ ...text.screenTitle, color: t.text, flex: 1, minWidth: 0, margin: 0 }}>
+              style={{ marginTop: space.md, display: "flex", alignItems: "center", gap: space.sm }}
+            >
+              <h2
+                style={{
+                  ...text.screenTitle,
+                  color: t.text,
+                  minWidth: 0,
+                  margin: 0,
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
                 {title}
+                {info}
               </h2>
-            ) : (
-              <div style={{ flex: 1 }} />
-            )}
-            <IconButton t={t} glyph="close" onClick={onClose} label="Close" />
-          </div>
+              {!hideClose && (
+                <IconButton t={t} size={30} label="Close" onClick={onClose}>
+                  <CloseIcon size={17} />
+                </IconButton>
+              )}
+            </div>
+          )}
         </div>
+        {!hasTitle && !hideClose && (
+          // a headerless (full) sheet: the X sits in its OWN row just below the
+          // drag handle, right-aligned. it is off the drag line (so the handle
+          // strip drags cleanly) and reads as a header control rather than being
+          // crammed onto the drag pill or pinned to the very top edge.
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              padding: `${space.xs}px ${space.gutter}px 0`,
+              flex: "0 0 auto",
+            }}
+          >
+            <IconButton t={t} size={30} label="Close" onClick={onClose}>
+              <CloseIcon size={17} />
+            </IconButton>
+          </div>
+        )}
         <div
           style={{
-            padding: `${space.sm}px ${space.lg}px ${space.lg}px`,
+            // grows to fill the sheet so a pinned footer sits at the true bottom
+            // even when the content is short; scrolls when the content is long.
+            flex: "1 1 auto",
+            padding: `${space.sm}px ${space.gutter}px ${footer ? space.md : space.lg}px`,
             overflowX: "hidden",
             overflowY: "auto",
             minHeight: 0,
@@ -1034,6 +1361,21 @@ export function Sheet({
         >
           {children}
         </div>
+        {footer && (
+          // an opaque bar flush with the sheet bottom, the same behaviour as the
+          // wallet's bottom nav: it hides whatever scrolls under it and never
+          // leaves a gap beneath the action.
+          <div
+            style={{
+              flex: "0 0 auto",
+              padding: `${space.md}px ${space.gutter}px ${space.lg}px`,
+              background: t.sheet,
+              boxShadow: `0 -16px 20px -14px ${t.sheet}`,
+            }}
+          >
+            {footer}
+          </div>
+        )}
       </section>
     </>
   );

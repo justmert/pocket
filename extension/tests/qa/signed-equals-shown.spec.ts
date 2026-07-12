@@ -103,7 +103,13 @@ function decode(envelopeB64: string) {
   return tx;
 }
 
-/** what the review panel put on screen, read the way a person reads it. */
+/** what the review panel put on screen, read the way a person reads it.
+ *
+ * the confirm shows the SIGNED facts as visible rows now: the figure is the hero,
+ * the recipient is the full-address block, the fee and the memo are their own
+ * labelled rows. the "what this does" enumeration moved into an info tip (the
+ * explanation, not the facts). so the reconstruction reads the rows, which is
+ * exactly the surface a person reads before approving. */
 async function readReview(wallet: Wallet) {
   // the review only exists once the worker has built and retained the envelope,
   // and building reads the ledger first. waiting on the panel itself rather
@@ -111,24 +117,26 @@ async function readReview(wallet: Wallet) {
   await expect(wallet.page.getByText("What this does")).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
-  const effects = await wallet.page.getByRole("listitem").allInnerTexts();
-  const find = (re: RegExp) => {
-    const line = effects.find((e) => re.test(e));
-    if (!line) throw new Error(`no effect matched ${re}. The screen says: ${effects.join(" | ")}`);
-    return re.exec(line)!;
-  };
-  const [, amount, code] = find(/^Send (\S+) (\S+) to this address$/);
-  const [, fee] = find(/^Pay a network fee of (\S+) XLM$/);
-  const memoLine = effects.find((e) => /^Attach the memo "|^Send with NO memo$/.test(e));
-  const memo = /^Attach the memo "(.*)"$/.exec(memoLine ?? "")?.[1];
+  // the hero carries the exact value and its code in one run ("12.5000000 XLM").
+  const hero = (await wallet.money().first().innerText()).trim();
+  const [amount, code] = hero.split(/\s+/);
+  // the value beside a labelled row: the fact sits in the row's second cell.
+  const rowValue = async (label: string): Promise<string> =>
+    (
+      await wallet.page
+        .getByText(label, { exact: true })
+        .locator("xpath=following-sibling::*[1]")
+        .innerText()
+    ).trim();
+  const fee = (await rowValue("Network fee")).replace(/[^\d.]/g, "");
+  const memoText = await rowValue("Memo");
+  const memo = memoText === "None" ? undefined : memoText;
   return {
-    effects,
     to: await wallet.readAddress(),
-    // the hero figure, which carries the exact value and its code in one run.
-    hero: (await wallet.money().first().innerText()).trim(),
+    hero,
     amount: amount!,
     code: code!,
-    fee: fee!,
+    fee,
     memo,
   };
 }
@@ -667,9 +675,14 @@ test("the fee a private-pocket review states is the fee that gets signed [DEFECT
   // which the sheet says above the button.
   await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
 
-  const effects = await wallet.page.getByRole("listitem").allInnerTexts();
-  const feeShown = /Pay a network fee of (\S+) XLM/.exec(effects.join("\n"))?.[1];
-  expect(feeShown, `no fee on the review. It says: ${effects.join(" | ")}`).toBeTruthy();
+  // the fee is its own row now (the effect enumeration moved into the tip).
+  const feeShown = (
+    await wallet.page
+      .getByText("Network fee", { exact: true })
+      .locator("xpath=following-sibling::*[1]")
+      .innerText()
+  ).replace(/[^\d.]/g, "");
+  expect(feeShown, "no fee on the review").toBeTruthy();
 
   const before = sent.length;
   await wallet.page.getByRole("button", { name: "Approve" }).click();

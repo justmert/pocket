@@ -177,7 +177,7 @@ test("confirming a payment twice in one gesture sends it once and shows the rece
   const out = await review(page);
   expect(out.stage, out.stage === "error" ? out.message : "").toBe("confirm");
 
-  await clickTwiceInOneTask(page, "Confirm and send");
+  await clickTwiceInOneTask(page, "Confirm");
 
   // Wait for the wallet to STOP working, whatever it settles on. Waiting for
   // the receipt alone would report this as a timeout on an anonymous locator
@@ -226,7 +226,7 @@ test("confirming a payment twice in one gesture sends it once and shows the rece
     body,
     "a payment that succeeded must not be described as needing to be built again",
   ).not.toContain("Build it again and review it.");
-  expect(body, "the receipt must survive the second click").toContain("Confirmed in ledger");
+  expect(body, "the receipt must survive the second click").toContain("Transaction successful");
 });
 
 test("erasing and restoring twice in one gesture restores once", async ({ wallet }) => {

@@ -263,7 +263,10 @@ describe("APY presentation", () => {
 
 describe("the vault balance response, which the spec does not describe", () => {
   it("reads shares out of dfTokens rather than a `shares` field that is never sent", async () => {
-    vi.stubGlobal("fetch", mockFetch(() => ({ dfTokens: "1234567", underlyingBalance: ["89"] })));
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(() => ({ dfTokens: "1234567", underlyingBalance: ["89"] })),
+    );
     const pos = await new DefindexClient(cfg).position("CVAULT", "GUSER");
     // Cast straight to VaultPosition this was `undefined`, and the yield row
     // rendered an APY with nothing beside it.
@@ -272,21 +275,30 @@ describe("the vault balance response, which the spec does not describe", () => {
   });
 
   it("carries a zero position through as a zero, not as an error", async () => {
-    vi.stubGlobal("fetch", mockFetch(() => BALANCE_BODY));
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(() => BALANCE_BODY),
+    );
     expect((await new DefindexClient(cfg).position("CVAULT", "GUSER")).shares).toBe("0");
   });
 
   it("refuses a body it cannot read rather than calling it empty", async () => {
     // "You hold nothing" and "I could not read what you hold" are different
     // facts, and only one of them is about the user.
-    vi.stubGlobal("fetch", mockFetch(() => ({ balance: "5" })));
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(() => ({ balance: "5" })),
+    );
     await expect(new DefindexClient(cfg).position("CVAULT", "GUSER")).rejects.toThrow(
       DefindexError,
     );
   });
 
   it("does not invent an underlying figure when the array is absent", async () => {
-    vi.stubGlobal("fetch", mockFetch(() => ({ dfTokens: "7" })));
+    vi.stubGlobal(
+      "fetch",
+      mockFetch(() => ({ dfTokens: "7" })),
+    );
     const pos = await new DefindexClient(cfg).position("CVAULT", "GUSER");
     expect(pos.shares).toBe("7");
     expect(pos.underlying).toBeUndefined();

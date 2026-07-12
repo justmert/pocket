@@ -23,18 +23,22 @@ export function AddressBlock({
   address,
   onCopy,
   copied,
+  compact = false,
 }: {
   t: Theme;
   address: string;
   onCopy?: (value: string) => void;
   copied?: boolean;
+  /** a tighter block for a confirm, where the full 56-char address at body size
+   *  filled two tall lines. still legible mono, one step down and less padded. */
+  compact?: boolean;
 }) {
   return (
     <div
       style={{
         background: t.field,
         borderRadius: radius.md,
-        padding: space.md,
+        padding: compact ? `${space.sm}px ${space.md}px` : space.md,
         display: "flex",
         alignItems: "flex-start",
         gap: space.sm,
@@ -43,12 +47,13 @@ export function AddressBlock({
       <span
         style={{
           fontFamily: fonts.mono,
-          // the scale, not a hand-picked 13. this is the string someone checks
-          // character by character before an irreversible act, and it was set
-          // smaller than the transaction hash on the receipt that follows.
-          fontSize: fontSizes.body,
-          fontWeight: 600,
-          lineHeight: 1.55,
+          // the scale, not a hand-picked size. this is the string someone checks
+          // character by character before an irreversible act. body by default; a
+          // confirm packs it one step down (small) so it does not fill two tall
+          // lines, but no smaller.
+          fontSize: compact ? fontSizes.small : fontSizes.body,
+          fontWeight: 500,
+          lineHeight: 1.45,
           color: t.text,
           wordBreak: "break-all",
           flex: 1,
@@ -91,6 +96,7 @@ export function MonoBlock({ t, children }: { t: Theme; children: React.ReactNode
       style={{
         ...text.body,
         fontFamily: fonts.mono,
+        fontWeight: 500,
         background: t.field,
         borderRadius: radius.md,
         padding: space.md,
@@ -135,12 +141,16 @@ export function OriginBlock({ t, origin }: { t: Theme; origin: string }) {
         lineHeight: 1.55,
       }}
     >
-      <span style={{ ...text.body, fontFamily: fonts.mono, color: t.sub }}>{scheme}</span>
+      <span style={{ ...text.body, fontFamily: fonts.mono, fontWeight: 500, color: t.sub }}>
+        {scheme}
+      </span>
       <span
         style={{
           ...text.rowTitle,
           fontFamily: fonts.mono,
           fontSize: fontSizes.heading,
+          // mono runs at 500; the hostname is emphasised by its size, not weight.
+          fontWeight: 500,
           color: t.text,
         }}
       >

@@ -184,9 +184,9 @@ describe("schema versions below this build are damage, not a wrong password", ()
 
   it("calls a non-integer KDF parameter damage, not weakness", async () => {
     const { header } = await createVault(PW);
-    await expect(
-      unlockVault({ ...header, kdf: { ...KDF_PARAMS, N: 1.5 } }, PW),
-    ).rejects.toThrow(/not an integer/);
+    await expect(unlockVault({ ...header, kdf: { ...KDF_PARAMS, N: 1.5 } }, PW)).rejects.toThrow(
+      /not an integer/,
+    );
   });
 });
 

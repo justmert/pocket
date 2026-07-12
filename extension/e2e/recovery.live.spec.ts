@@ -74,10 +74,10 @@ test("a funded private pocket whose openings are gone rebuilds from the archive"
   await page.getByRole("button", { name: "Set up the private pocket" }).click();
   await expect(page.getByText(/What this does/)).toBeVisible({ timeout: 180_000 });
   await page.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByText(/Confirmed in ledger/)).toBeVisible({ timeout: 240_000 });
+  await expect(page.getByText("Transaction successful")).toBeVisible({ timeout: 240_000 });
 
   await expect(page.getByText(/SPENDABLE/)).toBeVisible({ timeout: 120_000 });
-  await page.getByRole("button", { name: "Move in" }).click();
+  await page.getByRole("button", { name: "Shield" }).click();
   await page.getByRole("textbox", { name: "Amount" }).fill("20");
   await page.getByRole("button", { name: "Review" }).click();
   await expect(page.getByText(/deposit amount is PUBLIC/)).toBeVisible({ timeout: 120_000 });

@@ -5,6 +5,7 @@ import { Button, ButtonStack, Frame, Notice, Spinner, Toast } from "./primitives
 import { BrandRow } from "./Brand";
 import { BottomNav } from "./BottomNav";
 import { Home } from "./screens/Home";
+import { History } from "./screens/History";
 import { Settings } from "./screens/Settings";
 import { Onboarding } from "./screens/Onboarding";
 import { Unlock } from "./screens/Unlock";
@@ -12,12 +13,26 @@ import { Recover } from "./screens/Recover";
 import { InFlight } from "./screens/InFlight";
 import { DappApproval } from "./screens/DappApproval";
 import { AssetDetailSheet } from "./sheets/AssetDetailSheet";
-import { MenuSheet } from "./sheets/MenuSheet";
+import { PrivateAssetSheet } from "./sheets/PrivateAssetSheet";
+import { TransactionsSheet } from "./screens/History";
 import { ReceiveSheet } from "./sheets/ReceiveSheet";
 import { Send } from "./screens/Send";
+import { Move } from "./screens/Move";
 import { MoveSheet } from "./sheets/MoveSheet";
-import { ConnectionsSheet, EraseSheet, NetworkSheet, RebuildSheet } from "./sheets/SettingsSheets";
-import { onboardingUnfinished, placeOnboarding, raiseOnboardingTab, type Placement } from "./onboardingTab";
+import {
+  AutoLockSheet,
+  ConnectionsSheet,
+  EraseSheet,
+  NetworkSheet,
+  PhraseSheet,
+  RebuildSheet,
+} from "./sheets/SettingsSheets";
+import {
+  onboardingUnfinished,
+  placeOnboarding,
+  raiseOnboardingTab,
+  type Placement,
+} from "./onboardingTab";
 import { space, text, type Theme } from "./theme";
 
 export function App() {
@@ -186,11 +201,7 @@ function Root() {
         onCancel={() => setRecovering(false)}
       />
     ) : (
-      <Unlock
-        t={t}
-        onUnlocked={() => void w.refresh()}
-        onForgot={() => setRecovering(true)}
-      />
+      <Unlock t={t} onUnlocked={() => void w.refresh()} onForgot={() => setRecovering(true)} />
     );
   }
 
@@ -229,9 +240,14 @@ function Shell() {
   // them, keeps working and so that close and escape behave as they always did.
   if (top === "send") return <Send onClose={w.closeSheet} />;
 
+  // move-in / move-out are pages too, not popups: the same full-frame compose
+  // step as Send, since to the user this is a send between their own pockets.
+  if (top === "moveIn") return <Move kind="shield" onClose={w.closeSheet} />;
+  if (top === "moveOut") return <Move kind="unshield" onClose={w.closeSheet} />;
+
   return (
     <Frame t={t}>
-      {w.tab === "home" ? <Home /> : <Settings />}
+      {w.tab === "home" ? <Home /> : w.tab === "history" ? <History /> : <Settings />}
 
       <BottomNav />
 
@@ -243,40 +259,18 @@ function Shell() {
           w.openSheet("send");
         }}
       />
-      <MenuSheet open={top === "menu"} onClose={w.closeSheet} />
       <ReceiveSheet open={top === "receive"} onClose={w.closeSheet} />
+      <PrivateAssetSheet open={top === "privateAsset"} onClose={w.closeSheet} />
+      <TransactionsSheet open={top === "transactions"} onClose={w.closeSheet} />
       <MoveSheet open={top === "move"} onClose={w.closeSheet} />
       <NetworkSheet open={top === "network"} onClose={w.closeSheet} />
+      <AutoLockSheet open={top === "autolock"} onClose={w.closeSheet} />
       <ConnectionsSheet open={top === "connections"} onClose={w.closeSheet} />
       <RebuildSheet open={top === "rebuild"} onClose={w.closeSheet} />
+      <PhraseSheet open={top === "phrase"} onClose={w.closeSheet} />
       <EraseSheet open={top === "erase"} onClose={w.closeSheet} />
 
-      {w.toast && <Toast t={t}>{w.toast}</Toast>}
-
-      {/* the pocket switch. keyed on the flip count so it replays every time,
-          and it rides over the frame's own background crossfade. */}
-      {w.pocketFlip > 0 && (
-        // the wash scales past the frame on purpose, and a transformed
-        // descendant counts toward its ancestor's scrollable area. without this
-        // clip the frame itself became scrollable, and the first thing that
-        // scrolled an input into view took the bottom bar and the open sheet off
-        // screen with it.
-        <div
-          aria-hidden
-          style={{ position: "absolute", inset: 0, overflow: "hidden", zIndex: 70, pointerEvents: "none" }}
-        >
-          <div
-            key={w.pocketFlip}
-            aria-hidden
-            className="pocket-wash"
-            style={{
-              position: "absolute",
-              inset: 0,
-              background: `radial-gradient(circle at 50% 18%, ${t.accent}55, transparent 58%)`,
-            }}
-          />
-        </div>
-      )}
+      <Toast t={t} message={w.toast} />
     </Frame>
   );
 }

@@ -110,7 +110,7 @@ async function register(page: Page): Promise<void> {
   await openMoveAction(page, "Set up the private pocket");
   await waitForReview(page);
   await page.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByText(/Confirmed in ledger/)).toBeVisible({ timeout: 300_000 });
+  await expect(page.getByText("Transaction successful")).toBeVisible({ timeout: 300_000 });
 }
 
 test("a register killed between submitting and persisting its openings loses nothing", async () => {
@@ -262,7 +262,7 @@ test("a shield killed after the deposit puts the money in receiving and says so"
     await expect(page.getByRole("button", { name: "Private pocket" })).toBeVisible({ timeout: 180_000 });
     const beforeShield = JSON.stringify((await storage(page))[openingsKey]);
 
-    await page.getByRole("button", { name: "Move in" }).click();
+    await page.getByRole("button", { name: "Shield" }).click();
     await page.getByRole("textbox", { name: "Amount" }).fill("25");
     await page.getByRole("button", { name: "Review" }).click();
     await waitForReview(page);
@@ -323,7 +323,7 @@ test("a shield killed after the deposit puts the money in receiving and says so"
       await waitForReview(reopened);
       await reopened.getByRole("button", { name: "Approve" }).click();
       try {
-        await expect(reopened.getByText(/Confirmed in ledger/)).toBeVisible({
+        await expect(reopened.getByText("Transaction successful")).toBeVisible({
           timeout: 300_000,
         });
       } catch (e) {
@@ -379,7 +379,7 @@ test("a shield whose merge never reaches the network says where the money is, an
       return route.continue();
     });
 
-    await page.getByRole("button", { name: "Move in" }).click();
+    await page.getByRole("button", { name: "Shield" }).click();
     await page.getByRole("textbox", { name: "Amount" }).fill("25");
     await page.getByRole("button", { name: "Review" }).click();
     await waitForReview(page);
@@ -652,7 +652,7 @@ test("the idle lock does not fire in the middle of a private operation", async (
     let sawLocked = false;
     let finishedAt = 0;
     while (Date.now() - startedAt < 150_000) {
-      if ((await page.getByText(/Confirmed in ledger/).count()) > 0) {
+      if ((await page.getByText("Transaction successful").count()) > 0) {
         finishedAt = Date.now();
         break;
       }

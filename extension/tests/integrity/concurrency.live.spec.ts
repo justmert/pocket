@@ -56,7 +56,7 @@ async function transferPrivately(
   await recipient.openPrivatePocket();
   await recipient.registerPrivatePocket();
 
-  await sender.openOp("Move in");
+  await sender.openOp("Shield");
   await sender.submitOp({ amount: "25" });
   await sender.approve();
   await expect(sender.page.getByText(/Made spendable in a second transaction/)).toBeVisible({
@@ -66,7 +66,7 @@ async function transferPrivately(
   await sender.openOp("Send privately");
   await sender.submitOp({ amount, to: recipientAddress });
   await sender.approve();
-  await expect(sender.page.getByText(/Confirmed in ledger/)).toBeVisible({
+  await expect(sender.page.getByText("Transaction successful")).toBeVisible({
     timeout: WAITS.submission,
   });
   return { senderAddress, recipientAddress };
@@ -192,7 +192,7 @@ test("a merge landing while an inbound credit is still reading events must not l
     }
     await openMoveAction(tabA.page, "Make spendable");
     await tabA.approve();
-    await expect(tabA.page.getByText(/Confirmed in ledger/)).toBeVisible({
+    await expect(tabA.page.getByText("Transaction successful")).toBeVisible({
       timeout: WAITS.submission,
     });
     await expect(tabA.spendableMoney()).toHaveText(/^5\.0000000\s*XLM$/, {

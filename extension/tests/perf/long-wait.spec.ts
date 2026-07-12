@@ -216,7 +216,7 @@ test("the wait after Approve does not leave the screen unchanged for seconds", a
   await arm(wallet.page);
   const t0 = await now(wallet.page);
   await wallet.page.getByRole("button", { name: "Approve" }).click();
-  await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
+  await expect(wallet.page.getByText("Transaction successful")).toBeVisible({
     timeout: WAITS.submission,
   });
   const t1 = await now(wallet.page);
@@ -245,7 +245,7 @@ test("the wait after Approve says the wallet is waiting for the ledger", async (
 
   await arm(wallet.page);
   await wallet.page.getByRole("button", { name: "Approve" }).click();
-  await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
+  await expect(wallet.page.getByText("Transaction successful")).toBeVisible({
     timeout: WAITS.submission,
   });
   const p = await read(wallet.page);
@@ -410,8 +410,8 @@ test("the public send wait does say it is waiting for the ledger", async ({ wall
   await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
 
   await arm(wallet.page);
-  await wallet.page.getByRole("button", { name: "Confirm and send" }).click();
-  await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
+  await wallet.page.getByRole("button", { name: "Confirm" }).click();
+  await expect(wallet.page.getByText("Transaction successful")).toBeVisible({
     timeout: WAITS.submission,
   });
   const p = await read(wallet.page);
@@ -446,8 +446,8 @@ test("the public send wait does not leave the screen unchanged for seconds eithe
 
   await arm(wallet.page);
   const t0 = await now(wallet.page);
-  await wallet.page.getByRole("button", { name: "Confirm and send" }).click();
-  await expect(wallet.page.getByText(/Confirmed in ledger/)).toBeVisible({
+  await wallet.page.getByRole("button", { name: "Confirm" }).click();
+  await expect(wallet.page.getByText("Transaction successful")).toBeVisible({
     timeout: WAITS.submission,
   });
   const t1 = await now(wallet.page);

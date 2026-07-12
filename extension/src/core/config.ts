@@ -33,6 +33,12 @@ export interface NetworkConfig {
   /** Native XLM's Stellar Asset Contract. */
   nativeSac: string;
   /**
+   * Credit assets the public pocket surfaces a balance for when the account
+   * holds a trustline (e.g. USDC). A trustline the account does not hold is
+   * omitted, not shown as zero. Classic asset issuers; the SAC id is derived.
+   */
+  knownAssets?: { code: string; issuer: string }[];
+  /**
    * One entry per private asset. A wrapper binds exactly one underlying at
    * construction (set_underlying_asset is one-shot), so private XLM and private
    * USDC are two deployments, each with its own confidential identity.
@@ -59,6 +65,13 @@ export interface NetworkConfig {
    * are different facts and only one of them is about the user.
    */
   defindex?: { baseUrl: string; vault?: string; apiKey?: string };
+  /**
+   * Aquarius, the in-app swap (public pocket). Keyless: `apiUrl` returns routing
+   * data (a swap_chain_xdr) and the wallet builds the `swap_chained` call against
+   * `router` itself, so nothing here is a secret. Absent means swap is
+   * unavailable and the wallet says so rather than failing at a fetch.
+   */
+  aquarius?: { apiUrl: string; router: string };
 }
 
 export const NETWORKS: Record<NetworkId, NetworkConfig> = {
@@ -69,6 +82,10 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
     horizonUrl: "https://horizon-testnet.stellar.org",
     friendbotUrl: "https://friendbot.stellar.org",
     nativeSac: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+    // Circle testnet USDC issuer. Its SAC (CBIELTK6...) is what the confidential
+    // USDC wrapper wraps and what CCTP/Aquarius use, so the whole USDC story is
+    // one asset end to end.
+    knownAssets: [{ code: "USDC", issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5" }],
     // Our own deployment. The upstream demo's testnet instance is deliberately
     // not used: it holds PRE-AUDIT verification keys, so building against it
     // would mean implementing five known audit findings including a register
@@ -86,6 +103,13 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
       apiKey: import.meta.env.VITE_DEFINDEX_API_KEY,
       vault: import.meta.env.VITE_DEFINDEX_VAULT,
     },
+    // Aquarius AMM. Keyless. Router id verified against the deployed testnet
+    // contract (D10) and documented as stable across testnet resets. 144 live
+    // testnet pools; XLM<->USDC routes both ways.
+    aquarius: {
+      apiUrl: "https://amm-api-testnet.aqua.network/api/external/v2",
+      router: "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+    },
     confidential: [
       {
         token: "CDMXZEFOM5DN2GSHQKNOOW242RJZGCEM5LOOAPGRQE35GGHB7ALDK2Y6",
@@ -93,6 +117,17 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
         auditor: "CDE5JETGXV7TOUUDQPUTGLJB6TCUUIIWJJTLWFX4RNH36XABKCEPNTEV",
         underlying: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
         symbol: "XLM",
+      },
+      // USDC (Circle testnet issuer GBBD47IF...). A second wrapper bound to the
+      // USDC SAC, reusing the shared verifier and auditor above; its own
+      // confidential identity, so users register for it separately. Deployed
+      // 2026-08-07 by add-asset.mjs; recorded in resources/deployment-testnet.json.
+      {
+        token: "CBCCCG6THS4QHMHYNXEPDA4RFBJ7L2I2YHJJFV3G74PM2LAS6GBMBNZS",
+        verifier: "CBERRYPR34G2MB3EOUNO3JGWOAWFVBUPINJ42JP7XVVB3AHKIPVPPWYH",
+        auditor: "CDE5JETGXV7TOUUDQPUTGLJB6TCUUIIWJJTLWFX4RNH36XABKCEPNTEV",
+        underlying: "CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA",
+        symbol: "USDC",
       },
     ],
   },
@@ -110,9 +145,17 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
     rpcUrl: "https://mainnet.sorobanrpc.com",
     horizonUrl: "https://horizon.stellar.org",
     nativeSac: "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
+    // Circle mainnet USDC issuer. Inert in this testnet-only build.
+    knownAssets: [{ code: "USDC", issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN" }],
     // No friendbot on mainnet, by design: the field is optional so that the
     // absence is a type-level fact rather than a URL that would fail at runtime.
     //
+    // Aquarius mainnet AMM router. Present so the swap works if mainnet is ever
+    // enabled; this build refuses mainnet, so it is inert today.
+    aquarius: {
+      apiUrl: "https://amm-api.aqua.network/api/external/v2",
+      router: "CBQDHNBFBZYE4MKPWBSJOPIYLW4SFSXAXUTSXJN76GNKYVYPCKWC6QUK",
+    },
     // Empty until a mainnet deployment exists. Every consumer guards on this
     // being empty and reports the private pocket unavailable rather than
     // reading confidential[0] off the end, so enabling mainnet cannot silently
