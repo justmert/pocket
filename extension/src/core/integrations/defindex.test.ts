@@ -304,3 +304,35 @@ describe("the vault balance response, which the spec does not describe", () => {
     expect(pos.underlying).toBeUndefined();
   });
 });
+
+describe("actionable errors from the live API", () => {
+  // Verified live on testnet: a deposit by an account with no trustline for the
+  // vault's asset returns { errorCode: 13, message: "TokenErrors.MissingTrustline" }.
+  it("maps a missing-trustline failure (code 13) to an authored message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 400,
+        json: async () => ({ errorCode: 13, message: "TokenErrors.MissingTrustline" }),
+      })) as unknown as typeof fetch,
+    );
+    await expect(
+      new DefindexClient(cfg).buildDeposit("CVAULT", { caller: "GUSER", amounts: [1n] }),
+    ).rejects.toThrow(/trustline/i);
+  });
+
+  it("falls back to a generic message for an unknown error code", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 500,
+        json: async () => ({ errorCode: 999 }),
+      })) as unknown as typeof fetch,
+    );
+    await expect(
+      new DefindexClient(cfg).buildDeposit("CVAULT", { caller: "GUSER", amounts: [1n] }),
+    ).rejects.toThrow(/returned 500/);
+  });
+});

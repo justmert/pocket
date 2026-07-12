@@ -210,6 +210,22 @@ export class DefindexClient {
       throw new DefindexError(`Could not reach the yield service (${why}).`);
     }
     if (!res.ok) {
+      // Map a KNOWN, actionable failure to an authored message, without leaking
+      // an arbitrary service string. DeFindex reports a deposit/withdraw that
+      // the account cannot make for lack of a trustline on the vault's asset as
+      // errorCode 13 ("TokenErrors.MissingTrustline"). Verified live on testnet.
+      let code: unknown;
+      try {
+        code = (await res.json())?.errorCode;
+      } catch {
+        /* no readable body; fall through to the generic message */
+      }
+      if (code === 13) {
+        throw new DefindexError(
+          "You need a trustline for this vault's asset before you can deposit or withdraw.",
+          res.status,
+        );
+      }
       throw new DefindexError(`The yield service returned ${res.status}.`, res.status);
     }
     try {
