@@ -152,9 +152,28 @@ a:focus-visible {
   background: transparent;
   cursor: pointer;
 }
+.pocket-slider {
+  /* ease the dim when the control becomes unavailable, rather than snapping half
+   * transparent the instant there is nothing to spend. */
+  transition: opacity var(--pocket-instant) var(--pocket-enter);
+}
 .pocket-slider:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+/* the thumb grows a touch under an active drag, so a control moved by hand answers
+ * the grab the way every other tappable answers a press. */
+.pocket-slider::-webkit-slider-thumb {
+  transition: transform var(--pocket-instant) var(--pocket-enter);
+}
+.pocket-slider:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+.pocket-slider::-moz-range-thumb {
+  transition: transform var(--pocket-instant) var(--pocket-enter);
+}
+.pocket-slider:active::-moz-range-thumb {
+  transform: scale(1.15);
 }
 .pocket-slider::-webkit-slider-runnable-track {
   height: 8px;

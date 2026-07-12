@@ -1247,6 +1247,12 @@ export function Sheet({
           backdropFilter: "blur(6px) saturate(1.1)",
           WebkitBackdropFilter: "blur(6px) saturate(1.1)",
           zIndex: 30,
+          // the backdrop is driven ONLY by the fade-in/out classes. an earlier inline
+          // opacity tied to the drag looked nice mid-pull, but on a drag-to-dismiss
+          // `grabbing` clears one frame before `open` does, so the dimmed backdrop
+          // snapped back to full for that frame before the close faded it out, which
+          // read as a black flash. the panel sliding down is the drag feedback; the
+          // backdrop just fades.
         }}
       />
       <section
@@ -1275,9 +1281,13 @@ export function Sheet({
           zIndex: 31,
           boxShadow: t.dark ? "0 -20px 50px -30px #000" : "0 -18px 46px -30px rgba(20,21,26,0.5)",
           // the entrance runs as a CSS animation; once it is done, this inline
-          // transform owns the sheet for drag and exit.
+          // transform owns the sheet for drag and exit. the border-radius eases too,
+          // so a sheet that grows to full height (MoveSheet menu -> review) rounds
+          // its corners off over the same beat rather than squaring them in one frame.
           transform: `translateY(${y}px)`,
-          transition: grabbing ? "none" : `transform ${SHEET_MS}ms ${motion.enter}`,
+          transition: grabbing
+            ? "none"
+            : `transform ${SHEET_MS}ms ${motion.enter}, border-radius ${SHEET_MS}ms ${motion.enter}`,
         }}
       >
         <div

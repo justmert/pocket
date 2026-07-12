@@ -354,6 +354,7 @@ export function History() {
                     type="button"
                     aria-pressed={on}
                     onClick={() => w.setPocket(p)}
+                    className="pk-tap"
                     style={{
                       all: "unset",
                       boxSizing: "border-box",
@@ -588,6 +589,7 @@ function FilterButton({
       aria-label={label}
       aria-pressed={active}
       onClick={onClick}
+      className="pk-tap"
       style={{
         all: "unset",
         boxSizing: "border-box",

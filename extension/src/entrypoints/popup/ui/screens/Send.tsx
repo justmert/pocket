@@ -314,6 +314,7 @@ export function Send({ onClose }: { onClose: () => void }) {
                             key={addr}
                             type="button"
                             onClick={() => setTo(addr)}
+                            className="pk-tap"
                             style={{
                               all: "unset",
                               cursor: "pointer",

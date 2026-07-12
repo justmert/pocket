@@ -171,6 +171,7 @@ export function TypeFilterSheet({
               type="button"
               aria-pressed={on}
               onClick={() => toggle(c.key)}
+              className="pk-tap"
               style={{
                 all: "unset",
                 boxSizing: "border-box",
@@ -373,6 +374,7 @@ export function DateRangeSheet({
               type="button"
               aria-pressed={on}
               onClick={() => setPicking(p)}
+              className="pk-tap"
               style={{
                 all: "unset",
                 boxSizing: "border-box",
@@ -490,6 +492,7 @@ export function DateRangeSheet({
                   key={day}
                   type="button"
                   disabled={future}
+                  className="pk-tap"
                   onClick={future ? undefined : () => pick(day)}
                   style={{
                     all: "unset",
@@ -527,6 +530,7 @@ export function DateRangeSheet({
                 key={m}
                 type="button"
                 disabled={future}
+                className="pk-tap"
                 onClick={
                   future
                     ? undefined
@@ -567,6 +571,7 @@ export function DateRangeSheet({
                 key={y}
                 type="button"
                 disabled={future}
+                className="pk-tap"
                 onClick={
                   future
                     ? undefined

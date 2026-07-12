@@ -196,7 +196,8 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
     if (!spendable) return;
     const part = fractionOf(spendable, numerator, denominator);
     const whole = numerator === denominator;
-    const raw = whole && movingIn && isNativeAsset ? sendableAfterFee(part, BASE_FEE_STROOPS) : part;
+    const raw =
+      whole && movingIn && isNativeAsset ? sendableAfterFee(part, BASE_FEE_STROOPS) : part;
     // four fraction digits is enough on the compose screen; truncated, not rounded.
     setAmount(capDecimals(raw, 4));
   };
