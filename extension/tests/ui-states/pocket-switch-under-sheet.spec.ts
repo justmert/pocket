@@ -26,7 +26,8 @@ test("switching pocket closes an open compose form rather than repurposing it", 
   await wallet.createWallet(PASSWORD);
   await wallet.waitForHome(WAITS.ledgerRead);
 
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Send", exact: true }).click();
   await expect(page.locator("[role='dialog']")).toHaveCount(1);
   await page.getByRole("textbox", { name: "To", exact: true }).fill(TO);
   await page.getByRole("textbox", { name: /Amount/ }).fill("1");
@@ -45,7 +46,8 @@ test("switching pocket closes an open compose form rather than repurposing it", 
   // coming back to the public one reopens a form still holding the old
   // recipient.
   await page.getByRole("button", { name: "Public pocket" }).click();
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Send", exact: true }).click();
   await expect(page.locator("[role='dialog']")).toHaveCount(1);
   const carried = await page.getByRole("textbox", { name: "To", exact: true }).inputValue();
   expect(

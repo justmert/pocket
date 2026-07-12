@@ -120,6 +120,17 @@ export type WalletRequest =
   | { type: "swapQuote"; assetIn: string; assetOut: string; amount: string }
   | { type: "buildSwap"; assetIn: string; assetOut: string; amount: string; slippageBps?: number }
   | { type: "confirmSwap"; handle: string }
+  // Open a trustline for a classic asset (public pocket), so the account can hold
+  // and receive it. This is the self-serve answer to "you need a USDC trustline
+  // before you can receive it"; build/confirm follow the buildPayment pattern.
+  | { type: "buildAddTrustline"; assetCode: string; issuer: string }
+  | { type: "confirmAddTrustline"; handle: string }
+  // Manage assets: enumerate every trustline the account holds, search the asset
+  // directory to add one, and close (remove) one. `confirmAddTrustline` above
+  // signs BOTH an add and a remove, since each is just a staged changeTrust.
+  | { type: "trustlines" }
+  | { type: "assetSearch"; query: string }
+  | { type: "buildRemoveTrustline"; assetCode: string; issuer: string }
   // CCTP cross-chain USDC (public pocket). Stellar legs only: Pocket signs the
   // outbound burn and the inbound mint; the other chain's leg is the user's
   // wallet there or a relayer. `destinationDomain`/`sourceDomain` are CCTP domain
@@ -216,6 +227,11 @@ export interface ResponseMap {
   swapQuote: SwapQuoteView;
   buildSwap: { handle: string; summary: SwapSummary };
   confirmSwap: { hash: string; ledger: number };
+  buildAddTrustline: { handle: string; summary: TrustlineSummary };
+  confirmAddTrustline: { hash: string; ledger: number };
+  trustlines: Trustline[];
+  assetSearch: AssetSearchResult[];
+  buildRemoveTrustline: { handle: string; summary: TrustlineSummary };
   buildCctpSend: { handle: string; summary: CctpSummary };
   /** `hash` is the BURN tx (what the attestation service tracks). */
   confirmCctpSend: { approveHash: string; hash: string; ledger: number };
@@ -282,6 +298,16 @@ export interface HistoryEntry {
    *   privateReceive/privateSend  a confidential transfer in or out
    *   makeSpendable  received private funds folded into the spendable balance (merge)
    *   setup          the confidential account being registered
+   *   swap           one asset exchanged for another in a single contract call
+   *
+   * `swap` is the one kind that describes an entry PAIR. A swap moves value out
+   * and value in within one invocation, so it produces two entries that share a
+   * transaction hash and differ in `direction`, and each states its own side.
+   * Collapsing the pair into one entry would have to discard an asset and an
+   * amount, and every other kind here is single-sided, so the pair is the honest
+   * shape. Value moved by any OTHER contract call stays `send`/`receive`: the
+   * wallet can see from the movements that value left or arrived, and inventing
+   * a more specific word for a call it cannot identify would be a guess.
    */
   kind:
     | "receive"
@@ -292,11 +318,27 @@ export interface HistoryEntry {
     | "privateReceive"
     | "privateSend"
     | "makeSpendable"
-    | "setup";
+    | "setup"
+    | "swap";
   /** Which way value moved, from this account's point of view. */
   direction: "in" | "out" | "self";
   /** Asset code, e.g. "XLM" or "USDC". */
   code: string;
+  /**
+   * The asset's issuer, absent for native XLM.
+   *
+   * A code alone does not identify an asset: anyone can issue one called "USDC",
+   * and two of them are different assets that render identically without this.
+   * Horizon supplies it on every record and it was being decoded and dropped, so
+   * nothing downstream could tell them apart or look one up.
+   *
+   * It is also what makes the logo correct. `tokenIcons` is keyed on the
+   * canonical `CODE:ISSUER` (only verified issuers appear in it, so a miss is
+   * the safe answer for a spoofed asset), and a bare code missed every credit
+   * asset in the list: the same token drew Circle's mark on the home screen and
+   * a grey letter in the history beside it.
+   */
+  issuer?: string;
   /**
    * Decimal amount string, or null when it cannot be determined on this device
    * (a private transfer whose opening this device cannot verify). Never a float:
@@ -367,6 +409,39 @@ export interface SwapSummary {
   effects: string[];
 }
 
+/** What the approval screen renders before a trustline is opened. */
+export interface TrustlineSummary {
+  assetCode: string;
+  issuer: string;
+  /** Network fee in decimal XLM. */
+  fee: string;
+  effects: string[];
+}
+
+/** One classic asset the account trusts, for the manage-assets list. */
+export interface Trustline {
+  code: string;
+  issuer: string;
+  /** Held balance, decimal string. */
+  balance: string;
+  /** The trust limit, decimal string; "0" means the line is being closed. */
+  limit: string;
+  /** False when the issuer has frozen this line for this account. */
+  authorized: boolean;
+}
+
+/** One asset from the directory search, enough to show it and to trust it. */
+export interface AssetSearchResult {
+  code: string;
+  issuer: string;
+  /** The issuer's home domain, when known. */
+  domain?: string;
+  /** The directory's rating average, 0..5; a quality/verification signal. */
+  rating?: number;
+  /** How many accounts already trust it. */
+  trustlines?: number;
+}
+
 /** What the approval screen renders before a CCTP bridge or claim. */
 export interface CctpSummary {
   /** "out" = burning on Stellar to another chain; "in" = claiming a mint here. */
@@ -375,6 +450,16 @@ export interface CctpSummary {
   chain: string;
   /** Decimal amount, when known (out: what is bridged; in may be unknown). */
   amount?: string;
+  /**
+   * Where the money lands, decoded by the WORKER from the bytes it recorded.
+   *
+   * Outbound this is the EVM address in EIP-55 capitalisation, read back out of
+   * the 32-byte mint recipient rather than echoed from the form. Inbound it is
+   * the Stellar account being minted to. Never truncated: matching the first and
+   * last few characters of an address is cheap to forge, and this is the field
+   * that decides whether a bridge is recoverable.
+   */
+  recipient?: string;
   /** Dust left behind by the 7dp->6dp scale on an outbound bridge. */
   dust?: string;
   /** Network fee in decimal XLM. */
@@ -388,8 +473,14 @@ export interface YieldPosition {
   reason?: string;
   vault?: string;
   apy?: string;
+  /** Vault SHARES held (the API's dfTokens), NOT an underlying amount. */
   balance?: string;
+  /** The underlying asset's symbol, e.g. "XLM" or "USDC". */
   underlying?: string;
+  /** What the held shares are currently worth in the underlying, as a decimal
+   *  string, when the vault reports it. This is the withdrawable amount, so the
+   *  withdraw form can offer a MAX and refuse an over-withdrawal before building. */
+  underlyingBalance?: string;
 }
 
 export interface TransferSummary {

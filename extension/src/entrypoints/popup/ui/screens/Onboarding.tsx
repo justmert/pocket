@@ -186,9 +186,14 @@ function Create({
  * which meant a double press on a slow vault creation consumed it and the
  * phrase was gone;
  *
- * and the copy says the true lifecycle fact. "cannot show them again" reads as
- * "after you continue". the truth is that clicking anything outside this window
- * closes it, and closing it is the same as continuing.
+ * and the copy no longer says the phrase is gone after this. it said "Pocket
+ * cannot show them to you again", on this screen, on the verify step and in the
+ * other window's notice, and Settings has carried a "Recovery phrase" row behind
+ * the password for some time. The sentence errs on the safe side, which is why
+ * it survived, but it is still false and it is false about the one thing a user
+ * cannot check: someone who loses the paper and believes the words are
+ * unrecoverable concludes their funds are gone while the phrase sits two taps
+ * away. Urgency is carried by "write them down now" instead, which is true.
  *
  * the ordinal is unselectable and each word carries a trailing space, so a drag
  * selection and the copy button both produce a phrase that restores.
@@ -246,7 +251,7 @@ function Backup({
       </h1>
       <Notice t={t} tone="exposed">
         These {words.length} words are the only way to recover this wallet. Anyone who has them owns
-        your funds. Pocket cannot show them to you again
+        your funds. Write them down now
         {/* the flow runs in a tab precisely so the popup's warning is not true
             here. but the replacement promised more than the platform delivers:
             "this page stays open" is true of a blur and of nothing else, and a
@@ -381,8 +386,8 @@ function Verify({
         Check what you wrote
       </h1>
       <p style={{ ...text.body, color: t.sub, margin: `0 0 ${space.gutter}px`, lineHeight: 1.5 }}>
-        Three words from the phrase you just wrote down. This is the last time Pocket can tell you
-        whether it is right.
+        Three words from the phrase you just wrote down, so the copy you made is checked against
+        the real one before you rely on it.
       </p>
 
       {asked.map((n, i) => (

@@ -225,8 +225,10 @@ export async function ingestRange(
         if (!IN_SCOPE.has(type)) continue;
 
         // The event id must be identical to what RPC reports, so a hybrid
-        // client can dedupe across the seam.
+        // client can dedupe across the seam. It is also the only place the
+        // canonical position is available, so it is parsed rather than guessed.
         const id = e.id;
+        const position = eventPosition(id);
         const topics = e.topic.map((t) => {
           try {
             return scValToNative(t);
@@ -241,14 +243,16 @@ export async function ingestRange(
           e.ledger,
           Math.floor(new Date(e.ledgerClosedAt).getTime() / 1000),
           e.txHash,
-          // RPC does not expose tx application order and event index as
-          // separate fields. The event id's ordinal is monotonic in emission
-          // order within a ledger, so (ledger_seq, ordinal) is exactly the
-          // canonical sort key. Recorded in tx_application_order with
-          // event_index left at 0 rather than duplicating it into both, so the
-          // stored data does not imply a distinction we cannot observe.
-          ordinalFromEventId(id),
-          0,
+          // RPC does not expose these as separate fields, but its event id
+          // encodes both: see `eventPosition`. The first value is the
+          // OPERATION's position within the ledger (transaction application
+          // order and operation index, packed as the TOID packs them) and the
+          // second is the event's index within that operation. Storing the id's
+          // trailing number in the first column and a literal 0 in the second
+          // collapsed every operation's opening event onto one key, which the
+          // keyset pagination in api.ts then read as a single row.
+          position.operation,
+          position.index,
           type,
           Buffer.concat(e.topic.map((t) => t.toXDR())).toString("base64"),
           e.value.toXDR("base64"),
@@ -287,11 +291,46 @@ export async function ingestRange(
 }
 
 /**
- * Soroban event ids look like "0000000123456789-0000000001": the ledger
- * sequence and an ordinal within it. The ordinal already reflects application
- * order, so it is the stable ordering key rather than something we invent.
+ * Where an event sits inside its ledger, read from the RPC's own id.
+ *
+ * A Soroban event id is `<TOID>-<n>`. The TOID is Stellar's 64-bit position
+ * marker: the ledger sequence in the high 32 bits, then the transaction's
+ * application order and the operation's index within that transaction, packed
+ * 20 and 12 bits wide. `n` counts events WITHIN one operation and RESTARTS AT
+ * ZERO for every operation.
+ *
+ * The previous version of this returned `n` alone, described it as "an ordinal
+ * within the ledger", and the caller stored it as `tx_application_order` with
+ * `event_index` left at 0. Both halves of that are wrong, and the second hides
+ * the first: because `n` restarts per operation, every first-event-of-an-
+ * operation in a ledger was stored under the identical key. Measured on testnet
+ * ledger 4021819, which carried seven distinct TOIDs (transaction orders 0, 1,
+ * 2, 3 and 8, one of them at operation index 2) whose `n` all began at 0, so all
+ * seven collapsed to (4021819, 0, 0).
+ *
+ * That is not a cosmetic ordering flaw. `accountEvents` pages with a keyset on
+ * exactly this triple, so a page boundary landing on one of a collapsed group
+ * excluded the whole group: the paged read returned ONE of them and stopped,
+ * an unpaged read returned all of them, and every page still answered
+ * `complete: true`. A wallet rebuilding its openings from the archive would be
+ * handed a silently short history and told it was whole.
+ *
+ * Returned instead: the operation's position within the ledger (the TOID's low
+ * 32 bits, which orders transactions and then operations exactly as the ledger
+ * applied them) and the event's index within that operation. With `ledger_seq`
+ * those are a strict total order in emission order, which is what INDEXER.md
+ * 3.4 requires and what replay correctness depends on.
  */
-export function ordinalFromEventId(id: string): number {
-  const parts = id.split("-");
-  return parts.length === 2 ? Number(parts[1]) : 0;
+export function eventPosition(id: string): { operation: number; index: number } {
+  const [toid, n] = id.split("-");
+  // A shape we do not recognise orders as zero rather than throwing, which is
+  // the behaviour the previous version had for the same input.
+  if (toid === undefined || n === undefined || !/^\d+$/.test(toid) || !/^\d+$/.test(n)) {
+    return { operation: 0, index: 0 };
+  }
+  // BigInt and a mask, NOT `Number(toid) >> 12`. The low 32 bits reach
+  // 0xFFFFF000 on the ledger-scoped marker the RPC emits alongside real
+  // operations, and `>>` on a JS number is a SIGNED 32-bit operation, so that
+  // value reads back as -1 and sorts before every genuine event in the ledger.
+  return { operation: Number(BigInt(toid) & 0xffffffffn), index: Number(n) };
 }

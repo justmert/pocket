@@ -343,6 +343,32 @@ export function Home() {
           <ChangeChip t={t} pct={scrubAt === null ? (chart?.changePct ?? null) : null} />
         </div>
 
+        {/* the number on screen is the last one the ledger gave us, and the most
+            recent attempt to refresh it did not answer.
+
+            this is the ONLY place that says so, and until it existed the fact
+            was unsayable: `balanceError` was read once, in the branch above,
+            behind `!native`. a figure can only be stale when a previous one is
+            still on screen, which is exactly when `native` is truthy and that
+            branch is skipped. so the warning was gated on there being no
+            balance to be stale, and fired only in the case it was not written
+            for. the provider states the intent it could not keep, four lines
+            above where it sets this: "the previous balance stays on screen
+            rather than being replaced by a zero. the error says the number is
+            stale; a zero would be a lie."
+
+            `exposed`, not `danger`. the figure is probably correct, it is
+            merely unconfirmed, and a red banner over a balance that is fine
+            reads as "your money is wrong". */}
+        {w.balanceError && native && (
+          <div style={{ marginTop: space.xs }}>
+            <Notice t={t} tone="exposed" bare>
+              Showing the last balance Pocket read. It could not reach the network just now, so
+              this may be out of date.
+            </Notice>
+          </div>
+        )}
+
         <ValueChartBlock
           t={t}
           chart={chart}
@@ -660,37 +686,57 @@ export function Home() {
   function yieldRow() {
     const y = w.yieldPosition;
     if (!y) return null;
+    // a withdraw only makes sense against an existing position; a fresh vault
+    // shows only Deposit until there is something to take back out.
+    const hasPosition = Boolean(y.balance && /[1-9]/.test(y.balance));
     return (
       <div style={{ marginTop: space.xl }}>
         <Overline t={t}>Yield</Overline>
         {y.available ? (
-          <div style={{ display: "flex", alignItems: "center", gap: space.sm, minHeight: 44 }}>
-            <span
-              style={{
-                ...text.rowTitle,
-                color: t.text,
-                flex: 1,
-                minWidth: 0,
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              Vault position
-              {/* the APY and its caveat were a sentence jammed into a subtitle
-                  ("14.67% over the last 7 days, variable and not guaranteed
-                  reported"). the figure stays; the sentence becomes a tip. */}
-              {y.apy && (
-                <InfoTip t={t} label="About this yield">
-                  {y.apy} at the moment. It is variable and not guaranteed, and it is reported by
-                  the vault rather than earned in the private pocket.
-                </InfoTip>
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: space.sm, minHeight: 44 }}>
+              <span
+                style={{
+                  ...text.rowTitle,
+                  color: t.text,
+                  flex: 1,
+                  minWidth: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                Vault position
+                {/* the APY and its caveat were a sentence jammed into a subtitle
+                    ("14.67% over the last 7 days, variable and not guaranteed
+                    reported"). the figure stays; the sentence becomes a tip. */}
+                {y.apy && (
+                  <InfoTip t={t} label="About this yield">
+                    {y.apy} at the moment. It is variable and not guaranteed, and it is reported by
+                    the vault rather than earned in the private pocket.
+                  </InfoTip>
+                )}
+              </span>
+              <span style={{ ...text.rowTitle, color: t.text }}>
+                {y.balance ? `${y.balance} shares` : "None deposited"}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: space.sm, marginTop: space.sm }}>
+              <Button t={t} size="pill" onClick={() => w.openSheet("yieldDeposit")}>
+                Deposit
+              </Button>
+              {hasPosition && (
+                <Button
+                  t={t}
+                  size="pill"
+                  variant="soft"
+                  onClick={() => w.openSheet("yieldWithdraw")}
+                >
+                  Withdraw
+                </Button>
               )}
-            </span>
-            <span style={{ ...text.rowTitle, color: t.text }}>
-              {y.balance ? `${y.balance} shares` : "None deposited"}
-            </span>
-          </div>
+            </div>
+          </>
         ) : (
           // the "not configured" case is short and factual, so it stays inline.
           <div style={{ ...text.caption, color: t.faint, lineHeight: 1.5 }}>{y.reason}</div>

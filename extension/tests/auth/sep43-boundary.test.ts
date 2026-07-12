@@ -15,7 +15,7 @@
 //
 // The `sep43` branch in `background.ts` sits BEFORE the locked-state gate, so
 // question 1 is not covered by the generic allowlist and has to be asked here.
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "../../src/lib/polyfill";
 import { installChrome, EXTENSION_ID, POPUP_SENDER } from "./_harness/chrome";
 
@@ -105,7 +105,10 @@ describe("a locked wallet tells a site nothing about its owner", () => {
 
     clearSession(); // the worker died; storage did not
 
-    expect(await sessionFor(SITE), "the grant did not survive, so this proves nothing").toBeTruthy();
+    expect(
+      await sessionFor(SITE),
+      "the grant did not survive, so this proves nothing",
+    ).toBeTruthy();
     const err = authoredRefusal(await fromSite("getAddress"));
     expect(err.code).toBe(-4);
     expect(err.message).toMatch(/locked/i);
@@ -240,7 +243,9 @@ describe("a grant is a grant to ask, never a grant to sign", () => {
     const bad = await fromSite("signTransaction", SITE, ["AAAAAgAAAA..."]);
     const payload = JSON.stringify(bad?.data ?? bad);
     expect(payload).toMatch(/could not read this transaction/i);
-    expect(payload, "a refusal must not carry a signature").not.toMatch(/signedTxXdr|signerAddress/);
+    expect(payload, "a refusal must not carry a signature").not.toMatch(
+      /signedTxXdr|signerAddress/,
+    );
     // And nothing was queued for a human to approve, because there is nothing
     // to show them.
     const queued = await asPopup({ type: "pendingDappRequest" });
@@ -280,10 +285,7 @@ describe("a grant expires and can be revoked", () => {
 
     // Age the stored grant rather than the clock, so nothing else in the worker
     // is moved and the assertion is about the TTL alone.
-    const sessions = chrome.local.get(KEYS.dappSessions) as Record<
-      string,
-      { connectedAt: number }
-    >;
+    const sessions = chrome.local.get(KEYS.dappSessions) as Record<string, { connectedAt: number }>;
     sessions[SITE]!.connectedAt = Date.now() - SESSION_TTL_MS - 1;
     chrome.local.set(KEYS.dappSessions, sessions);
 
@@ -295,10 +297,7 @@ describe("a grant expires and can be revoked", () => {
   it("forgets an expired grant rather than leaving it to be renewed", async () => {
     const address = await unlockedWallet();
     await connect(SITE, address);
-    const sessions = chrome.local.get(KEYS.dappSessions) as Record<
-      string,
-      { connectedAt: number }
-    >;
+    const sessions = chrome.local.get(KEYS.dappSessions) as Record<string, { connectedAt: number }>;
     sessions[SITE]!.connectedAt = Date.now() - SESSION_TTL_MS - 1;
     chrome.local.set(KEYS.dappSessions, sessions);
 
@@ -385,5 +384,127 @@ describe("grants do not outlive the wallet that issued them", () => {
       Object.keys(left),
       "a dApp grant survived the wipe that was supposed to remove everything",
     ).toEqual([]);
+  });
+});
+
+const { TransactionBuilder, Account, Operation, Asset, Networks, BASE_FEE } = await import(
+  "@stellar/stellar-sdk/base"
+);
+
+/**
+ * A transaction the wallet WILL describe and WILL agree to raise a prompt for.
+ *
+ * Every earlier test here got away with garbage bytes because it was asserting
+ * a refusal. These are about what happens on the far side of the decode, so the
+ * envelope has to survive it: decodable, and sourced from the wallet's own
+ * account, or `sep43` turns it away before an approval is ever parked and the
+ * cap under test is never reached.
+ */
+const signableXdr = (source: string) =>
+  new TransactionBuilder(new Account(source, "1"), {
+    fee: BASE_FEE,
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(Operation.payment({ destination: source, asset: Asset.native(), amount: "1" }))
+    .setTimeout(300)
+    .build()
+    .toXDR();
+
+/** The head of the approval queue, or null. */
+const prompt = async () =>
+  ((await asPopup({ type: "pendingDappRequest" }))?.data ?? null) as {
+    id: string;
+    origin: string;
+  } | null;
+
+describe("a site cannot queue prompts faster than a person can answer them", () => {
+  it("refuses a second request from the same origin rather than queueing it", async () => {
+    // The attack this closes is not a crash. `pendingDappRequest` hands the
+    // popup the FIRST entry, so a page looping signTransaction parks a queue of
+    // itself and every answer the user gives uncovers another identical prompt.
+    // Nothing is refused, nothing errors, and eventually a press lands on
+    // approve. Wearing someone down is not consent.
+    const address = await unlockedWallet();
+    await asPopup({ type: "connectDapp", origin: SITE });
+    const xdr = signableXdr(address);
+
+    const first = fromSite("signTransaction", SITE, [xdr]);
+    await vi.waitFor(async () => expect(await prompt()).toBeTruthy());
+
+    const second = await fromSite("signTransaction", SITE, [xdr]);
+    const err = authoredRefusal(second);
+    // INVALID_REQUEST, not USER_REJECTED. SEP-43 tells a dapp never to retry a
+    // rejection, and this one SHOULD retry once its first prompt is answered.
+    // Claiming the user declined would also be a lie about a decision nobody
+    // made.
+    expect(err.code).toBe(-3);
+    expect(err.message).toMatch(/already asking/i);
+    expect(JSON.stringify(second?.data), "a refusal carried a signature").not.toMatch(
+      /signedTxXdr/,
+    );
+
+    // One prompt, not two, and answering it empties the queue rather than
+    // revealing the next copy.
+    const head = await prompt();
+    expect(head!.origin).toBe(SITE);
+    await asPopup({ type: "resolveDappRequest", id: head!.id, approved: false });
+    expect(JSON.stringify((await first)?.data)).toMatch(/declined/i);
+    expect(await prompt(), "answering one prompt uncovered another").toBeNull();
+  });
+
+  it("caps how many different sites can be waiting at once", async () => {
+    const address = await unlockedWallet();
+    const xdr = signableXdr(address);
+    const origins = ["https://a.test", "https://b.test", "https://c.test", "https://d.test"];
+    for (const o of [...origins, OTHER]) await asPopup({ type: "connectDapp", origin: o });
+
+    const parked = origins.map((o) => fromSite("signTransaction", o, [xdr]));
+    // Each site is confirmed parked by its OWN per-origin refusal, which is the
+    // only observable that distinguishes "waiting" from "still on its way".
+    // Reading the queue head would only ever prove the first one arrived.
+    for (const o of origins) {
+      await vi.waitFor(async () =>
+        expect(authoredRefusal(await fromSite("signTransaction", o, [xdr])).message).toMatch(
+          /already asking/i,
+        ),
+      );
+    }
+
+    // A fifth, distinct, connected origin. It has no prompt of its own, so the
+    // per-origin rule cannot explain this one: the cap is the only thing left.
+    const fifth = authoredRefusal(await fromSite("signTransaction", OTHER, [xdr]));
+    expect(fifth.code).toBe(-3);
+    expect(fifth.message).toMatch(/already asking|answer that one/i);
+
+    for (let i = 0; i < origins.length; i++) {
+      const head = await prompt();
+      expect(head, `only ${i} of ${origins.length} sites were actually parked`).toBeTruthy();
+      await asPopup({ type: "resolveDappRequest", id: head!.id, approved: false });
+    }
+    for (const p of parked) expect(JSON.stringify((await p)?.data)).toMatch(/declined/i);
+  });
+
+  it("still signs for a site that waits its turn", async () => {
+    // The cap must not have quietly broken the thing it is protecting.
+    const address = await unlockedWallet();
+    await asPopup({ type: "connectDapp", origin: SITE });
+    const xdr = signableXdr(address);
+
+    const call = fromSite("signTransaction", SITE, [xdr]);
+    await vi.waitFor(async () => expect(await prompt()).toBeTruthy());
+    const head = await prompt();
+    await asPopup({ type: "resolveDappRequest", id: head!.id, approved: true });
+
+    const data = (await call)!.data as { signedTxXdr?: string; signerAddress?: string };
+    expect(data.signerAddress).toBe(address);
+    expect(data.signedTxXdr, "an approval produced no signature").toBeTruthy();
+
+    // And the slot is free again, so the cap is a cap on concurrency and not a
+    // budget that runs out.
+    const again = fromSite("signTransaction", SITE, [xdr]);
+    await vi.waitFor(async () => expect(await prompt()).toBeTruthy());
+    const next = await prompt();
+    await asPopup({ type: "resolveDappRequest", id: next!.id, approved: false });
+    await again;
   });
 });

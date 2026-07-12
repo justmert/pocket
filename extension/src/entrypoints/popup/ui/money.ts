@@ -53,3 +53,24 @@ export function compactUsd(v: number): string {
   if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K`;
   return `$${v.toFixed(2)}`;
 }
+
+/**
+ * a fiat figure for an entered amount, or null when there is none to state.
+ *
+ * The compose screens each wrote `price !== null && amount !== "" ? Number(amount) * price : null`,
+ * which trusts the field to hold a number. It is a plain text input (inputMode
+ * is a soft-keyboard hint, not a filter), so "-", "." or "1,5" make `Number`
+ * NaN, NaN is neither null nor caught by the emptiness test, and the caption
+ * under the amount read "$NaN".
+ *
+ * The rule this restores is the one `usdOf` already states: the wallet cannot
+ * source a dollar it does not have, so it says nothing rather than something
+ * false. Returns a NUMBER because the composer takes one and formats it itself.
+ */
+export function fiatOf(amount: string, price: number | null): number | null {
+  if (price === null || amount === "") return null;
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return null;
+  const value = n * price;
+  return Number.isFinite(value) ? value : null;
+}

@@ -239,7 +239,11 @@ export class Wallet {
   // ---------------------------------------------------------------------- send
 
   async openSend(): Promise<void> {
-    await this.nav("Send").click();
+    // the public pocket's FAB is an actions menu now (Send / Swap / cross-chain),
+    // so send is one item inside it rather than the bare FAB. open the menu, then
+    // pick Send.
+    await this.page.getByRole("button", { name: "Actions", exact: true }).click();
+    await this.page.getByRole("menuitem", { name: "Send", exact: true }).click();
     await expect(this.page.getByLabel("To", { exact: true })).toBeVisible();
   }
 

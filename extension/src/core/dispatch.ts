@@ -59,9 +59,21 @@ function optionalStr(v: unknown, field: string): string | undefined {
   return v === undefined || v === null ? undefined : str(v, field);
 }
 
+/**
+ * A whole number the sender must actually have sent.
+ *
+ * Integer, not merely finite. Every field that reaches this is a count, a
+ * duration, a domain id or a basis point, and each is used as a whole number
+ * downstream. A fractional one used to pass: `slippageBps` of 100.5 cleared the
+ * range check in `buildSwap` and then reached `BigInt(10_000 - 100.5)`, which
+ * throws a RangeError. `RangeError` is not in SAFE_ERRORS, so a malformed
+ * message surfaced as "Something went wrong. Try again, and check your
+ * connection." instead of being named at the boundary, which is the whole point
+ * of these helpers.
+ */
 function num(v: unknown, field: string): number {
-  if (typeof v !== "number" || !Number.isFinite(v)) {
-    throw new Error(`malformed request: ${field} must be a number`);
+  if (typeof v !== "number" || !Number.isInteger(v)) {
+    throw new Error(`malformed request: ${field} must be a whole number`);
   }
   return v;
 }
@@ -168,6 +180,16 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
       );
     case "confirmSwap":
       return c.confirmSwap(str(msg.handle, "handle"));
+    case "buildAddTrustline":
+      return c.buildAddTrustline(str(msg.assetCode, "assetCode"), str(msg.issuer, "issuer"));
+    case "confirmAddTrustline":
+      return c.confirmAddTrustline(str(msg.handle, "handle"));
+    case "trustlines":
+      return c.trustlines();
+    case "assetSearch":
+      return c.assetSearch(str(msg.query, "query"));
+    case "buildRemoveTrustline":
+      return c.buildRemoveTrustline(str(msg.assetCode, "assetCode"), str(msg.issuer, "issuer"));
     case "buildCctpSend":
       return c.buildCctpSend(
         num(msg.destinationDomain, "destinationDomain"),
@@ -252,6 +274,12 @@ const ACTIVITY = new Set([
   "swapQuote",
   "buildSwap",
   "confirmSwap",
+  // Opening a trustline is a public-pocket action, like a payment.
+  "buildAddTrustline",
+  "confirmAddTrustline",
+  "buildRemoveTrustline",
+  "trustlines",
+  "assetSearch",
   // CCTP bridges. `cctpAttestation` is deliberately absent: it is a poll the UI
   // repeats while waiting, not user activity, so it must not postpone the lock.
   "buildCctpSend",
@@ -288,6 +316,24 @@ const SAFE_ERRORS = new Set([
   "CctpParameterError",
   "AquariusError",
   "IrisError",
+  // The fourth service client, and it was the one omission on this list that no
+  // comment argued for. Its absence was not cosmetic: every sentence the yield
+  // path authors for a user reached the screen as "Something went wrong. Try
+  // again, and check your connection." Measured against the built extension,
+  // `buildYieldMove` answered with that generic line while `confirmSwap`,
+  // `confirmCctpSend`, `confirmCctpClaim` and `confirmPayment` all answered with
+  // their own words. Among the sentences it swallowed: "Yield is not configured
+  // for this network." (a permanent property of the build, so the retry the
+  // generic line suggests can never work) and "You need a trustline for this
+  // vault's asset before you can deposit or withdraw." (the one actionable
+  // failure the client goes out of its way to map from errorCode 13).
+  //
+  // Its message surface is the same shape as the two above it, which is why it
+  // belongs in the same place: authored prose, plus a `${res.status}` integer,
+  // plus the fetch-rejection classification all three share.
+  "DefindexError",
+  "TrustlineError",
+  "StellarExpertError",
   "ConfidentialReadError",
   "InsufficientBalanceError",
   "VerificationKeyMismatchError",

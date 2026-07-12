@@ -62,7 +62,8 @@ test("a sub-one amount is set as one run, not as a giant zero", async ({ wallet 
   await wallet.waitForHome(WAITS.ledgerRead);
   await stubBuild(wallet.page, "0.5000000");
 
-  await wallet.page.getByRole("button", { name: "Send" }).click();
+  await wallet.page.getByRole("button", { name: "Actions", exact: true }).click();
+  await wallet.page.getByRole("menuitem", { name: "Send", exact: true }).click();
   await wallet.page.getByRole("textbox", { name: "To", exact: true }).fill(TO);
   await wallet.page.getByRole("textbox", { name: /Amount/ }).fill("0.5");
   await wallet.page.getByRole("button", { name: "Continue" }).click();
@@ -101,7 +102,8 @@ test("the recipient address is no smaller than the type scale allows", async ({ 
   await wallet.waitForHome(WAITS.ledgerRead);
   await stubBuild(wallet.page, "1.0000000");
 
-  await wallet.page.getByRole("button", { name: "Send" }).click();
+  await wallet.page.getByRole("button", { name: "Actions", exact: true }).click();
+  await wallet.page.getByRole("menuitem", { name: "Send", exact: true }).click();
   await wallet.page.getByRole("textbox", { name: "To", exact: true }).fill(TO);
   await wallet.page.getByRole("textbox", { name: /Amount/ }).fill("1");
   await wallet.page.getByRole("button", { name: "Continue" }).click();

@@ -1,0 +1,268 @@
+// cross-chain USDC, inbound: claim a transfer that was burned on another chain
+// and is destined for this Stellar account.
+//
+// the burn happened elsewhere (not this wallet); this is the self-serviceable
+// Stellar leg. paste the source chain and its burn tx hash, and the worker's
+// buildCctpClaim fetches Circle's attestation and builds the mint. it refuses,
+// with a clear message, if the attestation is not published yet, so the compose
+// screen surfaces that rather than pretending the claim is ready.
+import { useRef, useState } from "react";
+import { useWallet } from "../WalletProvider";
+import { call } from "../rpc";
+import { Button, Field, Frame, Header, Notice } from "../primitives";
+import { InfoTip } from "../Tooltip";
+import { ConfirmSheet, useOnce } from "../flow";
+import { AssetMark } from "./Home";
+import { ChevronRight, Globe } from "../icons";
+import { CROSS_CHAIN_DOMAINS, ChainPicker } from "./CctpSend";
+import { cctpDomainName } from "../../../../core/integrations/cctp";
+import { radius, space, text } from "../theme";
+import type { CctpSummary } from "../../../../core/messages";
+
+/** a source-chain burn tx hash is 32 bytes; mirror the shape for live feedback. */
+const TXHASH_RE = /^(0x)?[0-9a-fA-F]{64}$/;
+
+export function CctpClaim({ onClose }: { onClose: () => void }) {
+  const w = useWallet();
+  const t = w.t;
+
+  const balances = w.balances ?? [];
+  const markId = balances.find((b) => b.code === "USDC")?.id ?? "USDC";
+
+  const [domain, setDomain] = useState<number | null>(null);
+  const [txHash, setTxHash] = useState("");
+  const [picking, setPicking] = useState(false);
+
+  const [error, setError] = useState<string | null>(null);
+  const [building, setBuilding] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [handle, setHandle] = useState<string | null>(null);
+  const [summary, setSummary] = useState<CctpSummary | null>(null);
+  const [result, setResult] = useState<{ hash: string; ledger: number } | null>(null);
+  const once = useOnce();
+  const opId = useRef<string | null>(null);
+  const leaving = useRef(false);
+
+  const chainName = domain !== null ? cctpDomainName(domain) : null;
+  const txValid = TXHASH_RE.test(txHash.trim());
+
+  const review = async () => {
+    if (domain === null) return;
+    setError(null);
+    setBuilding(true);
+    try {
+      const r = await call({
+        type: "buildCctpClaim",
+        sourceDomain: domain,
+        txHash: txHash.trim(),
+      });
+      setHandle(r.handle);
+      setSummary(r.summary);
+      setConfirming(true);
+    } catch (e) {
+      // "not attested yet" lands here, verbatim from the worker: the honest
+      // "try again shortly", not a claim built against a transfer that is not ready.
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBuilding(false);
+    }
+  };
+
+  const approve = async () => {
+    if (!handle || !once.claim()) return;
+    setBusy(true);
+    setError(null);
+    const id = w.beginOp({
+      verb: "Claim",
+      pocket: "public",
+      code: "USDC",
+      fee: summary?.fee,
+      network: w.status?.network,
+    });
+    opId.current = id;
+    try {
+      const r = await call({ type: "confirmCctpClaim", handle });
+      w.completeOp(id, { hash: r.hash, ledger: r.ledger });
+      setResult({ hash: r.hash, ledger: r.ledger });
+      setBusy(false);
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e);
+      w.failOp(id, reason);
+      setError(reason);
+      setBusy(false);
+      once.release();
+    }
+  };
+
+  const closeConfirm = () => {
+    if (busy) return;
+    once.release();
+    if (result) {
+      leaving.current = true;
+      if (opId.current) w.dropOp(opId.current);
+      opId.current = null;
+    }
+    setConfirming(false);
+  };
+  const onConfirmClosed = () => {
+    if (leaving.current) {
+      leaving.current = false;
+      onClose();
+    }
+  };
+
+  const ready = domain !== null && txValid;
+
+  return (
+    <>
+      <Frame t={t} className="pocket-page">
+        {!result && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
+            <div style={{ padding: `${space.gutter}px ${space.gutter}px ${space.sm}px` }}>
+              <Header
+                t={t}
+                title="Claim from a chain"
+                onBack={onClose}
+                right={
+                  <InfoTip t={t} label="About claiming cross-chain USDC">
+                    Completes a CCTP transfer that was burned on another chain and addressed to this
+                    account. Paste that chain and the burn transaction hash; the USDC arrives in
+                    your public pocket. It can only be claimed once Circle has attested the burn.
+                  </InfoTip>
+                }
+              />
+            </div>
+
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                overflowX: "hidden",
+                overflowY: "auto",
+                padding: `0 ${space.gutter}px`,
+              }}
+            >
+              {/* the source chain */}
+              <button
+                type="button"
+                onClick={() => setPicking(true)}
+                aria-label="Choose the source chain"
+                className="pk-tap"
+                style={{
+                  all: "unset",
+                  boxSizing: "border-box",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: space.sm,
+                  width: "100%",
+                  padding: `14px 16px`,
+                  borderRadius: radius.md,
+                  background: t.field,
+                }}
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: radius.md,
+                    background: t.accentSoft,
+                    color: t.accentOnSoft,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flex: "0 0 auto",
+                  }}
+                >
+                  <Globe size={20} />
+                </span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ ...text.label, color: t.sub, display: "block" }}>From chain</span>
+                  <span
+                    style={{
+                      ...text.rowTitle,
+                      color: chainName ? t.text : t.faint,
+                      display: "block",
+                    }}
+                  >
+                    {chainName ?? "Choose a chain"}
+                  </span>
+                </span>
+                <span aria-hidden style={{ color: t.faint, display: "flex" }}>
+                  <ChevronRight size={18} />
+                </span>
+              </button>
+
+              <div style={{ marginTop: space.md }}>
+                <Field
+                  t={t}
+                  label="Burn transaction hash"
+                  value={txHash}
+                  onChange={setTxHash}
+                  placeholder="0x…"
+                  mono
+                  multiline
+                  invalid={txHash !== "" && !txValid}
+                  hint={
+                    txHash !== "" && !txValid
+                      ? "That is not a 32-byte transaction hash (0x followed by 64 hex characters)."
+                      : "The hash of the burn transaction on the source chain."
+                  }
+                />
+              </div>
+
+              {error && !confirming && (
+                <div style={{ marginTop: space.md }}>
+                  <Notice t={t} tone="danger" bare>
+                    {error}
+                  </Notice>
+                </div>
+              )}
+            </div>
+
+            <div
+              style={{ padding: `${space.md}px ${space.gutter}px ${space.lg}px`, background: t.bg }}
+            >
+              <Button t={t} disabled={!ready} busy={building} onClick={() => void review()}>
+                {building ? "Checking" : "Continue"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Frame>
+
+      <ChainPicker
+        t={t}
+        open={picking}
+        chains={CROSS_CHAIN_DOMAINS}
+        onPick={(d) => {
+          setDomain(d);
+          setPicking(false);
+        }}
+        onClose={() => setPicking(false)}
+      />
+
+      <ConfirmSheet
+        t={t}
+        open={confirming}
+        heading="Confirm claim"
+        mark={<AssetMark t={t} id={markId} code="USDC" />}
+        code="USDC"
+        fee={summary?.fee}
+        effects={summary?.effects ?? []}
+        error={error}
+        busy={busy}
+        result={result}
+        network={w.status?.network}
+        approveLabel="Confirm and claim"
+        onApprove={() => void approve()}
+        onCancel={closeConfirm}
+        onDone={closeConfirm}
+        onGoHome={onClose}
+        onClosed={onConfirmClosed}
+      />
+    </>
+  );
+}

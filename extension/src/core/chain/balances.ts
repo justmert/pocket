@@ -286,3 +286,50 @@ export function capDecimals(value: string, places: number): string {
     .replace(/0+$/, "")
     .replace(/\.$/, "");
 }
+
+/**
+ * an amount to put IN the compose field, shortened for readability but never
+ * shortened to nothing.
+ *
+ * Four fraction digits reads better than Stellar's seven, and truncating (never
+ * rounding) is what keeps "use max" from offering more than is spendable. But
+ * the whole of a small balance can live below the fourth place: pressing Use max
+ * on 0.00009 XLM truncated to the string "0" and filled the field with zero,
+ * with Continue still live, so the one control whose job is "send everything"
+ * answered "send nothing".
+ *
+ * So the cap is a PREFERENCE, not a rule. When applying it would erase a nonzero
+ * value the field keeps the exact amount instead, which is longer and correct.
+ * Still truncation, never rounding: the returned string is either the capped
+ * value or the input unchanged, and both are <= the input.
+ */
+export function composeAmount(value: string, places: number): string {
+  const capped = capDecimals(value, places);
+  if (/[1-9]/.test(value) && !/[1-9]/.test(capped)) return value;
+  return capped;
+}
+
+/**
+ * an amount for DISPLAY: shortened the same way, but never shown as zero when it
+ * is not zero.
+ *
+ * `capDecimals` truncates, which is right for the value paths it was written for
+ * and wrong for a screen. Stellar carries seven decimals and the display cap is
+ * four, so every amount smaller than 0.0001 truncated to the string "0", and a
+ * history row would state that an account received 0 XLM from somebody. That is
+ * not a rounding artefact, it is the screen asserting nothing moved when
+ * something did, and the row offers no way to find out otherwise.
+ *
+ * Separate from `capDecimals` rather than folded into it, deliberately: that
+ * function feeds "use max" and the slider, where a value must never be nudged
+ * ABOVE what is spendable, and "<0.0001" is not a number those can submit.
+ */
+export function displayAmount(value: string, places = 4): string {
+  const capped = capDecimals(value, places);
+  // A significant digit before the cap and none after it: the whole value lies
+  // below what this many places can express.
+  if (/[1-9]/.test(value) && !/[1-9]/.test(capped)) {
+    return `<0.${"0".repeat(Math.max(0, places - 1))}1`;
+  }
+  return capped;
+}

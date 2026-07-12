@@ -21,11 +21,25 @@ interface Rec {
   asset_type?: string;
   asset_code?: string;
   source_amount?: string;
+  asset_issuer?: string;
   source_asset_type?: string;
   source_asset_code?: string;
+  source_asset_issuer?: string;
   account?: string;
   funder?: string;
   starting_balance?: string;
+  // invoke_host_function: the contract invoked, and the balance movements it
+  // caused. Shape taken verbatim from a live testnet record.
+  address?: string;
+  asset_balance_changes?: {
+    asset_type?: string;
+    asset_code?: string;
+    asset_issuer?: string;
+    type?: string;
+    from?: string;
+    to?: string;
+    amount?: string;
+  }[];
 }
 
 /** Serve fixed pages of records in order, ignoring the URL. */
@@ -83,6 +97,48 @@ describe("mapping Horizon records", () => {
       at: ms(AUG1),
       hash: "tx9",
     });
+  });
+
+  it("keeps the issuer, so two assets sharing a code are not one row", async () => {
+    // A code alone does not identify an asset: anyone can issue one called
+    // USDC. Horizon supplies the issuer on every record and it was decoded and
+    // dropped, so two different tokens rendered identically and the logo lookup
+    // (keyed CODE:ISSUER) missed every credit asset.
+    stubHorizon([
+      {
+        id: "20",
+        type: "payment",
+        created_at: AUG1,
+        transaction_hash: "tx20",
+        from: THEM,
+        to: ME,
+        amount: "5.0000000",
+        asset_type: "credit_alphanum4",
+        asset_code: "USDC",
+        asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      },
+    ]);
+    const { entries } = await history();
+    expect(entries[0]).toMatchObject({
+      code: "USDC",
+      issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    });
+  });
+
+  it("leaves native without an issuer, because it has none", async () => {
+    stubHorizon([
+      {
+        id: "21",
+        type: "payment",
+        created_at: AUG1,
+        transaction_hash: "tx21",
+        from: THEM,
+        to: ME,
+        amount: "1.0000000",
+        asset_type: "native",
+      },
+    ]);
+    expect((await history()).entries[0]!.issuer).toBeUndefined();
   });
 
   it("reads a sent payment as send out, to the recipient", async () => {
@@ -178,6 +234,195 @@ describe("mapping Horizon records", () => {
         to: TOKEN,
         amount: "5",
         asset_type: "native",
+      },
+    ]);
+    expect((await history()).entries).toEqual([]);
+  });
+});
+
+/**
+ * Soroban calls. Every in-app swap, yield move and CCTP leg is one of these, and
+ * none of them appeared in history at all: `invoke_host_function` carries no
+ * top-level from/to/amount, so it fell past every branch and returned null. The
+ * record shape below is taken verbatim from a live testnet response, including
+ * the fact that a SAC transfer names a contract on the far side.
+ */
+describe("value moved by a contract call", () => {
+  const ROUTER = "CROUTER000000000000000000000000000000000000000000ROUTER";
+  const USDC_ISSUER = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
+
+  it("reads what the account paid into a contract as a send", async () => {
+    stubHorizon([
+      {
+        id: "10",
+        type: "invoke_host_function",
+        created_at: AUG1,
+        transaction_hash: "tx10",
+        address: ROUTER,
+        asset_balance_changes: [
+          {
+            asset_type: "credit_alphanum4",
+            asset_code: "USDC",
+            asset_issuer: USDC_ISSUER,
+            type: "transfer",
+            from: ME,
+            to: ROUTER,
+            amount: "1.2345670",
+          },
+          // The contract's own follow-on movement. Not this account's money.
+          { asset_type: "credit_alphanum4", asset_code: "USDC", type: "burn", from: ROUTER },
+        ],
+      },
+    ]);
+    const { entries } = await history();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      kind: "send",
+      direction: "out",
+      code: "USDC",
+      amount: "1.2345670",
+      counterparty: ROUTER,
+      hash: "tx10",
+    });
+  });
+
+  it("gives a swap both of its legs, because both are the account's money", async () => {
+    stubHorizon([
+      {
+        id: "11",
+        type: "invoke_host_function",
+        created_at: AUG1,
+        transaction_hash: "tx11",
+        address: ROUTER,
+        asset_balance_changes: [
+          { asset_type: "native", type: "transfer", from: ME, to: ROUTER, amount: "100.0000000" },
+          {
+            asset_type: "credit_alphanum4",
+            asset_code: "USDC",
+            type: "transfer",
+            from: ROUTER,
+            to: ME,
+            amount: "24.5000000",
+          },
+        ],
+      },
+    ]);
+    const { entries } = await history();
+    expect(entries).toHaveLength(2);
+    // Both legs are labelled `swap`, because they are one event. Each still
+    // states its own asset, amount and direction, which is what makes the pair
+    // readable as an exchange rather than as two unrelated movements.
+    expect(entries.map((e) => [e.kind, e.direction, e.code, e.amount])).toEqual([
+      ["swap", "out", "XLM", "100.0000000"],
+      ["swap", "in", "USDC", "24.5000000"],
+    ]);
+    // Two entries from one operation must not collide, or pagination and the
+    // in-flight reconciliation both key on a duplicate.
+    expect(new Set(entries.map((e) => e.id)).size).toBe(2);
+  });
+
+  it("does not call a same-asset round trip a swap", async () => {
+    // Value left and value arrived, but nothing was exchanged. Calling this a
+    // swap would put a word on screen the movements do not support, so it stays
+    // the most the wallet can honestly say: it sent, and it received.
+    stubHorizon([
+      {
+        id: "16",
+        type: "invoke_host_function",
+        created_at: AUG1,
+        transaction_hash: "tx16",
+        address: ROUTER,
+        asset_balance_changes: [
+          { asset_type: "native", type: "transfer", from: ME, to: ROUTER, amount: "10.0000000" },
+          { asset_type: "native", type: "transfer", from: ROUTER, to: ME, amount: "9.0000000" },
+        ],
+      },
+    ]);
+    const { entries } = await history();
+    expect(entries.map((e) => e.kind)).toEqual(["send", "receive"]);
+  });
+
+  it("does not call a one-legged call a swap", async () => {
+    // A yield deposit and a CCTP burn are both one-way. There is no second
+    // asset, so there is nothing to have exchanged it for.
+    stubHorizon([
+      {
+        id: "17",
+        type: "invoke_host_function",
+        created_at: AUG1,
+        transaction_hash: "tx17",
+        address: ROUTER,
+        asset_balance_changes: [
+          { asset_type: "native", type: "transfer", from: ME, to: ROUTER, amount: "10.0000000" },
+        ],
+      },
+    ]);
+    expect((await history()).entries.map((e) => e.kind)).toEqual(["send"]);
+  });
+
+  it("names the invoked contract when a mint has no counterparty of its own", async () => {
+    // A CCTP claim arrives as a mint: there is no `from`, so without a fallback
+    // the row renders "Received from " with nothing after it.
+    stubHorizon([
+      {
+        id: "12",
+        type: "invoke_host_function",
+        created_at: AUG1,
+        transaction_hash: "tx12",
+        address: ROUTER,
+        asset_balance_changes: [
+          {
+            asset_type: "credit_alphanum4",
+            asset_code: "USDC",
+            type: "mint",
+            to: ME,
+            amount: "9.0000000",
+          },
+        ],
+      },
+    ]);
+    const { entries } = await history();
+    expect(entries[0]).toMatchObject({ kind: "receive", direction: "in", counterparty: ROUTER });
+  });
+
+  it("still excludes a confidential wrapper's leg, now that one can reach here", async () => {
+    // A shield is an invocation whose balance change names the wrapper. The
+    // exclusion could never fire on a classic payment, because those name
+    // G-addresses and the excluded ids are contracts. Without it a shield would
+    // appear once in each pocket.
+    stubHorizon([
+      {
+        id: "13",
+        type: "invoke_host_function",
+        created_at: AUG1,
+        transaction_hash: "tx13",
+        address: TOKEN,
+        asset_balance_changes: [
+          { asset_type: "native", type: "transfer", from: ME, to: TOKEN, amount: "5.0000000" },
+        ],
+      },
+    ]);
+    expect((await history()).entries).toEqual([]);
+  });
+
+  it("ignores a call that moved nobody's balance, and one that moved somebody else's", async () => {
+    stubHorizon([
+      {
+        id: "14",
+        type: "invoke_host_function",
+        created_at: AUG1,
+        transaction_hash: "tx14",
+        address: ROUTER,
+      },
+      {
+        id: "15",
+        type: "invoke_host_function",
+        created_at: AUG1,
+        transaction_hash: "tx15",
+        address: ROUTER,
+        asset_balance_changes: [
+          { asset_type: "native", type: "transfer", from: THEM, to: ROUTER, amount: "1.0000000" },
+        ],
       },
     ]);
     expect((await history()).entries).toEqual([]);

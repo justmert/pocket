@@ -7,6 +7,8 @@ import {
   readTrustline,
   AccountNotFoundError,
   LedgerEntryMismatchError,
+  displayAmount,
+  composeAmount,
 } from "./balances";
 
 const MINE = "GBZXN7PIRZGNMHGA7MUUUF4GWPY5AYPV6LY4UV2GL6VJGIQRXFDNMADI";
@@ -169,5 +171,64 @@ describe("the ledger's answer must be about the question", () => {
     await expect(
       readNative(serverReturning(null, { entries: [{ key: key.toXDR("base64") }] }), MINE),
     ).rejects.toBeInstanceOf(LedgerEntryMismatchError);
+  });
+});
+
+describe("displayAmount", () => {
+  it("shortens like capDecimals for anything it can express", () => {
+    expect(displayAmount("12.5000000")).toBe("12.5");
+    expect(displayAmount("1.0000500")).toBe("1");
+    expect(displayAmount("1000.1234567")).toBe("1000.1234");
+    expect(displayAmount("40")).toBe("40");
+  });
+
+  it("never states that a nonzero amount is zero", () => {
+    // The defect: Stellar carries seven decimals and the row shows four, so a
+    // real receipt of 0.00001 XLM rendered as "0 XLM" and the row asserted that
+    // nothing moved. Reproduced against the real function.
+    expect(displayAmount("0.0000100")).toBe("<0.0001");
+    expect(displayAmount("0.0000001")).toBe("<0.0001");
+    expect(displayAmount("0.0000999")).toBe("<0.0001");
+  });
+
+  it("still says zero when the amount really is zero", () => {
+    expect(displayAmount("0")).toBe("0");
+    expect(displayAmount("0.0000000")).toBe("0");
+  });
+
+  it("keeps the boundary value itself, which four places can express", () => {
+    expect(displayAmount("0.0001000")).toBe("0.0001");
+  });
+
+  it("honours a different precision", () => {
+    expect(displayAmount("0.0000001", 7)).toBe("0.0000001");
+    expect(displayAmount("0.001", 2)).toBe("<0.01");
+  });
+});
+
+describe("composeAmount", () => {
+  it("shortens to the display cap when it can", () => {
+    expect(composeAmount("99.9999999", 4)).toBe("99.9999");
+    expect(composeAmount("40.0000000", 4)).toBe("40");
+  });
+
+  it("never fills the field with zero for a balance that is not zero", () => {
+    // "Use max" on a balance whose whole value lives below the fourth place
+    // truncated to "0" and left Continue live, so the control whose job is
+    // "send everything" answered "send nothing".
+    expect(composeAmount("0.0000900", 4)).toBe("0.0000900");
+    expect(composeAmount("0.0000001", 4)).toBe("0.0000001");
+  });
+
+  it("still truncates rather than rounding, so max is never above spendable", () => {
+    // The property that matters: whatever comes back is <= what went in.
+    for (const v of ["1.99999", "0.00019", "12.34567", "0.0000900"]) {
+      expect(Number(composeAmount(v, 4))).toBeLessThanOrEqual(Number(v));
+    }
+  });
+
+  it("leaves a real zero alone", () => {
+    expect(composeAmount("0", 4)).toBe("0");
+    expect(composeAmount("0.0000000", 4)).toBe("0");
   });
 });

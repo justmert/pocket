@@ -13,8 +13,19 @@
 // no strkey type marker, so the protocol cannot tell a G account from a C
 // contract and assumes mintRecipient is always a contract.
 //
-// This module therefore refuses to build a burn whose parameters deviate. That
-// check is the whole point of the module: a caller cannot opt out of it.
+// `assertBurnParameters` below refuses a burn whose parameters deviate, and a
+// caller cannot opt out of it. Read what it actually governs before relying on
+// it: it requires `destinationDomain === STELLAR_DOMAIN`, so it describes an
+// INBOUND leg composed on another chain. Pocket's own outbound burn goes the
+// other way and has no production caller of this gate at all; see the note at
+// `toCctpFee` further down, which says the same thing 200 lines later.
+//
+// What keeps the outbound path safe is different and worth stating here rather
+// than leaving implied: every parameter it sends is a hardcoded constant from
+// the table below, a value fixed by the wallet, or a user-typed recipient that
+// is displayed in full and checksum-verified by `evmAddressToBytes32`.
+import { keccak_256 } from "@noble/hashes/sha3.js";
+
 export const CCTP = {
   mainnet: {
     forwarder: "CBZL2IH7F6BIDAA3WBNXYKIXSATJGMSW7K5P5MJ6STX5RXN47TZJDF5T",
@@ -45,9 +56,94 @@ export function evmAddressToBytes32(address: string): Uint8Array {
   if (!/^[0-9a-fA-F]{40}$/.test(hex)) {
     throw new CctpParameterError(`not a 20-byte EVM address: ${address}`);
   }
+  assertEip55(hex, address);
   const out = new Uint8Array(32);
   for (let i = 0; i < 20; i++) out[12 + i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   return out;
+}
+
+/**
+ * The EIP-55 capitalisation checksum, where the address carries one.
+ *
+ * A mistyped recipient here is not recoverable: the USDC burns on Stellar and
+ * mints to whatever address the message names on the far chain. Misdelivery
+ * rather than destruction, but equally final for the user, and nothing else in
+ * the flow can catch it. The address is typed by hand and shown back verbatim,
+ * so a transposed pair of characters looks exactly like a correct one.
+ *
+ * The check only works on a MIXED-CASE address, because that is where EIP-55
+ * puts the checksum. An all-lowercase or all-uppercase address carries none and
+ * is accepted unchanged: refusing it would reject a legitimate form that every
+ * EVM tool emits. So this catches the common case (a wallet-copied checksummed
+ * address that was then corrupted) and cannot catch a lowercase typo, which is
+ * worth stating rather than implying it is a complete guard.
+ */
+function assertEip55(hex: string, original: string): void {
+  const lower = hex.toLowerCase();
+  const upper = hex.toUpperCase();
+  // No checksum to verify: the address is in a case-insensitive form.
+  if (hex === lower || hex === upper) return;
+
+  if (eip55(lower) !== hex) {
+    throw new CctpParameterError(
+      `That EVM address fails its own checksum, so it has been mistyped or altered: ${original}. ` +
+        `USDC bridged to a wrong address cannot be recovered.`,
+    );
+  }
+}
+
+/** The EIP-55 capitalisation of a lowercase 40-character hex address. */
+function eip55(lower: string): string {
+  const digest = keccak_256(new TextEncoder().encode(lower));
+  let out = "";
+  for (let i = 0; i < 40; i++) {
+    const c = lower[i]!;
+    if (c >= "0" && c <= "9") {
+      out += c;
+      continue;
+    }
+    // The nibble governing character i is the high or low half of byte i/2.
+    const byte = digest[i >> 1]!;
+    const nibble = i % 2 === 0 ? byte >> 4 : byte & 0x0f;
+    out += nibble >= 8 ? c.toUpperCase() : c;
+  }
+  return out;
+}
+
+/**
+ * Read a mint recipient back OUT of the 32 bytes that will be signed.
+ *
+ * The inverse of `evmAddressToBytes32`, and it exists for the approval screen
+ * rather than for the protocol. The bridge sheet was showing an amount and a
+ * chain and no destination at all, so the one field that decides where the money
+ * lands was visible only in the form the user had already left. Echoing the
+ * typed string back would prove nothing; this decodes the value the worker
+ * actually recorded and will actually burn to.
+ *
+ * Returned in EIP-55 capitalisation, computed here rather than carried through,
+ * so the case a user compares against the far chain's explorer is derived from
+ * these bytes and not from what they typed.
+ *
+ * Refuses anything whose top 12 bytes are not zero. CCTP left-pads a 20-byte
+ * address into 32; a value with something up there is not an EVM address, and
+ * rendering its bottom 20 bytes as one would be a confident lie about a
+ * destination.
+ */
+export function bytes32ToEvmAddress(bytes: Uint8Array): string {
+  if (bytes.length !== 32) {
+    throw new CctpParameterError(`a mint recipient is 32 bytes, not ${bytes.length}`);
+  }
+  for (let i = 0; i < 12; i++) {
+    if (bytes[i] !== 0) {
+      throw new CctpParameterError(
+        "that mint recipient is not a left-padded EVM address, so Pocket cannot say where it " +
+          "would land",
+      );
+    }
+  }
+  let lower = "";
+  for (let i = 12; i < 32; i++) lower += bytes[i]!.toString(16).padStart(2, "0");
+  return `0x${eip55(lower)}`;
 }
 
 /** The all-zero 32-byte value, used for a permissionless destination_caller. */

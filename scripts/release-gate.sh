@@ -96,16 +96,22 @@ note "Gate 3: deployment addresses resolve on chain"
 for net in testnet; do
   f="resources/deployment-$net.json"
   if [ -f "$f" ]; then
+    # EVERY id the record declares. This was `for key in token verifier auditor`
+    # against a hardcoded count of three, so a wrapper added to
+    # `confidentialAssets` was neither resolved nor counted, and the gate said
+    # "all three contracts resolve" about a deployment that had four.
+    ids=$(./scripts/deployment-ids.sh "$f")
+    want=$(printf '%s\n' "$ids" | wc -l | tr -d ' ')
     live=0
-    for key in token verifier auditor; do
-      id=$(python3 -c "import json,sys; print(json.load(open('$f'))['$key'])")
+    while read -r key id; do
+      [ -n "$key" ] || continue
       if stellar contract info interface --id "$id" --network "$net" >/dev/null 2>&1; then
         live=$((live+1))
       else
         bad "$net $key ($id) does not resolve"
       fi
-    done
-    [ "$live" = "3" ] && ok "$net: all three contracts resolve"
+    done <<< "$ids"
+    [ "$live" = "$want" ] && ok "$net: all $want contracts resolve"
   else
     printf '  SKIP  no %s deployment recorded\n' "$net"
   fi
@@ -285,12 +291,19 @@ for h in m.get('host_permissions',[]): print(urllib.parse.urlparse(h).netloc)
   # ADDRESS. If the build points at a different deployment than the one gate 3
   # just resolved, every existing user's openings are silently orphaned, which
   # loses them their private balance permanently.
+  #
+  # EVERY id the record declares, which is the whole point given what the
+  # paragraph above says it protects. Hardcoded to the three top-level fields,
+  # this gate would have passed a bundle built against a stale USDC wrapper while
+  # claiming it had checked "deployment ids", and the orphaned openings it exists
+  # to prevent are per-token.
   if [ -f resources/deployment-testnet.json ]; then
-    for key in token verifier auditor; do
-      id=$(python3 -c "import json;print(json.load(open('resources/deployment-testnet.json'))['$key'])")
+    pkg_ids=$(./scripts/deployment-ids.sh resources/deployment-testnet.json)
+    while read -r key id; do
+      [ -n "$key" ] || continue
       grep -q "$id" "$OUT/background.js" \
         || { bad "$key $id is the recorded deployment but is not in the built bundle"; bad_pkg=1; }
-    done
+    done <<< "$pkg_ids"
   fi
 
   [ "$bad_pkg" = "0" ] \

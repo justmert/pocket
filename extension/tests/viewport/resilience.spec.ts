@@ -65,7 +65,8 @@ test("every screen holds its layout with forty percent more text", async ({ wall
 
   await page.reload();
   await wallet.waitForHome(WAITS.ledgerRead);
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Send", exact: true }).click();
   await settle(page);
   await inflate(page);
   await expectLayoutHolds(page, "send/compose with inflated copy");

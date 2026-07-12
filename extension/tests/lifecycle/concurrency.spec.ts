@@ -267,7 +267,8 @@ test("closing the popup mid-compose loses the draft and nothing else", async () 
     await onboard(page);
     const before = await storageKeys(page);
 
-    await page.getByRole("button", { name: "Send" }).click();
+    await page.getByRole("button", { name: "Actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Send", exact: true }).click();
     await page
       .getByRole("textbox", { name: "To", exact: true })
       .fill("GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7");
@@ -281,7 +282,8 @@ test("closing the popup mid-compose loses the draft and nothing else", async () 
     await expect(reopened.getByText("Unfinished transaction")).toHaveCount(0);
     expect(await storageKeys(reopened)).toEqual(before);
 
-    await reopened.getByRole("button", { name: "Send" }).click();
+    await reopened.getByRole("button", { name: "Actions", exact: true }).click();
+    await reopened.getByRole("menuitem", { name: "Send", exact: true }).click();
     await expect(reopened.getByRole("textbox", { name: "To", exact: true })).toHaveValue("");
     await expect(reopened.getByRole("textbox", { name: "Memo (optional)" })).toHaveValue("");
   } finally {

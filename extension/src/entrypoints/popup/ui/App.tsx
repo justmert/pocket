@@ -18,6 +18,12 @@ import { TransactionsSheet } from "./screens/History";
 import { ReceiveSheet } from "./sheets/ReceiveSheet";
 import { Send } from "./screens/Send";
 import { Move } from "./screens/Move";
+import { Swap } from "./screens/Swap";
+import { Yield } from "./screens/Yield";
+import { CctpSend } from "./screens/CctpSend";
+import { CctpClaim } from "./screens/CctpClaim";
+import { ManageAssets } from "./screens/ManageAssets";
+import { ChooseAsset } from "./screens/ChooseAsset";
 import { MoveSheet } from "./sheets/MoveSheet";
 import {
   AutoLockSheet,
@@ -140,7 +146,7 @@ function FinishOnboarding({ t }: { t: Theme }) {
       <div style={{ marginTop: space.lg, width: "100%" }}>
         <Notice t={t} tone="exposed">
           Your recovery phrase is still open in another tab and has not been confirmed yet. Finish
-          writing it down there. Pocket cannot show it again.
+          writing it down there.
         </Notice>
         <ButtonStack>
           <Button t={t} onClick={() => void raiseOnboardingTab()}>
@@ -244,6 +250,17 @@ function Shell() {
   // step as Send, since to the user this is a send between their own pockets.
   if (top === "moveIn") return <Move kind="shield" onClose={w.closeSheet} />;
   if (top === "moveOut") return <Move kind="unshield" onClose={w.closeSheet} />;
+
+  // the public-pocket integrations are full-frame compose pages too, wired
+  // exactly like send: they live on the sheet stack so open/close and escape
+  // behave the same, and each fills the frame over what is behind it.
+  if (top === "swap") return <Swap onClose={w.closeSheet} />;
+  if (top === "yieldDeposit") return <Yield kind="deposit" onClose={w.closeSheet} />;
+  if (top === "yieldWithdraw") return <Yield kind="withdraw" onClose={w.closeSheet} />;
+  if (top === "cctpSend") return <CctpSend onClose={w.closeSheet} />;
+  if (top === "cctpClaim") return <CctpClaim onClose={w.closeSheet} />;
+  if (top === "assets") return <ManageAssets onClose={w.closeSheet} />;
+  if (top === "chooseAsset") return <ChooseAsset onClose={w.closeSheet} />;
 
   return (
     <Frame t={t}>

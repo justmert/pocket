@@ -21,6 +21,7 @@ import {
   INITIAL_STATE,
   isReplayEvent,
   UnreplayableEventError,
+  MalformedEventError,
   type ConfidentialEvent,
 } from "./sync";
 import { verifyAgainstChain } from "./private";
@@ -98,22 +99,43 @@ export function decodeStored(e: StoredEvent): ConfidentialEvent | null {
   // concatenation's first four bytes are the first value's discriminant. That
   // is what this decoder did, so archive-backed recovery could not decode a
   // single event. Measured against the real stored bytes, not assumed.
-  const topicVals = readConcatenated(e.topics_xdr);
-  // topic[0] is the event name; the parties follow.
-  const topics = topicVals
-    .slice(1)
-    .map((t) => scValToNative(t) as unknown)
-    .map((v) => (typeof v === "string" ? v : ""));
-  return {
-    id: e.id,
-    type: e.event_type,
-    ledger: e.ledger_seq,
-    txApplicationOrder: e.tx_application_order,
-    eventIndex: e.event_index,
-    topics,
-    data: scValToNative(xdr.ScVal.fromXDR(e.data_xdr, "base64")) as Record<string, unknown>,
-    payload: payloadOf(e),
-  };
+  // The archive is outside the trust boundary and these are its bytes, so the
+  // decode is guarded. Unguarded, a truncated or corrupt `topics_xdr` or
+  // `data_xdr` threw the SDK's own `TypeError: XDR Read Error` straight out of
+  // `recoverOpenings`, and `describeError` has no name for that, so a rebuild
+  // stopped on an archive fault and told the user to check their connection.
+  //
+  // THROWN, never skipped. Returning null here would drop the event from the
+  // replay and produce a balance short by exactly what could not be read, which
+  // is the failure `UnreplayableEventError` is documented to avoid: short is the
+  // shape a user only discovers when a spend they believe is funded is refused.
+  // `MalformedEventError` is the class sync.ts already defines for "an event
+  // whose shape is not what the contract emits", and `recoverOpenings`
+  // translates it into a sentence naming the archive as the fault.
+  try {
+    const topicVals = readConcatenated(e.topics_xdr);
+    // topic[0] is the event name; the parties follow.
+    const topics = topicVals
+      .slice(1)
+      .map((t) => scValToNative(t) as unknown)
+      .map((v) => (typeof v === "string" ? v : ""));
+    return {
+      id: e.id,
+      type: e.event_type,
+      ledger: e.ledger_seq,
+      txApplicationOrder: e.tx_application_order,
+      eventIndex: e.event_index,
+      topics,
+      data: scValToNative(xdr.ScVal.fromXDR(e.data_xdr, "base64")) as Record<string, unknown>,
+      payload: payloadOf(e),
+    };
+  } catch (cause) {
+    // The id is named for a reader of a log, not for the screen: the message is
+    // replaced by an authored one before it can reach a user.
+    throw new MalformedEventError(
+      `event ${e.id} could not be decoded: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+  }
 }
 
 /**
@@ -145,18 +167,21 @@ export async function recoverOpenings(
   // refusal we want rather than a silent partial sync.
   const health = await client.health(tokenId);
 
-  const stored: StoredEvent[] = [];
-  let cursor: string | undefined;
-  for (;;) {
-    // `events` throws IncompleteHistoryError unless ONE contiguous range
-    // covers the whole request, so a gap is an error and never a short read.
-    const page = await client.events(tokenId, account, { cursor, limit: 200 });
-    stored.push(...page.events);
-    if (!page.cursor || page.cursor === cursor) break;
-    cursor = page.cursor;
-  }
+  // `allEvents` throws IncompleteHistoryError unless ONE contiguous range covers
+  // the whole request, so a gap is an error and never a short read, and it pages
+  // under a budget so an archive that never stops handing out cursors cannot
+  // spin this loop forever. That mattered here more than anywhere: this runs
+  // inside the dispatcher's ACTIVITY set, so a spin would hold the idle lock
+  // open indefinitely with the vault key in memory.
+  const stored: StoredEvent[] = await client.allEvents(tokenId, account);
 
-  const events = stored.map(decodeStored).filter((e): e is ConfidentialEvent => e !== null);
+  // Inside the same guard as `replay` below: `decodeStored` now throws
+  // MalformedEventError for archive bytes it cannot read, and that refusal has
+  // to be translated exactly like a replay refusal rather than escaping raw.
+  let events: ConfidentialEvent[];
+  let state;
+  try {
+    events = stored.map(decodeStored).filter((e): e is ConfidentialEvent => e !== null);
 
   // A received transfer replays only when the archive kept the INVOCATION
   // payload alongside the event: the event carries enough to derive a candidate
@@ -169,8 +194,6 @@ export async function recoverOpenings(
   // credit an unverifiable amount, which is right, and the refusal has to be
   // readable: without this it reached the screen as "check your connection",
   // sending someone to retry a network problem that does not exist.
-  let state;
-  try {
     state = replay(INITIAL_STATE, events, { vk, address: account });
   } catch (e) {
     if (e instanceof UnreplayableEventError) {
@@ -179,6 +202,25 @@ export async function recoverOpenings(
           "so Pocket cannot confirm the amount is yours and will not credit one it cannot " +
           "verify. Your funds are safe on chain. An archive that has re-indexed this contract " +
           "since it started keeping transaction details can rebuild this account.",
+      );
+    }
+    // Its sibling, four lines away in sync.ts, and it escaped this translation
+    // while the argument above applies to it word for word: the rebuild stopped,
+    // and the reason reached the screen as "Something went wrong. Try again, and
+    // check your connection." for a fault no retry can affect.
+    //
+    // Translated rather than allowlisted, and the difference matters. A
+    // `MalformedEventError` message names the event id, the field and a byte
+    // length, all read from the archive's own response, and `describeError` is
+    // an allowlist precisely so an outside string cannot reach the screen
+    // verbatim. So the class stays off that list and this replaces it with a
+    // sentence the wallet wrote, which is the same shape the line above takes.
+    if (e instanceof MalformedEventError) {
+      throw new RecoveryUnavailableError(
+        "The archive returned an event Pocket could not read, so it stopped rather than " +
+          "rebuild a balance from history it does not understand. Your funds are safe on " +
+          "chain. This is a fault in the archive, not in this wallet, and retrying will not " +
+          "change it until that archive re-indexes the contract.",
       );
     }
     throw e;

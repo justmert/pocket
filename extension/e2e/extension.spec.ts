@@ -134,7 +134,8 @@ test("rejects a bad recipient before building anything", async () => {
   try {
     const page = await popup(ctx, id);
     await onboard(page);
-    await page.getByRole("button", { name: "Send" }).click();
+    await page.getByRole("button", { name: "Actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Send", exact: true }).click();
 
     // Right shape, wrong checksum: must be caught, and named as a checksum
     // failure rather than lumped in with junk.

@@ -162,7 +162,8 @@ test("a second tab left on Home after the first locked cannot spend", async () =
 
     // Tab B still renders Home. That is stale UI, which is survivable; what is
     // not survivable is a stale tab still being able to act.
-    await b.getByRole("button", { name: "Send" }).click();
+    await b.getByRole("button", { name: "Actions", exact: true }).click();
+    await b.getByRole("menuitem", { name: "Send", exact: true }).click();
     await b
       .getByRole("textbox", { name: "To", exact: true })
       .fill("GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7");

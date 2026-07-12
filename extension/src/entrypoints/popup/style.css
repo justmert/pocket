@@ -228,8 +228,12 @@ textarea::placeholder {
 .pk-field {
   transition: box-shadow var(--pocket-instant) var(--pocket-enter);
 }
+/* a soft, translucent accent halo, NOT a hard border: a solid 2px accent ring
+ * drew the one crisp rectangle in a wallet whose fields are otherwise soft fills,
+ * and it read as an out-of-place box around the recipient. this answers focus the
+ * way a press answers a tap (a gentle accent wash) without outlining the field. */
 .pk-field:focus-within {
-  box-shadow: 0 0 0 2px var(--pocket-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pocket-accent) 22%, transparent);
 }
 
 @keyframes pocket-spin {

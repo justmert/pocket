@@ -118,7 +118,8 @@ test("unlocking twice in one gesture unlocks once and reports nothing wrong", as
   // worth asserting, and can fail, is that the session the double unlock left
   // behind is a REAL one: it opens Send, it knows the address, and it can be
   // locked and opened again.
-  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Send", exact: true }).click();
   await expect(page.getByLabel("To", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
 

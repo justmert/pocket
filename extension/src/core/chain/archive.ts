@@ -19,6 +19,16 @@ import { deadlineSignal, SERVICE_HTTP_TIMEOUT_MS } from "./http";
 /** Margin above the RPC floor, so the floor advancing mid-request cannot open a gap. */
 export const SEAM_MARGIN_LEDGERS = 1_000;
 
+/**
+ * How many pages `allEvents` will ask for before giving up.
+ *
+ * The same budget `inbound.ts` uses for the RPC scan, and for the same reason:
+ * the loop's only other exit is a cursor the server chooses, so a server that
+ * keeps handing out fresh ones would spin forever. 200 pages of 200 events is
+ * far above any honest history.
+ */
+export const ARCHIVE_MAX_PAGES = 200;
+
 export interface ArchivePage {
   events: StoredEvent[];
   from_ledger: number;
@@ -66,6 +76,46 @@ export class ArchiveClient {
 
   async health(contractId: string): Promise<ArchiveHealth> {
     return parseHealth(await this.get(`/v1/health?contract_id=${encodeURIComponent(contractId)}`));
+  }
+
+  /**
+   * Every archived event for one account, paged to exhaustion, with a budget.
+   *
+   * Both callers used to run this loop themselves and both ended it on
+   * `!page.cursor || page.cursor === previous`. That catches a cursor the
+   * archive REPEATS and not one it ALTERNATES: answering "a", "b", "a", "b"
+   * with `complete: true` and no events spins forever. The archive is the party
+   * this module's own header already treats as hostile, so the loop must
+   * terminate against a dishonest one, not merely a broken one.
+   *
+   * Spinning here is worse than it looks. `rebuildFromHistory` is in the
+   * dispatcher's ACTIVITY set, so the worker's `running` counter never returns
+   * to zero, the idle-lock alarm re-arms every minute forever, and keep-warm
+   * stops MV3 evicting the worker. The wallet then never locks itself again.
+   *
+   * The budget matches `inbound.ts`, which solved the same hazard for the RPC
+   * scan: 200 pages of 200 covers any honest history and terminates promptly
+   * against a dishonest one. Every cursor seen is remembered rather than only
+   * the last, so an alternating pair is caught on its second repeat rather than
+   * after 200 round trips.
+   */
+  async allEvents(contractId: string, account: string): Promise<StoredEvent[]> {
+    const out: StoredEvent[] = [];
+    const seen = new Set<string>();
+    let cursor: string | undefined;
+    for (let page = 0; page < ARCHIVE_MAX_PAGES; page++) {
+      const got = await this.events(contractId, account, { cursor, limit: 200 });
+      out.push(...got.events);
+      if (!got.cursor) return out;
+      if (seen.has(got.cursor)) {
+        throw new ArchiveUnavailableError("it repeated a page cursor instead of advancing");
+      }
+      seen.add(got.cursor);
+      cursor = got.cursor;
+    }
+    throw new ArchiveUnavailableError(
+      `it did not finish paging within ${ARCHIVE_MAX_PAGES} requests`,
+    );
   }
 
   /**

@@ -13,6 +13,7 @@ import { LedgerReadError } from "./chain/ttl";
 import { InvalidAmountError } from "./chain/balances";
 import { StaleHandleError, InvalidAddressKindError } from "./controller";
 import { RecoveryUnavailableError, RecoveryMismatchError } from "./recover-openings";
+import { DefindexError } from "./integrations/defindex";
 
 /** Each name, an instance, and what the user must be able to read. */
 const NAMED: [string, Error, RegExp][] = [
@@ -45,6 +46,19 @@ const NAMED: [string, Error, RegExp][] = [
     "RecoveryMismatchError",
     new RecoveryMismatchError("The rebuilt spendable balance does not match"),
     /does not match/i,
+  ],
+  // The fourth service client. It was the one name missing from the allowlist
+  // while its three siblings were on it, so every sentence the yield path
+  // authored reached the screen as "check your connection". Two of them are the
+  // reason this case is here rather than folded into the others: "Yield is not
+  // configured for this network." is a permanent property of the build, so the
+  // retry the generic line suggests can never succeed, and the trustline
+  // sentence is the one actionable failure the client deliberately maps out of
+  // errorCode 13.
+  [
+    "DefindexError",
+    new DefindexError("You need a trustline for this vault's asset before you can deposit."),
+    /trustline/i,
   ],
 ];
 

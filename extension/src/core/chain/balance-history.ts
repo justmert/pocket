@@ -234,17 +234,29 @@ export async function balanceHistory(opts: {
   const points: BalancePoint[] = [{ at: Date.now(), stroops: currentStroops }];
   let running = currentStroops;
   for (const d of deltas) {
-    // The balance an instant BEFORE this change is what it became, less the
-    // change itself.
-    running -= d.delta;
+    // `running` is the balance IN FORCE from this change until the next one, so
+    // it is stamped at this change's own time BEFORE stepping back over it.
+    //
+    // The order of these two lines is the whole defect this fixes. Subtracting
+    // first stamped the balance from BEFORE the change at the moment of the
+    // change, and `balanceAt` reads a point's `at` as the START of the interval
+    // that value governs, so every segment of the curve showed the previous
+    // segment's balance. A wallet funded on Monday and idle since read as empty
+    // all week and jumped to its real value only at the right-hand edge.
     points.push({ at: d.at, stroops: running });
+    running -= d.delta;
   }
 
   // A balance cannot be negative. If the walk produces one, some change was
   // missed and every earlier point is wrong, so nothing is drawn. This is the
   // same fail-closed rule the opening store follows: a reconstruction that does
   // not reconcile is refused rather than shown.
-  if (points.some((p) => p.stroops < 0n)) return null;
+  //
+  // `running` is checked alongside the points because it is no longer one of
+  // them: it is now the balance before the OLDEST change, which the loop above
+  // stamps nowhere. Without this the walk could end below zero unnoticed on any
+  // account whose creation predates the window.
+  if (running < 0n || points.some((p) => p.stroops < 0n)) return null;
 
   // THE RECONCILIATION. When the account's creation is inside the window, the
   // balance immediately before it is known exactly, and it is zero. Walking all
@@ -258,6 +270,19 @@ export async function balanceHistory(opts: {
   // made every wallet's first funding invisible, and only a live test against a
   // fresh account found it. Costs one comparison and no request.
   if (createdAt !== null && running !== 0n) return null;
+
+  // THE LEFT EDGE. `running` is now the balance the account held before the
+  // oldest change in the window, which is the balance it held when the window
+  // opened. Nothing stamps it, and `balanceAt` reads anything before its first
+  // point as a real zero, so without this an account that simply held a balance
+  // and did nothing drew a flat zero across the whole range and then stepped up
+  // at the right-hand edge. That is the commonest shape a wallet has, and the
+  // zero is the one reading the module says elsewhere it must never invent.
+  //
+  // Skipped when the account was CREATED inside the window: there the zero
+  // before the first point is true, the account did not exist, and the creation
+  // itself is already a delta carrying the opening balance.
+  if (createdAt === null) points.push({ at: since, stroops: running });
 
   points.reverse(); // oldest first
   return points;

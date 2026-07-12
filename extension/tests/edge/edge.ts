@@ -81,7 +81,8 @@ export async function compose(
   // detach. the open sheet is the thing to wait on.
   const dialog = page.getByRole("dialog", { name: /^Send/ });
   if ((await dialog.count()) === 0) {
-    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await page.getByRole("button", { name: "Actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Send", exact: true }).click();
   }
   await expect(dialog).toBeVisible();
   const recipient = page.getByLabel("To", { exact: true });

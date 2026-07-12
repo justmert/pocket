@@ -214,7 +214,14 @@ export function ConnectionsSheet({ open, onClose }: { open: boolean; onClose: ()
         <Skeleton width="100%" height={44} />
       ) : sessions.length === 0 ? (
         <div style={{ ...text.body, color: t.sub, lineHeight: 1.5 }}>
-          No site is connected. A site asks to connect the first time it needs your address.
+          {/* this said "a site asks to connect the first time it needs your
+              address", which describes a flow that does not exist: nothing in
+              the popup calls `connectDapp`, so no origin can obtain a grant in
+              this build. the surface fails closed, which is why it is not a
+              defect, but the sentence was still telling the user to expect
+              something that can never happen. */}
+          No site is connected. Connecting is not available in this build, so nothing will appear
+          here yet.
         </div>
       ) : (
         sessions.map((s, i) => (
@@ -308,6 +315,23 @@ export function EraseSheet({ open, onClose }: { open: boolean; onClose: () => vo
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // clear everything the moment the sheet closes, exactly as PhraseSheet does.
+  //
+  // `Sheet` unmounts its own subtree when it closes, but this state does not
+  // live there: it lives here, in the component App renders unconditionally, so
+  // closing the sheet left the vault password sitting in a useState cell and
+  // `confirmed` still true. Reopening then skipped the "What survives" panel
+  // entirely and arrived with the field pre-filled and focused, one Enter from
+  // erasing the wallet. The two-step gate exists precisely because this is the
+  // one irreversible act in the product, and it was only ever asked once.
+  useEffect(() => {
+    if (open) return;
+    setPassword("");
+    setConfirmed(false);
+    setBusy(false);
+    setError(null);
+  }, [open]);
 
   const run = async () => {
     if (!password || busy) return;

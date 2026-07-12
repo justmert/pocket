@@ -73,23 +73,64 @@ interface PaymentRecord {
   amount?: string;
   asset_type?: string;
   asset_code?: string;
+  asset_issuer?: string;
   // path_payment (source side), which is what THIS account actually paid
   source_amount?: string;
   source_asset_type?: string;
   source_asset_code?: string;
+  source_asset_issuer?: string;
   // create_account
   account?: string;
   funder?: string;
   starting_balance?: string;
+  // invoke_host_function: a Soroban call. It carries NO top-level from/to/amount,
+  // which is why every one of them used to fall off the end of `mapPayment` and
+  // vanish from history. What it carries instead is the list below, and the
+  // contract it invoked.
+  address?: string;
+  asset_balance_changes?: AssetBalanceChange[];
   // joined via ?join=transactions: the fee is a property of the transaction, not
   // the payment operation, so it rides along on the record.
   transaction?: { fee_charged?: string };
+}
+
+/**
+ * One movement of a classic asset caused by a contract call.
+ *
+ * Horizon reports these on `invoke_host_function` records, with the same asset
+ * triple a payment carries. `type` is the SAC operation: a `transfer` has both
+ * sides, a `burn` has only `from`, a `mint` only `to`. Read from a live testnet
+ * record rather than from documentation:
+ *
+ *   { asset_type: "credit_alphanum4", asset_code: "USDC",
+ *     asset_issuer: "GBBD47IF...", type: "transfer",
+ *     from: "GB43MNLS...", to: "CDNG7HXA...", amount: "1.2345670" }
+ */
+interface AssetBalanceChange {
+  asset_type?: string;
+  asset_code?: string;
+  asset_issuer?: string;
+  type?: string;
+  from?: string;
+  to?: string;
+  amount?: string;
 }
 
 /** Horizon's asset triple, as a display code. */
 function assetCode(type?: string, code?: string): string {
   if (type === "native") return "XLM";
   return code ?? "?";
+}
+
+/**
+ * The issuer half of the same triple, absent for native.
+ *
+ * Beside `assetCode` deliberately: a code without its issuer does not identify
+ * an asset, and reading one without the other is how two different tokens came
+ * to render as the same row.
+ */
+function assetIssuer(type?: string, issuer?: string): string | undefined {
+  return type === "native" ? undefined : issuer;
 }
 
 /** The transaction's network fee in decimal XLM, when the join carried it. */
@@ -119,24 +160,103 @@ function mapPayment(
   r: PaymentRecord,
   me: string,
   exclude: ReadonlySet<string>,
-): HistoryEntry | null {
+): HistoryEntry[] {
   const at = Date.parse(r.created_at);
-  if (!Number.isFinite(at)) return null;
+  if (!Number.isFinite(at)) return [];
   const id = `${r.transaction_hash}:${r.id}`;
   const base = { id, pocket: "public" as const, at, hash: r.transaction_hash, fee: feeOf(r) };
 
   if (r.type === "create_account") {
     // Only our own creation, which is our first funding. A create_account this
     // account merely funded belongs to the OTHER account.
-    if (r.account !== me) return null;
-    return {
+    if (r.account !== me) return [];
+    return [
+      {
+        ...base,
+        kind: "create",
+        direction: "in",
+        code: "XLM",
+        amount: r.starting_balance ?? null,
+        counterparty: r.funder,
+      },
+    ];
+  }
+
+  // A Soroban call. Every in-app swap, yield move and CCTP leg is one of these,
+  // and until this branch existed all four were absent from history entirely: a
+  // user could swap 100 XLM, close the wallet, and Activity would say they had
+  // never done anything. The value movements are real and Horizon reports them
+  // on the same endpoint this function already walks, so the record was being
+  // fetched and then dropped by the type check below it.
+  //
+  // One record can yield TWO entries, because that is what a swap is: the asset
+  // that left and the asset that arrived are separate movements and collapsing
+  // them into one would have to discard half. Both are true, and both are the
+  // account's own money.
+  if (r.type === "invoke_host_function") {
+    const mine: {
+      index: number;
+      toMe: boolean;
+      other?: string;
+      code: string;
+      issuer?: string;
+      amount?: string;
+    }[] = [];
+    (r.asset_balance_changes ?? []).forEach((c, i) => {
+      const toMe = c.to === me;
+      const fromMe = c.from === me;
+      if (!toMe && !fromMe) return;
+      // The counterparty of a burn or a mint is absent by construction, so fall
+      // back to the contract that was invoked. That is a real counterparty and
+      // it is always present, which keeps a CCTP claim from rendering as
+      // "Received from " with nothing after it.
+      const other = (toMe ? c.from : c.to) ?? r.address;
+      // The confidential wrappers' legs are the private pocket's story, told
+      // from the private side. This is the first place the exclusion has ever
+      // had anything to match: a classic payment names G-addresses on `to` and
+      // `from`, and the excluded ids are contracts, so the check below could
+      // never fire. A shield is an invocation whose balance change names the
+      // wrapper, which is exactly this shape, so without this line shielding
+      // would appear once in each pocket.
+      if (other && exclude.has(other)) return;
+      mine.push({
+        index: i,
+        toMe,
+        other,
+        code: assetCode(c.asset_type, c.asset_code),
+        issuer: assetIssuer(c.asset_type, c.asset_issuer),
+        ...(c.amount !== undefined ? { amount: c.amount } : {}),
+      });
+    });
+
+    // A swap is recognised by its SHAPE, not by the contract it called: value of
+    // one asset left and value of another arrived inside a single invocation.
+    // That is derivable from what Horizon already returned, so it needs no list
+    // of router addresses to keep in step with config, and it stays right for a
+    // venue this wallet has never heard of.
+    //
+    // Two assets is the load-bearing half of the test. A call that took an asset
+    // and returned the same asset is a round trip, not an exchange, and calling
+    // it a swap would put a word on the screen the movements do not support.
+    // Everything that fails this test stays send/receive, which is the most the
+    // wallet can honestly say about a call it cannot identify.
+    const swapped =
+      mine.some((m) => !m.toMe) &&
+      mine.some((m) => m.toMe) &&
+      new Set(mine.map((m) => m.code)).size > 1;
+
+    return mine.map((m) => ({
       ...base,
-      kind: "create",
-      direction: "in",
-      code: "XLM",
-      amount: r.starting_balance ?? null,
-      counterparty: r.funder,
-    };
+      // The op id is not unique when one record yields two entries, and the id
+      // is what pagination and reconciliation key on.
+      id: `${id}:${m.index}`,
+      kind: swapped ? ("swap" as const) : m.toMe ? ("receive" as const) : ("send" as const),
+      direction: m.toMe ? ("in" as const) : ("out" as const),
+      code: m.code,
+      issuer: m.issuer,
+      amount: m.amount ?? null,
+      counterparty: m.other,
+    }));
   }
 
   if (
@@ -146,38 +266,46 @@ function mapPayment(
   ) {
     const toMe = r.to === me;
     const fromMe = r.from === me;
-    if (!toMe && !fromMe) return null;
+    if (!toMe && !fromMe) return [];
     // The confidential deposit/withdraw legs are the private side's story. With
     // more than one confidential wrapper (XLM, USDC, ...), every wrapper's legs
     // are excluded, not just the first.
-    if ((r.to && exclude.has(r.to)) || (r.from && exclude.has(r.from))) return null;
+    if ((r.to && exclude.has(r.to)) || (r.from && exclude.has(r.from))) return [];
 
     if (toMe) {
-      return {
-        ...base,
-        kind: "receive",
-        direction: "in",
-        code: assetCode(r.asset_type, r.asset_code),
-        amount: r.amount ?? null,
-        counterparty: r.from,
-      };
+      return [
+        {
+          ...base,
+          kind: "receive",
+          direction: "in",
+          code: assetCode(r.asset_type, r.asset_code),
+          issuer: assetIssuer(r.asset_type, r.asset_issuer),
+          amount: r.amount ?? null,
+          counterparty: r.from,
+        },
+      ];
     }
     // Sent. For a path payment, what this account parted with is the SOURCE
     // asset and amount, not the destination's.
     const path = r.type !== "payment";
-    return {
-      ...base,
-      kind: "send",
-      direction: "out",
-      code: path
-        ? assetCode(r.source_asset_type, r.source_asset_code)
-        : assetCode(r.asset_type, r.asset_code),
-      amount: (path ? r.source_amount : r.amount) ?? null,
-      counterparty: r.to,
-    };
+    return [
+      {
+        ...base,
+        kind: "send",
+        direction: "out",
+        code: path
+          ? assetCode(r.source_asset_type, r.source_asset_code)
+          : assetCode(r.asset_type, r.asset_code),
+        issuer: path
+          ? assetIssuer(r.source_asset_type, r.source_asset_issuer)
+          : assetIssuer(r.asset_type, r.asset_issuer),
+        amount: (path ? r.source_amount : r.amount) ?? null,
+        counterparty: r.to,
+      },
+    ];
   }
 
-  return null;
+  return [];
 }
 
 /**
@@ -213,14 +341,17 @@ export async function publicHistory(opts: {
     if (records.length === 0) break;
 
     for (const r of records) {
-      const entry = mapPayment(r, account, exclude);
-      if (!entry) continue;
-      if (!beforeCursor(entry.at, entry.id, before)) continue;
-      if (entries.length >= limit) {
-        more = true;
-        break;
+      // One record can carry more than one entry: a swap moves value out and in
+      // within a single invocation, and both movements are this account's.
+      for (const entry of mapPayment(r, account, exclude)) {
+        if (!beforeCursor(entry.at, entry.id, before)) continue;
+        if (entries.length >= limit) {
+          more = true;
+          break;
+        }
+        entries.push(entry);
       }
-      entries.push(entry);
+      if (more) break;
     }
     if (more) break;
     if (records.length < PAGE) break; // Horizon exhausted.

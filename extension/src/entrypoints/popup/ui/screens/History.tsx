@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode, UIEvent } from "react";
 import { message, useWallet, type BgOp } from "../WalletProvider";
 import { call } from "../rpc";
-import { capDecimals } from "../../../../core/chain/balances";
+import { capDecimals, displayAmount } from "../../../../core/chain/balances";
 import { AssetMark } from "./Home";
 import { Avatar } from "../Avatar";
 import {
@@ -37,6 +37,10 @@ import {
   Search,
 } from "../icons";
 import { usd } from "../money";
+import { periodLabel } from "../period";
+import { explorerUrl } from "../explorer";
+import { shortAddress } from "../Address";
+import { opToEntry } from "../opEntry";
 import { NAV_SPACE } from "../BottomNav";
 import {
   DateRangeSheet,
@@ -49,20 +53,55 @@ import { fonts, radius, ROW_STAGGER_MS, space, text, type Theme } from "../theme
 import type { HistoryEntry } from "../../../../core/messages";
 
 const PAGE = 30;
+/** How many pages a filter that matches nothing will pull before it stops. */
+const MAX_AUTO_PAGES = 20;
 
-/** the canonical asset id the logo lookup wants, from the code the entry carries. */
-function assetId(code: string): string {
-  return code === "XLM" ? "native" : code;
+/**
+ * the canonical asset id the logo lookup wants.
+ *
+ * `tokenIcons` is keyed "native" | "CODE:ISSUER", and this used to hand it a
+ * bare code, so every credit asset missed and fell back to the grey monogram:
+ * the same token drew Circle's mark on the home screen and a letter in the
+ * history beside it. The issuer now rides on the entry, so the key can be built.
+ * An entry without one still misses, which is the right answer rather than a
+ * guess at which issuer was meant.
+ */
+function assetId(e: Pick<HistoryEntry, "code" | "issuer">): string {
+  if (e.code === "XLM") return "native";
+  return e.issuer ? `${e.code}:${e.issuer}` : e.code;
 }
 
 /** the sentence under the code, in the wallet's own words. */
 function entryLine(e: HistoryEntry): string {
   const who = e.counterparty ? short(e.counterparty) : "";
+  // A movement with no counterparty and no direction out of this account is one
+  // the user made to themselves, and the wallet neither blocks it nor refuses
+  // it. Named here, because the sentences below all end in a party: without
+  // this a self-transfer read "Sent privately to " with nothing after it, and
+  // the detail sheet showed no counterparty row to explain the gap.
+  if (e.direction === "self" && !e.counterparty) {
+    switch (e.kind) {
+      case "privateSend":
+        return "Sent privately to yourself";
+      case "send":
+        return "Sent to yourself";
+      case "receive":
+        return "Received from yourself";
+      default:
+        break;
+    }
+  }
   switch (e.kind) {
     case "receive":
       return `Received from ${who}`;
     case "send":
       return `Sent to ${who}`;
+    // Both legs of a swap say the same word, because they are one event. The
+    // row already carries the asset, the amount and the direction badge, so
+    // repeating "to" or "from" here would name a router contract the user did
+    // not choose and does not think of as a counterparty.
+    case "swap":
+      return "Swapped";
     case "create":
       return "Account funded";
     case "shield":
@@ -82,22 +121,30 @@ function entryLine(e: HistoryEntry): string {
   }
 }
 
-/** first-and-last-four is enough to recognise; the copy button carries the whole. */
-function short(a: string): string {
-  return a.length <= 12 ? a : `${a.slice(0, 4)}…${a.slice(-4)}`;
+/**
+ * The one shortening in the product, imported rather than written again.
+ *
+ * This file had its own at four characters each end while ui/Address.tsx does
+ * six, and Send has a third at six-and-four, so one address printed three ways
+ * depending on which screen showed it. Four-and-four is also the form the
+ * project's own threat notes call about an hour of brute force to collide, and
+ * it was the form beside a completed send's recipient.
+ */
+const short = shortAddress;
+
+/**
+ * Whether an address is one this wallet's explorer and shortener understand.
+ *
+ * Stellar keys are 56-character base32 beginning G (account), C (contract) or M
+ * (muxed). A CCTP bridge records a 0x EVM address as its recipient, and every
+ * Stellar-shaped assumption applied to it produces something wrong rather than
+ * something missing.
+ */
+function isStellarAddress(a: string): boolean {
+  return /^[GCM][A-Z2-7]{55}$/.test(a);
 }
 
-/** the heading a run of entries falls under: relative near the present, then the
- *  month and year, so a long history reads as a calendar rather than a wall. */
-function periodLabel(at: number, now: number): string {
-  const day = 86_400_000;
-  const startOfToday = new Date(now).setHours(0, 0, 0, 0);
-  if (at >= startOfToday) return "Today";
-  if (at >= startOfToday - day) return "Yesterday";
-  if (at >= startOfToday - 7 * day) return "This week";
-  if (at >= new Date(now).setDate(1)) return "This month";
-  return new Date(at).toLocaleDateString([], { month: "long", year: "numeric" });
-}
+
 
 /** a full date and time, for the detail. */
 function fullDate(at: number): string {
@@ -114,33 +161,6 @@ function fullDate(at: number): string {
  *  transaction looks completed at once instead of lingering as a processing card
  *  until the indexer catches up. reconciled away by hash the moment the real entry
  *  lands, so it is a stand-in, never a second copy. */
-function opToEntry(op: BgOp): HistoryEntry {
-  const kind: HistoryEntry["kind"] =
-    op.verb === "Shield"
-      ? "shield"
-      : op.verb === "Unshield"
-        ? "unshield"
-        : op.verb === "Send privately"
-          ? "privateSend"
-          : op.verb === "Make spendable"
-            ? "makeSpendable"
-            : op.verb === "Set up private pocket"
-              ? "setup"
-              : "send";
-  return {
-    id: op.hash ?? op.id,
-    pocket: op.pocket,
-    kind,
-    direction: kind === "send" || kind === "privateSend" ? "out" : "self",
-    code: op.code,
-    amount: op.amount ?? null,
-    counterparty: op.to,
-    at: op.at,
-    hash: op.hash ?? "",
-    fee: op.fee,
-  };
-}
-
 export function History() {
   const w = useWallet();
   const t = w.t;
@@ -179,8 +199,28 @@ export function History() {
       call({ type: "history", limit: PAGE, pocket })
         .then((p) => {
           if (myGen !== gen.current) return;
-          setEntries(p.entries);
-          setCursor(p.cursor);
+          if (clear) {
+            setEntries(p.entries);
+            setCursor(p.cursor);
+            return;
+          }
+          // A REFRESH, not a reload. This path is the reconcile poll, which runs
+          // every 2.5s for up to 50s after any transaction, and it used to do
+          // exactly what the clearing path does: replace the list with the
+          // newest 30 rows and reset the cursor with them. Every page the user
+          // had scrolled in was discarded underneath them, repeatedly, and the
+          // cursor reset meant scrolling back down re-fetched the same pages.
+          //
+          // So the newest page is MERGED into what is already loaded, keyed by
+          // id, and the cursor is left alone because it still describes the
+          // oldest row on screen. Ordering is restored by the sort the render
+          // already applies.
+          setEntries((prev) => {
+            if (!prev) return p.entries;
+            const known = new Set(prev.map((e) => e.id));
+            const fresh = p.entries.filter((e) => !known.has(e.id));
+            return fresh.length === 0 ? prev : [...fresh, ...prev];
+          });
         })
         .catch((e) => {
           if (myGen !== gen.current) return;
@@ -243,7 +283,10 @@ export function History() {
   // when the real entry lands, the reconcile below drops the op, and the two never
   // both show because the synthetic row is filtered out once its hash is present.
   const landedHashes = new Set((entries ?? []).map((e) => e.hash));
-  const syntheticDone = doneOps.filter((o) => o.hash && !landedHashes.has(o.hash)).map(opToEntry);
+  const syntheticDone = doneOps
+    .filter((o) => o.hash && !landedHashes.has(o.hash))
+    .map(opToEntry)
+    .filter((e): e is HistoryEntry => e !== null);
 
   // search, date and type are all filters over what is LOADED: the contract has no
   // server-side filter, so these narrow the stream in hand (infinite scroll keeps
@@ -263,7 +306,7 @@ export function History() {
     if (range.start !== null && e.at < range.start) return false;
     if (range.end !== null && e.at > range.end) return false;
     if (types.size > 0) {
-      const c = categoryOf(e.kind);
+      const c = categoryOf(e);
       if (!c || !types.has(c)) return false;
     }
     return true;
@@ -287,6 +330,29 @@ export function History() {
       if (op.hash && landed.has(op.hash)) w.dropOp(op.id);
     }
   }, [entries, w.backgroundOps, w.dropOp]);
+
+  // A filter hides everything loaded, and older pages remain.
+  //
+  // The list below says "Nothing matches those filters", which is a claim about
+  // the account's whole history, and the filters only narrow what has been
+  // fetched. Normally the scroll handler pulls the rest, but an EMPTY list has
+  // nothing to scroll, so the one thing that could have disproved the sentence
+  // could never run: the wallet asserted a user had never shielded anything
+  // while the shield sat one unfetched page away.
+  //
+  // Bounded like the reconcile poll beside it, so a filter that genuinely
+  // matches nothing walks the stream once and stops rather than paging forever.
+  const autoPages = useRef(0);
+  useEffect(() => {
+    if (!filtersActive && !q) {
+      autoPages.current = 0;
+      return;
+    }
+    if (shown.length > 0 || cursor == null || loadingRef.current) return;
+    if (autoPages.current >= MAX_AUTO_PAGES) return;
+    autoPages.current += 1;
+    loadMore();
+  });
 
   // a done op not yet in history means the ledger has it but our last fetch
   // predated it. poll the top page until it lands (then the reconcile above drops
@@ -484,7 +550,9 @@ export function History() {
                     <Filter size={28} />
                   </span>
                   <span style={{ ...text.body, color: t.faint }}>
-                    Nothing matches those filters.
+                    {cursor == null
+                      ? "Nothing matches those filters."
+                      : "Nothing matches those filters yet. Still reading older history."}
                   </span>
                   <Button
                     t={t}
@@ -670,7 +738,7 @@ function Mark({ t, e, size = 40 }: { t: Theme; e: HistoryEntry; size?: number })
           border: `1px solid ${t.line}`,
         }}
       >
-        <AssetMark t={t} id={assetId(e.code)} code={e.code} />
+        <AssetMark t={t} id={assetId(e)} code={e.code} />
       </span>
       {e.direction !== "self" && (
         <span
@@ -741,19 +809,13 @@ function Entry({
         </span>
       </span>
       <span style={{ ...text.value, color: t.sub, textAlign: "right", flex: "0 0 auto" }}>
-        {e.amount === null ? "—" : `${capDecimals(e.amount, 4)} ${e.code}`}
+        {e.amount === null ? "—" : `${displayAmount(e.amount)} ${e.code}`}
       </span>
     </button>
   );
 }
 
 /** a labelled row inside the detail; copyable when a value is worth copying. */
-/** a stellar.expert link for an address or a transaction, on the wallet's network.
- *  the explorer names mainnet "public"; every other id is a test network to it. */
-function explorerUrl(network: string | undefined, kind: "account" | "tx", id: string): string {
-  const net = network === "public" || network === "mainnet" ? "public" : "testnet";
-  return `https://stellar.expert/explorer/${net}/${kind}/${id}`;
-}
 
 function DetailRow({
   t,
@@ -888,7 +950,7 @@ function DetailSheet({
               }}
             >
               <span style={{ width: 26, height: 26, flex: "0 0 auto" }}>
-                <AssetMark t={t} id={assetId(e.code)} code={e.code} />
+                <AssetMark t={t} id={assetId(e)} code={e.code} />
               </span>
               <span
                 style={{
@@ -897,7 +959,7 @@ function DetailSheet({
                   fontVariantNumeric: "tabular-nums lining-nums",
                 }}
               >
-                {e.amount === null ? "—" : capDecimals(e.amount, 4)}
+                {e.amount === null ? "—" : capDecimals(e.amount, 7)}
               </span>
               {e.amount !== null && <span style={{ ...text.heading, color: t.sub }}>{e.code}</span>}
             </div>
@@ -949,6 +1011,10 @@ function DetailSheet({
  *  proven then submitted, a public one is only submitted. */
 function statusText(op: BgOp): string {
   if (op.status === "done") return "Completed";
+  // Not a failure, and worded so nobody reads it as one. The worker still holds
+  // an in-flight record for this hash, which means the transaction may yet be
+  // included, and the only wrong thing a user can do here is send it again.
+  if (op.status === "unresolved") return "Not confirmed yet. Do not send it again.";
   if (op.status === "failed") return op.error ?? "Could not complete";
   return op.verb === "Send" ? "Confirming on the ledger…" : "Proving and submitting…";
 }
@@ -958,6 +1024,11 @@ function StatusPill({ t, status }: { t: Theme; status: BgOp["status"] }) {
   const map = {
     processing: { label: "In progress", fg: t.accentOnSoft, bg: t.accentSoft },
     done: { label: "Completed", fg: t.positive, bg: t.positiveSoft },
+    // `exposed` is the pocket's own "this needs your attention" tone, not the
+    // red of a failure. An unresolved submission may still land, so the red
+    // would be a claim the wallet cannot support and the one that provokes a
+    // resend.
+    unresolved: { label: "Not confirmed", fg: t.exposed, bg: t.exposedSoft },
     failed: { label: "Failed", fg: t.danger, bg: t.dangerSoft },
   } as const;
   const s = map[status];
@@ -976,7 +1047,7 @@ function StatusPill({ t, status }: { t: Theme; status: BgOp["status"] }) {
     >
       {status === "processing" && <Spinner size={12} color={s.fg} />}
       {status === "done" && <Check size={13} sw={2.6} />}
-      {status === "failed" && <Alert size={13} />}
+      {(status === "failed" || status === "unresolved") && <Alert size={13} />}
       {s.label}
     </span>
   );
@@ -988,8 +1059,9 @@ function ProcessingMark({ t, op, size = 40 }: { t: Theme; op: BgOp; size?: numbe
   const badge = 18;
   const done = op.status === "done";
   const failed = op.status === "failed";
-  const bg = done ? t.positive : failed ? t.danger : t.accentSoft;
-  const fg = done || failed ? t.onDanger : t.accentOnSoft;
+  const unresolved = op.status === "unresolved";
+  const bg = done ? t.positive : failed ? t.danger : unresolved ? t.exposed : t.accentSoft;
+  const fg = done || failed || unresolved ? t.onDanger : t.accentOnSoft;
   return (
     <span style={{ position: "relative", width: size, height: size, flex: "0 0 auto" }}>
       <span
@@ -1006,7 +1078,7 @@ function ProcessingMark({ t, op, size = 40 }: { t: Theme; op: BgOp; size?: numbe
           border: `1px solid ${t.line}`,
         }}
       >
-        <AssetMark t={t} id={assetId(op.code)} code={op.code} />
+        <AssetMark t={t} id={assetId({ code: op.code })} code={op.code} />
       </span>
       <span
         aria-hidden
@@ -1120,7 +1192,13 @@ function ProcessingRow({
 }) {
   const done = op.status === "done";
   const failed = op.status === "failed";
-  const statusColor = done ? t.positive : failed ? t.danger : t.sub;
+  const statusColor = done
+    ? t.positive
+    : failed
+      ? t.danger
+      : op.status === "unresolved"
+        ? t.exposed
+        : t.sub;
   return (
     <button
       type="button"
@@ -1152,7 +1230,7 @@ function ProcessingRow({
         {op.amount && (
           <span style={{ textAlign: "right", flex: "0 0 auto", minWidth: 0 }}>
             <span style={{ ...text.value, color: t.text, display: "block" }}>
-              {capDecimals(op.amount, 4)} {op.code}
+              {displayAmount(op.amount)} {op.code}
             </span>
             {op.fiat != null && (
               <span style={{ ...text.rowSub, color: t.sub, display: "block", marginTop: 1 }}>
@@ -1264,7 +1342,7 @@ function ProcessingDetailSheet({
                 }}
               >
                 <span style={{ width: 26, height: 26, flex: "0 0 auto" }}>
-                  <AssetMark t={t} id={assetId(op.code)} code={op.code} />
+                  <AssetMark t={t} id={assetId({ code: op.code })} code={op.code} />
                 </span>
                 <span
                   style={{
@@ -1273,7 +1351,7 @@ function ProcessingDetailSheet({
                     fontVariantNumeric: "tabular-nums lining-nums",
                   }}
                 >
-                  {capDecimals(op.amount, 4)}
+                  {capDecimals(op.amount, 7)}
                 </span>
                 <span style={{ ...text.heading, color: t.sub }}>{op.code}</span>
               </div>
@@ -1308,9 +1386,17 @@ function ProcessingDetailSheet({
               <DetailRow
                 t={t}
                 label="Sent to"
-                value={short(op.to)}
+                // A bridge is the one operation whose recipient is not a Stellar
+                // account: `to` is a 0x EVM address on the destination chain. It
+                // was shortened by the Stellar shortener and linked to
+                // stellar.expert's ACCOUNT page, which cannot know it, so the
+                // one link a user would follow to check where their USDC went
+                // led to "address does not exist". Shown in full and left
+                // unlinked instead: this wallet has no explorer for that chain,
+                // and no link is better than one that denies the address.
+                value={isStellarAddress(op.to) ? short(op.to) : op.to}
                 onCopy={() => onCopy(op.to!)}
-                href={explorerUrl(op.network, "account", op.to)}
+                href={isStellarAddress(op.to) ? explorerUrl(op.network, "account", op.to) : undefined}
               />
             )}
             {op.fee && <DetailRow t={t} label="Onchain fee" value={`${op.fee} XLM`} />}

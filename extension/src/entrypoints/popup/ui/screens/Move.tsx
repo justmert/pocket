@@ -12,11 +12,12 @@ import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Frame, Header, Notice } from "../primitives";
 import { InfoTip } from "../Tooltip";
+import { fiatOf } from "../money";
 import { AmountComposer, AmountSlider, sliderPercent } from "../AmountComposer";
 import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark } from "./Home";
 import { PrivateAssetPicker } from "../sheets/PrivateAssetPicker";
-import { capDecimals, fractionOf, sendableAfterFee } from "../../../../core/chain/balances";
+import { fractionOf, sendableAfterFee, composeAmount } from "../../../../core/chain/balances";
 import { space } from "../theme";
 import type { PrivateOpSummary } from "../../../../core/messages";
 
@@ -199,12 +200,12 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
     const raw =
       whole && movingIn && isNativeAsset ? sendableAfterFee(part, BASE_FEE_STROOPS) : part;
     // four fraction digits is enough on the compose screen; truncated, not rounded.
-    setAmount(capDecimals(raw, 4));
+    setAmount(composeAmount(raw, 4));
   };
 
   const ready = amount !== "";
   const percent = sliderPercent(amount, spendable);
-  const fiat = price !== null && amount !== "" ? Number(amount) * price : null;
+  const fiat = fiatOf(amount, price);
 
   return (
     <>

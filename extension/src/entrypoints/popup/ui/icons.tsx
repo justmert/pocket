@@ -254,6 +254,55 @@ const G = {
     ["path", { d: "M6 6L18 18" }],
     ["path", { d: "M18 6L6 18" }],
   ],
+  // a stack of value: the manage-assets (trustlines) entry.
+  coins: [
+    ["ellipse", { cx: 12, cy: 6, rx: 8, ry: 3 }],
+    ["path", { d: "M4 6V12C4 13.66 7.58 15 12 15C16.42 15 20 13.66 20 12V6" }],
+    ["path", { d: "M4 12V18C4 19.66 7.58 21 12 21C16.42 21 20 19.66 20 18V12" }],
+  ],
+  // two opposing arrows: the in-app swap. one runs right along the top, one runs
+  // left along the bottom, so the pair reads as an exchange rather than a refresh.
+  // the bars are kept short and well spaced so the glyph does not read heavier
+  // than the airier icons beside it.
+  swap: [
+    ["path", { d: "M6 8H18" }],
+    ["path", { d: "M15 5L18 8L15 11" }],
+    ["path", { d: "M18 16H6" }],
+    ["path", { d: "M9 13L6 16L9 19" }],
+  ],
+  // a globe: another chain. a circle with an equator and a meridian ellipse, the
+  // conventional "world" mark, for the cross-chain (CCTP) chain pickers.
+  globe: [
+    ["circle", { cx: 12, cy: 12, r: 9 }],
+    ["path", { d: "M3 12H21" }],
+    ["ellipse", { cx: 12, cy: 12, rx: 4, ry: 9 }],
+  ],
+  // the same rounded box as `external`, with the arrow leaving it: send USDC OUT
+  // to another chain. paired with bridgeIn (the same box, arrow reversed) so the
+  // two CCTP legs are one visual family and never share a glyph. drawn in the
+  // set's own external-link language rather than a cluttered globe.
+  bridgeOut: [
+    ["path", { d: "M14 4H20V10" }],
+    ["path", { d: "M20 4L12 12" }],
+    [
+      "path",
+      {
+        d: "M20 14V16.5C20 18.433 18.433 20 16.5 20H7.5C5.567 20 4 18.433 4 16.5V7.5C4 5.567 5.567 4 7.5 4H10",
+      },
+    ],
+  ],
+  // the mirror of bridgeOut: the arrow arrives INTO the box from the top-right.
+  // claim USDC IN from another chain.
+  bridgeIn: [
+    ["path", { d: "M12 6V12H18" }],
+    ["path", { d: "M20 4L12 12" }],
+    [
+      "path",
+      {
+        d: "M20 14V16.5C20 18.433 18.433 20 16.5 20H7.5C5.567 20 4 18.433 4 16.5V7.5C4 5.567 5.567 4 7.5 4H10",
+      },
+    ],
+  ],
 } satisfies Record<string, Node[]>;
 
 function make(key: keyof typeof G) {
@@ -305,6 +354,11 @@ export const Calendar = make("calendar");
 export const Filter = make("filter");
 export const Search = make("search");
 export const Close = make("close");
+export const SwapIcon = make("swap");
+export const Globe = make("globe");
+export const Coins = make("coins");
+export const BridgeOut = make("bridgeOut");
+export const BridgeIn = make("bridgeIn");
 
 /** the shield with a way out of it, for moving value back into the open. */
 const UNSHIELD: Node[] = [...G.shield!, ["path", { d: "M9 11.5L12 14.5L15 11.5" }]];

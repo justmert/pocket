@@ -819,6 +819,7 @@ export function ConfirmSheet({
   busy,
   approveLabel = "Confirm",
   result,
+  note,
   network,
   onApprove,
   onCancel,
@@ -851,6 +852,8 @@ export function ConfirmSheet({
   approveLabel?: string;
   /** set once the transaction has landed; the popup then shows the receipt. */
   result?: { hash: string; ledger: number } | null;
+  /** a line under the receipt's outcome, e.g. a cross-chain follow-up status. */
+  note?: string;
   /** the wallet's network, threaded to the receipt for its explorer link. */
   network?: string;
   onApprove: () => void;
@@ -895,6 +898,7 @@ export function ConfirmSheet({
           <Receipt
             t={t}
             hash={result.hash}
+            note={note}
             network={network}
             to={to}
             onSaveAddress={onSaveAddress}

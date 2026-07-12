@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import Database from "better-sqlite3";
 import { SCHEMA, recordRange, isComplete, ingestedThrough } from "./schema.ts";
 import { accountEvents, latestCheckpoint, health, CHECKPOINT_TYPES } from "./api.ts";
+import { eventPosition } from "./ingest.ts";
 
 const C = "CDMXZEFOM5DN2GSHQKNOOW242RJZGCEM5LOOAPGRQE35GGHB7ALDK2Y6";
 const ALICE = "GC6JCCFWYPYIHOR7SYXEBRJ5RD32ULVXCQS2P5TDDDCR3AYT6V56CDMN";
@@ -100,6 +101,80 @@ describe("C2 ordered history", () => {
     const second = accountEvents(db, C, ALICE, { limit: 2, cursor: first.cursor! });
     expect(second.events.map((e) => e.id)).toEqual(["3"]);
     expect(second.cursor).toBeNull();
+  });
+});
+
+/**
+ * The keyset is only a keyset if the values under it are distinct, and nothing
+ * above proves that: `addEvent` is handed an ordinal and stores a literal 0 in
+ * `event_index`, so every test in this file supplies a key that is already
+ * unique by construction. The ingest path does not have that luxury. It derives
+ * the key from the RPC's event id, and it used to derive it wrongly: the id's
+ * trailing number restarts at zero for every operation, so three events from
+ * three transactions in one ledger were all stored as (ledger, 0, 0).
+ *
+ * These ids are real, read from soroban-testnet ledger 4021819. They go in
+ * through `eventPosition`, which is what `ingestRange` uses, so this exercises
+ * the derivation rather than trusting it.
+ */
+describe("C2 ordered history, keyed the way ingest keys it", () => {
+  const LEDGER = 4021819;
+  // Three transactions in one ledger: application orders 0, 1 and 2.
+  const IDS = [
+    "0017273581075431424-0000000000",
+    "0017273581075435520-0000000000",
+    "0017273581075439616-0000000000",
+  ];
+
+  function addAsIngestWould(id: string, type: string, accounts: string[]) {
+    const p = eventPosition(id);
+    db.prepare(
+      `INSERT INTO events (id, contract_id, ledger_seq, close_time, tx_hash,
+         tx_application_order, event_index, event_type, topics_xdr, data_xdr)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', '')`,
+    ).run(id, C, LEDGER, 1700000000, `tx-${id}`, p.operation, p.index, type);
+    for (const a of accounts) {
+      db.prepare(`INSERT INTO attribution (event_id, account) VALUES (?, ?)`).run(id, a);
+    }
+  }
+
+  beforeEach(() => {
+    for (const id of IDS) addAsIngestWould(id, "transfer", [ALICE]);
+    recordRange(db, C, LEDGER - 1, LEDGER + 1);
+  });
+
+  it("stores three events from one ledger under three distinct keys", () => {
+    const keys = db
+      .prepare(`SELECT tx_application_order AS o, event_index AS i FROM events`)
+      .all() as { o: number; i: number }[];
+    expect(new Set(keys.map((k) => `${k.o}:${k.i}`)).size).toBe(3);
+  });
+
+  it("returns every event when paged one at a time", () => {
+    // The defect this pins: with all three under (4021819, 0, 0), the first
+    // page emitted cursor "4021819:0:0" and the `>` comparison then excluded
+    // all three, so the loop returned ONE event and terminated while an
+    // unpaged read returned three, and every page still said complete: true.
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let guard = 0; guard < 10; guard++) {
+      const page: ReturnType<typeof accountEvents> = accountEvents(db, C, ALICE, {
+        limit: 1,
+        ...(cursor ? { cursor } : {}),
+      });
+      seen.push(...page.events.map((e) => e.id));
+      cursor = page.cursor;
+      if (!cursor) break;
+    }
+    expect(seen).toEqual(IDS);
+    expect(accountEvents(db, C, ALICE).events).toHaveLength(3);
+  });
+
+  it("pages in the same order an unpaged read returns", () => {
+    const unpaged = accountEvents(db, C, ALICE).events.map((e) => e.id);
+    const firstPage = accountEvents(db, C, ALICE, { limit: 2 });
+    const rest = accountEvents(db, C, ALICE, { limit: 2, cursor: firstPage.cursor! });
+    expect([...firstPage.events, ...rest.events].map((e) => e.id)).toEqual(unpaged);
   });
 });
 

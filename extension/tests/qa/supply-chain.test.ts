@@ -73,6 +73,10 @@ const ALLOWED_HOSTS = [
   // Stellar-side mint.
   "iris-api-sandbox.circle.com",
   "iris-api.circle.com",
+  // StellarExpert asset directory: keyless, read-only. The manage-assets screen
+  // searches it for classic assets to open a trustline for. Never a key, never a
+  // write; the directory serves permissive CORS, so it needs no host permission.
+  "api.stellar.expert",
   "stellar.org",
   "www.w3.org", // svg namespace, not a request
 ];

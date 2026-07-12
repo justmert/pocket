@@ -36,6 +36,15 @@ export const KDF_PARAMS: KdfParams = { id: "scrypt", N: 131072, r: 8, p: 1, dkLe
  */
 export const MIN_KDF: KdfParams = { id: "scrypt", N: 1 << 15, r: 8, p: 1, dkLen: 32 };
 
+/**
+ * The wrapped DEK is always exactly this long.
+ *
+ * A 32-byte data key sealed under AES-256-GCM is 32 bytes of ciphertext plus a
+ * 16-byte tag. Both writers (`createVault`, `changePassword`) produce exactly
+ * this, so a stored value of any other length is damage, never a shorter key.
+ */
+export const WRAPPED_DEK_BYTES = 48;
+
 export const SALT_BYTES = 16;
 /** 12 bytes exactly: AES-GCM uses a 96-bit IV directly as the counter block. */
 export const IV_BYTES = 12;

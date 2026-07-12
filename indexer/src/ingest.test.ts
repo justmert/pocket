@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   attributionOf,
-  ordinalFromEventId,
+  eventPosition,
   ATTRIBUTED_TOPICS,
   IN_SCOPE,
   EventShapeError,
@@ -67,11 +67,54 @@ describe("attribution follows the event TYPE, not the topic shape", () => {
 });
 
 describe("event ordering key", () => {
-  it("takes the ordinal from the event id", () => {
-    expect(ordinalFromEventId("0016751686714413056-0000000003")).toBe(3);
+  // Every id below was read from soroban-testnet, not constructed. Ledger
+  // 4021819 is the one that exposed the defect: seven distinct TOIDs whose
+  // trailing number all began at 0.
+  it("separates the operation's position from the event's index within it", () => {
+    expect(eventPosition("0017273581075431424-0000000000")).toEqual({ operation: 0, index: 0 });
+    // Same ledger, transaction application order 1: 1 << 12 === 4096.
+    expect(eventPosition("0017273581075435520-0000000000")).toEqual({ operation: 4096, index: 0 });
+    // Same ledger and transaction, operation index 2.
+    expect(eventPosition("0017273581075435522-0000000000")).toEqual({ operation: 4098, index: 0 });
+    // Transaction application order 8: 8 << 12 === 32768.
+    expect(eventPosition("0017273581075464192-0000000000")).toEqual({ operation: 32768, index: 0 });
+  });
+
+  it("keeps events of one operation apart by their own index", () => {
+    const a = eventPosition("0017274427183988736-0000000000");
+    const b = eventPosition("0017274427183988736-0000000011");
+    expect(a.operation).toBe(b.operation);
+    expect(a.index).toBe(0);
+    expect(b.index).toBe(11);
+  });
+
+  // The regression the old implementation shipped: it returned the trailing
+  // number alone, so these three events from three different transactions in
+  // one ledger all keyed as 0 and the keyset pagination read them as one row.
+  it("gives three events from three transactions in one ledger three keys", () => {
+    const keys = [
+      "0017273581075431424-0000000000",
+      "0017273581075435520-0000000000",
+      "0017273581075439616-0000000000",
+    ].map((id) => {
+      const p = eventPosition(id);
+      return `${p.operation}:${p.index}`;
+    });
+    expect(new Set(keys).size).toBe(3);
+  });
+
+  // 0xFFFFF000 in the low 32 bits. `Number(toid) >> 12` is a SIGNED 32-bit
+  // shift and reads this back as -1, which would sort the marker before every
+  // real event in its ledger.
+  it("reads the ledger-scoped marker as a large positive position", () => {
+    const p = eventPosition("0017273585370394624-0000000000");
+    expect(p.operation).toBe(0xfffff000);
+    expect(p.operation).toBeGreaterThan(0);
   });
 
   it("falls back to zero on an unfamiliar id rather than throwing", () => {
-    expect(ordinalFromEventId("nonsense")).toBe(0);
+    expect(eventPosition("nonsense")).toEqual({ operation: 0, index: 0 });
+    expect(eventPosition("")).toEqual({ operation: 0, index: 0 });
+    expect(eventPosition("12345-notanumber")).toEqual({ operation: 0, index: 0 });
   });
 });

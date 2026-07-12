@@ -247,3 +247,66 @@ describe("AAD canonicalisation is unambiguous (audit M6)", () => {
     expect(() => canonicalHeaderBytes(bad as VaultHeader)).toThrow(/non-integer/);
   });
 });
+
+describe("a damaged vault is never reported as a wrong password", () => {
+  // This is the one diagnosis that must never be wrong. `Unlock.tsx` offers
+  // exactly two things: try again, and "Forgot your password?", which routes to
+  // recoverFromMnemonic -> erase() -> removeLocal(every openingKeys() blob). So
+  // telling an owner who holds the correct password that it is wrong points them
+  // at the control that destroys the private pocket.
+
+  it("names a ciphertext truncated inside the old lower bound", async () => {
+    // The wrapped DEK is always 48 bytes: a 32-byte key plus GCM's 16-byte tag.
+    // The guard used to be `< 33`, so losing anything from 1 to 15 bytes off the
+    // end sailed past it, failed the tag, and came back as WrongPasswordError.
+    const { header } = await createVault(PW);
+    const full = b64.decode(header.wrap.ct);
+    expect(full.length, "the premise of this test").toBe(48);
+    for (const len of [33, 40, 47]) {
+      const damaged: VaultHeader = {
+        ...header,
+        wrap: { ...header.wrap, ct: b64.encode(full.slice(0, len)) },
+      };
+      await expect(unlockVault(damaged, PW), `${len} bytes`).rejects.toBeInstanceOf(
+        CorruptVaultError,
+      );
+      await expect(unlockVault(damaged, PW), `${len} bytes`).rejects.not.toBeInstanceOf(
+        WrongPasswordError,
+      );
+    }
+  });
+
+  it("names a ciphertext that is too long", async () => {
+    const { header } = await createVault(PW);
+    const full = b64.decode(header.wrap.ct);
+    const padded = new Uint8Array(full.length + 1);
+    padded.set(full);
+    const damaged: VaultHeader = {
+      ...header,
+      wrap: { ...header.wrap, ct: b64.encode(padded) },
+    };
+    await expect(unlockVault(damaged, PW)).rejects.toBeInstanceOf(CorruptVaultError);
+  });
+
+  it("names an undecodable salt instead of letting atob escape", async () => {
+    // The salt used to be decoded one line ABOVE the try that exists to catch
+    // exactly this, so a bad one escaped as a raw InvalidCharacterError. That
+    // name is not in dispatch's SAFE_ERRORS, so the user was told to check their
+    // connection about a vault that will never open again.
+    const { header } = await createVault(PW);
+    const damaged: VaultHeader = { ...header, salt: "!!!not base64!!!" };
+    const err = await unlockVault(damaged, PW).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CorruptVaultError);
+    const { describeError } = await import("../dispatch");
+    expect(describeError(err)).not.toMatch(/check your connection/i);
+  });
+
+  it("still reports an actual wrong password as one", async () => {
+    // The control. Without it every assertion above is satisfied by an unlock
+    // that has stopped distinguishing anything at all.
+    const { header } = await createVault(PW);
+    await expect(unlockVault(header, "not the password")).rejects.toBeInstanceOf(
+      WrongPasswordError,
+    );
+  });
+});

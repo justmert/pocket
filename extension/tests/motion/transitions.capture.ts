@@ -96,7 +96,8 @@ for (const reduced of [false, true] as const) {
 
     // 4. a sheet coming up.
     expect(await film(page, `sheet-open${suffix}`, async () => {
-      await page.getByRole("button", { name: "Send" }).click();
+      await page.getByRole("button", { name: "Actions", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Send", exact: true }).click();
     })).toBeGreaterThan(0);
     // `film` starts its action without awaiting it, so the sheet must be seen
     // gone before the next sequence begins or it films the wrong thing.

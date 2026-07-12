@@ -4,6 +4,7 @@
 // to the thing that copies it. a confirm step always gets the full string:
 // matching the first and last few characters of a stellar address is cheap to
 // forge, so a shortened address is never what someone approves.
+import { useLayoutEffect, useRef } from "react";
 import { fontSizes, fonts, radius, space, text, type Theme } from "./theme";
 import { Check, Copy } from "./icons";
 
@@ -123,13 +124,30 @@ export function MonoBlock({ t, children }: { t: Theme; children: React.ReactNode
  * so it does not wrap. one line, scrolled rather than broken, with the scheme
  * dimmed because it is never the part under attack and it is the part that eats
  * the width. nothing is truncated: the whole string is reachable.
+ *
+ * and it is scrolled to the END, not the start. a scroller left at its default
+ * shows the beginning, and the beginning of a hostname is the part an attacker
+ * writes freely: `https://accounts-google-com-verify-login.attacker.io` reads as
+ * google for the whole visible width while `attacker.io`, the only part that
+ * decides where the request actually came from, sits off the right edge. the
+ * authority in a hostname is on the right, so the right is what has to survive
+ * the overflow. scrolling left to see the rest is a deliberate act; scrolling
+ * right to discover you were lied to is not one anybody performs.
  */
 export function OriginBlock({ t, origin }: { t: Theme; origin: string }) {
   const split = origin.match(/^([a-z][a-z0-9+.-]*:\/\/)(.*)$/i);
   const scheme = split?.[1] ?? "";
   const rest = split?.[2] ?? origin;
+  const box = useRef<HTMLDivElement>(null);
+  // layout, not effect: the paint that follows must already be anchored, or the
+  // deceptive prefix is on screen for a frame and a screenshot catches it.
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [origin]);
   return (
     <div
+      ref={box}
       style={{
         background: t.field,
         borderRadius: radius.md,

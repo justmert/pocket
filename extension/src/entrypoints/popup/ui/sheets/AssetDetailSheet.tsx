@@ -164,7 +164,15 @@ export function AssetDetailSheet({
   // holdings * price through the shared money formatter, so this fiat value
   // rounds the same as every other dollar figure in the product. null (no price)
   // renders as a dash, not a fabricated zero-dollar holding.
-  const holdingsValue = usdOf(shown.total ?? shown.amount, market?.price ?? null);
+  //
+  // Priced on the SAME figure the row above it shows. This read `total ?? amount`
+  // while the row rendered `amount`, so on native XLM the two adjacent lines
+  // described different quantities and differed by the account's reserve: the
+  // sheet said you hold 9,999 XLM and, directly beneath, said that is worth what
+  // 10,000 XLM is worth. Neither number was wrong; the pair was, and nothing on
+  // the sheet accounted for the gap. Whichever figure the row states, the value
+  // has to be the value OF IT.
+  const holdingsValue = usdOf(shown.amount, market?.price ?? null);
 
   return (
     // `full`: the sheet opens at full height from the first frame. without it the
@@ -182,8 +190,11 @@ export function AssetDetailSheet({
       focusKey={code}
       full
       footer={
-        <Button t={t} onClick={() => onSend(shown)}>
-          Send
+        // Same rule as the send picker: an unauthorised trustline cannot send,
+        // the wallet knows it and says so on Home, and offering the action
+        // anyway spends the user's attention on a form the network will refuse.
+        <Button t={t} disabled={!shown.authorized} onClick={() => onSend(shown)}>
+          {shown.authorized ? "Send" : "Not authorised by the issuer"}
         </Button>
       }
     >

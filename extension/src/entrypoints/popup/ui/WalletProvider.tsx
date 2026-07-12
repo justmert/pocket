@@ -16,6 +16,7 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { call } from "./rpc";
+import { stillUnresolved } from "./backgroundOps";
 import { motion, theme, type Pocket, type Theme } from "./theme";
 import type {
   PrivatePocket,
@@ -36,6 +37,16 @@ export type SheetId =
   | "move"
   | "moveIn"
   | "moveOut"
+  // the public-pocket integrations, each a full-frame route like send: an
+  // in-app swap, yield deposit/withdraw, and the two CCTP cross-chain legs.
+  | "swap"
+  | "yieldDeposit"
+  | "yieldWithdraw"
+  | "cctpSend"
+  | "cctpClaim"
+  // manage assets (trustlines): the list, and the directory search to add one.
+  | "assets"
+  | "chooseAsset"
   | "phrase"
   | "connections"
   | "network"
@@ -87,7 +98,18 @@ export interface BgOp {
   /** the network fee, already a display XLM string, for the detail's fee row. */
   fee?: string;
   network?: string;
-  status: "processing" | "done" | "failed";
+  /**
+   * `unresolved` is NOT a failure and must never be drawn as one.
+   *
+   * `submitAndConfirm` polls to a terminal outcome and reports `pending` when it
+   * never reached one, whose own authored sentence is "It has not confirmed yet.
+   * It may still land, so do not resend." That arrives at the popup as a thrown
+   * error like any other, and every compose screen caught it and called
+   * `failOp`, so Activity painted the wallet's own do-not-resend warning in the
+   * danger colour. Telling someone a payment failed is the one instruction that
+   * makes them send it again, which is how a transaction gets paid twice.
+   */
+  status: "processing" | "done" | "failed" | "unresolved";
   hash?: string;
   ledger?: number;
   error?: string;
@@ -376,9 +398,36 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [refresh],
   );
   const failOp = useCallback((id: string, error: string) => {
+    // Record it as failed FIRST, so the row stops spinning even if the question
+    // below cannot be answered. A stuck spinner is a worse lie than a wrong
+    // label, and this must not depend on a second round trip succeeding.
     setBackgroundOps((prev) =>
       prev.map((o) => (o.id === id ? { ...o, status: "failed", error } : o)),
     );
+    // Then ask the WORKER whether the submission is actually unresolved rather
+    // than failed, because only the worker knows. `submitAndConfirm` clears the
+    // durable in-flight record for every terminal outcome and keeps it for a
+    // `pending` one (chain/submit.ts), so the record still being there IS the
+    // answer, and it is authoritative in a way that matching on the error's
+    // wording would not be.
+    //
+    // Asked here rather than at each `catch`, because there are seven compose
+    // screens calling this and a defect that has to be remembered in seven
+    // places is a defect that comes back with the eighth.
+    void call({ type: "inFlight" })
+      .then((held) => {
+        setBackgroundOps((prev) =>
+          prev.map((o) =>
+            o.id === id && stillUnresolved(o, held)
+              ? { ...o, status: "unresolved", hash: o.hash ?? held?.hash }
+              : o,
+          ),
+        );
+      })
+      .catch(() => {
+        // A locked or restarting worker cannot answer. The row stays `failed`,
+        // which is what it already said.
+      });
   }, []);
   const dropOp = useCallback((id: string) => {
     setBackgroundOps((prev) => prev.filter((o) => o.id !== id));

@@ -336,3 +336,49 @@ describe("actionable errors from the live API", () => {
     ).rejects.toThrow(/returned 500/);
   });
 });
+
+describe("a vault balance is a number or it is refused", () => {
+  const cfg = { baseUrl: "https://api.defindex.io", apiKey: "k", network: "testnet" as const };
+  const answering = (body: unknown) =>
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => body,
+      })) as unknown as typeof fetch,
+    );
+
+  it("accepts a real numeric answer", () => {
+    // The control, taken from the live testnet vault's actual response shape.
+    answering({ dfTokens: "0", underlyingBalance: ["0"] });
+    return expect(new DefindexClient(cfg).position("CVAULT", "GUSER")).resolves.toMatchObject({
+      shares: "0",
+    });
+  });
+
+  it("refuses a string that is not a number", () => {
+    // This reached Home.tsx and the withdraw sheet and was printed where a
+    // balance goes. React escapes it, so the harm is a fabricated figure rather
+    // than an injection, which is exactly what this module says it refuses.
+    answering({ dfTokens: "you have won a prize, visit example.com" });
+    return expect(new DefindexClient(cfg).position("CVAULT", "GUSER")).rejects.toBeInstanceOf(
+      DefindexError,
+    );
+  });
+
+  it("refuses a numeric-looking value that is not one", () => {
+    answering({ dfTokens: "1e9" });
+    return expect(new DefindexClient(cfg).position("CVAULT", "GUSER")).rejects.toBeInstanceOf(
+      DefindexError,
+    );
+  });
+
+  it("drops an unreadable underlying rather than showing it", () => {
+    answering({ dfTokens: "5", underlyingBalance: ["not a number"] });
+    return expect(new DefindexClient(cfg).position("CVAULT", "GUSER")).resolves.toMatchObject({
+      shares: "5",
+      underlying: undefined,
+    });
+  });
+});

@@ -96,7 +96,8 @@ test("session 1: a newcomer sets up a wallet reading nothing but the screen", as
   await page.locator("[role='dialog']").waitFor({ state: "detached" }).catch(() => undefined);
 
   // 7. And the thing they will try before they have any: send.
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Send", exact: true }).click();
   await look(page, "10 send, empty form on an empty wallet");
 
   // What does it do if a newcomer just presses the primary button?

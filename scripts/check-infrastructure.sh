@@ -33,8 +33,23 @@ PY
 per_day=17280
 fail=0
 
-for key in token verifier auditor; do
-  id=$(python3 -c "import json;print(json.load(open('$DEPLOYMENT'))['$key'])")
+# EVERY id the record declares, not the three it happens to name at top level.
+#
+# This read used to be `for key in token verifier auditor`, which is the record's
+# three top-level fields. When a second wrapper was deployed on 2026-08-07 it was
+# added to `confidentialAssets` and this loop never saw it, so the entry that
+# keeps private USDC spendable went unwatched: measured at 6.83 days remaining
+# while the three ids this loop did watch sat at 22.09. The whole point of a
+# scheduled check is that nobody is looking, so a check that silently covers a
+# subset is worse than none.
+#
+# A here-string rather than a pipe, for the reason release-gate.sh records at its
+# own icon loop: `fail` has to be set in THIS shell, and a `while` on the right of
+# a pipe runs in a subshell that exits a moment later, so the script would print a
+# failure and then exit 0.
+IDS=$(./scripts/deployment-ids.sh "$DEPLOYMENT")
+while read -r key id; do
+  [ -n "$key" ] || continue
   ttl=$(stellar contract extend --id "$id" --source "$SOURCE" --network "$NETWORK" \
           --ledgers-to-extend 0 --durability persistent 2>&1 \
           | grep -oE '[0-9]+' | tail -1 || true)
@@ -52,6 +67,6 @@ for key in token verifier auditor; do
   else
     echo "  OK       $key: $days days remaining"
   fi
-done
+done <<< "$IDS"
 
 exit $fail

@@ -11,15 +11,17 @@ import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Frame, Header, Notice, Sheet, Row } from "../primitives";
 import { InfoTip } from "../Tooltip";
-import { AmountComposer, AmountSlider, sliderPercent } from "../AmountComposer";
+import { fiatOf } from "../money";
+import { shortAddress } from "../Address";
+import { AmountComposer, AmountSlider, sliderPercent, withinSpendable } from "../AmountComposer";
 import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark } from "./Home";
 import { PrivateAssetPicker } from "../sheets/PrivateAssetPicker";
 import {
-  capDecimals,
   fractionOf,
   sendableAfterFee,
   formatAmount,
+  composeAmount,
 } from "../../../../core/chain/balances";
 import { fonts, radius, space, text, type Theme } from "../theme";
 import type { PrivateOpSummary, PublicBalance, TransferSummary } from "../../../../core/messages";
@@ -215,7 +217,7 @@ export function Send({ onClose }: { onClose: () => void }) {
     const raw = whole && !isPrivate ? sendableAfterFee(part, BASE_FEE_STROOPS) : part;
     // four fraction digits is enough on the compose screen; the extra stellar
     // places only made a long, hard-to-read number. truncated, never rounded up.
-    setAmount(capDecimals(raw, 4));
+    setAmount(composeAmount(raw, 4));
   };
 
   const paste = async () => {
@@ -227,9 +229,9 @@ export function Send({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const ready = to !== "" && amount !== "";
+  const ready = to !== "" && amount !== "" && withinSpendable(amount, spendable);
   const blocked = isPrivate && w.priv?.state !== "ready";
-  const fiat = price !== null && amount !== "" ? Number(amount) * price : null;
+  const fiat = fiatOf(amount, price);
 
   return (
     <>
@@ -326,7 +328,7 @@ export function Send({ onClose }: { onClose: () => void }) {
                               padding: "6px 12px",
                             }}
                           >
-                            {addr.slice(0, 6)}…{addr.slice(-4)}
+                            {shortAddress(addr)}
                           </button>
                         ))}
                       </div>
@@ -535,9 +537,22 @@ function AssetPicker({
             iconRing
             icon={<AssetMark t={t} id={b.id} code={b.code} />}
             title={b.code}
-            sub={b.id === "native" ? "Stellar Lumens" : undefined}
+            // An unauthorised trustline cannot send or receive: the issuer has
+            // not authorised this account for it. Home already says so on the
+            // row, and this picker offered it anyway, so a user could choose it
+            // and fill in a whole send before the network refused. Drawn inert
+            // with the reason instead of hidden, because hiding an asset Home
+            // lists would be its own confusion.
+            tone={b.authorized ? "plain" : "inert"}
+            sub={
+              !b.authorized
+                ? "Not authorised by the issuer"
+                : b.id === "native"
+                  ? "Stellar Lumens"
+                  : undefined
+            }
             value={b.amount}
-            onClick={() => onPick(b)}
+            {...(b.authorized ? { onClick: () => onPick(b) } : {})}
           />
         ))}
       </div>

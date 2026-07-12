@@ -247,6 +247,17 @@ export const EVERY_REQUEST: { type: string; msg: Record<string, unknown> }[] = [
   },
   { type: "confirmSwap", msg: { type: "confirmSwap", handle: "h" } },
   {
+    type: "buildAddTrustline",
+    msg: { type: "buildAddTrustline", assetCode: "USDC", issuer: "GISSUER" },
+  },
+  { type: "confirmAddTrustline", msg: { type: "confirmAddTrustline", handle: "h" } },
+  { type: "trustlines", msg: { type: "trustlines" } },
+  { type: "assetSearch", msg: { type: "assetSearch", query: "usdc" } },
+  {
+    type: "buildRemoveTrustline",
+    msg: { type: "buildRemoveTrustline", assetCode: "USDC", issuer: "GISSUER" },
+  },
+  {
     type: "buildCctpSend",
     msg: {
       type: "buildCctpSend",

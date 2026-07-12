@@ -62,6 +62,23 @@ export async function openingKeys(): Promise<string[]> {
   return Object.keys(all).filter((k) => k.startsWith(`${KEYS.openings}.`));
 }
 
+/**
+ * Every recorded auditor id, across all deployments, tokens and accounts.
+ *
+ * Enumerated rather than named, for the same reason `openingKeys` is: the key
+ * carries a deployment, a token and an ADDRESS, so there is no fixed list of
+ * them to remove, and a caller reconstructing the pattern itself would drift
+ * from the one place that writes it.
+ *
+ * Unlike openings, these are not always rubbish to be swept. Whether they
+ * should survive an erase depends entirely on whether the same account is
+ * coming back; `erase` decides that, and this only says where they are.
+ */
+export async function auditorIdKeys(): Promise<string[]> {
+  const all = await chrome.storage.local.get(null);
+  return Object.keys(all).filter((k) => k.startsWith(`${KEYS.auditorId}.`));
+}
+
 export async function readLocal<T>(key: string): Promise<T | undefined> {
   const got = await chrome.storage.local.get(key);
   return got[key] as T | undefined;

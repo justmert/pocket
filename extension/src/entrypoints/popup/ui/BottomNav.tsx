@@ -8,7 +8,20 @@ import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } fr
 import { useWallet, type SheetId } from "./WalletProvider";
 import { useLeave } from "./primitives";
 import { radius, space, type Theme } from "./theme";
-import { Clock, Gear, HomeIcon, Plus, QrIcon, Send, Shield, Unshield } from "./icons";
+import {
+  BridgeIn,
+  BridgeOut,
+  Clock,
+  Gear,
+  HomeIcon,
+  Plus,
+  QrIcon,
+  Send,
+  Shield,
+  SwapIcon,
+  Unshield,
+} from "./icons";
+import { NETWORKS } from "../../../core/config";
 
 export function BottomNav() {
   const w = useWallet();
@@ -25,11 +38,12 @@ export function BottomNav() {
   const onHistory = w.tab === "history";
   const onSettings = w.tab === "settings";
   const receiveOpen = w.sheets.includes("receive");
-  // moving in and out is a PRIVATE-pocket feature, so the FAB only opens a menu
-  // there. in the public pocket the only move is Send, so the FAB IS the send
-  // button and opens it straight away, with no menu.
+  // both pockets now open a menu from the FAB. the private pocket lists the three
+  // ways value moves between pockets (shield / send / unshield); the public pocket
+  // lists its outward actions (send, swap, and the two cross-chain legs). the plus
+  // turns into a close in either case, so the control means the same thing.
   const isPrivate = w.pocket === "private";
-  const showMenu = menuOpen && isPrivate;
+  const showMenu = menuOpen;
   // keep the menu mounted through its exit so it fades out instead of blinking away
   // while the FAB un-rotates over empty space.
   const menu = useLeave(showMenu, 200);
@@ -38,7 +52,28 @@ export function BottomNav() {
     setMenuOpen(false);
     w.openSheet(sheet);
   };
-  const onFab = () => (isPrivate ? setMenuOpen((open) => !open) : w.openSheet("send"));
+  const onFab = () => setMenuOpen((open) => !open);
+
+  // the actions the FAB menu lists, per pocket. one shape and one component
+  // (FabMenu) render both, so the two menus are the SAME icon row and can never
+  // drift: private lists the three ways value moves between pockets; public lists
+  // its outward actions, each with its own glyph (the two cross-chain legs never
+  // share one). swap only appears where a swap venue is configured.
+  const swapAvailable = Boolean(w.status && NETWORKS[w.status.network].aquarius);
+  const menuItems: { key: SheetId; label: string; icon: ReactNode }[] = isPrivate
+    ? [
+        { key: "moveIn", label: "Shield", icon: <Shield size={24} /> },
+        { key: "send", label: "Send", icon: <Send size={24} /> },
+        { key: "moveOut", label: "Unshield", icon: <Unshield size={24} /> },
+      ]
+    : [
+        { key: "send", label: "Send", icon: <Send size={24} /> },
+        ...(swapAvailable
+          ? [{ key: "swap" as SheetId, label: "Swap", icon: <SwapIcon size={24} /> }]
+          : []),
+        { key: "cctpSend", label: "Send to a chain", icon: <BridgeOut size={24} /> },
+        { key: "cctpClaim", label: "Claim from a chain", icon: <BridgeIn size={24} /> },
+      ];
 
   // Escape closes the open menu, the same as a tap on the catcher behind it: a
   // popup menu the keyboard cannot dismiss is a trap for anyone not on a mouse.
@@ -63,7 +98,13 @@ export function BottomNav() {
             onClick={() => setMenuOpen(false)}
             style={{ position: "absolute", inset: 0, zIndex: 8 }}
           />
-          <FabMenu t={t} onPick={pick} leaving={menu.leaving} />
+          <FabMenu
+            t={t}
+            items={menuItems}
+            ariaLabel={isPrivate ? "Move value" : "Actions"}
+            onPick={pick}
+            leaving={menu.leaving}
+          />
         </>
       )}
       {/* the bar rises above the menu's scrim so its own controls stay lit. */}
@@ -92,9 +133,9 @@ export function BottomNav() {
         </Tile>
         <button
           type="button"
-          aria-label={isPrivate ? "Move value" : "Send"}
-          aria-haspopup={isPrivate ? "menu" : undefined}
-          aria-expanded={isPrivate ? showMenu : undefined}
+          aria-label={isPrivate ? "Move value" : "Actions"}
+          aria-haspopup="menu"
+          aria-expanded={showMenu}
           onClick={onFab}
           style={{
             all: "unset",
@@ -124,17 +165,13 @@ export function BottomNav() {
             aria-hidden
             style={{
               display: "flex",
-              // in the private pocket the plus turns into a close as the menu opens;
-              // in the public pocket it is a static send.
+              // the plus turns into a close as the menu opens, in either pocket: the
+              // FAB is now an actions menu everywhere, so it reads the same way.
               transform: showMenu ? "rotate(45deg)" : "none",
               transition: `transform var(--pocket-quick) var(--pocket-enter)`,
             }}
           >
-            {isPrivate ? (
-              <Plus size={Math.round(glyph * 1.1)} />
-            ) : (
-              <Send size={Math.round(glyph * 1.1)} />
-            )}
+            <Plus size={Math.round(glyph * 1.1)} />
           </span>
         </button>
         <Tile
@@ -169,26 +206,27 @@ export function BottomNav() {
 }
 
 /**
- * the three ways value leaves or enters a pocket, raised above the FAB.
+ * the actions the FAB raises, as one icon row.
  *
- * move-in and move-out open straight into their own form; the picker menu they
- * used to share is gone, because a menu that then shows another menu is two
- * taps where one would do.
+ * ONE component renders both pockets' menus, so they are the same row and cannot
+ * drift: the caller passes the items (the private pocket's three ways value moves,
+ * or the public pocket's outward actions) and the menu's accessible name. each
+ * item opens straight into its own form; a menu that then shows another menu is
+ * two taps where one would do.
  */
 function FabMenu({
   t,
+  items,
+  ariaLabel,
   onPick,
   leaving,
 }: {
   t: Theme;
+  items: { key: SheetId; label: string; icon: ReactNode }[];
+  ariaLabel: string;
   onPick: (sheet: SheetId) => void;
   leaving: boolean;
 }) {
-  const items: { key: SheetId; label: string; icon: ReactNode }[] = [
-    { key: "moveIn", label: "Shield", icon: <Shield size={24} /> },
-    { key: "send", label: "Send", icon: <Send size={24} /> },
-    { key: "moveOut", label: "Unshield", icon: <Unshield size={24} /> },
-  ];
   // the menu only mounts while open, so focusing the first item on mount is
   // focusing it on open: a keyboard user lands inside the menu rather than being
   // left on the FAB, and Left/Right (or Up/Down) walk the row. Escape is handled
@@ -228,7 +266,7 @@ function FabMenu({
     >
       <div
         role="menu"
-        aria-label="Move value"
+        aria-label={ariaLabel}
         className={leaving ? "pocket-fade-out" : "pocket-row-in"}
         onKeyDown={onKey}
         style={{

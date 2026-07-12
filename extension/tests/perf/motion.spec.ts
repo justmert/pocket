@@ -193,7 +193,8 @@ test("no animation stands between a press and the screen it opens", async ({ wal
   const GATE_MS = 150;
 
   const t0 = await now(wallet.page);
-  await wallet.page.getByRole("button", { name: "Send", exact: true }).click();
+  await wallet.page.getByRole("button", { name: "Actions", exact: true }).click();
+  await wallet.page.getByRole("menuitem", { name: "Send", exact: true }).click();
   await expect(wallet.page.getByLabel("To", { exact: true })).toBeVisible();
   const p = await read(wallet.page);
 

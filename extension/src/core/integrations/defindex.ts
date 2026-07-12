@@ -135,19 +135,30 @@ export class DefindexClient {
       "GET",
       `/vault/${address}/balance?from=${encodeURIComponent(user)}`,
     );
-    if (typeof body?.dfTokens !== "string") {
+    // A SHAPE check is not a VALUE check, and this is rendered as a balance.
+    //
+    // `typeof x === "string"` alone let any string through to `Home.tsx` and the
+    // withdraw sheet, where it is printed as "<x> shares". That is not a route
+    // to funds moving and React escapes it, so it is not an injection; it is
+    // simply the fabricated-figure failure the comment below already names,
+    // arriving through the field rather than instead of it. `describeApy` next
+    // door validates with `Number.isFinite`, so the module was already applying
+    // this discipline one function away.
+    if (typeof body?.dfTokens !== "string" || !/^\d+(\.\d+)?$/.test(body.dfTokens)) {
       // Refused rather than defaulted to "0". A zero here is indistinguishable
       // on screen from a real empty position, and telling someone they hold
       // nothing when the answer was unreadable is the fabricated-balance
       // failure this module exists to avoid.
-      throw new DefindexError("the vault balance response carried no dfTokens");
+      throw new DefindexError("the vault balance response carried no readable dfTokens");
     }
     const underlying = Array.isArray(body.underlyingBalance)
       ? body.underlyingBalance[0]
       : undefined;
     return {
       shares: body.dfTokens,
-      underlying: typeof underlying === "string" ? underlying : undefined,
+      // Same rule: this is shown as an amount, so it has to look like one.
+      underlying:
+        typeof underlying === "string" && /^\d+(\.\d+)?$/.test(underlying) ? underlying : undefined,
     };
   }
 

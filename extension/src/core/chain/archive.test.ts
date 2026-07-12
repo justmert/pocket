@@ -200,3 +200,74 @@ describe("failing closed", () => {
     expect(await new ArchiveClient(url).health("C")).toMatchObject({ ingested_through: null });
   });
 });
+
+/** A server whose answer depends on the cursor it was asked with. */
+function servingByCursor(reply: (cursor: string | null) => unknown): Promise<string> {
+  return new Promise((resolve) => {
+    const s = http.createServer((q, r) => {
+      const url = new URL(q.url ?? "/", "http://x");
+      r.writeHead(200, { "content-type": "application/json" });
+      r.end(JSON.stringify(reply(url.searchParams.get("cursor"))));
+    });
+    servers.push(s);
+    s.listen(0, "127.0.0.1", () =>
+      resolve(`http://127.0.0.1:${(s.address() as AddressInfo).port}`),
+    );
+  });
+}
+
+const pageWith = (cursor: string | null, events: unknown[] = []) => ({
+  events,
+  from_ledger: 1,
+  to_ledger: 100,
+  cursor,
+  complete: true,
+});
+
+describe("paging an account's whole history terminates against a hostile archive", () => {
+  it("pages to the end and returns everything", async () => {
+    // The control. Without it every refusal below is satisfied by a pager that
+    // simply does not work.
+    const url = await servingByCursor((c) =>
+      c === null ? pageWith("p1", [{ id: "a" }]) : c === "p1" ? pageWith("p2", [{ id: "b" }]) : pageWith(null, [{ id: "c" }]),
+    );
+    const got = await new ArchiveClient(url).allEvents("CTOKEN", ACCOUNT);
+    expect(got.map((e) => (e as { id: string }).id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("refuses an archive that ALTERNATES two cursors", async () => {
+    // The case the old `page.cursor === previous` check could not see. Answering
+    // "a", "b", "a", "b" advances by that test's reckoning every time, so the
+    // loop never ended. It ran inside the dispatcher's ACTIVITY set, so the
+    // worker's idle lock never fired again and the vault key stayed in memory.
+    const url = await servingByCursor((c) => pageWith(c === "ping" ? "pong" : "ping"));
+    await expect(new ArchiveClient(url).allEvents("CTOKEN", ACCOUNT)).rejects.toThrow(
+      ArchiveUnavailableError,
+    );
+  });
+
+  it("refuses an archive that repeats one cursor forever", async () => {
+    const url = await servingByCursor(() => pageWith("same"));
+    await expect(new ArchiveClient(url).allEvents("CTOKEN", ACCOUNT)).rejects.toThrow(
+      /repeated a page cursor/,
+    );
+  });
+
+  it("refuses an archive that hands out a fresh cursor forever", async () => {
+    // No repeat to catch, so only the page budget ends this one.
+    let n = 0;
+    const url = await servingByCursor(() => pageWith(`c${n++}`));
+    await expect(new ArchiveClient(url).allEvents("CTOKEN", ACCOUNT)).rejects.toThrow(
+      /did not finish paging/,
+    );
+  });
+
+  it("still refuses an incomplete window while paging", async () => {
+    // The completeness refusal must survive the move into the pager: a gap-free
+    // claim is what makes a rebuilt balance trustworthy.
+    const url = await servingByCursor(() => ({ ...pageWith(null), complete: false }));
+    await expect(new ArchiveClient(url).allEvents("CTOKEN", ACCOUNT)).rejects.toThrow(
+      IncompleteHistoryError,
+    );
+  });
+});

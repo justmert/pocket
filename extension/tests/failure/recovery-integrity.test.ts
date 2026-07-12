@@ -312,6 +312,33 @@ describe("a rebuilt balance is checked against the contract, not trusted", () =>
     expect(shown).not.toMatch(/r_e_point|v_tilde|sigma/);
   });
 
+  it("refuses an event it cannot READ in words a person can act on, not a network excuse", async () => {
+    // The sibling of the case above, and it escaped the same translation. A
+    // `MalformedEventError` is an archive serving a shape the contract does not
+    // emit, which no retry can affect, and it reached the screen as "Something
+    // went wrong. Try again, and check your connection."
+    //
+    // Truncating the event body is the cheapest faithful way to produce one: the
+    // field decoders in sync.ts throw exactly this when a value is the wrong
+    // length.
+    const t = inboundTransferEvent(ACCOUNT, 300);
+    const url = await archiveServing([{ ...t.event, data_xdr: "AAAAAA==" }]);
+    const err = await recoverOpenings(url, TOKEN, ACCOUNT, VK, {
+      spendableCommitment: IDENTITY,
+      receivingCommitment: IDENTITY,
+    } as never).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(RecoveryUnavailableError);
+    const shown = describeError(err);
+    expect(shown).toMatch(/could not read/i);
+    expect(shown).toMatch(/safe on chain/i);
+    // The two failures this closes: the generic network excuse, and the raw
+    // archive-authored detail (an event id, a field name, a byte length) that
+    // the allowlist exists to keep off the screen.
+    expect(shown).not.toMatch(/check your connection/i);
+    expect(shown).not.toMatch(/\bbytes\b|b_tilde|event \d/i);
+  });
+
   it("does not credit a deposit that was made TO someone else", async () => {
     // `deposit` carries [from, to] and the archive attributes it to both, so an
     // account that has funded other people's pockets appears in events that

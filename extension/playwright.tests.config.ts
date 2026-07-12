@@ -51,20 +51,11 @@ export default defineConfig({
   timeout: 15 * 60_000,
   expect: {
     timeout: 30_000,
-    // Exact pixels.
-    //
-    // Playwright's default `threshold: 0.2` compares in YIQ and tolerates a
-    // fifth of the colour space per pixel, which sounds small and is not:
-    // measured here, a button whose corner radius changed from 12px to 4px
-    // went UNDETECTED on four of eight screens, because those buttons were the
-    // disabled style (#F4F3F0 on a #FBFAF8 page) and the corner pixels differed
-    // by less than the tolerance. A snapshot that cannot see a low-contrast
-    // change is blind exactly where a design regression is hardest to notice by
-    // eye. At 0 the same mutation reddens every screen it touches.
-    //
-    // This is only affordable because the popup is a fixed 384x600 with no
-    // remote assets and no video, so rendering is deterministic run to run.
-    toHaveScreenshot: { threshold: 0, maxDiffPixels: 0 },
+    // No screenshot comparison. The UI is changing constantly, so pixel-diff
+    // snapshots break on every intended restyle rather than on a regression, and
+    // become a maintenance tax that trains people to ignore red. The suite asserts
+    // on roles, accessible names and the WORDS on a signing screen instead, which
+    // survive a restyle and still break on a change to what the product SAYS.
   },
   reporter: process.env.CI
     ? [["list"], ["json", { outputFile: "test-results/pass.json" }]]

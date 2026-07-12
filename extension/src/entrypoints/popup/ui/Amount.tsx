@@ -221,8 +221,10 @@ const EXACT: CSSProperties = {
 
 /* --------------------------------------------------------------------- */
 
-/** each digit sits in a column that slides to its new value. */
-export function Rolling({ value }: { value: string }) {
+/** each digit sits in a column that slides to its new value. `instant` snaps the
+ *  column instead of rolling it, for a figure being TYPED (the compose field):
+ *  every keystroke would otherwise roll, which lags entry and looks busy. */
+export function Rolling({ value, instant = false }: { value: string; instant?: boolean }) {
   const chars = value.split("");
   return (
     <span style={{ display: "inline-flex", alignItems: "flex-end", whiteSpace: "pre" }}>
@@ -234,7 +236,7 @@ export function Rolling({ value }: { value: string }) {
         // place value; the new leading digit and comma mount fresh on the left.
         const key = chars.length - 1 - i;
         return ch >= "0" && ch <= "9" ? (
-          <RollDigit key={key} digit={Number(ch)} />
+          <RollDigit key={key} digit={Number(ch)} instant={instant} />
         ) : (
           <span key={key} style={{ display: "inline-block", height: "1em", lineHeight: "1em" }}>
             {ch}
@@ -245,7 +247,7 @@ export function Rolling({ value }: { value: string }) {
   );
 }
 
-function RollDigit({ digit }: { digit: number }) {
+function RollDigit({ digit, instant = false }: { digit: number; instant?: boolean }) {
   // a digit that changes blurs for the length of the roll, so the column reads
   // as travelling rather than as ten stacked numbers.
   const [blur, setBlur] = useState(0);
@@ -262,6 +264,15 @@ function RollDigit({ digit }: { digit: number }) {
   useEffect(() => {
     if (prev.current === digit) return;
     prev.current = digit;
+    if (instant) {
+      // a keystroke: snap this column to its digit with no blur and no travel
+      // (the transition is disabled below while instant), so typing stays crisp
+      // and only a programmatic set (Use max, the slider) rolls.
+      setBlur(0);
+      setSettling(false);
+      setShown(digit);
+      return;
+    }
     setBlur(1.2);
     setSettling(false);
     const r = requestAnimationFrame(() => {
@@ -270,13 +281,15 @@ function RollDigit({ digit }: { digit: number }) {
       setShown(digit);
     });
     return () => cancelAnimationFrame(r);
-  }, [digit]);
+  }, [digit, instant]);
 
   // one gesture, so the travel and the blur settling out of it share a duration
   // and a curve. `motion.roll` is that duration; neither number is chosen here.
-  const transition =
-    `transform ${motion.roll} ${motion.enter}` +
-    (settling ? `, filter ${motion.roll} ${motion.enter}` : "");
+  // instant kills the transition so a typed digit lands in the same frame.
+  const transition = instant
+    ? "none"
+    : `transform ${motion.roll} ${motion.enter}` +
+      (settling ? `, filter ${motion.roll} ${motion.enter}` : "");
 
   return (
     <span

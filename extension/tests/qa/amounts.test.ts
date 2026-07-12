@@ -1212,6 +1212,14 @@ const VALUE_PATH = [
   // the scan follows them here rather than trusting them.
   "src/entrypoints/popup/ui/AmountComposer.tsx",
   "src/entrypoints/popup/ui/money.ts",
+  // the public-pocket integrations, each of which sizes an amount the user then
+  // signs: the in-app swap, the yield deposit/withdraw, and the two CCTP legs.
+  // the amount transacted is the decimal STRING in every case; the floats below
+  // are display estimates and entry guards, so the scan follows them here too.
+  "src/entrypoints/popup/ui/screens/Swap.tsx",
+  "src/entrypoints/popup/ui/screens/Yield.tsx",
+  "src/entrypoints/popup/ui/screens/CctpSend.tsx",
+  "src/entrypoints/popup/ui/screens/CctpClaim.tsx",
   "src/core/chain/prices.ts",
   "src/core/chain/portfolio.ts",
   "src/core/chain/balance-history.ts",
@@ -1234,6 +1242,10 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     fragment: "if (!Number.isInteger(decimals) || decimals < 0 || decimals > 7)",
     why: "validates the DISPLAY WIDTH argument, not the value",
   },
+  {
+    fragment: 'return `<0.${"0".repeat(Math.max(0, places - 1))}1`;',
+    why: "builds the string \"<0.0001\" for a DISPLAY row. `places` is a count of fraction digits, so the arithmetic sizes a run of zero CHARACTERS and never touches the amount, which stays the untouched decimal string the worker parses. it exists because truncating to four places rendered any real amount below 0.0001 as \"0\", so the row asserted that nothing moved when something did",
+  },
   { fragment: "Math.max(fontSizes.small, Math.min(px,", why: "type size in pixels" },
   { fragment: "gap: Math.round(px * GAP_EM)", why: "layout" },
   { fragment: "fontSize: Math.round(px * fractionOf)", why: "layout" },
@@ -1244,7 +1256,7 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "an evenly-spaced array INDEX for chart decimation; it selects which points to keep, never touching a value",
   },
   {
-    fragment: "<RollDigit key={key} digit={Number(ch)} />",
+    fragment: "<RollDigit key={key} digit={Number(ch)} instant={instant} />",
     why: "one character, 0-9, into a CSS row offset; the value itself is rendered as text",
   },
   { fragment: "expired: e.maxTime > 0 && Math.floor(Date.now() / 1000)", why: "unix seconds" },
@@ -1400,8 +1412,8 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
   // stroops in the worker. Everything below is the compose screen's own display
   // and slider math; none of it is signed, submitted or stored.
   {
-    fragment: 'const fiat = price !== null && amount !== "" ? Number(amount) * price : null;',
-    why: "a fiat estimate under the field; the sent amount is the string, parsed to stroops in the worker",
+    fragment: "const n = Number(amount);",
+    why: "money.fiatOf, the one place the compose screens turn a typed amount into a DOLLAR CAPTION. it is a float on purpose because the caption is an estimate, and the result is guarded by Number.isFinite so a field holding \"-\" or \"1,5\" yields null rather than \"$NaN\". the value that is sent is the untouched string, parsed to stroops by the worker; this number never reaches a transaction",
   },
   {
     fragment: "total += Number(p.spendable) * price;",
@@ -1420,10 +1432,6 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "the slider percentage 0..100; the amount it sets is computed in bigint by fractionOf",
   },
   {
-    fragment: "size={Math.max(1, amount.length || 1)}",
-    why: "the input width in characters, a string length",
-  },
-  {
     fragment: "const fitPx = Math.floor(430 / Math.max(1, amount.length));",
     why: "the compose amount's font size in pixels, scaled down so a long figure fits the card; a layout measure, not the value (which stays the string)",
   },
@@ -1434,6 +1442,23 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
   {
     fragment: "onChange={(e) => onPercent(Number(e.target.value))}",
     why: "the slider's 0..100 value; converted to a bigint fraction before it touches the amount",
+  },
+  // ---- the public-pocket integrations (swap, yield, cross-chain) -----------
+  // The amount transacted in every one of these is the decimal STRING, parsed to
+  // bigint stroops in the worker. What is left here is a handful of entry guards
+  // (is there a positive amount to act on?) and one chain-id parse. The fiat
+  // readouts reuse send's exact `const fiat = ...` line, already judged above.
+  {
+    fragment: "Number(amount) <= 0 || inId === outId",
+    why: "swap: clears the live quote when the input is non-positive or the two assets match; a display guard, never a conversion",
+  },
+  {
+    fragment: "Number(amount) > 0 &&",
+    why: "swap/yield/cctp: each compose page's Continue guard checks there is a positive amount to act on before it is offered; the amount transacted is the decimal string, and the funding check beside it (withinSpendable) is exact bigint",
+  },
+  {
+    fragment: "domain: Number(d), name",
+    why: "cctp: a CCTP domain id parsed from the config table's string key; an integer chain id, not a balance",
   },
   // ---- the chart's resample and morph (array indices, animation) ----------
   { fragment: "const a = Math.floor(x);", why: "a resample index into the source series" },
@@ -1448,6 +1473,14 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
   {
     fragment: "const p = Math.min(1, (now - start) / DUR);",
     why: "the morph animation's progress, 0..1",
+  },
+  // the transaction-expiry guard added with the yield envelope work. both lines
+  // are CLOCK arithmetic in whole seconds against a transaction's timeBounds,
+  // which is what the ledger itself measures expiry in. no amount is involved,
+  // and the two neighbours doing the same thing are judged directly above.
+  {
+    fragment: "const now = Math.floor(Date.now() / 1000);",
+    why: "epoch seconds, to set a transaction's own expiry window",
   },
 ];
 

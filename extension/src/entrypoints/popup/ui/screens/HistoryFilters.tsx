@@ -16,8 +16,8 @@ export type DateRange = { start: number | null; end: number | null };
 
 /** which filter chip an entry answers to, or null when it is uncategorised
  *  (setup / make-spendable), which no chip claims. */
-export function categoryOf(kind: HistoryEntry["kind"]): FilterCategory | null {
-  switch (kind) {
+export function categoryOf(e: Pick<HistoryEntry, "kind" | "direction">): FilterCategory | null {
+  switch (e.kind) {
     case "receive":
     case "privateReceive":
     case "create":
@@ -25,6 +25,14 @@ export function categoryOf(kind: HistoryEntry["kind"]): FilterCategory | null {
     case "send":
     case "privateSend":
       return "sent";
+    // A swap is the one kind with a leg in each direction, so it cannot be
+    // filed by kind alone: it files under whichever leg this entry is. Taking
+    // the entry rather than the bare kind is what makes that expressible.
+    // Returning null instead would hide BOTH legs whenever any type filter is
+    // on, which is how a filtered list comes to assert that a swap the user
+    // made never happened.
+    case "swap":
+      return e.direction === "in" ? "received" : "sent";
     case "shield":
       return "movedIn";
     case "unshield":

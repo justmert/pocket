@@ -89,7 +89,13 @@ describe("balanceHistory", () => {
     });
 
     expect(points).not.toBeNull();
-    expect(points!.map((p) => p.stroops)).toEqual([40n * XLM, 140n * XLM]);
+    // Asserted as the STEP FUNCTION the chart samples, not as a list of values.
+    // A list of values passes whether or not each is stamped at the right
+    // moment, which is how this shipped reading one balance event behind: the
+    // values were right and every one of them sat at the wrong time.
+    expect(balanceAt(points!, now - 2 * 3_600_000)).toBe(40n * XLM); // before the credit
+    expect(balanceAt(points!, now - 3_600_000)).toBe(140n * XLM); // at it
+    expect(balanceAt(points!, now - 60_000)).toBe(140n * XLM); // after it
     // Oldest first, which is what the chart consumes.
     expect(points![0]!.at).toBeLessThan(points![1]!.at);
   });
@@ -112,7 +118,8 @@ describe("balanceHistory", () => {
     });
 
     // Balance is 900 now and a 100-stroop fee was paid, so it was 1000 before.
-    expect(points!.map((p) => p.stroops)).toEqual([1000n, 900n]);
+    expect(balanceAt(points!, now - 120_000)).toBe(1000n);
+    expect(balanceAt(points!, now - 30_000)).toBe(900n);
   });
 
   it("ignores a fee this account did not pay", async () => {
@@ -127,7 +134,12 @@ describe("balanceHistory", () => {
       currentStroops: 900n,
       since: now - 86_400_000,
     });
-    expect(points!.map((p) => p.stroops)).toEqual([900n]);
+    // Nothing happened in the window, so the balance held all the way across it.
+    // This is the commonest shape a wallet has and it used to draw a flat ZERO
+    // with a step up at the right-hand edge, because a single point at `now`
+    // leaves `balanceAt` answering 0 for every earlier moment.
+    expect(balanceAt(points!, now - 86_000_000)).toBe(900n);
+    expect(balanceAt(points!, now - 1_000)).toBe(900n);
   });
 
   it("ignores an effect belonging to the counterparty", async () => {
@@ -148,7 +160,8 @@ describe("balanceHistory", () => {
       currentStroops: 10n * XLM,
       since: now - 86_400_000,
     });
-    expect(points!.map((p) => p.stroops)).toEqual([10n * XLM]);
+    expect(balanceAt(points!, now - 86_000_000)).toBe(10n * XLM);
+    expect(balanceAt(points!, now)).toBe(10n * XLM);
   });
 
   it("ignores a different asset's movement", async () => {
@@ -170,7 +183,8 @@ describe("balanceHistory", () => {
       currentStroops: 10n * XLM,
       since: now - 86_400_000,
     });
-    expect(points!.map((p) => p.stroops)).toEqual([10n * XLM]);
+    expect(balanceAt(points!, now - 86_000_000)).toBe(10n * XLM);
+    expect(balanceAt(points!, now)).toBe(10n * XLM);
   });
 
   it("counts both legs of a trade independently", async () => {
@@ -195,7 +209,8 @@ describe("balanceHistory", () => {
       since: now - 86_400_000,
     });
     // Bought 30 XLM, so before the trade it held nothing.
-    expect(points!.map((p) => p.stroops)).toEqual([0n, 30n * XLM]);
+    expect(balanceAt(points!, now - 120_000)).toBe(0n);
+    expect(balanceAt(points!, now - 60_000)).toBe(30n * XLM);
   });
 
   it("refuses rather than drawing a curve that goes negative", async () => {
@@ -254,6 +269,32 @@ describe("balanceHistory", () => {
       currentStroops: 10n * XLM,
       since: now - 86_400_000,
     });
-    expect(points!.map((p) => p.stroops)).toEqual([10n * XLM]);
+    // Nothing inside the window changed the balance, so it held 10 across the
+    // whole of it. Had the out-of-window credit been applied the walk would
+    // have gone 500 below zero and returned null, so a flat, non-null curve is
+    // the evidence it was excluded.
+    expect(points).not.toBeNull();
+    expect(balanceAt(points!, now - 86_000_000)).toBe(10n * XLM);
+    expect(balanceAt(points!, now)).toBe(10n * XLM);
+  });
+
+  it("puts the left edge at the window, not at the account's whole history", () => {
+    // The anchor point added for the case above must sit at `since`. Stamped
+    // anywhere earlier it would widen the chart's domain past the range the
+    // caller asked for; stamped later it would leave a gap that reads as zero.
+    return (async () => {
+      stubHorizon([]);
+      const since = now - 86_400_000;
+      const points = await balanceHistory({
+        horizonUrl: HORIZON,
+        account: ACCOUNT,
+        assetId: "native",
+        currentStroops: 7n * XLM,
+        since,
+      });
+      expect(points![0]!.at).toBe(since);
+      expect(balanceAt(points!, since)).toBe(7n * XLM);
+      expect(balanceAt(points!, since - 1)).toBe(0n);
+    })();
   });
 });

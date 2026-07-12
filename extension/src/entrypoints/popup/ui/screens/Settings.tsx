@@ -4,7 +4,7 @@ import { Header, Overline, Row, ScrollArea } from "../primitives";
 import { canRebuild } from "../copy";
 import { Chip } from "../primitives";
 import { autoLockLabel } from "../sheets/SettingsSheets";
-import { Alert, ChevronRight, Clock, External, Key, Lock, Refresh, Trash } from "../icons";
+import { Alert, ChevronRight, Clock, Coins, External, Key, Lock, Refresh, Trash } from "../icons";
 import { space } from "../theme";
 
 export function Settings() {
@@ -36,6 +36,19 @@ export function Settings() {
           }
           onClick={() => w.openSheet("network")}
         />
+
+        <div style={{ marginTop: space.lg }}>
+          <Overline t={t}>Assets</Overline>
+          <Row
+            t={t}
+            index={i++}
+            icon={<Coins size={19} />}
+            title="Manage assets"
+            sub="Add or remove the assets this wallet holds"
+            value={<ChevronRight size={17} />}
+            onClick={() => w.openSheet("assets")}
+          />
+        </div>
 
         <div style={{ marginTop: space.lg }}>
           <Overline t={t}>Sites</Overline>

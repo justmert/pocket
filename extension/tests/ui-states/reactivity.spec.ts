@@ -140,7 +140,8 @@ test("nothing is shown as spent until the ledger has said so", async ({ wallet }
   await page.reload();
   await wallet.waitForHome(WAITS.ledgerRead);
 
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Send", exact: true }).click();
   await page
     .getByRole("textbox", { name: "To", exact: true })
     .fill("GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H");

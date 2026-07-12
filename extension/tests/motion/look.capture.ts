@@ -53,7 +53,8 @@ test("home, funded, both pockets", async ({ wallet }) => {
   const addr = await wallet.revealAddress();
 
   // send compose + confirm popup.
-  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await page.getByRole("button", { name: "Actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Send", exact: true }).click();
   await page.waitForTimeout(1200);
   await page.screenshot({ path: `${OUT}/send-compose.png` });
   await page.getByLabel("To", { exact: true }).fill(addr);

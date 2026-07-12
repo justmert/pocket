@@ -80,12 +80,19 @@ export function InfoTip({
     const width = Math.min(TIP_W, frameW - 2 * EDGE);
     const targetLeft = Math.max(EDGE, Math.min(anchor.right - width, frameW - width - EDGE));
     const left = targetLeft - anchor.left;
-    const height = bubble.current?.offsetHeight ?? 0;
-    const above = anchor.top - GAP - height >= EDGE || anchor.top > window.innerHeight / 2;
+    // open on whichever side of the icon has more vertical room, and CAP the
+    // bubble to that room. without the cap a tall explanation (a full "what this
+    // does" list) in a small/zoomed popup spilled past the window edge and its top
+    // was cut off; capped with an inner scroll, it always fits and scrolls itself.
+    const spaceAbove = anchor.top - GAP - EDGE;
+    const spaceBelow = window.innerHeight - anchor.bottom - GAP - EDGE;
+    const above = spaceAbove >= spaceBelow;
+    const maxHeight = Math.max(72, Math.floor(above ? spaceAbove : spaceBelow));
     setPos({
       position: "absolute",
       left,
       width,
+      maxHeight,
       ...(above ? { bottom: `calc(100% + ${GAP}px)` } : { top: `calc(100% + ${GAP}px)` }),
     });
   }, [open, children]);
@@ -143,7 +150,13 @@ export function InfoTip({
             // hand-written rgba that had drifted from every other raised surface.
             boxShadow: t.shadow,
             zIndex: 60,
-            pointerEvents: "none",
+            // scroll inside the bubble when its content is taller than the room it
+            // was capped to (maxHeight, from `pos`): a long "what this does" in a
+            // small/zoomed popup then fits and scrolls instead of being cut off.
+            // `auto` (not `none`) so a tapped-open tip can actually be scrolled.
+            pointerEvents: "auto",
+            overflowY: "auto",
+            overscrollBehavior: "contain",
             textAlign: "left",
             // measured on open; until then it is placed off the flow so its first
             // paint (used to read its own height) does not flash at the corner.

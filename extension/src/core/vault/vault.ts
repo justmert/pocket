@@ -11,6 +11,7 @@ import {
   SALT_BYTES,
   IV_BYTES,
   VAULT_SCHEMA_VERSION,
+  WRAPPED_DEK_BYTES,
   b64,
   bytes,
   MIN_KDF,
@@ -156,21 +157,41 @@ export async function unlockVault(header: VaultHeader, password: string): Promis
     throw new CorruptVaultError(`the vault header records schema version ${String(header.v)}`);
   }
   if (header.v > VAULT_SCHEMA_VERSION) throw new SchemaVersionError(header.v);
-  const kek = await aesKey(deriveKek(password, b64.decode(header.salt), header.kdf), ["decrypt"]);
   // Structural problems are NOT password problems. Reporting "wrong password"
   // for a corrupted vault sends a user with the right password to a reset flow
   // that destroys their wallet, which is a social-engineering step away from
   // data loss.
+  //
+  // The SALT is decoded inside this block too. It used to be decoded on the
+  // `deriveKek` line below, one line above the try, so an undecodable salt
+  // escaped as a raw InvalidCharacterError from `atob`. That name is not in
+  // dispatch's SAFE_ERRORS, so it reached the user as "Something went wrong.
+  // Try again, and check your connection." for a vault that will never open
+  // again no matter what their connection does.
+  let salt: Bytes;
   let iv: Bytes;
   let ct: Bytes;
   try {
+    salt = b64.decode(header.salt);
     iv = b64.decode(header.wrap.iv);
     ct = b64.decode(header.wrap.ct);
   } catch {
     throw new CorruptVaultError("the vault header is not valid base64");
   }
   if (iv.length !== IV_BYTES) throw new CorruptVaultError("the vault header has a malformed IV");
-  if (ct.length < 33) throw new CorruptVaultError("the wrapped key is truncated");
+  // EXACT, not a lower bound.
+  //
+  // Both writers wrap a 32-byte DEK under AES-256-GCM, which is always 32 + 16 =
+  // 48 bytes of ciphertext. The old `< 33` therefore let every truncation from
+  // 33 to 47 bytes through to the GCM open, where it failed the tag and was
+  // caught below as WrongPasswordError. That is exactly the misdiagnosis the
+  // comment above says must never happen: the owner holds the right password,
+  // is told it is wrong, and the only other thing the unlock screen offers is
+  // the route that erases every opening.
+  if (ct.length !== WRAPPED_DEK_BYTES) {
+    throw new CorruptVaultError("the wrapped key is the wrong length");
+  }
+  const kek = await aesKey(deriveKek(password, salt, header.kdf), ["decrypt"]);
 
   try {
     return await open(kek, iv, ct, canonicalHeaderBytes(header));
