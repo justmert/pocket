@@ -10,7 +10,7 @@ import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Frame, Header, Notice } from "../primitives";
 import { InfoTip } from "../Tooltip";
-import { fiatOf } from "../money";
+import { fiatOf, usdOf } from "../money";
 import { AmountComposer, withinSpendable } from "../AmountComposer";
 import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark } from "./Home";
@@ -18,6 +18,7 @@ import {
   fractionOf,
   sendableAfterFee,
   composeAmount,
+  capDecimals,
   SOROBAN_FEE_RESERVE_STROOPS,
 } from "../../../../core/chain/balances";
 import { radius, space, text, type Theme } from "../theme";
@@ -188,7 +189,21 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
                 padding: `0 ${space.gutter}px`,
               }}
             >
-              <div style={{ display: "flex", gap: space.sm, marginBottom: space.lg }}>
+              {/* a segmented control, matching the Activity screen's Public/Private
+                  tabs: one field-coloured track holding two segments, the active one a
+                  solid accent pill, rather than two separate buttons with a gap. */}
+              <div
+                role="group"
+                aria-label="Deposit or withdraw"
+                style={{
+                  display: "flex",
+                  gap: 4,
+                  background: t.field,
+                  borderRadius: radius.pill,
+                  padding: 4,
+                  marginBottom: space.lg,
+                }}
+              >
                 <ModeTab
                   t={t}
                   label="Deposit"
@@ -226,12 +241,23 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
                     }}
                   >
                     <span style={{ ...text.rowSub, color: t.sub }}>In the vault</span>
-                    <span style={{ ...text.rowTitle, color: t.text }}>
-                      {y.underlyingBalance
-                        ? `${y.underlyingBalance} ${code}`
-                        : y.balance
-                          ? `${y.balance} shares`
-                          : "None yet"}
+                    <span
+                      style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}
+                    >
+                      <span style={{ ...text.rowTitle, color: t.text }}>
+                        {y.underlyingBalance
+                          ? `${capDecimals(y.underlyingBalance, 4)} ${code}`
+                          : y.balance
+                            ? `${capDecimals(y.balance, 4)} shares`
+                            : "None yet"}
+                      </span>
+                      {/* the FORMATTED dollar value ("$21.93"), like every other
+                          balance the wallet shows: usdOf, not the raw fiatOf number.
+                          the line is ALWAYS rendered (a non-breaking space until the
+                          price arrives) so the card does not grow/jump when it loads. */}
+                      <span style={{ ...text.caption, color: t.sub }}>
+                        {(y.underlyingBalance && usdOf(y.underlyingBalance, price)) || " "}
+                      </span>
                     </span>
                   </div>
                   {y.apy && (
@@ -362,12 +388,11 @@ function ModeTab({
         cursor: "pointer",
         flex: 1,
         textAlign: "center",
-        ...text.rowSub,
-        fontWeight: 600,
-        padding: "10px 0",
+        ...text.pocketTab,
+        padding: "8px 0",
         borderRadius: radius.pill,
-        background: active ? t.accentSoft : t.field,
-        color: active ? t.accentOnSoft : t.sub,
+        background: active ? t.accent : "transparent",
+        color: active ? t.onAccent : t.sub,
         transition:
           "background-color var(--pocket-instant) var(--pocket-enter), color var(--pocket-instant) var(--pocket-enter)",
       }}

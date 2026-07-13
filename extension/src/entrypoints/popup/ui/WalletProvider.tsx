@@ -214,7 +214,11 @@ interface Wallet {
   copied: boolean;
   copy(value: string): void;
   toast: string | null;
-  showToast(message: string): void;
+  /** the toast's tone: "neutral" is the default dark inverse pill; "positive" is a
+   *  solid-accent success confirmation (e.g. testnet funding landed), so a success
+   *  reads as the pocket's own colour rather than a generic dark box. */
+  toastTone: "neutral" | "positive";
+  showToast(message: string, tone?: "neutral" | "positive"): void;
 }
 
 const Ctx = createContext<Wallet | null>(null);
@@ -304,6 +308,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [assetDetail, setAssetDetail] = useState<PublicBalance | null>(null);
   const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [toastTone, setToastTone] = useState<"neutral" | "positive">("neutral");
 
   const copyTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -586,7 +591,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     if (status && !status.privateAvailable && pocket === "private") setPocketState("public");
   }, [status, pocket]);
 
-  const t = useMemo(() => theme(pocket), [pocket]);
+  // logged-out screens (boot, onboarding, lock, recover) wear the private pocket's
+  // dark, teal identity: no pocket is chosen yet, and a dark front door reads as the
+  // product's own rather than a bright default. driving it here means the body
+  // background and the CSS interaction vars go dark with it, so the whole screen is
+  // consistent, not just the inline styles. once unlocked, the theme follows the
+  // pocket toggle again.
+  const loggedOut = !status || !status.initialised || status.locked === true;
+  const t = useMemo(
+    () => theme(loggedOut ? "private" : pocket),
+    [loggedOut, pocket],
+  );
 
   useEffect(() => {
     document.body.style.margin = "0";
@@ -638,8 +653,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     root.style.colorScheme = t.dark ? "dark" : "light";
   }, [t]);
 
-  const showToast = useCallback((m: string) => {
+  const showToast = useCallback((m: string, tone: "neutral" | "positive" = "neutral") => {
     setToast(m);
+    setToastTone(tone);
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 1800);
   }, []);
@@ -742,6 +758,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     copied,
     copy,
     toast,
+    toastTone,
     showToast,
   };
 

@@ -52,27 +52,36 @@ export function useFundTestnet() {
 export function FundTestnetCard({ t }: { t: Theme }) {
   const { fund, funding, error } = useFundTestnet();
   return (
-    <Card t={t} tone="accent">
-      <div style={{ display: "flex", alignItems: "center", gap: space.sm }}>
+    <Card
+      t={t}
+      tone="accent"
+      style={{ padding: `${space.sm}px ${space.md}px`, background: t.promptBg }}
+    >
+      {/* ONE row, like the private set-up prompt: icon, a quiet title that ellipsises
+          if it must, and a pill that keeps its width. tighter vertical padding keeps it
+          at about an asset row's height rather than a tall, inconsistent block. */}
+      <div style={{ display: "flex", alignItems: "center", gap: space.sm, flexWrap: "nowrap" }}>
         <IconDisc t={t} size={32}>
           <Coins size={18} />
         </IconDisc>
-        <span style={{ flex: "1 1 auto", minWidth: 0 }}>
-          <span style={{ ...text.rowTitle, color: t.text, display: "block" }}>
-            Fund this account
-          </span>
-          <span style={{ ...text.caption, color: t.sub, display: "block" }}>
-            It holds no XLM yet. Get free testnet XLM to start.
-          </span>
-        </span>
-        <Button
-          t={t}
-          variant="quiet"
-          size="pill"
-          onClick={() => void fund()}
-          busy={funding}
-          disabled={funding}
+        <span
+          style={{
+            flex: "1 1 auto",
+            minWidth: 0,
+            // smaller and lighter than a row title: a prompt card is a nudge, not a
+            // heading, and 16/600 was too big for it (and crowded out the pill).
+            ...text.rowTitle,
+            fontSize: 14,
+            fontWeight: 500,
+            color: t.text,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
         >
+          Fund this account
+        </span>
+        <Button t={t} size="pill" onClick={() => void fund()} busy={funding} disabled={funding}>
           {funding ? "Funding" : "Get XLM"}
         </Button>
       </div>

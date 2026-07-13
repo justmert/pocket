@@ -1014,18 +1014,24 @@ export class WalletController {
       client.vault(cfg.vault),
       client.position(cfg.vault, address),
     ]);
+    // The API returns i128 SUBUNITS as integer strings (dfTokens and the
+    // underlyingBalance), so "1319997712" is 131.9997712, not 1.3 billion. Format
+    // to a decimal amount the way every other balance in the wallet is shown; the
+    // guard passes through a value that is already decimal (the shape check permits
+    // one) rather than feeding a "." to BigInt.
+    const toUnits = (raw: string): string => (raw.includes(".") ? raw : formatAmount(BigInt(raw)));
     return {
       available: true,
       vault: cfg.vault,
       apy: describeApy(vault.apy, 7),
       // The API reports SHARES, not underlying. Calling it a balance would
       // invite a user to read it as XLM, which it is not.
-      balance: position.shares,
+      balance: toUnits(position.shares),
       underlying: vault.assets?.[0]?.symbol ?? "XLM",
       // What those shares are worth in the underlying, when the vault reports it:
-      // the withdrawable amount, so the withdraw form can size a MAX and refuse an
-      // over-withdrawal before it is built.
-      underlyingBalance: position.underlying,
+      // the withdrawable amount (a decimal amount), so the withdraw form can size a
+      // MAX and refuse an over-withdrawal before it is built.
+      underlyingBalance: position.underlying != null ? toUnits(position.underlying) : undefined,
     };
   }
 

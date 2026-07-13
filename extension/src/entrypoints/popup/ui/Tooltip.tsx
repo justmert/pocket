@@ -131,11 +131,12 @@ export function InfoTip({
           width: size,
           height: size,
           borderRadius: "50%",
-          // the "i" stands OFF its page: a DARK filled disc in the light pocket, a
-          // VERY LIGHT disc in the dark pocket, each with a contrasting glyph, so it
-          // reads clearly against either background.
-          background: t.dark ? t.accentOnSoft : t.accent,
-          color: t.dark ? t.accentSoft : t.onAccent,
+          // a soft, LIGHT disc in both pockets with a contrasting glyph, so the "i"
+          // reads as a quiet hint rather than a loud solid-accent badge: the light
+          // pocket's soft-accent tint with dark ink, the dark pocket's light-accent
+          // tint with deep ink.
+          background: t.dark ? t.accentOnSoft : t.accentSoft,
+          color: t.dark ? t.accentSoft : t.accentOnSoft,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",

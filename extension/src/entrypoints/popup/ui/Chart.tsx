@@ -475,6 +475,13 @@ export function ValueChartBlock({
   const times = chart?.points.map((p) => p.at) ?? [];
   const drawable = values.length >= 2;
 
+  // nothing real to draw and nothing loading: render NOTHING, not a placeholder
+  // line and range tabs over an empty box. a fresh account has no value history
+  // for any range, and "No price history to chart yet." was the first thing a new
+  // user saw under their balance, reading as a fault. the wallet works without a
+  // chart; when there is a curve it appears, and until then the space is not taken.
+  if (!drawable && !loading) return null;
+
   // the tabs stay while a range is loading, so switching does not collapse the
   // block and shove everything below it up the screen.
   return (
@@ -500,18 +507,12 @@ export function ValueChartBlock({
             onScrub={onScrub}
             labelAt={rangeLabel(range)}
           />
-        ) : loading ? (
+        ) : (
           // a shimmer, not an empty box. the chart reserves its height whatever
           // happens, and left blank that gap reads as a rendering fault rather
-          // than as work in progress.
+          // than as work in progress. only reached while loading now: the empty
+          // case returns null above rather than drawing a placeholder.
           <Skeleton width="100%" height={HEIGHT - 24} />
-        ) : (
-          <div style={{ ...text.caption, color: t.faint }}>
-            {/* said plainly rather than left as an empty box. the wallet works
-                without a chart, and someone who can see their balance but no
-                curve should know which of the two is missing. */}
-            No price history to chart yet.
-          </div>
         )}
       </div>
       <div style={{ marginTop: space.sm }}>

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { WalletProvider, useWallet } from "./WalletProvider";
 import { Button, ButtonStack, Frame, Notice, Spinner, Toast } from "./primitives";
-import { BrandRow } from "./Brand";
+import { Logo } from "./Brand";
 import { BottomNav } from "./BottomNav";
 import { Home } from "./screens/Home";
 import { History } from "./screens/History";
@@ -65,7 +65,7 @@ function Boot({ t, children }: { t: Theme; children: ReactNode }) {
           background: t.canvas,
         }}
       >
-        <BrandRow t={t} size={56} />
+        <Logo t={t} width={168} />
         {children}
       </div>
     </Frame>
@@ -286,7 +286,7 @@ function Shell() {
       <PhraseSheet open={top === "phrase"} onClose={w.closeSheet} />
       <EraseSheet open={top === "erase"} onClose={w.closeSheet} />
 
-      <Toast t={t} message={w.toast} />
+      <Toast t={t} message={w.toast} tone={w.toastTone} />
     </Frame>
   );
 }

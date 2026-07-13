@@ -344,6 +344,10 @@ export interface Theme {
    *  explanation reads as a layer over the card, not as the card. a touch darker
    *  than the light page, a touch lighter than the dark surface. */
   tip: string;
+  /** the fill behind a home prompt card ("Private pocket not set up", "Fund this
+   *  account"): a softer, lighter accent tint than a chip, so the card reads as a
+   *  gentle nudge under the chart rather than a solid accent block. */
+  promptBg: string;
   text: string;
   sub: string;
   faint: string;
@@ -414,6 +418,7 @@ const PUBLIC: Theme = {
   surface: warm[0],
   // a faint step darker than the page, so the tooltip reads as a raised layer.
   tip: warm[100],
+  promptBg: "#dff4ff",
   // blue-tinted slates rather than neutral ink: neutral black type read as not
   // belonging on the sky-blue cards and fields (the amount card, the recipient
   // field). these are the measured blue-grey stops, tinted toward the pocket's own
@@ -474,8 +479,11 @@ const PRIVATE: Theme = {
   bg: cool.bg,
   canvas: `radial-gradient(130% 130px at 50% 0px, ${teal[850]} 0%, ${cool.bg} 72%)`,
   surface: cool[750],
-  // a step LIGHTER than the near-black surface, so the tooltip lifts off the sheet.
-  tip: cool[700],
+  // the same fill the field and text components use (#21323e), a clear step lighter
+  // than the near-black surface so the tooltip lifts off the sheet.
+  tip: cool[600],
+  // the private pocket keeps the dark accent tint for its own prompt cards.
+  promptBg: teal[800],
   // the type greys go one step WHITER to match the brighter surfaces: on the raised
   // cards the old secondary/tertiary greys had lost contrast, so sub and faint each
   // step up (paper[150] is the one measured grey added for exactly this).

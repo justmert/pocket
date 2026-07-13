@@ -14,8 +14,9 @@ import { InfoTip } from "../Tooltip";
 import { AmountComposer, withinSpendable } from "../AmountComposer";
 import { findHeld, holdingAmount } from "../holdings";
 import { ConfirmSheet, useOnce } from "../flow";
-import { AssetMark } from "./Home";
+import { AssetMark, privateMarkId } from "./Home";
 import { ChevronRight, Globe } from "../icons";
+import { ChainLogo } from "../ChainLogo";
 import { fractionOf, composeAmount } from "../../../../core/chain/balances";
 import {
   CCTP_DOMAIN_NAMES,
@@ -80,7 +81,11 @@ export function CctpSend({ onClose }: { onClose: () => void }) {
   // a fact and acts on by disabling Continue permanently.
   const usdcHeld = findHeld(w.balances, w.balanceError, (b) => b.code === "USDC");
   const usdc = usdcHeld.kind === "held" ? usdcHeld.balance : null;
-  const markId = usdc?.id ?? "USDC";
+  // the CANONICAL USDC:ISSUER id, not the bare code, so the real USDC logo shows
+  // even when the account holds none yet (the common bridge-in case): a bare "USDC"
+  // resolves to no verified issuer and falls to the monogram. resolved from config,
+  // the same way the private pocket resolves its marks.
+  const markId = usdc?.id ?? privateMarkId("USDC", w.status?.network);
   const spendable = holdingAmount(usdcHeld);
 
   const [domain, setDomain] = useState<number | null>(null);
@@ -327,22 +332,28 @@ export function CctpSend({ onClose }: { onClose: () => void }) {
                   background: t.field,
                 }}
               >
-                <span
-                  aria-hidden
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: radius.md,
-                    background: t.accentSoft,
-                    color: t.accentOnSoft,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flex: "0 0 auto",
-                  }}
-                >
-                  <Globe size={20} />
-                </span>
+                {domain !== null ? (
+                  <span aria-hidden style={{ flex: "0 0 auto", display: "flex" }}>
+                    <ChainLogo domain={domain} size={34} />
+                  </span>
+                ) : (
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: radius.md,
+                      background: t.accentSoft,
+                      color: t.accentOnSoft,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flex: "0 0 auto",
+                    }}
+                  >
+                    <Globe size={20} />
+                  </span>
+                )}
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ ...text.label, color: t.sub, display: "block" }}>To chain</span>
                   <span
@@ -467,7 +478,10 @@ export function ChainPicker({
             key={c.domain}
             t={t}
             index={i}
-            icon={<Globe size={20} />}
+            // the same neutral bordered frame the home asset rows put a token logo in,
+            // so a chain badge reads as an asset icon rather than a bare coloured disc.
+            iconRing
+            icon={<ChainLogo domain={c.domain} size={34} />}
             title={c.name}
             onClick={() => onPick(c.domain)}
           />

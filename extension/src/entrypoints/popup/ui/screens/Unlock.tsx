@@ -39,7 +39,7 @@ export function Unlock({
   return (
     <Frame t={t}>
       <ScrollArea className="pocket-page" background={t.canvas}>
-        <Cover />
+        <Cover t={t} />
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -84,6 +84,9 @@ export function Unlock({
                 height: "auto",
                 display: "block",
                 margin: "0 auto",
+                // logo.png is dark artwork; the lock screen runs the private (dark)
+                // pocket now, so it inverts to white like the Home wordmark.
+                filter: t.dark ? "invert(1)" : "none",
               }}
             />
             <h1

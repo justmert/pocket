@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, UIEvent } from "react";
 import { nativeOf, useWallet } from "../WalletProvider";
 import { call } from "../rpc";
-import { canRebuild, dormancyWarning } from "../copy";
+import { canRebuild } from "../copy";
 import { ChangeChip, ValueChartBlock, useValueChart } from "../Chart";
 import { NAV_SPACE } from "../BottomNav";
 import { Amount, HeroAmount } from "../Amount";
@@ -201,6 +201,25 @@ export function Home() {
   // the same figure the headline carries, shown small in the pinned tab row once
   // the headline itself has scrolled away. the latest value, never the scrubbed
   // one: the chart the scrub reads from is not on screen when this figure is.
+  // the present PUBLIC-pocket value, summed from the SAME per-asset prices the rows
+  // below use, so the headline can never disagree with the sum of those rows. the
+  // value chart uses a separate historical price series and drifted from the rows by
+  // cents (holding only XLM, the hero and the XLM row differed by ~$1). null until
+  // every held asset is priced, exactly as the rows abandon a total they cannot fully
+  // value. the chart stays the trend line; this is the number.
+  const publicUsd = (() => {
+    if (!w.balances) return null;
+    let total = 0;
+    for (const b of w.balances) {
+      const price = prices[b.code];
+      if (price == null) return null;
+      total += Number(b.amount) * price;
+    }
+    return total;
+  })();
+  // the reconciled figure the headline shows at rest; the chart's own latest point is
+  // the fallback for the moment before prices have loaded.
+  const publicShown = publicUsd ?? publicLatest;
   const privTotal = privateTotalUsd();
   const headerAmount = isPrivate ? (
     multiPrivate ? (
@@ -218,9 +237,9 @@ export function Home() {
         hidden={w.hidden}
       />
     ) : null
-  ) : publicLatest !== null ? (
+  ) : publicShown !== null ? (
     <span style={{ ...text.rowTitle, color: t.text }}>
-      {w.hidden ? "$∗∗∗.∗∗∗" : usd(publicLatest)}
+      {w.hidden ? "$∗∗∗.∗∗∗" : usd(publicShown)}
     </span>
   ) : null;
 
@@ -328,11 +347,18 @@ export function Home() {
         </Notice>
       );
     }
+    // a fresh account that is not on the ledger yet (no reserve reported) has no
+    // value and no history to chart. show a plain zero and nothing else, not a
+    // shimmering chart skeleton for data that will never arrive. the funding card
+    // below is the real next step.
+    if (native && native.total === undefined) {
+      return <HeroAmount t={t} value={usd(0)} code="" hidden={w.hidden} />;
+    }
     // while the chart is scrubbed the headline shows the value at the touched
     // moment. on release it returns to the present: a chart nobody is touching
     // must not leave a past number standing where the balance belongs.
     const scrubbed = scrubAt === null ? null : (chart?.points[scrubAt]?.value ?? null);
-    const shown = scrubbed ?? publicLatest;
+    const shown = scrubbed ?? publicShown;
 
     return (
       <>
@@ -548,10 +574,15 @@ export function Home() {
             up" while another asset (XLM) is already live. only prompt to set up the
             pocket when NOTHING is ready yet; once any asset is live, adding another is
             a per-asset step in the private pocket, not a "set up your pocket" banner. */}
+        {/* not while the funding card is up: an unfunded account showed BOTH this
+            ("Fund this account first", no action) and the actionable funding card
+            above, saying the same thing twice. once funded, `priv` becomes
+            unregistered and this returns as the real "Set up" prompt. */}
         {status?.privateAvailable &&
           priv &&
           priv.state !== "ready" &&
-          !privAssets?.some((p) => p.state === "ready") && (
+          !privAssets?.some((p) => p.state === "ready") &&
+          !needsFunding && (
             <div style={{ marginTop: space.gutter }}>{privatePrompt(priv)}</div>
           )}
 
@@ -646,13 +677,6 @@ export function Home() {
           </div>
         )}
 
-        {typeof priv.daysRemaining === "number" && priv.daysRemaining < 8 && (
-          <div style={{ marginTop: space.gutter }}>
-            <Notice t={t} tone="exposed">
-              {dormancyWarning(priv.daysRemaining)}
-            </Notice>
-          </div>
-        )}
       </>
     );
   }
@@ -699,7 +723,14 @@ export function Home() {
         ? null
         : label;
     return (
-      <Card t={t} tone="accent">
+      // tighter vertical padding than the default card: this is a single-row nudge,
+      // so it should sit at about the height of an asset row below rather than a tall
+      // block that reads as inconsistent with them.
+      <Card
+        t={t}
+        tone="accent"
+        style={{ padding: `${space.sm}px ${space.md}px`, background: t.promptBg }}
+      >
         <div
           style={{
             display: "flex",
@@ -709,7 +740,9 @@ export function Home() {
             // narrowest zoom) so the action pill stays on the same line beside it,
             // rather than being pushed onto a second line under the title.
             flexWrap: "nowrap",
-            marginBottom: priv.message ? space.sm : 0,
+            // no marginBottom: the message it once spaced for now lives in the InfoTip,
+            // so a bottom margin here just left dead space that made the card tall and
+            // pushed the row up off centre.
           }}
         >
           <IconDisc t={t} size={32}>
@@ -727,7 +760,11 @@ export function Home() {
           >
             <span
               style={{
+                // smaller and lighter than a row title: a prompt card is a nudge, not a
+                // heading, and 16/600 was too big for it (and truncated more of the title).
                 ...text.rowTitle,
+                fontSize: 14,
+                fontWeight: 500,
                 color: t.text,
                 minWidth: 0,
                 whiteSpace: "nowrap",
@@ -748,9 +785,8 @@ export function Home() {
             </InfoTip>
           </span>
           {action && (
-            // the compact field-fill CTA is the pill Button's quiet variant now, so
-            // the five hand-rolled accent/field pills stop each re-deriving the fill.
-            <Button t={t} variant="quiet" size="pill" onClick={open}>
+            // the solid-accent pill, the same as the send screen's "Use max".
+            <Button t={t} size="pill" onClick={open}>
               {action}
             </Button>
           )}

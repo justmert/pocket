@@ -164,6 +164,12 @@ function feeOf(r: PaymentRecord): string | undefined {
 
 async function fetchPage(url: string): Promise<PaymentRecord[]> {
   const res = await fetch(url, { signal: deadlineSignal() });
+  // A never-funded account does not exist on Horizon yet, so /payments answers
+  // 404. That is "no history", not a read failure: reported as an error it made a
+  // fresh wallet's Activity show "Your public history could not be read just now."
+  // on the first screen a new user opens. balances() and trustlines() already
+  // treat a 404 the same way (the account simply is not on the ledger yet).
+  if (res.status === 404) return [];
   if (!res.ok) throw new Error(`horizon answered ${res.status}`);
   const body = (await res.json()) as { _embedded?: { records?: PaymentRecord[] } };
   return body._embedded?.records ?? [];

@@ -37,6 +37,21 @@ export const OP_SHAPE: Record<
   Swap: { kind: "swap", direction: "out" },
 };
 
+/**
+ * The worker sends a settled failure as a full sentence, and the outcome ones
+ * carry the specific cause in parentheses: "...failed on chain (the destination
+ * account does not exist yet). A fee was charged...". A row has room for the
+ * cause, not the whole sentence, so this lifts the parenthetical out. Its shape
+ * is fixed by outcome-wording.test.ts / rpc-submit.test.ts, so the match is
+ * safe; a plain describeError string (no parenthetical) is returned unchanged,
+ * and the detail sheet still shows the full sentence.
+ */
+export function conciseReason(full: string | undefined): string | undefined {
+  if (!full) return undefined;
+  const inParens = full.match(/\(([^)]+)\)/);
+  return inParens ? inParens[1] : full;
+}
+
 /** a done watched op drawn as the settled row it is about to become, so a completed
  *  transaction looks completed at once instead of lingering as a processing card
  *  until the indexer catches up. reconciled away by hash the moment the real entry
@@ -60,5 +75,8 @@ export function opToEntry(op: BgOp): HistoryEntry | null {
     at: op.at,
     hash: op.hash ?? "",
     fee: op.fee,
+    // a failed op that LANDED (has a hash: txFailed) becomes a failed row, so it
+    // leaves "In progress" the way a done op does rather than hanging there.
+    ...(op.status === "failed" ? { failed: true, failureReason: conciseReason(op.error) } : {}),
   };
 }

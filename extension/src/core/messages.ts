@@ -360,6 +360,13 @@ export interface HistoryEntry {
   /** Network fee in decimal XLM, when known. Public entries carry it from the
    *  transaction the payment belongs to. */
   fee?: string;
+  /** True for a transaction that landed on chain but FAILED. Only ever set on a
+   *  CLIENT-SIDE watched op turned into a row (opEntry.ts): Horizon excludes failed
+   *  transactions from history, so a settled entry from the worker is never failed.
+   *  Rendered as a failed row so a failed send does not hang under "In progress". */
+  failed?: boolean;
+  /** The plain failure reason, when `failed`. */
+  failureReason?: string;
 }
 
 /** A page of history, newest first, with a cursor for the next (older) page. */

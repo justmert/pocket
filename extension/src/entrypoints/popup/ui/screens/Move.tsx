@@ -329,8 +329,20 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
 
       <PrivateAssetPicker
         open={pickingPrivate}
+        onPick={(token) => {
+          const picked = privList.find((p) => p.token === token);
+          // picking an asset that is NOT set up goes STRAIGHT to setting it up (the
+          // same route "Open the private pocket" takes), rather than switching to it
+          // and leaving the user on the blocked step to press a second button.
+          if (picked && picked.state !== "ready") {
+            setPickingPrivate(false);
+            onClose();
+            w.openMove(picked);
+          } else {
+            setPrivToken(token);
+          }
+        }}
         onClose={() => setPickingPrivate(false)}
-        onPick={setPrivToken}
       />
 
       <ConfirmSheet

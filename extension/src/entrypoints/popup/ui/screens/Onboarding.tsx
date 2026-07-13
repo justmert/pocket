@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { call } from "../rpc";
 import { Button, ButtonStack, Field, Notice, Screen, TextButton } from "../primitives";
 import { clearOnboardingUnfinished, markOnboardingUnfinished } from "../onboardingTab";
-import { Eye } from "../icons";
-import { Brand } from "../Brand";
-import { fonts, radius, space, text, type Theme } from "../theme";
+import { Check, Eye } from "../icons";
+import { Logo } from "../Brand";
+import { fonts, radius, space, text, theme, type Theme } from "../theme";
 
-type Step = "choose" | "create" | "backup" | "import";
+type Step = "choose" | "create" | "backup" | "import" | "ready";
 
 export function Onboarding({
-  t,
   onDone,
   /**
    * true when this flow is running somewhere that closes on blur.
@@ -23,32 +23,72 @@ export function Onboarding({
   onDone: () => void;
   ephemeral?: boolean;
 }) {
+  // onboarding wears the PRIVATE pocket's dark, teal identity end to end: it is the
+  // front door of a privacy wallet and reads far better dark on a full page than the
+  // near-white public surface. the theme the app hands in (public) is ignored here.
+  const t = theme("private");
   const [step, setStep] = useState<Step>("choose");
   const [mnemonic, setMnemonic] = useState("");
 
+  // in the TAB (the normal case) onboarding is a full page, not the 384px popup
+  // squeezed into a white tab. the ephemeral popup fallback keeps the compact
+  // Screen. `finish` is where a completed wallet lands: in the tab it shows the
+  // "wallet is ready" screen and leaves the actual wallet to the toolbar popup,
+  // rather than routing the tab to Home (which read as "the extension opened in a
+  // web page"); in the ephemeral popup it hands back to the app as before.
+  const fullPage = !ephemeral;
+  const finish = fullPage ? () => setStep("ready") : onDone;
+
+  if (step === "ready") return <Ready t={t} />;
   if (step === "backup")
-    return <Backup t={t} mnemonic={mnemonic} onDone={onDone} ephemeral={ephemeral} />;
+    return <Backup t={t} mnemonic={mnemonic} onDone={finish} ephemeral={ephemeral} />;
 
   return (
-    <Screen t={t}>
-      <div style={{ paddingTop: space.md, textAlign: "center", marginBottom: space.xl }}>
-        <Brand t={t} size={64} />
-        <h1
-          style={{
-            ...text.screenTitle,
-            color: t.text,
-            margin: `${space.gutter}px 0 ${space.xs}px`,
-          }}
-        >
-          {step === "choose" ? "Pocket" : step === "create" ? "New wallet" : "Restore wallet"}
-        </h1>
-        <p style={{ ...text.body, color: t.sub, margin: 0, lineHeight: 1.5 }}>
-          {step === "choose"
-            ? "Two pockets on Stellar. One public, one private."
-            : step === "create"
-              ? "Choose a password for this device."
-              : "Enter your recovery phrase."}
-        </p>
+    <Shell t={t} fullPage={fullPage}>
+      <div style={{ textAlign: "center", marginBottom: space.xl }}>
+        {fullPage && step === "choose" ? (
+          // the front door leads with the real wordmark (packaged, so img-src 'self'
+          // allows it) and what the product is FOR, not the small drawn tile and the
+          // "two pockets" build detail. that line is a fact for later; this is the promise.
+          <>
+            {/* big: the tab has the room, and this is the brand's front door. */}
+            <Logo t={t} width={320} />
+            <h1
+              style={{
+                ...text.display,
+                color: t.text,
+                margin: `${space.lg}px 0 ${space.sm}px`,
+                lineHeight: 1.15,
+                textWrap: "balance",
+              }}
+            >
+              {"Your balance is nobody's business."}
+            </h1>
+            <p style={{ ...text.heading, color: t.sub, margin: 0, fontWeight: 500 }}>
+              So we built one that keeps quiet.
+            </p>
+          </>
+        ) : (
+          <>
+            <Logo t={t} width={fullPage ? 168 : 120} />
+            <h1
+              style={{
+                ...text.screenTitle,
+                color: t.text,
+                margin: `${space.gutter}px 0 ${space.xs}px`,
+              }}
+            >
+              {step === "choose" ? "Pocket" : step === "create" ? "New wallet" : "Restore wallet"}
+            </h1>
+            <p style={{ ...text.body, color: t.sub, margin: 0, lineHeight: 1.5 }}>
+              {step === "choose"
+                ? "Two pockets on Stellar. One public, one private."
+                : step === "create"
+                  ? "Choose a password for this device."
+                  : "Enter your recovery phrase."}
+            </p>
+          </>
+        )}
       </div>
 
       {step === "choose" && (
@@ -64,8 +104,148 @@ export function Onboarding({
           onCancel={() => setStep("choose")}
         />
       )}
-      {step === "import" && <Import t={t} onDone={onDone} onCancel={() => setStep("choose")} />}
+      {step === "import" && <Import t={t} onDone={finish} onCancel={() => setStep("choose")} />}
+    </Shell>
+  );
+}
+
+/**
+ * the onboarding tab is a real page, not the popup in a tab.
+ *
+ * it fills the viewport, paints the pocket's accent wash from the top like the
+ * lock screen's cover, and centres the step content in a comfortable column. the
+ * ephemeral popup fallback still uses `Screen`; everything routes through `Shell`
+ * so a step does not have to know which one it is in.
+ */
+function FullPage({ t, children }: { t: Theme; children: ReactNode }) {
+  return (
+    <div
+      style={
+        {
+          position: "fixed",
+          inset: 0,
+          overflowY: "auto",
+          background: t.bg,
+          color: t.text,
+          fontFamily: fonts.body,
+          // native controls (scrollbar, autofill) in this subtree render dark.
+          colorScheme: t.dark ? "dark" : "light",
+          // the onboarding subtree wears the private pocket's accent for its
+          // CSS-driven interactions (button/field hover, field focus glow), which
+          // read a var rather than the inline theme. without these the fields glowed
+          // sky while everything else was teal.
+          ["--pocket-accent" as string]: t.accent,
+          ["--pocket-ring" as string]: t.ring,
+          ["--pocket-quiet-hover" as string]: t.tint,
+          ["--pocket-placeholder" as string]: t.sub,
+        } as CSSProperties
+      }
+    >
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          insetInline: 0,
+          top: 0,
+          height: "48vh",
+          pointerEvents: "none",
+          background: `radial-gradient(120% 100% at 50% 0%, color-mix(in srgb, ${t.accent} 22%, transparent) 0%, transparent 62%)`,
+        }}
+      />
+      <div
+        style={{
+          position: "relative",
+          minHeight: "100%",
+          boxSizing: "border-box",
+          padding: `${space.xl * 2}px ${space.gutter}px ${space.xl}px`,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <div style={{ width: "100%", maxWidth: 440 }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/** full page in the tab, the compact Screen in the ephemeral popup fallback. */
+function Shell({
+  t,
+  fullPage,
+  still = false,
+  children,
+}: {
+  t: Theme;
+  fullPage: boolean;
+  still?: boolean;
+  children: ReactNode;
+}) {
+  return fullPage ? (
+    <FullPage t={t}>{children}</FullPage>
+  ) : (
+    <Screen t={t} still={still}>
+      {children}
     </Screen>
+  );
+}
+
+/**
+ * the tab's last screen. the wallet itself lives in the toolbar popup, so this
+ * does NOT open it here; it says the setup is done and lets the tab close, which
+ * is the whole reason onboarding ran in a tab in the first place.
+ */
+function Ready({ t }: { t: Theme }) {
+  return (
+    <FullPage t={t}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+        <div
+          style={{
+            width: 84,
+            height: 84,
+            borderRadius: "50%",
+            background: t.accentFill,
+            color: t.onAccent,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: `0 16px 40px -18px ${t.accent}`,
+            marginBottom: space.lg,
+          }}
+        >
+          <Check size={40} sw={2.4} />
+        </div>
+        <h1 style={{ ...text.display, color: t.text, margin: `0 0 ${space.sm}px` }}>
+          Your wallet is ready!
+        </h1>
+        <p
+          style={{
+            ...text.body,
+            color: t.sub,
+            margin: `0 0 ${space.xl}px`,
+            lineHeight: 1.5,
+            maxWidth: 360,
+          }}
+        >
+          Open Pocket any time from your browser toolbar. You can close this tab now.
+        </p>
+        <div style={{ width: "100%", maxWidth: 320 }}>
+          <ButtonStack>
+            <Button
+              t={t}
+              onClick={() =>
+                void chrome.tabs
+                  .getCurrent()
+                  .then((tab) => (tab?.id != null ? chrome.tabs.remove(tab.id) : undefined))
+              }
+            >
+              Done
+            </Button>
+          </ButtonStack>
+        </div>
+      </div>
+    </FullPage>
   );
 }
 
@@ -79,20 +259,14 @@ function Choose({
   onImport: () => void;
 }) {
   return (
-    <>
-      <Notice t={t}>
-        Pocket hides <strong>amounts</strong>, not addresses. Who you pay stays public on the
-        ledger.
-      </Notice>
-      <ButtonStack>
-        <Button t={t} onClick={onCreate}>
-          Create a new wallet
-        </Button>
-        <Button t={t} variant="quiet" onClick={onImport}>
-          I have a recovery phrase
-        </Button>
-      </ButtonStack>
-    </>
+    <ButtonStack>
+      <Button t={t} onClick={onCreate}>
+        Create a new wallet
+      </Button>
+      <Button t={t} variant="quiet" onClick={onImport}>
+        I have a recovery phrase
+      </Button>
+    </ButtonStack>
   );
 }
 
@@ -164,9 +338,11 @@ function Create({
         <Button t={t} disabled={!ready} busy={busy} onClick={() => void submit()}>
           {busy ? "Creating" : "Create wallet"}
         </Button>
-        <TextButton t={t} tone="sub" onClick={onCancel}>
-          Back
-        </TextButton>
+        <div style={{ textAlign: "center" }}>
+          <TextButton t={t} tone="sub" onClick={onCancel}>
+            Back
+          </TextButton>
+        </div>
       </ButtonStack>
     </>
   );
@@ -241,15 +417,25 @@ function Backup({
   }, [copy]);
 
   if (checking) {
-    return <Verify t={t} words={words} onBack={() => setChecking(false)} onDone={onDone} />;
+    return (
+      <Verify
+        t={t}
+        words={words}
+        fullPage={!ephemeral}
+        onBack={() => setChecking(false)}
+        onDone={onDone}
+      />
+    );
   }
 
   return (
-    <Screen t={t} still>
+    <Shell t={t} fullPage={!ephemeral} still>
       <h1 style={{ ...text.screenTitle, color: t.text, margin: `${space.sm}px 0 ${space.sm}px` }}>
-        Write this down
+        Save your recovery phrase
       </h1>
-      <Notice t={t} tone="exposed">
+      {/* plain text under the heading, not a boxed notice: it reads as the screen's
+          own instruction rather than an alert stacked above the words. */}
+      <p style={{ ...text.body, color: t.sub, margin: `0 0 ${space.md}px`, lineHeight: 1.5 }}>
         These {words.length} words are the only way to recover this wallet. Anyone who has them owns
         your funds. Write them down now
         {/* the flow runs in a tab precisely so the popup's warning is not true
@@ -261,7 +447,7 @@ function Backup({
         {ephemeral
           ? ", and this window closes the moment you click anything outside it."
           : ". Do not close this tab until you have confirmed the words."}
-      </Notice>
+      </p>
 
       <div style={{ position: "relative", marginBottom: space.md }}>
         <div
@@ -352,7 +538,7 @@ function Backup({
           I have written it down
         </Button>
       </ButtonStack>
-    </Screen>
+    </Shell>
   );
 }
 
@@ -366,70 +552,169 @@ function Backup({
 function Verify({
   t,
   words,
+  fullPage,
   onBack,
   onDone,
 }: {
   t: Theme;
   words: string[];
+  fullPage: boolean;
   onBack: () => void;
   onDone: () => void;
 }) {
+  // three positions to prove, in order, with the correct words for them shuffled
+  // into a pool of chips. placing a chip into a blank checks that the user knows
+  // which word sits where, without ever asking them to type the phrase back. the
+  // phrase is already in this component's parent, so nothing crosses the trust
+  // boundary and nothing is asked of the worker.
   const [asked] = useState(() => pickThree(words.length));
-  const [given, setGiven] = useState<string[]>(["", "", ""]);
+  const [pool] = useState(() => shuffle(asked.map((n) => words[n]!)));
+  // per blank (in `asked` order), the POOL INDEX placed there, or null. indices,
+  // not words, so a phrase that repeats a word still tracks each chip separately.
+  const [placed, setPlaced] = useState<(number | null)[]>(() => asked.map(() => null));
   const [wrong, setWrong] = useState(false);
 
-  const correct = asked.every((n, i) => given[i]!.trim().toLowerCase() === words[n]);
+  const used = new Set(placed.filter((x): x is number => x !== null));
+  const nextBlank = placed.indexOf(null);
+
+  const tapChip = (poolIdx: number) => {
+    if (used.has(poolIdx) || nextBlank === -1) return;
+    setWrong(false);
+    setPlaced((p) => p.map((old, i) => (i === nextBlank ? poolIdx : old)));
+  };
+  const tapBlank = (blankIdx: number) => {
+    if (placed[blankIdx] === null) return;
+    setWrong(false);
+    setPlaced((p) => p.map((old, i) => (i === blankIdx ? null : old)));
+  };
+  const confirm = () => {
+    const ok = asked.every((n, i) => placed[i] !== null && pool[placed[i]!] === words[n]);
+    if (ok) void clearOnboardingUnfinished().then(onDone);
+    else setWrong(true);
+  };
 
   return (
-    <Screen t={t} still>
+    <Shell t={t} fullPage={fullPage} still>
       <h1 style={{ ...text.screenTitle, color: t.text, margin: `${space.sm}px 0 ${space.sm}px` }}>
-        Check what you wrote
+        Confirm your recovery phrase
       </h1>
-      <p style={{ ...text.body, color: t.sub, margin: `0 0 ${space.gutter}px`, lineHeight: 1.5 }}>
-        Three words from the phrase you just wrote down, so the copy you made is checked against
-        the real one before you rely on it.
+      <p style={{ ...text.body, color: t.sub, margin: `0 0 ${space.lg}px`, lineHeight: 1.5 }}>
+        Select the missing words in the correct order.
       </p>
 
-      {asked.map((n, i) => (
-        <Field
-          key={n}
-          t={t}
-          label={`Word ${n + 1}`}
-          value={given[i]!}
-          mono
-          autoFocus={i === 0}
-          onChange={(v) => {
-            setWrong(false);
-            setGiven((g) => g.map((old, j) => (j === i ? v : old)));
-          }}
-        />
-      ))}
+      {/* the whole phrase with its positions kept: the words you are not proving are
+          shown as dots for context, and the three blanks are filled by tapping the
+          chips below, in order. */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: space.xs,
+          marginBottom: space.lg,
+        }}
+      >
+        {words.map((word, n) => {
+          const blankIdx = asked.indexOf(n);
+          const isBlank = blankIdx !== -1;
+          const filled = isBlank && placed[blankIdx] !== null ? pool[placed[blankIdx]!] : null;
+          const active = isBlank && blankIdx === nextBlank;
+          return (
+            <div
+              key={n}
+              onClick={filled != null ? () => tapBlank(blankIdx) : undefined}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                minHeight: 42,
+                padding: "0 10px",
+                borderRadius: radius.md,
+                border: `1px solid ${active ? t.accent : t.line}`,
+                background: isBlank ? t.field : "transparent",
+                cursor: filled != null ? "pointer" : "default",
+                overflow: "hidden",
+              }}
+            >
+              <span style={{ ...text.rowSub, color: t.faint, userSelect: "none", flex: "0 0 auto" }}>
+                {n + 1}.
+              </span>
+              {isBlank ? (
+                filled != null ? (
+                  <span
+                    style={{
+                      ...text.rowSub,
+                      fontFamily: fonts.mono,
+                      fontWeight: 600,
+                      color: t.accent,
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {filled}
+                  </span>
+                ) : null
+              ) : (
+                <span aria-hidden style={{ color: t.faint, letterSpacing: 1.5, overflow: "hidden" }}>
+                  {"•".repeat(Math.min(Math.max(word.length, 3), 7))}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* the candidate words, shuffled; tapping one drops it into the next blank. */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: space.sm,
+          justifyContent: "center",
+          marginBottom: space.lg,
+        }}
+      >
+        {pool.map((word, j) => (
+          <button
+            key={j}
+            type="button"
+            className="pk-tap"
+            disabled={used.has(j)}
+            onClick={() => tapChip(j)}
+            style={{
+              all: "unset",
+              boxSizing: "border-box",
+              cursor: used.has(j) ? "default" : "pointer",
+              ...text.button,
+              fontFamily: fonts.mono,
+              color: t.accent,
+              background: "transparent",
+              border: `1px solid ${t.accent}`,
+              borderRadius: radius.pill,
+              padding: "10px 20px",
+              opacity: used.has(j) ? 0.35 : 1,
+            }}
+          >
+            {word}
+          </button>
+        ))}
+      </div>
 
       {wrong && (
         <Notice t={t} tone="danger">
-          That does not match what Pocket generated. Go back and read the phrase again.
+          That is not the right order. Tap a word to clear it, then try again.
         </Notice>
       )}
 
       <ButtonStack>
-        <Button
-          t={t}
-          onClick={() => {
-            if (correct) {
-              // the words are confirmed: this is the first moment the wallet is
-              // genuinely finished, and the only one at which another window may
-              // say so.
-              void clearOnboardingUnfinished().then(onDone);
-            } else setWrong(true);
-          }}
-        >
+        <Button t={t} disabled={nextBlank !== -1} onClick={confirm}>
           Confirm
         </Button>
         <Button t={t} variant="quiet" onClick={onBack}>
           Show me the phrase again
         </Button>
       </ButtonStack>
-    </Screen>
+    </Shell>
   );
 }
 
@@ -438,6 +723,18 @@ function pickThree(n: number): number[] {
   const out = new Set<number>();
   while (out.size < 3) out.add(Math.floor(Math.random() * n));
   return [...out].sort((a, b) => a - b);
+}
+
+/** a shuffled copy (Fisher-Yates), so the chips do not sit in phrase order. */
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = a[i]!;
+    a[i] = a[j]!;
+    a[j] = tmp;
+  }
+  return a;
 }
 
 function Import({ t, onDone, onCancel }: { t: Theme; onDone: () => void; onCancel: () => void }) {
@@ -498,9 +795,11 @@ function Import({ t, onDone, onCancel }: { t: Theme; onDone: () => void; onCance
         <Button t={t} disabled={!ready} busy={busy} onClick={() => void submit()}>
           {busy ? "Importing" : "Import wallet"}
         </Button>
-        <TextButton t={t} tone="sub" onClick={onCancel}>
-          Back
-        </TextButton>
+        <div style={{ textAlign: "center" }}>
+          <TextButton t={t} tone="sub" onClick={onCancel}>
+            Back
+          </TextButton>
+        </div>
       </ButtonStack>
     </>
   );

@@ -340,7 +340,11 @@ export function Button({
   // reset) is shared below, so the two sizes cannot drift in anything but size.
   const sized: CSSProperties =
     size === "pill"
-      ? { ...text.chip, width: "auto", padding: "8px 14px" }
+      ? // a pill hugs its label on ONE line and never gives up width to a sibling: in
+        // a prompt row next to a shrinking title it was being squeezed until "Set up"
+        // and "Get XLM" broke onto two lines. nowrap + no-shrink keeps it a chip; the
+        // title beside it is the one that ellipsises.
+        { ...text.chip, width: "auto", padding: "8px 14px", whiteSpace: "nowrap", flexShrink: 0 }
       : { ...text.button, width: "100%", minHeight: 52, padding: "14px 18px" };
   return (
     <button
@@ -493,12 +497,12 @@ export function Field({
     borderRadius: radius.md,
     background: t.field,
     color: t.text,
-    // a resting hairline, not a transparent edge. the soft fill alone defined the
-    // field only where it sat on the canvas; on a white `surface` card (the unlock
-    // and onboarding screens) the pale fill and the card were the same value and the
-    // field disappeared. the line gives every field a visible edge on any surface,
-    // and the accent focus glow still reads outside it.
-    border: `1px solid ${invalid ? t.danger : t.line}`,
+    // a resting hairline only where it is NEEDED: on a light `surface` card (unlock)
+    // the pale fill and the card are the same value, so without an edge the field
+    // disappears. on a dark pocket the fill is already lighter than the surface, so a
+    // border there is a redundant box (the "ring" a field does not need) and is
+    // dropped. no focus ring either way: the stylesheet suppresses it.
+    border: `1px solid ${invalid ? t.danger : t.dark ? "transparent" : t.line}`,
     fontFamily: mono ? fonts.mono : fonts.body,
     // verbatim data (the phrase import) is mono at 500; prose inputs keep 400.
     fontWeight: 500,
@@ -1009,7 +1013,15 @@ export function useRetained<T>(value: T | null, ms = 300): T | null {
  * through a fade-out before the node unmounts, the same mount-through-exit the
  * Sheet uses. so the caller renders `<Toast message={x}/>` unconditionally.
  */
-export function Toast({ t, message }: { t: Theme; message: string | null }) {
+export function Toast({
+  t,
+  message,
+  tone = "neutral",
+}: {
+  t: Theme;
+  message: string | null;
+  tone?: "neutral" | "positive";
+}) {
   const [shown, setShown] = useState<string | null>(message);
   useEffect(() => {
     if (message != null) {
@@ -1033,9 +1045,11 @@ export function Toast({ t, message }: { t: Theme; message: string | null }) {
         left: "50%",
         bottom: 104,
         transform: "translateX(-50%)",
-        // an inverse of the surface, so the toast reads as a layer over the app.
-        background: t.text,
-        color: t.bg,
+        // neutral is an inverse of the surface (a dark pill on light, light on dark);
+        // positive is the pocket's own solid accent, so a success confirmation reads
+        // as themed rather than as a generic dark box.
+        background: tone === "positive" ? t.accentFill : t.text,
+        color: tone === "positive" ? t.onAccent : t.bg,
         padding: "11px 18px",
         borderRadius: radius.pill,
         zIndex: 60,

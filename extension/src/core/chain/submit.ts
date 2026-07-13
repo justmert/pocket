@@ -282,9 +282,73 @@ function describeSendError(sent: rpc.Api.SendTransactionResponse): string {
   }
 }
 
+/**
+ * The operation-level failure codes, mapped to plain reasons where we have one.
+ *
+ * The tx-level "txFailed" is not actionable on its own: WHY it failed lives in the
+ * PER-OPERATION result (op_no_destination, op_underfunded, ...). These are XDR enum
+ * discriminant names from closed sets, so surfacing them is safe the same way the
+ * tx-level name is: no RPC-authored string, no amount, no witness reaches a user.
+ */
+const OP_REASON: Record<string, string> = {
+  paymentNoDestination: "the destination account does not exist yet",
+  paymentUnderfunded: "not enough balance to send that amount",
+  paymentNoTrust: "the recipient has not added a trustline for that asset",
+  paymentSrcNoTrust: "you do not hold that asset",
+  paymentNotAuthorized: "the recipient is not authorized to hold that asset",
+  paymentLineFull: "sending it would exceed the recipient's balance limit",
+  paymentNoIssuer: "that asset's issuer does not exist",
+  createAccountUnderfunded: "not enough to fund the new account",
+  createAccountLowReserve: "the amount is below the minimum to create an account",
+  createAccountAlreadyExist: "that account already exists",
+  // Soroban contract calls: shield / unshield / private send / yield / swap / CCTP
+  // all run through an invoke-host-function operation, so THEIR on-chain failures land
+  // here. Most contract errors are caught at simulation (build) time with the
+  // integration's own message; these are the ones that only surface after submission.
+  invokeHostFunctionMalformed: "the contract call was malformed",
+  invokeHostFunctionTrapped: "the contract rejected the call",
+  invokeHostFunctionResourceLimitExceeded: "the call needed more resources than allowed",
+  invokeHostFunctionEntryArchived:
+    "data this call needs is archived on chain and has to be restored first",
+  invokeHostFunctionInsufficientRefundableFee: "the resource fee was too low",
+};
+
+/** The operation-level failure code (e.g. paymentNoDestination), plain-phrased when known. */
+function operationResultCode(op: xdr.OperationResult): string | null {
+  try {
+    const outer = op.switch().name; // "opInner" | "opBadAuth" | "opNoAccount" | ...
+    if (outer !== "opInner") return outer;
+    const tr = op.tr();
+    const type = tr.switch().name; // "payment" | "createAccount" | ...
+    const inner = (
+      tr as unknown as Record<string, (() => { switch(): { name: string } }) | undefined>
+    )[`${type}Result`];
+    if (typeof inner !== "function") return type;
+    const code = inner.call(tr).switch().name; // "paymentNoDestination" | ...
+    return OP_REASON[code] ?? code;
+  } catch {
+    return null;
+  }
+}
+
 function describeFailure(res: rpc.Api.GetFailedTransactionResponse): string {
   try {
-    return res.resultXdr.result().switch().name;
+    const result = res.resultXdr.result();
+    const tx = result.switch().name; // e.g. "txFailed"
+    let ops: readonly xdr.OperationResult[] = [];
+    try {
+      // Only txFailed / txSuccess carry per-operation results. A tx-level-only failure
+      // (txBadSeq, txInsufficientFee, txInternalError, ...) has none, and `results()`
+      // returns UNDEFINED rather than throwing (verified against the SDK's XDR). Without
+      // the Array guard, `ops.map` below throws into the outer catch and a known tx code
+      // is mislabelled as the generic "transaction failed".
+      const r = result.results();
+      if (Array.isArray(r)) ops = r;
+    } catch {
+      /* no per-operation results */
+    }
+    const reasons = ops.map(operationResultCode).filter((c): c is string => c !== null);
+    return reasons.length ? reasons.join(", ") : tx;
   } catch {
     return "transaction failed";
   }

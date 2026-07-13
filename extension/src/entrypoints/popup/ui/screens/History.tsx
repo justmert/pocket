@@ -42,7 +42,7 @@ import { usd } from "../money";
 import { periodLabel } from "../period";
 import { explorerUrl } from "../explorer";
 import { shortAddress } from "../Address";
-import { opToEntry } from "../opEntry";
+import { conciseReason, opToEntry } from "../opEntry";
 import { NAV_SPACE } from "../BottomNav";
 import {
   DateRangeSheet,
@@ -282,8 +282,18 @@ export function History() {
   // op is not one of them: it is drawn as a settled row (below), the same shape a
   // completed transaction always has, so it does not linger as a processing card.
   // only the still-running and the failed sit under "In progress".
-  const inProgress = w.backgroundOps.filter((o) => o.pocket === pocket && o.status !== "done");
+  // failed ops that LANDED (txFailed carries a hash) are drawn as FAILED rows below,
+  // like a done op, so a failed send does not hang under "In progress". a failed op
+  // with no hash (rejected / expired / a build error: nothing was charged, nothing
+  // landed) stays here, since there is no on-chain transaction to show in Activity.
+  const inProgress = w.backgroundOps.filter(
+    (o) =>
+      o.pocket === pocket && o.status !== "done" && !(o.status === "failed" && Boolean(o.hash)),
+  );
   const doneOps = w.backgroundOps.filter((o) => o.pocket === pocket && o.status === "done");
+  const failedLanded = w.backgroundOps.filter(
+    (o) => o.pocket === pocket && o.status === "failed" && Boolean(o.hash),
+  );
 
   // a done op the fetched history has not caught up to yet is drawn as a settled
   // row from the record we already hold, so a completed transaction looks completed
@@ -291,7 +301,7 @@ export function History() {
   // when the real entry lands, the reconcile below drops the op, and the two never
   // both show because the synthetic row is filtered out once its hash is present.
   const landedHashes = new Set((entries ?? []).map((e) => e.hash));
-  const syntheticDone = doneOps
+  const syntheticDone = [...doneOps, ...failedLanded]
     .filter((o) => o.hash && !landedHashes.has(o.hash))
     .map(opToEntry)
     .filter((e): e is HistoryEntry => e !== null);
@@ -763,7 +773,28 @@ function Mark({ t, e, size = 40 }: { t: Theme; e: HistoryEntry; size?: number })
       >
         <AssetMark t={t} id={assetId(e)} code={e.code} />
       </span>
-      {e.direction !== "self" && (
+      {e.failed ? (
+        // a failed transaction wears a red warning badge in place of the direction arrow.
+        <span
+          aria-hidden
+          style={{
+            position: "absolute",
+            bottom: -3,
+            left: -3,
+            width: badge,
+            height: badge,
+            borderRadius: "50%",
+            background: t.danger,
+            color: t.onDanger,
+            border: `2px solid ${t.bg}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Alert size={badge - 7} />
+        </span>
+      ) : e.direction !== "self" ? (
         <span
           aria-hidden
           style={{
@@ -787,7 +818,7 @@ function Mark({ t, e, size = 40 }: { t: Theme; e: HistoryEntry; size?: number })
             <ArrowUp size={badge - 6} sw={2.6} />
           ) : null}
         </span>
-      )}
+      ) : null}
     </span>
   );
 }
@@ -831,11 +862,40 @@ function Entry({
       <Mark t={t} e={e} />
       <span style={{ minWidth: 0, textAlign: "left", flex: "1 1 90px" }}>
         <span style={{ ...text.rowTitle, color: t.text, display: "block" }}>{e.code}</span>
-        <span style={{ ...text.rowSub, color: t.sub, display: "block", marginTop: 1 }}>
-          {entryLine(e)}
+        <span
+          style={{
+            ...text.rowSub,
+            // a failed row leads with the reason, in the danger colour. the cause
+            // ("the destination account does not exist yet") wants more than one line,
+            // so it wraps and clamps at two rather than truncating mid-reason; the
+            // detail sheet still carries the whole sentence.
+            color: e.failed ? t.danger : t.sub,
+            marginTop: 1,
+            overflow: "hidden",
+            ...(e.failed
+              ? {
+                  display: "-webkit-box",
+                  WebkitBoxOrient: "vertical" as const,
+                  WebkitLineClamp: 2,
+                  lineHeight: 1.35,
+                }
+              : { display: "block", textOverflow: "ellipsis", whiteSpace: "nowrap" }),
+          }}
+        >
+          {e.failed ? `Failed${e.failureReason ? ` · ${e.failureReason}` : ""}` : entryLine(e)}
         </span>
       </span>
-      <span style={{ ...text.value, color: t.sub, textAlign: "right", flex: "0 0 auto" }}>
+      <span
+        style={{
+          ...text.value,
+          // the amount did not move on a failed transaction (only the fee was charged),
+          // so it is struck through and muted rather than read as money that changed hands.
+          color: e.failed ? t.faint : t.sub,
+          textDecoration: e.failed ? "line-through" : undefined,
+          textAlign: "right",
+          flex: "0 0 auto",
+        }}
+      >
         {e.amount === null ? "—" : `${maskAmount(displayAmount(e.amount), hidden)} ${e.code}`}
       </span>
     </button>
@@ -1046,7 +1106,9 @@ function statusText(op: BgOp): string {
   // an in-flight record for this hash, which means the transaction may yet be
   // included, and the only wrong thing a user can do here is send it again.
   if (op.status === "unresolved") return "Not confirmed yet. Do not send it again.";
-  if (op.status === "failed") return op.error ?? "Could not complete";
+  // the concise cause reads well in the row's one line; the full sentence (fee
+  // charged, sequence used) stays in the detail sheet below.
+  if (op.status === "failed") return conciseReason(op.error) ?? "Could not complete";
   return op.verb === "Send" ? "Confirming on the ledger…" : "Proving and submitting…";
 }
 
@@ -1289,15 +1351,37 @@ function ProcessingRow({
             display: "inline-flex",
             alignItems: "center",
             gap: 7,
+            // shrink in the row (a long failed-tx message must give way to "More
+            // details" beside it) and let the icon keep its size.
+            flex: "1 1 auto",
             minWidth: 0,
             ...text.rowSub,
             color: statusColor,
           }}
         >
-          {op.status === "processing" && <Spinner size={13} color={t.sub} />}
-          {done && <Check size={13} sw={2.6} />}
-          {failed && <Alert size={13} />}
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ flex: "0 0 auto", display: "inline-flex" }}>
+            {op.status === "processing" && <Spinner size={13} color={t.sub} />}
+            {done && <Check size={13} sw={2.6} />}
+            {failed && <Alert size={13} />}
+          </span>
+          {/* a failed reason wraps to at most two lines so it is not cut mid-cause;
+              a still-running label is short and stays on one. the full sentence is
+              one tap away under "More details". */}
+          <span
+            style={{
+              flex: "1 1 auto",
+              minWidth: 0,
+              overflow: "hidden",
+              ...(failed
+                ? {
+                    display: "-webkit-box",
+                    WebkitBoxOrient: "vertical" as const,
+                    WebkitLineClamp: 2,
+                    lineHeight: 1.35,
+                  }
+                : { textOverflow: "ellipsis", whiteSpace: "nowrap" }),
+            }}
+          >
             {statusText(op)}
           </span>
         </span>

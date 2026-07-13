@@ -270,6 +270,33 @@ export function Swap({ onClose }: { onClose: () => void }) {
                 padding: `0 ${space.gutter}px`,
               }}
             >
+              {/* the out-asset trustline blocker comes FIRST, before the amount: the
+                  reason the swap is disabled should be the first thing read, not the
+                  last (the same order the CCTP screens put "you hold no USDC" in). it
+                  reads as an error because it BLOCKS the swap; the way to resolve it,
+                  Manage assets, is a link inside the sentence rather than a control. */}
+              {inId !== outId && outAsset.code !== "XLM" && outFound.kind === "absent" && (
+                <div style={{ marginBottom: space.md }}>
+                  <Notice t={t} tone="danger" bare>
+                    You do not hold {outAsset.code} yet. Add it in{" "}
+                    <button
+                      type="button"
+                      onClick={() => w.openSheet("assets")}
+                      style={{
+                        all: "unset",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                        textDecoration: "underline",
+                        color: "inherit",
+                      }}
+                    >
+                      Manage assets
+                    </button>{" "}
+                    first, then you can swap into it.
+                  </Notice>
+                </div>
+              )}
+
               <AmountComposer
                 t={t}
                 code={inAsset.code}
@@ -355,33 +382,6 @@ export function Swap({ onClose }: { onClose: () => void }) {
                   ))}
                 </div>
               </div>
-
-              {/* receiving a classic asset needs a trustline for it first, or the
-                  swap reverts. it reads as an error because it BLOCKS the swap
-                  (Continue is disabled until it is resolved), and the way to
-                  resolve it, Manage assets, is a link inside the sentence rather
-                  than a second control below. */}
-              {inId !== outId && outAsset.code !== "XLM" && outFound.kind === "absent" && (
-                <div style={{ marginTop: space.md }}>
-                  <Notice t={t} tone="danger" bare>
-                    You do not hold {outAsset.code} yet. Add it in{" "}
-                    <button
-                      type="button"
-                      onClick={() => w.openSheet("assets")}
-                      style={{
-                        all: "unset",
-                        cursor: "pointer",
-                        fontWeight: 700,
-                        textDecoration: "underline",
-                        color: "inherit",
-                      }}
-                    >
-                      Manage assets
-                    </button>{" "}
-                    first, then you can swap into it.
-                  </Notice>
-                </div>
-              )}
 
               {outFound.kind === "unreadable" && (
                 <div style={{ marginTop: space.md }}>

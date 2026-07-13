@@ -12,8 +12,9 @@ import { call } from "../rpc";
 import { Button, Field, Frame, Header, Notice } from "../primitives";
 import { InfoTip } from "../Tooltip";
 import { ConfirmSheet, useOnce } from "../flow";
-import { AssetMark } from "./Home";
+import { AssetMark, privateMarkId } from "./Home";
 import { ChevronRight, Globe } from "../icons";
+import { ChainLogo } from "../ChainLogo";
 import { CLAIM_DOMAINS, ChainPicker, isTxId } from "./CctpSend";
 import { cctpDomainName } from "../../../../core/integrations/cctp";
 import { radius, space, text } from "../theme";
@@ -26,7 +27,10 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
   const t = w.t;
 
   const balances = w.balances ?? [];
-  const markId = balances.find((b) => b.code === "USDC")?.id ?? "USDC";
+  // the CANONICAL USDC:ISSUER id, not the bare code, so the real USDC logo shows
+  // even before any USDC is held (resolved from config, like the private marks).
+  const markId =
+    balances.find((b) => b.code === "USDC")?.id ?? privateMarkId("USDC", w.status?.network);
 
   const [domain, setDomain] = useState<number | null>(null);
   const [txHash, setTxHash] = useState("");
@@ -163,22 +167,28 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
                   background: t.field,
                 }}
               >
-                <span
-                  aria-hidden
-                  style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: radius.md,
-                    background: t.accentSoft,
-                    color: t.accentOnSoft,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flex: "0 0 auto",
-                  }}
-                >
-                  <Globe size={20} />
-                </span>
+                {domain !== null ? (
+                  <span aria-hidden style={{ flex: "0 0 auto", display: "flex" }}>
+                    <ChainLogo domain={domain} size={34} />
+                  </span>
+                ) : (
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: radius.md,
+                      background: t.accentSoft,
+                      color: t.accentOnSoft,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flex: "0 0 auto",
+                    }}
+                  >
+                    <Globe size={20} />
+                  </span>
+                )}
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ ...text.label, color: t.sub, display: "block" }}>From chain</span>
                   <span

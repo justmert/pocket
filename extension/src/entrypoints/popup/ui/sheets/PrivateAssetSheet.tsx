@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useWallet, type SheetId } from "../WalletProvider";
 import { call } from "../rpc";
-import { canRebuild, dormancyWarning } from "../copy";
+import { canRebuild } from "../copy";
 import { Amount } from "../Amount";
 import { Button, IconDisc, Notice, Sheet, Skeleton } from "../primitives";
 import { Held } from "../Held";
@@ -75,8 +75,6 @@ export function PrivateAssetSheet({ open, onClose }: { open: boolean; onClose: (
   const ready = priv?.state === "ready";
   const receiving =
     ready && priv?.receiving && /[1-9]/.test(priv.receiving) ? priv.receiving : null;
-  const ttl =
-    typeof priv?.daysRemaining === "number" && priv.daysRemaining < 8 ? priv.daysRemaining : null;
 
   // A rebuild is only offerable where there is an archive to replay from. See
   // the comment at the button.
@@ -160,14 +158,6 @@ export function PrivateAssetSheet({ open, onClose }: { open: boolean; onClose: (
                 <div style={{ marginBottom: space.md }}>
                   <Notice t={t} tone="exposed">
                     {priv.message}
-                  </Notice>
-                </div>
-              )}
-
-              {ttl !== null && (
-                <div style={{ marginBottom: space.md }}>
-                  <Notice t={t} tone="exposed">
-                    {dormancyWarning(ttl)}
                   </Notice>
                 </div>
               )}

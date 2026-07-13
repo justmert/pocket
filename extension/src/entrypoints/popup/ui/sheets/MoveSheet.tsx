@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
-import { Button, ButtonStack, Label, Notice, Sheet } from "../primitives";
+import { Button, ButtonStack, Notice, Sheet } from "../primitives";
 import { Held } from "../Held";
 import { canRebuild } from "../copy";
 import { Receipt, ReviewPanel, useOnce } from "../flow";
@@ -183,7 +183,19 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     }
   };
 
-  const title = stage === "menu" ? "Move" : HEADING[kind];
+  // "Move" said nothing about what this sheet does. It is the private pocket's own
+  // sheet (set up, make spendable, reactivate, rebuild), so the menu wears that name;
+  // once an operation is chosen the heading names the operation instead.
+  //
+  // setup is PER ASSET: with XLM already ready, a user opening this for an
+  // unregistered USDC must not read "Private pocket" + "Set up the private pocket"
+  // as their whole pocket being unset. name the asset so it reads as what it is.
+  const title =
+    stage === "menu"
+      ? priv?.state === "unregistered"
+        ? `Set up ${symbol}`
+        : "Private pocket"
+      : HEADING[kind];
 
   return (
     <Sheet
@@ -191,7 +203,12 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
       open={open}
       onClose={busy ? () => undefined : close}
       title={title}
-      full={stage === "review" || stage === "done"}
+      // NEVER full. every confirm and receipt in the wallet is a bottom sheet that
+      // sizes to its content (see ConfirmSheet in flow.tsx: "NOT full"), with the
+      // screen behind it dimmed, so this one matches: the set-up form, the "Preparing"
+      // mark, the review and the receipt all stay a bottom sheet rather than jumping
+      // the popup to a full page. the mark below carries a comfortable min-height so
+      // it is not the short strip it once was.
       focusKey={stage}
       still={stage === "review"}
     >
@@ -225,7 +242,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
                 ? "Your auditor key is already registered on the ledger, and the fee for it is paid. This step creates the confidential account."
                 : undefined
             }
-            cancelLabel={summary.kind === "register" ? "Leave this for now" : "Back"}
+            cancelLabel={summary.kind === "register" ? "Cancel" : "Back"}
             error={error}
             busy={busy}
             approveLabel="Approve"
@@ -287,9 +304,23 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     }
 
     if (building) {
-      // no "Go to Home" while building: nothing is submitted yet, so there is
-      // nothing to continue in the background.
-      return <Progress t={t} title="Preparing" subtitle="Checking this against the ledger." />;
+      // no "Go to Home" while building: nothing is submitted yet, so there is nothing
+      // to continue in the background. a comfortable min-height so the mark sits in a
+      // medium bottom sheet, centred, rather than a short strip clinging to the very
+      // bottom of the frame (the earlier complaint) OR filling the whole page.
+      return (
+        <div
+          style={{
+            minHeight: 232,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <Progress t={t} title="Preparing" subtitle="Checking this against the ledger." />
+        </div>
+      );
     }
 
     const body = () => {
@@ -301,40 +332,31 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
         case "unregistered":
           return (
             <>
+              {/* plain paragraphs under the title, consistent with the other sheets:
+                  this is descriptive prose, not an alert, so it does not sit in a boxed
+                  notice the way a warning would (which read as a component out of place
+                  next to the plain text below it). the disclosure leads in the primary
+                  ink; the two-transaction operational note follows in the quieter one. */}
               {priv.message && (
-                <Notice t={t} tone="exposed">
+                <p
+                  style={{
+                    ...text.body,
+                    color: t.text,
+                    margin: `0 0 ${space.md}px`,
+                    lineHeight: 1.5,
+                  }}
+                >
                   {priv.message}
-                </Notice>
+                </p>
               )}
-              <Label t={t}>Before you start</Label>
-              <ul
-                style={{
-                  ...text.body,
-                  color: t.text,
-                  paddingLeft: space.gutter,
-                  margin: `0 0 ${space.md}px`,
-                  lineHeight: 1.55,
-                }}
-              >
-                <li style={{ marginBottom: 6 }}>
-                  {registerStarted
-                    ? "The first of the two transactions has already been sent: your auditor key is registered and its fee is paid. Pressing this creates the confidential account."
-                    : "Setting up takes TWO transactions, and pressing this sends the first one straight away: it registers your auditor key and pays a network fee. You will review the second before anything else is signed."}
-                </li>
-                <li style={{ marginBottom: 6 }}>
-                  Setting up is public. Anyone can see this account has a private pocket.
-                </li>
-                <li style={{ marginBottom: 6 }}>
-                  Your address stays public on every private payment. Only amounts are hidden.
-                </li>
-                <li>
-                  Your auditor key is derived from your recovery phrase, so only you can read your
-                  amounts. It is bound permanently and cannot be changed later.
-                </li>
-              </ul>
+              <p style={{ ...text.body, color: t.sub, margin: `0 0 ${space.md}px`, lineHeight: 1.5 }}>
+                {registerStarted
+                  ? "The first transaction is already sent: your auditor key is registered and paid for. This finishes by creating the confidential account."
+                  : "This takes two transactions. The button below sends the first now (it registers your auditor key and pays a fee); you review the second before it signs."}
+              </p>
               <ButtonStack>
                 <Button t={t} onClick={onRegister}>
-                  {registerStarted ? "Finish setting up" : "Set up the private pocket"}
+                  {registerStarted ? `Finish setting up ${symbol}` : `Set up ${symbol}`}
                 </Button>
               </ButtonStack>
             </>

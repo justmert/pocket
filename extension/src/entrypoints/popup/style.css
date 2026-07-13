@@ -225,16 +225,11 @@ textarea::placeholder {
  * WRAPPER via :focus-within, eased in, so a filled field answers the focus the way
  * a button answers a press. the amount composer opts out on purpose: its figure is
  * the hero and a box around it competes with the number. */
-.pk-field {
-  transition: box-shadow var(--pocket-instant) var(--pocket-enter);
-}
-/* a soft, translucent accent halo, NOT a hard border: a solid 2px accent ring
- * drew the one crisp rectangle in a wallet whose fields are otherwise soft fills,
- * and it read as an out-of-place box around the recipient. this answers focus the
- * way a press answers a tap (a gentle accent wash) without outlining the field. */
-.pk-field:focus-within {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pocket-accent) 22%, transparent);
-}
+/* form fields answer focus with the caret alone: no ring, no glow. the soft accent
+ * halo this once drew on `.pk-field:focus-within` (and the hard 2px ring before it)
+ * both read as an out-of-place box in a wallet whose fields are otherwise soft fills,
+ * so the focus treatment is gone. the browser's own rectangle is still suppressed
+ * below, and the class stays on the inputs harmlessly. */
 
 /* every text field now carries `.pk-field`, so the soft glow above is the ONE focus
  * signal a field shows. suppress the browser's hard rectangle (and any bare

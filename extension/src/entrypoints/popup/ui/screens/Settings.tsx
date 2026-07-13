@@ -18,7 +18,9 @@ export function Settings() {
   const { fund, funding } = useFundTestnet();
   const runFund = () => {
     if (funding) return;
-    void fund().then((err) => w.showToast(err ?? "Testnet XLM added to your account."));
+    void fund().then((err) =>
+      w.showToast(err ?? "Testnet XLM added to your account.", err ? "neutral" : "positive"),
+    );
   };
 
   // one running counter, incremented only for rows actually rendered, so the

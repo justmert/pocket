@@ -1420,6 +1420,10 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "the private pocket's dollar hero totals each asset's spendable at its price for display; the spendable strings are what transact, parsed to stroops in the worker",
   },
   {
+    fragment: "total += Number(b.amount) * price;",
+    why: "the public pocket's dollar hero totals each balance's spendable amount at its price for display (so the headline equals the sum of the asset rows); the amount strings are what transact, parsed to stroops in the worker",
+  },
+  {
     fragment: "const a = Number(amount);",
     why: "the slider's position from the typed amount, display only",
   },

@@ -69,3 +69,25 @@ export function BrandRow({ t, size = 40 }: { t: Theme; size?: number }) {
     </span>
   );
 }
+
+/**
+ * the real packaged wordmark (logo.png), the same asset the Home and Unlock
+ * screens use. shown wherever a screen wants the brand rather than the small drawn
+ * tile. logo.png is dark artwork, so on a dark pocket it inverts to white.
+ */
+export function Logo({ t, width }: { t: Theme; width: number | string }) {
+  return (
+    <img
+      src="/logo.png"
+      alt="Pocket"
+      style={{
+        width,
+        maxWidth: "82%",
+        height: "auto",
+        display: "block",
+        margin: "0 auto",
+        filter: t.dark ? "invert(1)" : "none",
+      }}
+    />
+  );
+}
