@@ -74,7 +74,7 @@ export function Unlock({
                 shipped build. `img-src 'self'` allows it precisely because it is
                 packaged rather than fetched. */}
             <img
-              src="/logo.png"
+              src="/logo.svg"
               alt=""
               aria-hidden
               // capped rather than fixed, so it gives way at Chrome's maximum
@@ -84,7 +84,7 @@ export function Unlock({
                 height: "auto",
                 display: "block",
                 margin: "0 auto",
-                // logo.png is dark artwork; the lock screen runs the private (dark)
+                // logo.svg is dark vector artwork; the lock screen runs the private (dark)
                 // pocket now, so it inverts to white like the Home wordmark.
                 filter: t.dark ? "invert(1)" : "none",
               }}

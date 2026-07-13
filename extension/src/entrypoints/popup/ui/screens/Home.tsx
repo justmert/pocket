@@ -7,7 +7,7 @@ import { ChangeChip, ValueChartBlock, useValueChart } from "../Chart";
 import { NAV_SPACE } from "../BottomNav";
 import { Amount, HeroAmount } from "../Amount";
 import { shortAddress } from "../Address";
-import { Avatar } from "../Avatar";
+import { Avatar, useAvatarReaction } from "../Avatar";
 import { AssetLogo, tokenIconFile } from "../AssetIcon";
 import { InfoTip } from "../Tooltip";
 import { FundTestnetCard } from "../FundTestnet";
@@ -55,6 +55,9 @@ export function Home() {
   const needsFunding =
     status?.network === "testnet" && native != null && native.total === undefined;
   const isPrivate = w.pocket === "private";
+  // the header mascot reacts to wallet activity (a confirmed submit, a copy, an
+  // in-flight proof, the hide-amounts toggle, ...). derived once, here.
+  const avatar = useAvatarReaction();
   // more than one confidential asset is configured: the private pocket becomes a
   // list of per-asset pockets, mirroring the public pocket. one asset (the common
   // case, and every past build) keeps the single-pocket hero and body unchanged.
@@ -884,20 +887,20 @@ export function Home() {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: space.md, flexWrap: "wrap" }}>
         {status?.address ? (
-          <Avatar t={t} eyesClosed={isPrivate} size={44} />
+          <Avatar t={t} size={44} reaction={avatar.reaction} nonce={avatar.nonce} />
         ) : (
           <Skeleton width={44} height={44} />
         )}
         <div style={{ minWidth: 0, flex: "1 1 90px" }}>
           <h1 style={{ margin: 0, lineHeight: 0 }}>
             <img
-              src={chrome.runtime.getURL("logo.png")}
+              src={chrome.runtime.getURL("logo.svg")}
               alt="Pocket"
               style={{
                 height: 20,
                 width: "auto",
                 display: "block",
-                // the wordmark is black; on the dark private pocket it inverts to white.
+                // the wordmark is black vector art; on the dark private pocket it inverts to white.
                 filter: t.dark ? "invert(1)" : "none",
               }}
             />

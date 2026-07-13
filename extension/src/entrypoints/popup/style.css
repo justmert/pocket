@@ -509,3 +509,118 @@ textarea:focus-visible {
   filter: none;
   background: var(--pocket-quiet-hover);
 }
+
+/* ---------------------------------------------------------------------------
+ * The account mascot (ui/Avatar.tsx). It lives only in the header, top-left.
+ *
+ * Every animation here is `!important` so it survives the global reduced-motion
+ * rule near the top of this file (`* { animation-duration: .001ms !important }`).
+ * That is deliberate and specific to the mascot: a class selector at (0,1,0)
+ * outranks the universal (0,0,0) rule among !important author declarations, the
+ * same trick `.pocket-spinner` uses. Turning it off would be a one-line change
+ * here (drop the !important) if a reduced-motion pass ever wants it back.
+ *
+ * One-shots run once at ~1.1s and end on the idle pose (root motions return to
+ * identity; the react/rest layers hold their end frame via `forwards`). Held
+ * states loop. Percentages, not seconds, carry the shape, so the same keyframes
+ * work at any duration.
+ * ------------------------------------------------------------------------- */
+.pk-av {
+  transform-box: fill-box;
+  transform-origin: 50% 58%;
+  transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.pk-av-eyes,
+.pk-av-eye {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+/* hover / press: a lift and a squash on the whole face. */
+.pk-avatar:hover .pk-av {
+  transform: translateY(-2px) scale(1.05);
+}
+.pk-avatar:active .pk-av {
+  transform: scale(1.07, 0.9) translateY(1px);
+}
+
+/* the cross-fade that makes a one-shot land on idle without a snap. */
+.pk-av-react {
+  animation: pk-reactFade 1.1s ease-in-out forwards !important;
+}
+.pk-av-rest {
+  animation: pk-restFade 1.1s ease-in-out forwards !important;
+}
+@keyframes pk-reactFade {
+  0%, 10% { opacity: 0; }
+  22%, 72% { opacity: 1; }
+  84%, 100% { opacity: 0; }
+}
+@keyframes pk-restFade {
+  0%, 10% { opacity: 1; }
+  22%, 72% { opacity: 0; }
+  84%, 100% { opacity: 1; }
+}
+
+/* looping parts (held states + the idle blink) */
+.pk-av-blink { animation: pk-blink 5s ease-in-out infinite !important; }
+.pk-av-lookLR { animation: pk-lookLR 2.6s ease-in-out infinite !important; }
+.pk-av-swirl { animation: pk-swirl 2.2s linear infinite !important; }
+.pk-av-twk { animation: pk-twinkle 2.4s ease-in-out infinite !important; }
+.pk-wobble { animation: pk-wobble 2.6s ease-in-out infinite !important; }
+
+/* one-shot parts (play once) */
+.pk-av-wake { animation: pk-wake 1.1s ease-in-out !important; }
+.pk-av-reveal { animation: pk-reveal 1.1s ease-in-out !important; }
+.pk-av-swapL { animation: pk-swapL 1.1s ease-in-out !important; }
+.pk-av-swapR { animation: pk-swapR 1.1s ease-in-out !important; }
+.pk-cel { animation: pk-cel 1.1s ease-in-out !important; }
+.pk-lean { animation: pk-lean 1.1s ease-in-out !important; }
+.pk-nod { animation: pk-nod 1.1s ease-in-out !important; }
+.pk-grow { animation: pk-grow 1.1s ease-in-out !important; }
+.pk-tuck { animation: pk-tuck 1.1s ease-in-out !important; }
+.pk-pop { animation: pk-pop 1.1s ease-in-out !important; }
+.pk-shake { animation: pk-shake 1.1s ease-in-out !important; }
+.pk-flip { animation: pk-flip 1.1s ease-in-out !important; }
+
+@keyframes pk-blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(0.1); } }
+@keyframes pk-lookLR { 0%, 100% { transform: translateX(-1.5px); } 50% { transform: translateX(1.5px); } }
+@keyframes pk-swirl {
+  0% { transform: translate(1.2px, 0); }
+  25% { transform: translate(0, 1.2px); }
+  50% { transform: translate(-1.2px, 0); }
+  75% { transform: translate(0, -1.2px); }
+  100% { transform: translate(1.2px, 0); }
+}
+@keyframes pk-twinkle { 0%, 100% { transform: scale(1); opacity: 0.85; } 50% { transform: scale(1.18); opacity: 1; } }
+@keyframes pk-wobble { 0%, 60%, 100% { transform: rotate(0); } 16% { transform: rotate(7deg); } 38% { transform: rotate(-7deg); } 52% { transform: rotate(0); } }
+@keyframes pk-wake { 0%, 25% { transform: scaleY(0.1); } 46%, 100% { transform: scaleY(1); } }
+@keyframes pk-reveal { 0%, 20% { transform: scale(0.82); } 46% { transform: scale(1.07); } 64%, 100% { transform: scale(1); } }
+@keyframes pk-swapL { 0%, 22% { transform: translateX(0); } 42%, 54% { transform: translateX(11px); } 66%, 100% { transform: translateX(0); } }
+@keyframes pk-swapR { 0%, 22% { transform: translateX(0); } 42%, 54% { transform: translateX(-11px); } 66%, 100% { transform: translateX(0); } }
+@keyframes pk-cel {
+  0%, 15%, 100% { transform: translateY(0) scale(1); }
+  34% { transform: translateY(-3.2px) scale(1.06); }
+  47% { transform: translateY(0) scale(1); }
+  60% { transform: translateY(-1.4px) scale(1.03); }
+  73% { transform: translateY(0); }
+}
+@keyframes pk-lean { 0%, 18%, 100% { transform: translateX(0) rotate(0); } 42% { transform: translateX(2.6px) rotate(4deg); } 62% { transform: translateX(0) rotate(0); } }
+@keyframes pk-nod { 0%, 18%, 100% { transform: translateY(0) rotate(0); } 42% { transform: translateY(2.4px) rotate(2deg); } 62% { transform: translateY(0) rotate(0); } }
+@keyframes pk-grow { 0%, 18%, 100% { transform: translateY(0) scale(1); } 44% { transform: translateY(-2.4px) scale(1.04); } 64% { transform: translateY(0) scale(1); } }
+@keyframes pk-tuck { 0%, 18%, 100% { transform: scale(1); } 46%, 58% { transform: scale(0.92) translateY(1px); } }
+@keyframes pk-pop { 0%, 18%, 100% { transform: scale(1); } 47% { transform: scale(1.06); } 63% { transform: scale(1); } }
+@keyframes pk-shake {
+  0%, 20%, 100% { transform: translateX(0) rotate(0); }
+  30% { transform: translateX(-1.7px) rotate(-3deg); }
+  38% { transform: translateX(1.7px) rotate(3deg); }
+  46% { transform: translateX(-1.2px) rotate(-2deg); }
+  54% { transform: translateX(1.2px) rotate(2deg); }
+  62% { transform: translateX(0); }
+}
+@keyframes pk-flip {
+  0%, 18% { transform: scaleX(1); }
+  25% { transform: scaleX(0.05); }
+  32%, 68% { transform: scaleX(1); }
+  75% { transform: scaleX(0.05); }
+  82%, 100% { transform: scaleX(1); }
+}

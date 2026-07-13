@@ -14,7 +14,6 @@ import { capDecimals, displayAmount } from "../../../../core/chain/balances";
 import { maskAmount } from "../Amount";
 import { useHidden } from "../WalletProvider";
 import { AssetMark } from "./Home";
-import { Avatar } from "../Avatar";
 import {
   Button,
   Header,
@@ -611,7 +610,8 @@ export function History() {
                     textAlign: "center",
                   }}
                 >
-                  <Avatar t={t} size={64} />
+                  {/* the mascot lives ONLY in the top-left header, never on a page
+                      body, so the empty state is just the sentence. */}
                   {/* "No activity yet" is a claim about the ACCOUNT. It may
                       only be made when the history was actually read. */}
                   <span style={{ ...text.body, color: t.faint }}>

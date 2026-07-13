@@ -71,14 +71,14 @@ export function BrandRow({ t, size = 40 }: { t: Theme; size?: number }) {
 }
 
 /**
- * the real packaged wordmark (logo.png), the same asset the Home and Unlock
+ * the real packaged wordmark (logo.svg), the same asset the Home and Unlock
  * screens use. shown wherever a screen wants the brand rather than the small drawn
- * tile. logo.png is dark artwork, so on a dark pocket it inverts to white.
+ * tile. logo.svg is dark vector artwork, so on a dark pocket it inverts to white.
  */
 export function Logo({ t, width }: { t: Theme; width: number | string }) {
   return (
     <img
-      src="/logo.png"
+      src="/logo.svg"
       alt="Pocket"
       style={{
         width,
