@@ -580,7 +580,6 @@ textarea:focus-visible {
 .pk-tuck { animation: pk-tuck 1.1s ease-in-out !important; }
 .pk-pop { animation: pk-pop 1.1s ease-in-out !important; }
 .pk-shake { animation: pk-shake 1.1s ease-in-out !important; }
-.pk-flip { animation: pk-flip 1.1s ease-in-out !important; }
 
 @keyframes pk-blink { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(0.1); } }
 @keyframes pk-lookLR { 0%, 100% { transform: translateX(-1.5px); } 50% { transform: translateX(1.5px); } }
@@ -616,11 +615,4 @@ textarea:focus-visible {
   46% { transform: translateX(-1.2px) rotate(-2deg); }
   54% { transform: translateX(1.2px) rotate(2deg); }
   62% { transform: translateX(0); }
-}
-@keyframes pk-flip {
-  0%, 18% { transform: scaleX(1); }
-  25% { transform: scaleX(0.05); }
-  32%, 68% { transform: scaleX(1); }
-  75% { transform: scaleX(0.05); }
-  82%, 100% { transform: scaleX(1); }
 }

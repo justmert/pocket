@@ -897,7 +897,7 @@ export function Home() {
               src={chrome.runtime.getURL("logo.svg")}
               alt="Pocket"
               style={{
-                height: 20,
+                height: 26,
                 width: "auto",
                 display: "block",
                 // the wordmark is black vector art; on the dark private pocket it inverts to white.

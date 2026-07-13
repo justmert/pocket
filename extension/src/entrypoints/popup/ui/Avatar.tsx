@@ -31,7 +31,6 @@ export type AvatarReaction =
   | "unshielded"
   | "yield"
   | "unlocked"
-  | "switch"
   | "copied"
   | "failed"
   | "working"
@@ -167,7 +166,6 @@ const CFG: Record<AvatarReaction, Cfg> = {
   unshielded: { mode: "once", root: "pk-pop", eyes: "open", groupAnim: "reveal", mouth: "smile" },
   yield: { mode: "once", root: "pk-grow", eyes: "arc", mouth: "small" },
   unlocked: { mode: "once", eyes: "dot", eyeAnim: "wake", mouth: "smile" },
-  switch: { mode: "once", root: "pk-flip", eyes: "dot", mouth: "small" },
   copied: { mode: "once", root: "pk-nod", eyes: "dot", mouth: "smile" },
   failed: { mode: "once", root: "pk-shake", eyes: "wide", mouth: "worry" },
   working: { mode: "state", eyes: "dot", groupAnim: "lookLR", mouth: "flat" },
@@ -318,14 +316,8 @@ export function useAvatarReaction(): { reaction: AvatarReaction; nonce: number }
     prevCopied.current = w.copied;
   }, [w.copied, fire]);
 
-  // switched pocket
-  const prevPocket = useRef(w.pocket);
-  useEffect(() => {
-    if (w.pocket !== prevPocket.current) {
-      prevPocket.current = w.pocket;
-      fire("switch", false);
-    }
-  }, [w.pocket, fire]);
+  // switching pocket does NOT play a reaction: the colour already flips with the
+  // surface, and a flip on top of that read as nonsense. the change is silent.
 
   // a watched operation reached a terminal status: pick the op-specific reaction.
   // seed the seen-map on first run so pre-existing ops do not fire on mount.
