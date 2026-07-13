@@ -892,18 +892,21 @@ export function Home() {
           <Skeleton width={44} height={44} />
         )}
         <div style={{ minWidth: 0, flex: "1 1 90px" }}>
-          <h1 style={{ margin: 0, lineHeight: 0 }}>
-            <img
-              src={chrome.runtime.getURL("logo.svg")}
-              alt="Pocket"
-              style={{
-                height: 26,
-                width: "auto",
-                display: "block",
-                // the wordmark is black vector art; on the dark private pocket it inverts to white.
-                filter: t.dark ? "invert(1)" : "none",
-              }}
-            />
+          {/* the wordmark is set in the app's own face (figtree) at its heaviest
+              weight, not a packaged image: it stays crisp, takes the theme ink, and
+              needs no asset. lowercase to match the brand. */}
+          <h1
+            style={{
+              margin: 0,
+              fontFamily: fonts.display,
+              fontSize: 23,
+              fontWeight: 700,
+              letterSpacing: "-0.02em",
+              lineHeight: 1,
+              color: t.text,
+            }}
+          >
+            pocket
           </h1>
           {status?.address ? (
             <button
