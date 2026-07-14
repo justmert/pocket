@@ -1259,10 +1259,21 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     fragment: "<RollDigit key={key} digit={Number(ch)} instant={instant} />",
     why: "one character, 0-9, into a CSS row offset; the value itself is rendered as text",
   },
-  { fragment: "expired: e.maxTime > 0 && Math.floor(Date.now() / 1000)", why: "unix seconds" },
+  {
+    fragment: "const windowPassed = e.maxTime > 0 && Math.floor(Date.now() / 1000) > e.maxTime",
+    why: "unix seconds",
+  },
   {
     fragment: "Math.floor(Date.now() / 1000) > e.maxTime",
     why: "unix seconds",
+  },
+  {
+    fragment: "...(summary?.dust && Number(summary.dust) > 0",
+    why:
+      "a presence test, not a value. the float decides only whether the dust ROW is drawn; " +
+      "the figure beside it renders `${summary.dust}`, the original 7dp string. dust is " +
+      "bounded to at most 9 stroops by the 7dp->6dp scale, so nothing here is near a " +
+      "precision boundary and no float reaches the user",
   },
   {
     fragment: "const id = `${Date.now()}-${Math.round(Math.random() * 1e9)}`",

@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
-import { Amount, Rolling } from "../Amount";
+import { Amount, Rolling, Figure } from "../Amount";
 import { Button, IconDisc, Sheet, Skeleton, useRetained } from "../primitives";
 import { ChangeChip, ValueChartBlock, useValueChart } from "../Chart";
 import { AssetMark } from "../screens/Home";
@@ -261,7 +261,7 @@ export function AssetDetailSheet({
               absent. */}
           <DetailRow t={t} icon={<RowIcon t={t}>$</RowIcon>} label="Holdings value">
             {holdingsValue !== null ? (
-              holdingsValue
+              <Figure value={holdingsValue} />
             ) : marketLoaded ? (
               <span style={{ color: t.faint }}>—</span>
             ) : (

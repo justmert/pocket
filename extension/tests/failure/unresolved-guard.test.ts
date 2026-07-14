@@ -52,8 +52,25 @@ const unresolved = (kind?: string) =>
     ...(kind ? { kind } : {}),
   });
 
-/** A submission whose time bounds have passed. It can never be included now. */
+/**
+ * A submission that is decidably dead: its time bounds have passed AND the
+ * ledger answered that it does not have it.
+ *
+ * Both halves are required, and this helper carried only the first. A deadline
+ * passing says nothing about whether the envelope was included before it, so
+ * `answered` is what makes a rebuild safe rather than a double spend. See
+ * `deadlineOnly` for the case that separates them.
+ */
 const expired = (kind?: string) =>
+  writeLocal(KEYS.inFlight, {
+    hash: "b".repeat(64),
+    maxTime: nowSec() - 300,
+    answered: true,
+    ...(kind ? { kind } : {}),
+  });
+
+/** Deadline passed, but no poll ever got an answer: an outage, not an absence. */
+const deadlineOnly = (kind?: string) =>
   writeLocal(KEYS.inFlight, {
     hash: "b".repeat(64),
     maxTime: nowSec() - 300,
@@ -91,11 +108,23 @@ describe("building is refused while a submission is unresolved", () => {
 
   it("builds again once the earlier envelope can no longer be included", async () => {
     // The release condition, and the reason the guard is not simply "is there a
-    // record". Past its time bounds the first envelope is dead: it cannot take
-    // the sequence number, so refusing further would strand the wallet.
+    // record". Past its time bounds AND answered NOT_FOUND, the first envelope
+    // is dead: it cannot take the sequence number and it never did, so refusing
+    // further would strand the wallet.
     const { c } = await wallet();
     await expired("payment");
     await expect(c.buildPayment(payment)).resolves.toMatchObject({ xdr: expect.any(String) });
+  });
+
+  it("keeps refusing when the deadline passed with no answer from the ledger", async () => {
+    // Half the release condition is not the release condition. An RPC outage
+    // spanning the 180-second window leaves the deadline behind us with nobody
+    // having heard anything, and the first envelope may well have been
+    // included. Building here is how a payment is made twice, and how the
+    // record pointing at a private op's only openings gets overwritten.
+    const { c } = await wallet();
+    await deadlineOnly("payment");
+    await expect(c.buildPayment(payment)).rejects.toThrow(/has not resolved yet/);
   });
 
   it("builds normally when there is nothing in flight at all", async () => {

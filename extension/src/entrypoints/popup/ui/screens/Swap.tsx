@@ -5,6 +5,7 @@
 // the top. the review and signing path are the worker's buildSwap -> confirmSwap,
 // shown through the shared ConfirmSheet exactly like a payment.
 import { useEffect, useRef, useState } from "react";
+import { Figure } from "../Amount";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Frame, Header, Notice, Row, Sheet } from "../primitives";
@@ -618,7 +619,7 @@ function SwapAssetPicker({
               icon={<AssetMark t={t} id={a.id} code={a.code} />}
               title={a.code}
               sub={a.id === "native" ? "Stellar Lumens" : undefined}
-              value={held ? held.amount : undefined}
+              value={held ? <Figure value={held.amount} /> : undefined}
               valueSub={held ? undefined : "Not held"}
               onClick={() => onPick(a)}
             />

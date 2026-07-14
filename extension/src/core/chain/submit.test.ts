@@ -143,6 +143,7 @@ describe("a flaky RPC must not be mistaken for a flaky ledger", () => {
         inFlight: {
           record: async (e) => void recorded.push(e.hash),
           clear: async (h) => void cleared.push(h),
+          answered: async () => undefined,
         },
       },
     );

@@ -100,6 +100,42 @@ export function maskAmount(text: string, hidden: boolean): string {
   return text.includes(".") ? `${sign}${MASK}.${MASK}` : `${sign}${MASK}`;
 }
 
+/**
+ * a figure the wallet draws as TEXT rather than through `Amount`.
+ *
+ * Some figures are built by interpolation ("131.9997 shares", "Receiving 12.5")
+ * or sit where a component cannot go, and every one of those inherited nothing
+ * from `Amount`: turn Hide balance on and the hero read `$***.***` while the
+ * yield row beside it still read the exact position. `Amount`'s default was
+ * inverted precisely so a forgotten figure over-masks rather than reveals, and
+ * these sites bypassed the default along with the component.
+ *
+ * It also carries the announcement, which the sites that DID mask still got
+ * wrong: they emitted the asterisk run as visible text, so a screen reader read
+ * out the asterisks. Here the run is `aria-hidden` decoration and the sentence
+ * is what is announced, the same idiom `Amount` uses.
+ */
+export function Figure({
+  value,
+  hidden,
+  /** what is announced in place of the digits. */
+  announce = "Balance hidden",
+}: {
+  value: string;
+  /** overrides the wallet setting, exactly as `Amount`'s own prop does. */
+  hidden?: boolean;
+  announce?: string;
+}) {
+  const walletHidden = useHidden();
+  if (!isMasked(hidden, walletHidden, false)) return <>{value}</>;
+  return (
+    <>
+      <span style={EXACT}>{announce}</span>
+      <span aria-hidden>{maskAmount(value, true)}</span>
+    </>
+  );
+}
+
 export function Amount({
   t,
   value,

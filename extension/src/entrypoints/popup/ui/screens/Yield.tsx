@@ -6,6 +6,7 @@
 // payment. the position refreshes on its own once the move lands (completeOp
 // triggers the provider refresh, which reloads yieldPosition).
 import { useEffect, useRef, useState } from "react";
+import { Figure } from "../Amount";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Frame, Header, Notice } from "../primitives";
@@ -266,18 +267,24 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
                       style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}
                     >
                       <span style={{ ...text.rowTitle, color: t.text }}>
-                        {y.underlyingBalance
-                          ? `${capDecimals(y.underlyingBalance, 4)} ${code}`
-                          : y.balance
-                            ? `${capDecimals(y.balance, 4)} shares`
-                            : "None yet"}
+                        {y.underlyingBalance ? (
+                          <Figure value={`${capDecimals(y.underlyingBalance, 4)} ${code}`} />
+                        ) : y.balance ? (
+                          <Figure value={`${capDecimals(y.balance, 4)} shares`} />
+                        ) : (
+                          "None yet"
+                        )}
                       </span>
                       {/* the FORMATTED dollar value ("$21.93"), like every other
                           balance the wallet shows: usdOf, not the raw fiatOf number.
                           the line is ALWAYS rendered (a non-breaking space until the
                           price arrives) so the card does not grow/jump when it loads. */}
                       <span style={{ ...text.caption, color: t.sub }}>
-                        {(y.underlyingBalance && usdOf(y.underlyingBalance, price)) || " "}
+                        {y.underlyingBalance && usdOf(y.underlyingBalance, price) ? (
+                          <Figure value={usdOf(y.underlyingBalance, price)!} />
+                        ) : (
+                          " "
+                        )}
                       </span>
                     </span>
                   </div>

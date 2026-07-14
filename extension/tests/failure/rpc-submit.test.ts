@@ -154,6 +154,12 @@ function sink() {
     clear: async (hash: string) => {
       events.push(`clear ${hash}`);
     },
+    // Recorded like the other two so a test can assert the ORDER of "the ledger
+    // answered" against "the record was cleared": answering inside the window
+    // must not clear, and clearing must not need an answer.
+    answered: async (hash: string) => {
+      events.push(`answered ${hash}`);
+    },
   };
 }
 
@@ -468,7 +474,14 @@ describe("the in-flight record survives exactly as long as the uncertainty", () 
 
     const outcome = await submitAndConfirm(client, tx, { attempts: 2, sleepMs: 5, inFlight: s });
     expect(outcome.kind).toBe("pending");
-    expect(s.events).toEqual([`record ${hash}`]);
+    // The property is that the record SURVIVES, so the assertion is about
+    // `clear` and not about the exact event list. The NOT_FOUND the fallback
+    // serves is a real answer from the ledger and is now persisted beside the
+    // record, because a later process has to be able to tell that answer from
+    // an outage before it decides a rebuild is safe.
+    expect(s.events).toContain(`record ${hash}`);
+    expect(s.events).toContain(`answered ${hash}`);
+    expect(s.events).not.toContain(`clear ${hash}`);
   });
 
   it("is cleared once the ledger has decided", async () => {

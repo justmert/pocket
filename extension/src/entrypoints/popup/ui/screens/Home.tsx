@@ -5,7 +5,7 @@ import { call } from "../rpc";
 import { canRebuild } from "../copy";
 import { ChangeChip, ValueChartBlock, useValueChart } from "../Chart";
 import { NAV_SPACE } from "../BottomNav";
-import { Amount, HeroAmount } from "../Amount";
+import { Amount, HeroAmount, Figure } from "../Amount";
 import { shortAddress } from "../Address";
 import { Avatar, useAvatarReaction } from "../Avatar";
 import { AssetLogo, tokenIconFile } from "../AssetIcon";
@@ -871,7 +871,11 @@ export function Home() {
                 )}
               </span>
               <span style={{ ...text.rowTitle, color: t.text }}>
-                {y.balance ? `${y.balance} shares` : "None deposited"}
+                {y.balance ? (
+                  <Figure value={`${y.balance} shares`} />
+                ) : (
+                  "None deposited"
+                )}
               </span>
             </div>
           </>
@@ -1258,7 +1262,9 @@ export function PrivateAssetRow({
     : undefined;
 
   const sub = receiving ? (
-    <span style={{ color: t.accent }}>Receiving {capDecimals(receiving, 4)}</span>
+    <span style={{ color: t.accent }}>
+      Receiving <Figure value={capDecimals(receiving, 4)} announce="amount hidden" />
+    </span>
   ) : ready ? (
     PRIVATE_ASSET_NAME[symbol]
   ) : (

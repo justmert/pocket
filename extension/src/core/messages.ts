@@ -245,7 +245,22 @@ export interface ResponseMap {
   /** `handle` is opaque, exactly as buildPayment's is. */
   buildPrivateOp: { handle: string; summary: PrivateOpSummary };
   confirmPrivateOp: { hash: string; ledger: number; followed?: string };
-  inFlight: { hash: string; maxTime: number; expired: boolean } | null;
+  /**
+   * `windowPassed` and `expired` are two facts, and they were one field.
+   *
+   * `windowPassed` is about the envelope: maxTime is behind us, so it cannot be
+   * included from now on. `answered` is about the ledger: it was asked, and it
+   * said it does not have this hash. `expired` is the decision that needs both,
+   * because a deadline passing says nothing about whether the transaction
+   * landed before it. Only `expired` may permit a second submission.
+   */
+  inFlight: {
+    hash: string;
+    maxTime: number;
+    windowPassed: boolean;
+    answered: boolean;
+    expired: boolean;
+  } | null;
   reconcileInFlight: SubmitOutcome | null;
   recoverFromMnemonic: string;
   setNetwork: WalletStatus;

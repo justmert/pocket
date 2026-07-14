@@ -4,6 +4,7 @@ import { MonoBlock } from "../Address";
 import { Button, ButtonStack, Header, Label, Notice, Screen, Spinner } from "../primitives";
 import { space, text, type Theme } from "../theme";
 import { describeOutcome } from "../../../../core/chain/submit";
+import type { InFlightRecord } from "../WalletProvider";
 
 /**
  * a transaction the worker submitted and never saw resolve.
@@ -18,7 +19,7 @@ export function InFlight({
   onResolved,
 }: {
   t: Theme;
-  record: { hash: string; maxTime: number; expired: boolean };
+  record: InFlightRecord;
   onResolved: () => void;
 }) {
   const [checking, setChecking] = useState(false);
@@ -96,8 +97,11 @@ export function InFlight({
       <MonoBlock t={t}>{record.hash}</MonoBlock>
 
       <div style={{ ...text.body, color: t.sub, marginTop: space.md, lineHeight: 1.5 }}>
-        {record.expired
-          ? "Its time window has passed, so it can no longer be included."
+        {record.windowPassed
+          ? record.answered
+            ? "Its time window has passed and the ledger does not have it, so it can never be applied."
+            : "Its time window has passed, so it can no longer be included. Pocket has not been " +
+              "able to reach the ledger to confirm whether it landed before then."
           : `It can still be included until ${deadline(record.maxTime)}.`}
       </div>
 

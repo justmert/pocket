@@ -6,6 +6,7 @@
 // signing path are untouched underneath; this only changes how the compose step
 // looks and hands off to ConfirmSheet.
 import { useEffect, useRef, useState } from "react";
+import { Figure } from "../Amount";
 import { BASE_FEE } from "@stellar/stellar-sdk/base";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
@@ -607,7 +608,7 @@ function AssetPicker({
                   ? "Stellar Lumens"
                   : undefined
             }
-            value={b.amount}
+            value={<Figure value={b.amount} />}
             {...(b.authorized ? { onClick: () => onPick(b) } : {})}
           />
         ))}

@@ -599,6 +599,11 @@ describe("buildPayment(): refuses to build against a ledger it could not read", 
     store.set("pocket.inflight", {
       hash: "c23d994e",
       maxTime: Math.floor(Date.now() / 1000) - 60,
+      // Decidably dead needs both halves: the deadline is behind us AND the
+      // ledger answered that it does not have it. Without the second, an
+      // outage spanning the window would release the guard for an envelope
+      // that may have been included.
+      answered: true,
     });
     const built = await controller.buildPayment({
       to: RECIPIENT,

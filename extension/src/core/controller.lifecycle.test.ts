@@ -523,9 +523,11 @@ describe("an unresolved submission blocks the next one", () => {
     ).rejects.toThrow(/has not resolved yet/);
   });
 
-  it("allows it again once the first can never be included", async () => {
+  it("allows it again once the first can never be included AND the ledger says it never was", async () => {
     const { c } = await worker();
-    store.set("pocket.inflight", { hash: "ab".repeat(32), maxTime: 1 });
+    // `answered` is the second half. The deadline alone is not enough: see the
+    // test below, which is the case this one used to cover by accident.
+    store.set("pocket.inflight", { hash: "ab".repeat(32), maxTime: 1, answered: true });
     // Gets past the guard and fails later, on the unfunded account, which is
     // the honest next failure rather than the in-flight refusal.
     await expect(
@@ -537,6 +539,44 @@ describe("an unresolved submission blocks the next one", () => {
     ).rejects.not.toThrow(/has not resolved yet/);
   });
 
+  it("keeps refusing when the deadline passed but nobody ever heard from the ledger", async () => {
+    // The defect this whole split exists for. An RPC outage spanning the
+    // 180-second window left `maxTime` in the past with no poll ever answered,
+    // and the guard read that as "safe to rebuild". The first envelope may have
+    // been included: submit.ts says so at the one call site that had it right,
+    // "the envelope being un-includable NOW says nothing about whether it was
+    // included BEFORE maxTime". Building again here is how a payment gets made
+    // twice, and how the record pointing at a private op's unwritten openings
+    // gets overwritten.
+    const { c } = await worker();
+    store.set("pocket.inflight", { hash: "ab".repeat(32), maxTime: 1 });
+    await expect(
+      c.buildPayment({
+        to: "GDRXE2BQUC3AZNPVFSCEZ76NJ3WWL25FYFK6RGZGIEKWE4SOOHSUJUJ6",
+        amount: "1",
+        assetId: "native",
+      }),
+    ).rejects.toThrow(/has not resolved yet/);
+  });
+
+  it("separates the envelope's deadline from the decision to rebuild", async () => {
+    // Two facts, and they were one field. The screen states the first; only the
+    // second may permit a second submission.
+    const { c } = await worker();
+    store.set("pocket.inflight", { hash: "ab".repeat(32), maxTime: 1 });
+    expect(await c.inFlight()).toMatchObject({
+      windowPassed: true,
+      answered: false,
+      expired: false,
+    });
+    store.set("pocket.inflight", { hash: "ab".repeat(32), maxTime: 1, answered: true });
+    expect(await c.inFlight()).toMatchObject({
+      windowPassed: true,
+      answered: true,
+      expired: true,
+    });
+  });
+
   it("clears an in-flight record that can no longer be included", async () => {
     const { c } = await worker();
     store.set("pocket.inflight", { hash: "cd".repeat(32), maxTime: 1 });
@@ -545,6 +585,55 @@ describe("an unresolved submission blocks the next one", () => {
     const outcome = await c.reconcileInFlight();
     // Left as "pending" this record was unclearable, and the screen that
     // renders it sits in front of the whole wallet on every popup mount.
+    expect(outcome?.kind).toBe("expired");
+    expect(store.has("pocket.inflight")).toBe(false);
+  }, 10_000);
+
+  it("does not read a NOT_FOUND from an aged-out RPC as proof it never landed", async () => {
+    // soroban-rpc keeps transactions for a bounded time and then answers the
+    // SAME NOT_FOUND for a dropped transaction as for one that never existed.
+    // Measured 2026-08-08 on soroban-testnet: getTransaction for four hashes in
+    // this project's own resources/testnet-evidence.md answered NOT_FOUND with
+    // oldestLedger 3914457, while Horizon answered successful:true for all four
+    // (ledgers 3900276 to 3900337). Retention was 7.01 days; mainnet 7.87.
+    //
+    // Reading that as "expired" routes the record to discardStaged, which
+    // deletes the only copy of a private operation's openings. Leave Pocket
+    // closed for a week and the wallet destroyed the openings of a transfer
+    // that had succeeded, then told the user nothing was charged.
+    const { c } = await worker();
+    const maxTime = Math.floor(Date.now() / 1000) - 7 * 24 * 3600;
+    store.set("pocket.inflight", { hash: "cd".repeat(32), maxTime });
+    getTx = async () => ({
+      status: "NOT_FOUND",
+      // The RPC's memory begins AFTER this envelope's last valid moment, so the
+      // whole interval in which it could have been included is outside it.
+      oldestLedgerCloseTime: maxTime + 3600,
+      latestLedgerCloseTime: Math.floor(Date.now() / 1000),
+    });
+
+    const outcome = await c.reconcileInFlight();
+    expect(outcome?.kind).toBe("pending");
+    // The record survives, so the user is brought back to it rather than told
+    // it never happened.
+    expect(store.has("pocket.inflight")).toBe(true);
+    // And the build gates stay shut, because nothing was actually answered.
+    expect(await c.inFlight()).toMatchObject({ windowPassed: true, expired: false });
+  }, 10_000);
+
+  it("still reads a NOT_FOUND from inside the retention window as an answer", async () => {
+    // The control. Without it the fix above is satisfied by never trusting a
+    // NOT_FOUND at all, which would make every unresolved record permanent.
+    const { c } = await worker();
+    const maxTime = Math.floor(Date.now() / 1000) - 300;
+    store.set("pocket.inflight", { hash: "cd".repeat(32), maxTime });
+    getTx = async () => ({
+      status: "NOT_FOUND",
+      oldestLedgerCloseTime: maxTime - 7 * 24 * 3600,
+      latestLedgerCloseTime: Math.floor(Date.now() / 1000),
+    });
+
+    const outcome = await c.reconcileInFlight();
     expect(outcome?.kind).toBe("expired");
     expect(store.has("pocket.inflight")).toBe(false);
   }, 10_000);

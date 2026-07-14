@@ -11,7 +11,7 @@ import type { ReactNode, UIEvent } from "react";
 import { message, useWallet, type BgOp } from "../WalletProvider";
 import { call } from "../rpc";
 import { capDecimals, displayAmount } from "../../../../core/chain/balances";
-import { maskAmount } from "../Amount";
+import { Figure } from "../Amount";
 import { useHidden } from "../WalletProvider";
 import { AssetMark } from "./Home";
 import {
@@ -896,7 +896,11 @@ function Entry({
           flex: "0 0 auto",
         }}
       >
-        {e.amount === null ? "—" : `${maskAmount(displayAmount(e.amount), hidden)} ${e.code}`}
+        {e.amount === null ? (
+          "—"
+        ) : (
+          <Figure value={`${displayAmount(e.amount)} ${e.code}`} hidden={hidden} />
+        )}
       </span>
     </button>
   );
@@ -1050,7 +1054,11 @@ function DetailSheet({
                   fontVariantNumeric: "tabular-nums lining-nums",
                 }}
               >
-                {e.amount === null ? "—" : maskAmount(capDecimals(e.amount, 7), hidden)}
+                {e.amount === null ? (
+                  "—"
+                ) : (
+                  <Figure value={capDecimals(e.amount, 7)} hidden={hidden} />
+                )}
               </span>
               {e.amount !== null && <span style={{ ...text.heading, color: t.sub }}>{e.code}</span>}
             </div>
@@ -1324,11 +1332,11 @@ function ProcessingRow({
         {op.amount && (
           <span style={{ textAlign: "right", flex: "0 0 auto", minWidth: 0 }}>
             <span style={{ ...text.value, color: t.text, display: "block" }}>
-              {maskAmount(displayAmount(op.amount), hidden)} {op.code}
+              <Figure value={`${displayAmount(op.amount)} ${op.code}`} hidden={hidden} />
             </span>
             {op.fiat != null && (
               <span style={{ ...text.rowSub, color: t.sub, display: "block", marginTop: 1 }}>
-                {maskAmount(usd(op.fiat), hidden)}
+                <Figure value={usd(op.fiat)} hidden={hidden} />
               </span>
             )}
           </span>
@@ -1471,13 +1479,13 @@ function ProcessingDetailSheet({
                     fontVariantNumeric: "tabular-nums lining-nums",
                   }}
                 >
-                  {maskAmount(capDecimals(op.amount, 7), hidden)}
+                  <Figure value={capDecimals(op.amount, 7)} hidden={hidden} />
                 </span>
                 <span style={{ ...text.heading, color: t.sub }}>{op.code}</span>
               </div>
               {op.fiat != null && (
                 <div style={{ ...text.body, color: t.sub, marginTop: 4 }}>
-                  {maskAmount(usd(op.fiat), hidden)}
+                  <Figure value={usd(op.fiat)} hidden={hidden} />
                 </div>
               )}
             </div>

@@ -119,6 +119,17 @@ export function describeOutcome(outcome: SubmitOutcome): string {
 export interface InFlightSink {
   record(entry: { hash: string; maxTime: number }): Promise<void>;
   clear(hash: string): Promise<void>;
+  /**
+   * The ledger has answered about this hash, and the answer was "not here".
+   *
+   * Persisted because it is the difference between "this envelope can no longer
+   * be included" and "it is safe to build a replacement", and only the second
+   * one permits a second submission. `pollToTerminal` computes it and every
+   * consumer used to throw it away, so the three build gates fell back to
+   * `maxTime` alone: an outage spanning a 180-second window read as expired for
+   * a transaction that may have succeeded.
+   */
+  answered(hash: string): Promise<void>;
 }
 
 /**
@@ -194,7 +205,7 @@ async function afterSend(
   maxTime: number,
   opts: { attempts?: number; sleepMs?: number; inFlight?: InFlightSink; settles?: Settles },
 ): Promise<SubmitOutcome> {
-  const outcome = await pollToTerminal(server, hash, opts);
+  const outcome = await pollToTerminal(server, hash, { ...opts, maxTime });
   if (outcome.kind !== "pending") {
     // Success under `settles: "caller"` is the one outcome this function does
     // not get to close out: the caller has a consequence to write and clears
@@ -216,6 +227,11 @@ async function afterSend(
     await opts.inFlight?.clear(hash);
     return { kind: "expired", hash };
   }
+  // Answered but still inside the window: the fact is durable and the record
+  // outlives this call, so persist it. Without this the next process to read
+  // the record cannot tell an unanswered outage from a real NOT_FOUND, which is
+  // exactly the state the build gates decide on.
+  if (outcome.answered) await opts.inFlight?.answered(hash);
   return outcome;
 }
 
@@ -226,18 +242,19 @@ async function afterSend(
 export async function pollToTerminal(
   server: rpc.Server,
   hash: string,
-  opts: { attempts?: number; sleepMs?: number } = {},
+  opts: { attempts?: number; sleepMs?: number; maxTime?: number } = {},
 ): Promise<SubmitOutcome> {
   const attempts = opts.attempts ?? 15;
   const sleepMs = opts.sleepMs ?? 1000;
 
-  // Did any poll get a real reply? A NOT_FOUND is an answer and counts; a
-  // fetch that threw does not. See the `pending` outcome.
+  // Did any poll get a real reply? A NOT_FOUND is an answer and counts, UNLESS
+  // the RPC has aged the window out; see `forgotten`. A fetch that threw does
+  // not count either way. See the `pending` outcome.
   let answered = false;
   for (let i = 0; i < attempts; i++) {
     try {
       const res = await server.getTransaction(hash);
-      answered = true;
+      if (!forgotten(res, opts.maxTime)) answered = true;
       if (res.status === "SUCCESS") {
         return {
           kind: "succeeded",
@@ -263,6 +280,36 @@ export async function pollToTerminal(
   // those apart before deciding whether this is "expired, safe to rebuild" or
   // "still in flight".
   return { kind: "pending", hash, answered };
+}
+
+/**
+ * Has the RPC forgotten the whole window in which this envelope could have
+ * been included?
+ *
+ * soroban-rpc keeps transactions for a bounded time and then drops them, and
+ * the reply it gives for a dropped transaction is the same NOT_FOUND it gives
+ * for one that never existed. Treating that as "the ledger says it is not
+ * there" is a false negative on the one path that deletes openings.
+ *
+ * Measured 2026-08-08 on soroban-testnet: getTransaction for four hashes this
+ * project recorded in `resources/testnet-evidence.md` answered NOT_FOUND with
+ * `oldestLedger: 3914457` while Horizon answered `successful: true` for all
+ * four (ledgers 3900276 to 3900337). Retention was 120,959 ledgers, 7.01 days;
+ * mainnet measured 7.87 days the same day.
+ *
+ * `oldestLedgerCloseTime` rides on every reply including NOT_FOUND, so no extra
+ * read and no extra stored field is needed: if the oldest ledger the RPC still
+ * holds closed AFTER this envelope's last valid moment, then the entire
+ * interval in which it could have been included lies outside the RPC's memory,
+ * and its NOT_FOUND is a report about the RPC rather than about the ledger.
+ *
+ * Unbounded envelopes (maxTime 0) are never decidably expired anyway, so there
+ * is nothing here to protect and the answer counts as it always did.
+ */
+function forgotten(res: { oldestLedgerCloseTime?: number }, maxTime?: number): boolean {
+  if (!maxTime || maxTime <= 0) return false;
+  const oldest = res.oldestLedgerCloseTime;
+  return typeof oldest === "number" && oldest > maxTime;
 }
 
 /** True once maxTime has passed, meaning the envelope can never be applied. */

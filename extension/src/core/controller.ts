@@ -514,12 +514,42 @@ export class WalletController {
   /**
    * A transaction that was submitted but whose outcome we never saw, because
    * the worker died or the popup closed. Never resend it: poll by hash, and
-   * only rebuild once its timeBounds have passed.
+   * only rebuild once the ledger has said it does not have it AND its
+   * timeBounds have passed.
+   *
+   * `windowPassed` and `expired` are two different facts and were one field.
+   *
+   * `windowPassed` is about the ENVELOPE: its maxTime is behind us, so it can
+   * never be included from now on. That is what the unfinished-transaction
+   * screen states, and it is true regardless of what anyone has heard.
+   *
+   * `expired` is a DECISION: it is safe to build a replacement. That needs the
+   * second fact, because an envelope being un-includable now says nothing about
+   * whether it was included before maxTime, and the only thing that rules that
+   * out is the ledger having answered. `submit.ts` says exactly this at the one
+   * call site that had it right, and the three gates here read the field that
+   * did not: an RPC outage spanning the 180-second window opened all three for
+   * a transaction that may have succeeded, and the next submission then
+   * overwrote the record that pointed at its unwritten openings.
    */
-  async inFlight(): Promise<{ hash: string; maxTime: number; expired: boolean } | null> {
-    const e = await readLocal<{ hash: string; maxTime: number }>(KEYS.inFlight);
+  async inFlight(): Promise<{
+    hash: string;
+    maxTime: number;
+    windowPassed: boolean;
+    answered: boolean;
+    expired: boolean;
+  } | null> {
+    const e = await readLocal<{ hash: string; maxTime: number; answered?: boolean }>(
+      KEYS.inFlight,
+    );
     if (!e) return null;
-    return { ...e, expired: e.maxTime > 0 && Math.floor(Date.now() / 1000) > e.maxTime };
+    const windowPassed = e.maxTime > 0 && Math.floor(Date.now() / 1000) > e.maxTime;
+    // Absent on a record written by an earlier build, and absent means "nobody
+    // has heard anything", which is the honest reading and the safe one: the
+    // record stays unresolved until a poll answers rather than being rebuilt
+    // over. `reconcileInFlight` runs on popup mount and supplies the answer.
+    const answered = e.answered === true;
+    return { ...e, answered, windowPassed, expired: windowPassed && answered };
   }
 
   /**
@@ -535,7 +565,16 @@ export class WalletController {
     return this.exclusive(async () => {
       const e = await readLocal<{ hash: string; maxTime: number }>(KEYS.inFlight);
       if (!e) return null;
-      let outcome = await pollToTerminal(this.server(), e.hash, { attempts: 3 });
+      // `maxTime` is passed so a NOT_FOUND from an RPC that has aged this
+      // window out of its retention is not counted as an answer. Measured: four
+      // transactions in this project's own testnet-evidence.md answer NOT_FOUND
+      // today and `successful: true` on Horizon. Without it, leaving Pocket
+      // closed for a week made every unresolved record read as "never landed",
+      // and this function deletes the staged openings on that reading.
+      let outcome = await pollToTerminal(this.server(), e.hash, {
+        attempts: 3,
+        maxTime: e.maxTime,
+      });
 
       // Still not included, and it can never be included now. Left as "pending"
       // the record is unclearable, and the screen that renders it sits in front
@@ -562,7 +601,14 @@ export class WalletController {
       ) {
         outcome = { kind: "expired", hash: e.hash };
       }
-      if (outcome.kind === "pending") return outcome;
+      if (outcome.kind === "pending") {
+        // Answered, but still inside the window. The record survives this call
+        // and the build gates read it later, so the fact has to be on disk: it
+        // is the difference between "cannot be included from now on" and "safe
+        // to build a replacement", and only the second permits a resend.
+        if (outcome.answered) await this.inFlightSink().answered(e.hash);
+        return outcome;
+      }
 
       if (outcome.kind === "succeeded") {
         // Throws on a mismatch, and must: a wrong opening is indistinguishable
@@ -3311,6 +3357,16 @@ export class WalletController {
           );
         }
         await writeLocal(KEYS.inFlight, kind ? { ...e, kind } : e);
+      },
+      // The ledger answered "not here" about this hash, inside its window.
+      //
+      // Hash-guarded for the same reason `clear` is: a keep-alive answering
+      // beside a payment must not mark the payment's record. Written as a patch
+      // rather than a whole record so a concurrent `record` cannot be undone by
+      // a stale copy read before it.
+      answered: async (hash: string) => {
+        const e = await readLocal<{ hash: string }>(KEYS.inFlight);
+        if (e?.hash === hash) await writeLocal(KEYS.inFlight, { ...e, answered: true });
       },
       // Only ever clear our own. Without the check, a keep-alive resolving
       // beside a payment erases the payment's record, and the unfinished
