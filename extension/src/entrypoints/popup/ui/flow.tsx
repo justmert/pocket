@@ -97,6 +97,7 @@ export function ConfirmBody({
   warning,
   blocked,
   error,
+  unresolved,
 }: {
   t: Theme;
   /** omitted where the surface around the review already names the operation. */
@@ -116,6 +117,8 @@ export function ConfirmBody({
   /** set when the wallet could not read what it is being asked to sign. */
   blocked?: string;
   error?: string | null;
+  /** the error above is an UNRESOLVED submission, not a failure. see `OpVerdict`. */
+  unresolved?: boolean;
 }) {
   const exposed = treatment === "exposed";
   return (
@@ -273,8 +276,15 @@ export function ConfirmBody({
           {blocked}
         </Notice>
       )}
+      {/* an UNRESOLVED submission is not a failure and may not wear the failure
+       * colour. `failOp` asks the worker, whose durable in-flight record is the
+       * only authority on it, and the sentence being drawn here is the wallet's
+       * own "it may still land, so do not resend": in red, above a live Approve,
+       * that is an instruction to pay twice. Activity already drew the same fact
+       * as information (History's processing row says so in its own comment) and
+       * this surface did not. */}
       {error && (
-        <Notice t={t} tone="danger">
+        <Notice t={t} tone={unresolved ? "exposed" : "danger"}>
           {error}
         </Notice>
       )}
@@ -390,6 +400,7 @@ export function WalletReview({
   warning,
   blocked,
   error,
+  unresolved,
 }: {
   t: Theme;
   heading?: string;
@@ -410,6 +421,8 @@ export function WalletReview({
   warning?: string;
   blocked?: string;
   error?: string | null;
+  /** the error above is an UNRESOLVED submission, not a failure. see `OpVerdict`. */
+  unresolved?: boolean;
 }) {
   const exposed = treatment === "exposed";
   return (
@@ -496,8 +509,15 @@ export function WalletReview({
           {blocked}
         </Notice>
       )}
+      {/* an UNRESOLVED submission is not a failure and may not wear the failure
+       * colour. `failOp` asks the worker, whose durable in-flight record is the
+       * only authority on it, and the sentence being drawn here is the wallet's
+       * own "it may still land, so do not resend": in red, above a live Approve,
+       * that is an instruction to pay twice. Activity already drew the same fact
+       * as information (History's processing row says so in its own comment) and
+       * this surface did not. */}
       {error && (
-        <Notice t={t} tone="danger">
+        <Notice t={t} tone={unresolved ? "exposed" : "danger"}>
           {error}
         </Notice>
       )}
@@ -520,6 +540,7 @@ export function ReviewPanel({
   warning,
   blocked,
   error,
+  unresolved,
   busy,
   approveLabel,
   cancelLabel = "Back",
@@ -554,6 +575,8 @@ export function ReviewPanel({
   /** set when the wallet could not read what it is being asked to sign. */
   blocked?: string;
   error?: string | null;
+  /** the error above is an UNRESOLVED submission, not a failure. see `OpVerdict`. */
+  unresolved?: boolean;
   busy: boolean;
   approveLabel: string;
   /**
@@ -598,13 +621,14 @@ export function ReviewPanel({
         warning={warning}
         blocked={blocked}
         error={error}
+        unresolved={unresolved}
       />
 
       <ButtonRow>
         <Button t={t} variant="quiet" onClick={onCancel}>
           {cancelLabel}
         </Button>
-        <Button t={t} disabled={Boolean(blocked)} onClick={onApprove}>
+        <Button t={t} disabled={Boolean(blocked) || Boolean(unresolved)} onClick={onApprove}>
           {approveLabel}
         </Button>
       </ButtonRow>
@@ -830,6 +854,7 @@ export function ConfirmSheet({
   warning,
   blocked,
   error,
+  unresolved,
   busy,
   approveLabel = "Confirm",
   result,
@@ -862,6 +887,8 @@ export function ConfirmSheet({
   warning?: string;
   blocked?: string;
   error?: string | null;
+  /** the error above is an UNRESOLVED submission, not a failure. see `OpVerdict`. */
+  unresolved?: boolean;
   busy: boolean;
   approveLabel?: string;
   /** set once the transaction has landed; the popup then shows the receipt. */
@@ -940,13 +967,14 @@ export function ConfirmSheet({
               warning={warning}
               blocked={blocked}
               error={error}
+              unresolved={unresolved}
             />
 
             <ButtonRow>
               <Button t={t} variant="quiet" onClick={onCancel}>
                 Cancel
               </Button>
-              <Button t={t} disabled={Boolean(blocked)} onClick={onApprove}>
+              <Button t={t} disabled={Boolean(blocked) || Boolean(unresolved)} onClick={onApprove}>
                 {approveLabel}
               </Button>
             </ButtonRow>

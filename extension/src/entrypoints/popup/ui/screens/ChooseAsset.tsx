@@ -33,6 +33,10 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
   const [summary, setSummary] = useState<TrustlineSummary | null>(null);
   const [result, setResult] = useState<{ hash: string; ledger: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // set only when `failOp` says the worker still holds an in-flight record for
+  // this submission. it is not an error, so it is not drawn as one, and Approve
+  // stays down while it is true.
+  const [unresolved, setUnresolved] = useState(false);
   const once = useOnce();
   const opId = useRef<string | null>(null);
 
@@ -102,10 +106,16 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
       setBusy(false);
     } catch (e) {
       const reason = e instanceof Error ? e.message : String(e);
-      w.failOp(id, reason);
       setError(reason);
       setBusy(false);
-      once.release();
+      // ask the worker what this actually was BEFORE re-arming Approve. an
+      // `unresolved` submission is one the worker still holds a durable in-flight
+      // record for, so it may yet land, and the reason being shown is the wallet's
+      // own "do not resend": releasing the one-shot guard under it is what turns a
+      // stuck payment into a double spend. the guard stays claimed until then, so
+      // a press in the gap does nothing.
+      if ((await w.failOp(id, reason)) === "unresolved") setUnresolved(true);
+      else once.release();
     }
   };
 
@@ -263,6 +273,7 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
         fee={summary?.fee}
         effects={summary?.effects ?? []}
         error={error}
+        unresolved={unresolved}
         busy={busy}
         result={result}
         network={w.status?.network}

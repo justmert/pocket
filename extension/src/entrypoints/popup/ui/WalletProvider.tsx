@@ -65,8 +65,31 @@ export interface DappRequest {
 export interface InFlightRecord {
   hash: string;
   maxTime: number;
+  /** the envelope's own deadline has passed: it can never be included now. */
+  windowPassed: boolean;
+  /** the ledger has been asked and said it does not have it. */
+  answered: boolean;
+  /**
+   * safe to build a replacement, which needs BOTH of the above.
+   *
+   * a deadline passing says nothing about whether the transaction landed
+   * before it. these were one field, and the screen that offered "continue
+   * anyway" offered it on the deadline alone.
+   */
   expired: boolean;
 }
+
+/** what a watched transaction is doing. */
+export type OpStatus = "processing" | "done" | "failed" | "unresolved";
+
+/**
+ * what `failOp` decided a caught error actually was.
+ *
+ * named, and exported, because it is now a value a compose screen branches on
+ * rather than a private detail of the Activity row: an `unresolved` submission
+ * must not be drawn in the failure colour and must not re-arm Approve.
+ */
+export type OpVerdict = Extract<OpStatus, "failed" | "unresolved">;
 
 /**
  * a transaction the popup started and is still watching.
@@ -111,7 +134,7 @@ export interface BgOp {
    * danger colour. Telling someone a payment failed is the one instruction that
    * makes them send it again, which is how a transaction gets paid twice.
    */
-  status: "processing" | "done" | "failed" | "unresolved";
+  status: OpStatus;
   hash?: string;
   ledger?: number;
   error?: string;
@@ -139,8 +162,17 @@ interface Wallet {
   beginOp(op: Omit<BgOp, "id" | "status" | "at">): string;
   /** mark a watched transaction landed, with its hash and ledger. */
   completeOp(id: string, result: { hash: string; ledger?: number }): void;
-  /** mark a watched transaction failed, with the reason already made safe. */
-  failOp(id: string, error: string): void;
+  /**
+   * mark a watched transaction failed, with the reason already made safe, and
+   * answer whether it was a failure at all.
+   *
+   * `unresolved` means the worker still holds a durable in-flight record for it,
+   * so the submission may yet land. A caller that draws the reason MUST draw an
+   * `unresolved` one as information rather than as an error, and MUST leave its
+   * approve control disabled: this is the state in which pressing it again pays
+   * twice. See `BackgroundOp.status`.
+   */
+  failOp(id: string, error: string): Promise<OpVerdict>;
   /** forget a watched transaction (its receipt was dismissed from the sheet). */
   dropOp(id: string): void;
 
@@ -302,6 +334,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // millisecond, and the id only has to be unique within one popup lifetime.
   const [backgroundOps, setBackgroundOps] = useState<BgOp[]>([]);
   const opSeq = useRef(0);
+  // a mirror `failOp` can read synchronously. it decides a verdict a caller acts
+  // on, and that decision may not be made inside a state updater: an updater has
+  // to be pure and react is free to run it more than once per update.
+  const opsRef = useRef<BgOp[]>(backgroundOps);
+  opsRef.current = backgroundOps;
 
   const [tab, setTab] = useState<Tab>("home");
   const [sheets, setSheets] = useState<SheetId[]>([]);
@@ -447,7 +484,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     },
     [refresh],
   );
-  const failOp = useCallback((id: string, error: string) => {
+  const failOp = useCallback(async (id: string, error: string): Promise<OpVerdict> => {
     // Record it as failed FIRST, so the row stops spinning even if the question
     // below cannot be answered. A stuck spinner is a worse lie than a wrong
     // label, and this must not depend on a second round trip succeeding.
@@ -464,20 +501,46 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     // Asked here rather than at each `catch`, because there are seven compose
     // screens calling this and a defect that has to be remembered in seven
     // places is a defect that comes back with the eighth.
-    void call({ type: "inFlight" })
-      .then((held) => {
-        setBackgroundOps((prev) =>
-          prev.map((o) =>
-            o.id === id && stillUnresolved(o, held)
-              ? { ...o, status: "unresolved", hash: o.hash ?? held?.hash }
-              : o,
-          ),
-        );
-      })
-      .catch(() => {
-        // A locked or restarting worker cannot answer. The row stays `failed`,
-        // which is what it already said.
-      });
+    //
+    // The VERDICT IS RETURNED, and that is the whole point of this being async.
+    // It used to be computed, applied to the Activity row, and dropped: the same
+    // `catch` that called this then drew the reason as a danger notice and
+    // released the one-shot guard, so nine compose screens painted the wallet's
+    // own "it may still land, so do not resend" in the failure colour above a
+    // re-armed Approve. The comment at the top of `BackgroundOp.status` states
+    // the stake, and Activity three inches away had already been corrected.
+    try {
+      const held = await call({ type: "inFlight" });
+      // The op is read from a ref rather than from inside the updater, because a
+      // state updater must stay pure: React may invoke it more than once for one
+      // update, so deciding the verdict in there would make the answer depend on
+      // how often React chose to call it.
+      const op = opsRef.current.find((o) => o.id === id);
+      // `status: "failed"` is what the write above just set; the ref may not have
+      // caught up within this tick, so the check is made against that known fact
+      // rather than against whatever the ref still says.
+      if (!stillUnresolved({ status: "failed", hash: op?.hash }, held)) return "failed";
+      setBackgroundOps((prev) =>
+        prev.map((o) =>
+          o.id === id ? { ...o, status: "unresolved", hash: o.hash ?? held?.hash } : o,
+        ),
+      );
+      // and publish the record, which is what actually takes the user somewhere
+      // safe. `inFlight` was read on mount and on a lock change only, so the one
+      // moment the wallet learns mid-session that a submission is unresolved was
+      // the one moment it did not reach the screen built for exactly that: the
+      // compose screen kept the user, and `closeConfirm` releases the one-shot
+      // guard, so cancelling re-armed Approve on a payment that may already have
+      // landed. `App` routes on this, so the blocking screen with its single way
+      // forward takes over instead.
+      setInFlight(held);
+      return "unresolved";
+    } catch {
+      // A locked or restarting worker cannot answer. The row stays `failed`,
+      // which is what it already said, and so does the verdict: an unanswerable
+      // question must not become a claim that the payment is still in flight.
+      return "failed";
+    }
   }, []);
   const dropOp = useCallback((id: string) => {
     setBackgroundOps((prev) => prev.filter((o) => o.id !== id));
