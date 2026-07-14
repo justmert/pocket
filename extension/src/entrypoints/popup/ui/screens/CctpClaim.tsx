@@ -288,6 +288,10 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
         mark={<AssetMark t={t} id={markId} code="USDC" />}
         code="USDC"
         fee={summary?.fee}
+        // which chain this claim is FROM. the same fact the outbound sheet was
+        // missing: it is signed, and an inbound sheet without it is identical for
+        // every source chain.
+        facts={summary?.chain ? [{ label: "From chain", value: summary.chain }] : []}
         effects={summary?.effects ?? []}
         error={error}
         unresolved={unresolved}

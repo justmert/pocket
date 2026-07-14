@@ -463,6 +463,18 @@ export function Swap({ onClose }: { onClose: () => void }) {
         code={summary?.assetIn ?? inAsset.code}
         fee={summary?.fee}
         fiat={fiat}
+        // `minOut` is the number the transaction ENFORCES: below it the swap
+        // reverts. the screen's own header tip already promises "you receive at
+        // least the minimum shown, or the swap reverts", and no minimum was shown
+        // anywhere in the flow. `estOut` is the expectation; this is the floor.
+        facts={[
+          ...(summary?.estOut
+            ? [{ label: "Estimated", value: `${summary.estOut} ${summary.assetOut}` }]
+            : []),
+          ...(summary?.minOut
+            ? [{ label: "Minimum received", value: `${summary.minOut} ${summary.assetOut}` }]
+            : []),
+        ]}
         effects={summary?.effects ?? []}
         error={error}
         unresolved={unresolved}

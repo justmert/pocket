@@ -460,6 +460,19 @@ export function CctpSend({ onClose }: { onClose: () => void }) {
         // only a fallback for the frame before the summary lands.
         to={summary?.recipient ?? recipient.trim()}
         fee={summary?.fee}
+        // the destination chain and the dust are SIGNED and were drawn nowhere.
+        // an EVM address is valid on every EVM chain, so the Base sheet and the
+        // Arbitrum sheet were identical except for an address that is correct on
+        // both: the one fact that decides where the money lands was missing from
+        // the screen whose job is to state it. the dust is the remainder the
+        // 7dp->6dp scale cannot carry, and the sheet said it "stays on Stellar"
+        // in an effects line behind a tap.
+        facts={[
+          ...(summary?.chain ? [{ label: "To chain", value: summary.chain }] : []),
+          ...(summary?.dust && Number(summary.dust) > 0
+            ? [{ label: "Stays on Stellar", value: `${summary.dust} USDC` }]
+            : []),
+        ]}
         effects={summary?.effects ?? []}
         error={error}
         unresolved={unresolved}

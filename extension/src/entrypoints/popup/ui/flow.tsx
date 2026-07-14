@@ -398,6 +398,7 @@ export function WalletReview({
   verb = "Send",
   alreadyDone,
   warning,
+  facts,
   blocked,
   error,
   unresolved,
@@ -421,6 +422,18 @@ export function WalletReview({
   warning?: string;
   blocked?: string;
   error?: string | null;
+  /**
+   * extra SIGNED facts, one row each, for whatever a flow commits that the
+   * amount/fee/memo table cannot name: the destination chain, a swap's minimum
+   * received, the dust a bridge cannot carry, a trustline's reserve.
+   *
+   * rows and not an `effects` line, because `effects` is drawn inside an InfoTip
+   * and this file's own rule is that "every SIGNED fact stays VISIBLE ... a fact
+   * behind a hover is a blind signature". Sending to Base put the word Base
+   * nowhere on the sheet, and the Arbitrum sheet was identical except for an
+   * address that is valid on both.
+   */
+  facts?: { label: string; value: string }[];
   /** the error above is an UNRESOLVED submission, not a failure. see `OpVerdict`. */
   unresolved?: boolean;
 }) {
@@ -452,7 +465,7 @@ export function WalletReview({
       {/* the signed facts, as the reference's row table. every value here is what
           leaves the machine; the enumeration behind "what this does" is the same
           facts spelled out, one tap away. */}
-      {(fiat != null || amount || fee || memo) && (
+      {(fiat != null || amount || fee || memo || facts?.length) && (
         <div style={{ display: "flex", flexDirection: "column", gap: space.md }}>
           {fiat != null && (
             <FactRow t={t} label="Total value">
@@ -489,6 +502,11 @@ export function WalletReview({
               )}
             </FactRow>
           )}
+          {facts?.map((f) => (
+            <FactRow key={f.label} t={t} label={f.label}>
+              {f.value}
+            </FactRow>
+          ))}
         </div>
       )}
 
@@ -538,6 +556,7 @@ export function ReviewPanel({
   fiat,
   effects,
   warning,
+  facts,
   blocked,
   error,
   unresolved,
@@ -575,6 +594,18 @@ export function ReviewPanel({
   /** set when the wallet could not read what it is being asked to sign. */
   blocked?: string;
   error?: string | null;
+  /**
+   * extra SIGNED facts, one row each, for whatever a flow commits that the
+   * amount/fee/memo table cannot name: the destination chain, a swap's minimum
+   * received, the dust a bridge cannot carry, a trustline's reserve.
+   *
+   * rows and not an `effects` line, because `effects` is drawn inside an InfoTip
+   * and this file's own rule is that "every SIGNED fact stays VISIBLE ... a fact
+   * behind a hover is a blind signature". Sending to Base put the word Base
+   * nowhere on the sheet, and the Arbitrum sheet was identical except for an
+   * address that is valid on both.
+   */
+  facts?: { label: string; value: string }[];
   /** the error above is an UNRESOLVED submission, not a failure. see `OpVerdict`. */
   unresolved?: boolean;
   busy: boolean;
@@ -619,6 +650,7 @@ export function ReviewPanel({
         effects={effects}
         alreadyDone={alreadyDone}
         warning={warning}
+        facts={facts}
         blocked={blocked}
         error={error}
         unresolved={unresolved}
@@ -852,6 +884,7 @@ export function ConfirmSheet({
   fiat,
   effects,
   warning,
+  facts,
   blocked,
   error,
   unresolved,
@@ -887,6 +920,18 @@ export function ConfirmSheet({
   warning?: string;
   blocked?: string;
   error?: string | null;
+  /**
+   * extra SIGNED facts, one row each, for whatever a flow commits that the
+   * amount/fee/memo table cannot name: the destination chain, a swap's minimum
+   * received, the dust a bridge cannot carry, a trustline's reserve.
+   *
+   * rows and not an `effects` line, because `effects` is drawn inside an InfoTip
+   * and this file's own rule is that "every SIGNED fact stays VISIBLE ... a fact
+   * behind a hover is a blind signature". Sending to Base put the word Base
+   * nowhere on the sheet, and the Arbitrum sheet was identical except for an
+   * address that is valid on both.
+   */
+  facts?: { label: string; value: string }[];
   /** the error above is an UNRESOLVED submission, not a failure. see `OpVerdict`. */
   unresolved?: boolean;
   busy: boolean;
@@ -965,6 +1010,7 @@ export function ConfirmSheet({
               fiat={fiat}
               effects={effects}
               warning={warning}
+              facts={facts}
               blocked={blocked}
               error={error}
               unresolved={unresolved}

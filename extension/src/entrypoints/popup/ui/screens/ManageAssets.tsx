@@ -181,6 +181,11 @@ export function ManageAssets({ onClose }: { onClose: () => void }) {
         heading={`Remove ${removing?.code ?? ""}`}
         code={removing?.code ?? "XLM"}
         fee={summary?.fee}
+        // the reserve is the largest number in this transaction by five orders of
+        // magnitude (0.5 XLM against a fee around 0.00001) and it was stated only
+        // inside the effects list, behind a tap. it is locked, not spent, and the
+        // row says which.
+        facts={[{ label: "Reserve locked", value: "0.5 XLM, released if removed" }]}
         effects={summary?.effects ?? []}
         error={error}
         unresolved={unresolved}
