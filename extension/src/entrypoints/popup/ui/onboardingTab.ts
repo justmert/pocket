@@ -61,20 +61,55 @@ export async function placeOnboarding(): Promise<Placement> {
 }
 
 /**
+ * is our onboarding page still the thing living in that tab?
+ *
+ * a remembered tab id answers only "does a tab with this id exist", and that is
+ * the wrong question twice over: the tab can have been closed, and it can have
+ * been navigated somewhere else with the id still perfectly alive. `tabs.update`
+ * succeeds in the second case, so raising by id alone could focus a tab showing
+ * an unrelated web page and then close the wallet on top of it.
+ *
+ * `runtime.getContexts` answers the right question directly: it enumerates this
+ * extension's OWN live documents, so a tab appears here only while one of our
+ * pages is still loaded in it. it needs no permission (the prover already uses
+ * it, core/prover/client.ts:27), which matters because reading `Tab.url` instead
+ * would need "tabs" or a host permission and D12 committed to adding neither.
+ */
+async function stillOurs(id: number): Promise<boolean> {
+  try {
+    const contexts = await chrome.runtime.getContexts({
+      contextTypes: [chrome.runtime.ContextType.TAB],
+      tabIds: [id],
+    });
+    return contexts.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * bring the tab holding the phrase to the front, from a window that is not it.
  *
  * exported for the second-window case: a toolbar click during an unfinished
  * backup should take the user back to the words rather than show them a wallet.
- * if the tab is gone there is nothing to raise and nothing to do — the phrase
- * went with it, which is the loss `beforeunload` on that screen exists to make
- * deliberate.
+ *
+ * TRUE means this window is closing because the words are now in front of the
+ * user. FALSE means they are not, and the caller owes them a different screen:
+ * the old signature was `Promise<void>`, so the one control on that screen did
+ * nothing at all whenever the tab had gone, on a screen that stands in front of
+ * the whole wallet until the browser is quit. "the phrase went with it" was true
+ * and was never the user's whole problem.
  */
-export async function raiseOnboardingTab(): Promise<void> {
+export async function raiseOnboardingTab(): Promise<boolean> {
   try {
     const remembered = (await chrome.storage.session.get(OPEN_TAB_KEY))[OPEN_TAB_KEY] as unknown;
-    if (typeof remembered === "number" && (await raise(remembered))) window.close();
+    if (typeof remembered !== "number") return false;
+    if (!(await stillOurs(remembered))) return false;
+    if (!(await raise(remembered))) return false;
+    window.close();
+    return true;
   } catch {
-    // nothing to raise.
+    return false;
   }
 }
 

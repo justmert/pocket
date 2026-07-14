@@ -34,6 +34,7 @@ import {
   RebuildSheet,
 } from "./sheets/SettingsSheets";
 import {
+  clearOnboardingUnfinished,
   onboardingUnfinished,
   placeOnboarding,
   raiseOnboardingTab,
@@ -118,7 +119,11 @@ function OnboardingGate({ t, onDone }: { t: Theme; onDone: () => void }) {
  * while the answer is unknown, which `Root` treats as "not yet" rather than
  * flashing Home and correcting itself.
  */
-function useUnfinishedOnboarding(hasWallet: boolean): boolean {
+function useUnfinishedOnboarding(hasWallet: boolean): {
+  unfinished: boolean;
+  /** the user acknowledged the phrase is unconfirmed and asked for the wallet. */
+  release: () => void;
+} {
   const [unfinished, setUnfinished] = useState(false);
   useEffect(() => {
     if (!hasWallet) return;
@@ -130,7 +135,10 @@ function useUnfinishedOnboarding(hasWallet: boolean): boolean {
       live = false;
     };
   }, [hasWallet]);
-  return unfinished;
+  // the effect keys on `hasWallet`, which does not change when the marker is
+  // cleared, so nothing would re-read storage and the screen would stay put
+  // after the one press meant to leave it.
+  return { unfinished, release: () => setUnfinished(false) };
 }
 
 /**
@@ -139,20 +147,72 @@ function useUnfinishedOnboarding(hasWallet: boolean): boolean {
  * it does not offer the wallet and it does not offer onboarding: the flow is
  * already running somewhere else, and two windows both showing a recovery phrase
  * step would be its own defect. it raises that one.
+ *
+ * and when there is no longer one to raise, it says so and lets the user out.
+ * this screen stands in front of the ENTIRE wallet and its marker lives in
+ * session storage, so for as long as the browser stays open there was no way
+ * past it: the single control called a function that answered "the tab is gone"
+ * and then discarded the answer, so the press did nothing, every time. the user
+ * has a complete unlocked vault, a password they just chose, and a phrase that
+ * Settings can still show them, and could reach none of it without quitting
+ * chrome.
+ *
+ * the way out is deliberately a SECOND press, on a control that says what it
+ * costs, and it is offered only once raising has actually been tried and failed.
+ * clearing the marker on its own is what must not happen: that is the wallet
+ * presenting itself as finished while the phrase has never been written down,
+ * which is the failure `markOnboardingUnfinished` exists to prevent.
  */
-function FinishOnboarding({ t }: { t: Theme }) {
+function FinishOnboarding({ t, onContinue }: { t: Theme; onContinue: () => void }) {
+  // null until the user has asked. false only once a raise has been attempted
+  // and the tab turned out to be gone, so the "gone" copy is never shown on a
+  // guess.
+  const [raised, setRaised] = useState<boolean | null>(null);
+  const [raising, setRaising] = useState(false);
+
+  const go = async () => {
+    setRaising(true);
+    const ok = await raiseOnboardingTab();
+    // on success this window is already closing, so there is no state to set.
+    if (!ok) {
+      setRaised(false);
+      setRaising(false);
+    }
+  };
+
+  const leave = async () => {
+    await clearOnboardingUnfinished();
+    onContinue();
+  };
+
   return (
     <Boot t={t}>
       <div style={{ marginTop: space.lg, width: "100%" }}>
-        <Notice t={t} tone="exposed">
-          Your recovery phrase is still open in another tab and has not been confirmed yet. Finish
-          writing it down there.
-        </Notice>
-        <ButtonStack>
-          <Button t={t} onClick={() => void raiseOnboardingTab()}>
-            Go back to it
-          </Button>
-        </ButtonStack>
+        {raised === false ? (
+          <>
+            <Notice t={t} tone="exposed">
+              That tab is gone, so your recovery phrase was never confirmed. Your wallet itself is
+              safe. Open Settings, then Recovery phrase, to see the words again and write them down.
+            </Notice>
+            <ButtonStack>
+              <Button t={t} onClick={() => void leave()}>
+                Continue to the wallet
+              </Button>
+            </ButtonStack>
+          </>
+        ) : (
+          <>
+            <Notice t={t} tone="exposed">
+              Your recovery phrase is still open in another tab and has not been confirmed yet.
+              Finish writing it down there.
+            </Notice>
+            <ButtonStack>
+              <Button t={t} busy={raising} onClick={() => void go()}>
+                Go back to it
+              </Button>
+            </ButtonStack>
+          </>
+        )}
       </div>
     </Boot>
   );
@@ -162,7 +222,7 @@ function Root() {
   const w = useWallet();
   const t = w.t;
   const [recovering, setRecovering] = useState(false);
-  const unfinished = useUnfinishedOnboarding(w.status?.initialised === true);
+  const { unfinished, release } = useUnfinishedOnboarding(w.status?.initialised === true);
 
   if (!w.status) {
     return w.bootError ? (
@@ -193,7 +253,7 @@ function Root() {
   // balance — the strongest possible statement that setup is done, made while
   // the only copy of the recovery phrase was still unrecorded on another screen.
   // this window says nothing of the kind and sends the user back to the words.
-  if (unfinished) return <FinishOnboarding t={t} />;
+  if (unfinished) return <FinishOnboarding t={t} onContinue={release} />;
 
   if (w.status.locked) {
     return recovering ? (

@@ -122,6 +122,11 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
     setHandle(null);
     setSummary(null);
     setAdding(null);
+    // the sheet's error goes with the sheet. it used to be able to stay set here
+    // harmlessly, because the only reader was the sheet that was closing; now the
+    // page body draws it too, and a dismissed approve failure would reappear over
+    // the results list as though the search had failed.
+    setError(null);
     // added: go back to Your assets, which reloads and shows the new asset.
     if (done) onClose();
   };
@@ -211,6 +216,23 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
             {searchError && (
               <Notice t={t} tone="danger">
                 {searchError}
+              </Notice>
+            )}
+
+            {/* a build that fails never opens the sheet, so the sheet cannot carry the
+             * message. `error` was passed ONLY to ConfirmSheet, and on this path
+             * `setConfirming(true)` is never reached: the throw happens on the awaited
+             * `buildAddTrustline`, so the sheet has never mounted and the node that would
+             * draw the reason does not exist. pressing Add on an unfunded account was
+             * silent, twice, forever. the sibling screen has always drawn the same state
+             * as a page-body notice (ManageAssets), which is why this reads as an
+             * oversight rather than a decision.
+             *
+             * gated on `!confirming` so the approve path, which DOES have the sheet open
+             * and shows the reason there, does not print it in two places at once. */}
+            {!confirming && error && (
+              <Notice t={t} tone="danger">
+                {error}
               </Notice>
             )}
 
