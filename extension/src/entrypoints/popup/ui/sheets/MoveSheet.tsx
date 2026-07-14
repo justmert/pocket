@@ -259,7 +259,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
             approveLabel="Approve"
             onApprove={() => void approve()}
             onCancel={() => setStage("menu")}
-            onGoHome={close}
+            onGoHome={w.goHome}
           />
         )}
 

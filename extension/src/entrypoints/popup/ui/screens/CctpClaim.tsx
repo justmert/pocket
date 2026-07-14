@@ -251,9 +251,15 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
             <div
               style={{ padding: `${space.md}px ${space.gutter}px ${space.lg}px`, background: t.bg }}
             >
+              {/* `disabled` is NOT gated on `error`. this screen has no amount
+               * field, and its most ordinary error is "not attested yet. Try again
+               * shortly.", which is an instruction to press this button again:
+               * latching it off left the wallet giving an instruction and removing
+               * the means to follow it. `review` clears the error on entry, so a
+               * retry that fails the same way simply says so again. */}
               <Button
                 t={t}
-                disabled={!ready || Boolean(error)}
+                disabled={!ready}
                 busy={building}
                 onClick={() => void review()}
               >
@@ -292,7 +298,7 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
         onApprove={() => void approve()}
         onCancel={closeConfirm}
         onDone={closeConfirm}
-        onGoHome={onClose}
+        onGoHome={w.goHome}
         onClosed={onConfirmClosed}
       />
     </>

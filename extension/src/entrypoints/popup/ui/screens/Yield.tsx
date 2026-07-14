@@ -40,6 +40,17 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
   // this submission. it is not an error, so it is not drawn as one, and Approve
   // stays down while it is true.
   const [unresolved, setUnresolved] = useState(false);
+
+  // a build error describes the inputs that produced it, so it must not outlive
+  // them. it was cleared in the amount handler alone, which meant every OTHER
+  // input latched the primary action off for good: correct a mistyped address and
+  // Continue stayed grey, change the pair after "no swap route was found for that
+  // pair and amount" and Continue stayed grey. keyed on the inputs rather than
+  // repeated in each setter, so an input added later cannot forget to do it.
+  useEffect(() => {
+    setError(null);
+  }, [kind, amount]);
+
   const [building, setBuilding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -369,7 +380,7 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
         onApprove={() => void approve()}
         onCancel={closeConfirm}
         onDone={closeConfirm}
-        onGoHome={onClose}
+        onGoHome={w.goHome}
         onClosed={onConfirmClosed}
       />
     </>

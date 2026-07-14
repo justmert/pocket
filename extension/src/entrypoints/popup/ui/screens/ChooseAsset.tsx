@@ -280,7 +280,7 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
         onApprove={() => void approve()}
         onCancel={closeConfirm}
         onDone={closeConfirm}
-        onGoHome={closeConfirm}
+        onGoHome={w.goHome}
       />
     </>
   );

@@ -225,6 +225,8 @@ interface Wallet {
   sheets: SheetId[];
   openSheet(id: SheetId): void;
   closeSheet(): void;
+  /** clear the whole sheet stack and return to the home tab. */
+  goHome(): void;
   /**
    * the asset whose detail sheet is open.
    *
@@ -752,6 +754,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     [],
   );
   const closeSheet = useCallback(() => setSheets((s) => s.slice(0, -1)), []);
+  // actually go home, from anywhere, whatever is stacked over it.
+  //
+  // the processing view's "Go to Home" is called its "only way out" by flow.tsx,
+  // and it was wired to nine different things. seven screens handed it their own
+  // `onClose`, which pops ONE sheet and never touches the tab, so leaving a Send
+  // that was opened from Activity landed back on Activity; two handed it a
+  // `closeConfirm` that opens with `if (busy) return`, and the processing view
+  // renders only while busy, so on those two the button could not do anything at
+  // all. one name, one behaviour, and the whole stack goes rather than its top.
+  const goHome = useCallback(() => {
+    setSheets([]);
+    setTab("home");
+  }, []);
   const openAsset = useCallback((b: PublicBalance) => {
     setAssetDetail(b);
     setSheets((s) => (s[s.length - 1] === "asset" ? s : [...s, "asset"]));
@@ -813,6 +828,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     sheets,
     openSheet,
     closeSheet,
+    goHome,
     assetDetail,
     openAsset,
     openPrivateAsset,
