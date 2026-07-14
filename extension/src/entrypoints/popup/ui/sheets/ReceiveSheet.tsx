@@ -60,6 +60,18 @@ export function ReceiveSheet({ open, onClose }: { open: boolean; onClose: () => 
                 {address}
               </span>
             </div>
+            {/* which ledger this address is on. a stellar address is valid on
+                both networks and looks identical on each, so an address handed
+                out with nothing naming the network is the one place this wallet
+                could cause a real loss on a testnet-only build: funds sent from
+                mainnet to it are simply gone. it disappears on mainnet. */}
+            {w.status && w.status.network !== "mainnet" && (
+              <div style={{ marginTop: space.sm }}>
+                <Notice t={t} tone="exposed" bare>
+                  This is a testnet address. Only send testnet assets to it.
+                </Notice>
+              </div>
+            )}
             <ButtonStack>
               <Button t={t} onClick={() => w.copy(address)}>
                 {w.copied ? "Copied" : "Copy address"}

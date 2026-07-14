@@ -911,6 +911,29 @@ export function Home() {
             }}
           >
             pocket
+            {/* which ledger this whole screen is about. every shipped build is
+                testnet (`controller.ts` throws for mainnet), and no screen that
+                stated a dollar figure said so: the hero, the asset rows and the
+                Receive address were all identical to a real-money wallet. read
+                from `status.network`, so the badge disappears by itself the day
+                mainnet ships rather than needing to be remembered. */}
+            {status && status.network !== "mainnet" && (
+              <span
+                style={{
+                  marginLeft: space.sm,
+                  padding: "2px 8px",
+                  borderRadius: radius.pill,
+                  background: t.exposedSoft,
+                  color: t.exposed,
+                  ...text.caption,
+                  fontWeight: 600,
+                  letterSpacing: 0,
+                  verticalAlign: "middle",
+                }}
+              >
+                Testnet
+              </span>
+            )}
           </h1>
           {status?.address ? (
             <button

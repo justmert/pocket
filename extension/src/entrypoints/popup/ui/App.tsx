@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { WalletProvider, useWallet } from "./WalletProvider";
 import { Button, ButtonStack, Frame, Notice, Spinner, Toast } from "./primitives";
 import { Logo } from "./Brand";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { BottomNav } from "./BottomNav";
 import { Home } from "./screens/Home";
 import { History } from "./screens/History";
@@ -44,9 +45,14 @@ import { space, text, type Theme } from "./theme";
 
 export function App() {
   return (
-    <WalletProvider>
-      <Root />
-    </WalletProvider>
+    // OUTSIDE the provider on purpose: the provider is the component that talks
+    // to the worker on mount, so it can throw too, and a boundary inside it
+    // would not catch that.
+    <ErrorBoundary>
+      <WalletProvider>
+        <Root />
+      </WalletProvider>
+    </ErrorBoundary>
   );
 }
 

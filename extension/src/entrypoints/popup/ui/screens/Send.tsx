@@ -243,7 +243,16 @@ export function Send({ onClose }: { onClose: () => void }) {
     if (!spendable) return;
     const part = fractionOf(spendable, numerator, denominator);
     const whole = numerator === denominator;
-    const raw = whole && !isPrivate ? sendableAfterFee(part, BASE_FEE_STROOPS) : part;
+    // ...and only for XLM. the fee is paid in XLM and is not deducted from the
+    // asset being sent, which `controller.ts` states beside the builder ("The fee
+    // is XLM and is not deducted from THIS asset"). holding exactly 100 USDC and
+    // pressing Use max filled 99.9999, so a credit balance could never be emptied
+    // and its trustline could therefore never be closed: removal is refused while
+    // anything is still held.
+    const raw =
+      whole && !isPrivate && assetId === "native"
+        ? sendableAfterFee(part, BASE_FEE_STROOPS)
+        : part;
     // four fraction digits is enough on the compose screen; the extra stellar
     // places only made a long, hard-to-read number. truncated, never rounded up.
     setAmount(composeAmount(raw, 4));

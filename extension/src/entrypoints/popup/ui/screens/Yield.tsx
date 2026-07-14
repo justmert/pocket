@@ -94,7 +94,16 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
     // stroops and pays for a classic payment; this call pays a resource fee decided
     // by simulation, measured in the hundreds of thousands. Reserving 100 stroops
     // produced a "use max" amount that left nothing for the real fee.
-    const raw = markId === "native" ? sendableAfterFee(part, SOROBAN_FEE_RESERVE_STROOPS) : part;
+    // ...and only on a DEPOSIT, which is the only leg that spends a held wallet
+    // balance. a withdraw draws from the vault; the controller says so in its own
+    // words ("A WITHDRAW is not guarded here because it does not spend a wallet
+    // balance at all"). taking the reserve off it emptied nothing: with 3.33 XLM
+    // in the vault, max filled 2.83, and a position under the 0.5 reserve filled
+    // 0 with Continue disabled and no explanation.
+    const raw =
+      kind === "deposit" && markId === "native"
+        ? sendableAfterFee(part, SOROBAN_FEE_RESERVE_STROOPS)
+        : part;
     setAmount(composeAmount(raw, 4));
   };
 

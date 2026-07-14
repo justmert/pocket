@@ -79,10 +79,10 @@ export function FundTestnetCard({ t }: { t: Theme }) {
             textOverflow: "ellipsis",
           }}
         >
-          Fund this account
+          Fund this testnet account
         </span>
         <Button t={t} size="pill" onClick={() => void fund()} busy={funding} disabled={funding}>
-          {funding ? "Funding" : "Get XLM"}
+          {funding ? "Funding" : "Get testnet XLM"}
         </Button>
       </div>
       {error && (
