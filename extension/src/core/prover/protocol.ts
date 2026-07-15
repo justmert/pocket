@@ -20,6 +20,29 @@ export const PROVER_CHANNEL = "pocket.prover";
  * to end it. It also stays under the platform's 5-minute cap on a single
  * request, so our error arrives before Chrome's silent kill.
  */
+/**
+ * A prover failure, in the wallet's own words.
+ *
+ * The three throws in `prover/client.ts` were bare `Error`s, so `e.name` was
+ * "Error", which is on neither of `dispatch.ts`'s allowlists. Six distinct and
+ * differently actionable failures therefore all reached the user as "Something
+ * went wrong. Try again, and check your connection." That sentence names a
+ * cause, the connection, which is never the cause: the prover is an offscreen
+ * document in this extension and touches no network. The private pocket is the
+ * product, and its slowest and most fragile step pointed the user at their wifi.
+ *
+ * The message is always ONE OF OUR OWN sentences. bb's own error text is
+ * library-authored and may carry a stack fragment or a wasm trap string, so it
+ * is never passed through; `dispatch.ts` keeps its allowlist by error NAME for
+ * exactly that reason.
+ */
+export class ProverError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProverError";
+  }
+}
+
 export const PROVER_INIT_TIMEOUT_MS = 30_000;
 export const PROVER_PROVE_TIMEOUT_MS = 120_000;
 export const PROVER_DEADLINE_MS = 165_000;

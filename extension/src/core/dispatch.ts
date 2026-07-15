@@ -341,6 +341,13 @@ const SAFE_ERRORS = new Set([
   "UnspendableBlindingError",
   "CctpParameterError",
   "AquariusError",
+  // The prover's three failure points threw bare `Error`s, so `e.name` was
+  // "Error" and all of them fell through to "Something went wrong. Try again,
+  // and check your connection." The prover is an offscreen document inside this
+  // extension and touches no network, so that sentence named a cause that can
+  // never be the cause, on the wallet's slowest and most fragile step. Its
+  // messages are authored in `prover/protocol.ts` and never carry bb's own text.
+  "ProverError",
   "IrisError",
   // The fourth service client, and it was the one omission on this list that no
   // comment argued for. Its absence was not cosmetic: every sentence the yield

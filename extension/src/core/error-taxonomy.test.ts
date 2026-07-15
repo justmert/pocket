@@ -14,9 +14,17 @@ import { InvalidAmountError } from "./chain/balances";
 import { StaleHandleError, InvalidAddressKindError } from "./controller";
 import { RecoveryUnavailableError, RecoveryMismatchError } from "./recover-openings";
 import { DefindexError } from "./integrations/defindex";
+import { ProverError } from "./prover/protocol";
 
 /** Each name, an instance, and what the user must be able to read. */
 const NAMED: [string, Error, RegExp][] = [
+  [
+    // The prover threw bare `Error`s, so its six distinct failures all reached
+    // the user as "check your connection" on a step that makes no network call.
+    "ProverError",
+    new ProverError("Pocket could not build the proof for this private operation."),
+    /could not build the proof/i,
+  ],
   [
     "LedgerReadError",
     new LedgerReadError("the ledger did not answer the question"),

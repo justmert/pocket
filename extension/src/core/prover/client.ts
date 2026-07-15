@@ -9,6 +9,7 @@
 // every time.
 import {
   PROVER_CHANNEL,
+  ProverError,
   type CircuitName,
   type ProveRequest,
   type ProverResponse,
@@ -98,18 +99,23 @@ async function ask<T extends ProverResponse>(
 
   if (res === wedged) {
     await closeProver().catch(() => undefined);
-    throw new Error(
-      `the prover did not answer within ${Math.round(deadlineMs / 1000)}s and has been reset`,
+    throw new ProverError(
+      `The private operation took longer than ${Math.round(deadlineMs / 1000)}s and was stopped. Nothing was sent. Try it again.`,
     );
   }
-  if (!res) throw new Error("the prover did not respond");
+  if (!res)
+    throw new ProverError(
+      "Pocket could not start the component that builds private proofs. Close and reopen the wallet, then try again.",
+    );
   if (!res.ok) {
     // A job that blew its own timeout already dropped the bb instance inside
     // the document. Take the document with it: the instance is gone either way,
     // and a document whose queue may still be blocked by a teardown we could
     // not wait for is not worth keeping warm.
     if (/timed out/.test(res.error)) await closeProver().catch(() => undefined);
-    throw new Error(res.error);
+    // `res.error` is bb's own text and is NOT passed through: it is
+    // library-authored and can carry a wasm trap string or a stack fragment.
+    throw new ProverError("Pocket could not build the proof for this private operation.");
   }
   return res as Extract<T, { ok: true }>;
 }
