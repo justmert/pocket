@@ -562,6 +562,22 @@ export function Home() {
         <HeroAmount t={t} value={held.spendable!} code={held.symbol ?? ""} hidden={w.hidden} />
       );
     }
+    // nothing spendable, and WHY is not one answer. D17 records the decision:
+    // "Not open yet" is true for `unavailable`, `unfunded` and `unregistered` and
+    // false for `archived`, `needsRecovery` and `diverged`, where the pocket
+    // exists, holds money, and this device merely cannot read it right now. that
+    // fix was applied to `singleAssetHero`, which no shipped build reaches:
+    // testnet configures two confidential assets, so `multiPrivate` is always
+    // true, and mainnet configures none, so the tab is hidden. so the decision
+    // stopped executing anywhere while still being recorded as made.
+    //
+    // with several assets the states can disagree, and the WORST one is named:
+    // saying "nothing spendable" while one asset needs rebuilding is the reading
+    // D17 exists to prevent, and it is the frightening one.
+    const worst = privAssets
+      .map((p) => p.state)
+      .sort((a, b) => HERO_STATE_RANK.indexOf(b) - HERO_STATE_RANK.indexOf(a))[0];
+    const label = worst && worst !== "ready" ? HERO_STATE[worst] : "Nothing spendable yet";
     return (
       <div
         style={{
@@ -570,7 +586,7 @@ export function Home() {
           alignItems: "center",
         }}
       >
-        <span style={{ ...text.heading, color: t.sub }}>Nothing spendable yet</span>
+        <span style={{ ...text.heading, color: t.sub }}>{label}</span>
       </div>
     );
   }
@@ -1186,6 +1202,23 @@ export function Home() {
  * the words are `Held`'s labels, so the hero and the sheet that fixes it call the
  * same state by the same name.
  */
+/**
+ * which non-ready state a mixed list is named by, least to most serious.
+ *
+ * "your money is here and unreadable" outranks "you have not opened this yet":
+ * the first is the one a user needs to act on, and the one whose absence reads
+ * as the money having gone.
+ */
+const HERO_STATE_RANK: PrivatePocket["state"][] = [
+  "ready",
+  "unavailable",
+  "unfunded",
+  "unregistered",
+  "diverged",
+  "archived",
+  "needsRecovery",
+];
+
 const HERO_STATE: Record<PrivatePocket["state"], string> = {
   unavailable: "Not open yet",
   unfunded: "Not open yet",

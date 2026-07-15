@@ -632,8 +632,15 @@ export function ReviewPanel({
   // the two can no longer drift the way they did when each carried its own copy.
   // while working, the review gives way to the processing view on its own, the
   // same as ConfirmSheet, so the two surfaces stay identical.
+  // the worker's own sentence for the step it is on, when it has one. it
+  // publishes eight of them and nothing read a single one, so a private
+  // operation (up to 165s of proving) was one unchanging frame for its whole
+  // duration. `controller.ts` states the standard beside the phases it sets: "A
+  // single unchanging sentence over eight seconds is the picture a hung app
+  // shows, and this wallet has just told the user the binding is permanent."
+  const phase = usePhase(busy);
   return busy ? (
-    <Progress t={t} onGoHome={onGoHome} />
+    <Progress t={t} subtitle={phase ?? undefined} onGoHome={onGoHome} />
   ) : (
     <div style={{ display: "flex", flexDirection: "column", gap: space.gutter }}>
       <WalletReview
@@ -955,6 +962,9 @@ export function ConfirmSheet({
    *  its route once the receipt has animated out rather than cutting it short. */
   onClosed?: () => void;
 }) {
+  // see ReviewPanel: the worker's phase for the step it is on, so a long private
+  // operation reads as progress rather than as a hung frame.
+  const phase = usePhase(busy);
   return (
     <Sheet
       t={t}
@@ -993,7 +1003,7 @@ export function ConfirmSheet({
         ) : busy ? (
           // the working state fills the sheet on its own, the reference's processing
           // view: the mark, "Processing", and the way home while it lands.
-          <Progress t={t} onGoHome={onGoHome} />
+          <Progress t={t} subtitle={phase ?? undefined} onGoHome={onGoHome} />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: space.gutter }}>
             <WalletReview

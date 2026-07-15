@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import {
@@ -325,8 +325,14 @@ export function EraseSheet({ open, onClose }: { open: boolean; onClose: () => vo
   // entirely and arrived with the field pre-filled and focused, one Enter from
   // erasing the wallet. The two-step gate exists precisely because this is the
   // one irreversible act in the product, and it was only ever asked once.
+  // the same opening generation PhraseSheet keeps, for the same reason: the reset
+  // below is an await away from landing, and a result that arrives after the
+  // sheet has closed would repopulate state the close had just cleared.
+  const opening = useRef(0);
+
   useEffect(() => {
     if (open) return;
+    opening.current++;
     setPassword("");
     setConfirmed(false);
     setBusy(false);
@@ -335,6 +341,7 @@ export function EraseSheet({ open, onClose }: { open: boolean; onClose: () => vo
 
   const run = async () => {
     if (!password || busy) return;
+    const mine = opening.current;
     setBusy(true);
     setError(null);
     try {
@@ -342,6 +349,7 @@ export function EraseSheet({ open, onClose }: { open: boolean; onClose: () => vo
       await w.reloadStatus();
       onClose();
     } catch (e) {
+      if (opening.current !== mine) return;
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
     }
@@ -443,10 +451,23 @@ export function PhraseSheet({ open, onClose }: { open: boolean; onClose: () => v
   const [error, setError] = useState<string | null>(null);
   const [copy, setCopy] = useState<"idle" | "done" | "failed">("idle");
 
+  // which OPENING of the sheet a reveal belongs to.
+  //
+  // the reset below runs on close, but `reveal` is an await away from landing:
+  // close the sheet while the button still reads "Checking" and the reset runs
+  // first, the phrase resolves into state after it, and because `Shell` mounts
+  // this sheet unconditionally that state survives the close. the next open found
+  // `mnemonic !== null` and drew the twenty-four words with no password step at
+  // all. the window is the scrypt cost this sheet exists to spend (`KDF_PARAMS`
+  // is measured at ~250ms) plus a message round trip, which is exactly what the
+  // "Checking" state is there to cover.
+  const opening = useRef(0);
+
   // clear everything the moment the sheet closes. the phrase, and the password
   // that unlocked it, must not survive in a hidden-but-mounted sheet.
   useEffect(() => {
     if (open) return;
+    opening.current++;
     setPassword("");
     setMnemonic(null);
     setBusy(false);
@@ -463,19 +484,25 @@ export function PhraseSheet({ open, onClose }: { open: boolean; onClose: () => v
 
   const reveal = async () => {
     if (!password || busy) return;
+    const mine = opening.current;
     setBusy(true);
     setError(null);
     try {
       const phrase = await call({ type: "revealPhrase", password });
+      // the sheet was closed while this was in flight, so this answer belongs to
+      // an opening that is over. dropping it is the whole guard: setting it here
+      // is what let the next open show the words ungated.
+      if (opening.current !== mine) return;
       setMnemonic(phrase);
       // the password has done its job; drop it rather than leave it in a field,
       // where it is itself a needle the secrets sweep hunts for.
       setPassword("");
     } catch (e) {
+      if (opening.current !== mine) return;
       setError(e instanceof Error ? e.message : String(e));
       setPassword("");
     } finally {
-      setBusy(false);
+      if (opening.current === mine) setBusy(false);
     }
   };
 
