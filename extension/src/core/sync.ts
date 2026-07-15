@@ -343,8 +343,40 @@ export function applyEvent(
       // them. Only the recipient's receiving side moves.
       party(event, 0, "spender");
       party(event, 1, "from");
-      if (party(event, 2, "to") === me) throw inboundUnreadable(event, "sigma_a");
-      return next;
+      if (party(event, 2, "to") !== me) return next;
+
+      // Credited exactly like a `transfer`, because for the RECIPIENT it is
+      // one. Both circuits derive the recipient's opening with the same two
+      // lines and the same domain tags, differing only in which salt is
+      // absorbed: `sigma` there, the delegation's `sigma_a` here
+      // (circuits/transfer/src/main.nr:42,48 against
+      // circuits/spender_transfer/src/main.nr:38,44). `c_transfer` rides in the
+      // invocation for both, and `NEEDS_PAYLOAD` in indexer/src/ingest.ts:109
+      // already names both, so the archive has been storing what this needs all
+      // along.
+      //
+      // This branch used to throw unconditionally, and that was the second half
+      // of a permanent strand. The live scan does not see the event either
+      // (inbound.ts filtered two names, not three), so the accumulator moved,
+      // `creditInbound`'s all-or-nothing check could not reproduce it, the
+      // pocket read `diverged`, and every spend was refused. The rebuild is the
+      // documented way out of `diverged` and it refused here, which closed the
+      // last door. Nobody had to consent to any of it: every `require_auth` in
+      // confidential/mod.rs is on the acting principal, and `add_to_receiving`
+      // (storage.rs:828) names the recipient with none.
+      if (!event.payload) throw inboundUnreadable(event, "sigma_a");
+      const opening = decryptIncomingTransfer(
+        keys.vk,
+        pointField(event, "r_e_point"),
+        scalarField(event, "v_tilde"),
+        scalarField(event, "sigma_a"),
+        event.payload.cTransfer,
+      );
+      // Null means the derived opening does not open the published commitment:
+      // not ours, replayed, re-encoded, or corrupt. Refuse rather than credit,
+      // exactly as the `transfer` branch does.
+      if (!opening) throw inboundUnreadable(event, "sigma_a");
+      return { ...next, receiving: credit(state.receiving, opening) };
     }
 
     case "set_spender":

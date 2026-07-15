@@ -167,11 +167,29 @@ interface TransferBody {
   sigma: bigint;
 }
 
+/**
+ * Decode a transfer-shaped body, from either event that carries one.
+ *
+ * `transfer` names its salt `sigma`; `spender_transfer` names it `sigma_a`,
+ * because there the salt is the delegation's allowance salt rather than a
+ * per-transfer one. The RECIPIENT does not care which: the two circuits derive
+ * the recipient's opening identically, with sigma_a standing exactly where
+ * sigma stands.
+ *
+ *   transfer         T7 r_transfer = Poseidon2(delta_transfer_blind, s, sigma)
+ *   spender_transfer O7 r_transfer = Poseidon2(delta_transfer_blind, s, sigma_a)
+ *   transfer         T9 v_tilde = v_transfer + Poseidon2(delta_transfer_amount, s, sigma)
+ *   spender_transfer O9 v_tilde = v_transfer + Poseidon2(delta_transfer_amount, s, sigma_a)
+ *
+ * (circuits/transfer/src/main.nr:42,48 and circuits/spender_transfer/src/main.nr:38,44)
+ *
+ * So `openInbound` needs no new crypto for the second one, only the right field.
+ */
 function decodeTransferBody(data: xdr.ScVal): TransferBody | null {
   const native = scValToNative(data) as Record<string, unknown>;
   const point = native.r_e_point;
   const v = native.v_tilde;
-  const s = native.sigma;
+  const s = native.sigma ?? native.sigma_a;
   // EVERY field arrives as raw bytes, not as a bigint. The contract publishes
   // BytesN<32> for the scalars and BytesN<64> for the point, so scValToNative
   // hands back Uint8Arrays and a `typeof x === "bigint"` check silently
@@ -263,11 +281,30 @@ export async function findInbound(
   // all-or-nothing check downstream ends up reasoning about a different event
   // set than the first page did.
   //
-  // TWO event names, because two things credit a receiving commitment. A
-  // `deposit` needs no proof and no permission from the recipient, so it is not
-  // an exotic case: it is how every shield works, and the contract lets anyone
-  // aim one at anyone. One filter object with both names, so the RPC still does
-  // the recipient filtering and the pagination stays a single cursor.
+  // THREE event names, because three things credit a receiving commitment, and
+  // none of them needs the recipient's permission.
+  //
+  // A `deposit` needs no proof at all: it is how every shield works and the
+  // contract lets anyone aim one at anyone.
+  //
+  // A `spender_transfer` is the one that hurts. `confidential_transfer_from`
+  // calls `add_to_receiving(e, to, &payload.c_transfer)` (storage.rs:828) with
+  // every `require_auth` in the file on the ACTING principal, never on `to`. So
+  // a stranger holding a delegation from any third party moves the accumulator
+  // of any registered account they choose. Missing from this filter, the scan
+  // could never reproduce that accumulator, `creditInbound`'s all-or-nothing
+  // check refused, and the pocket read `diverged` forever, refusing every
+  // spend. The circuit puts no lower bound on the transferred amount either
+  // (`v_transfer.assert_max_bit_size::<127>()` and no `assert(v_transfer != 0)`,
+  // spender_transfer/src/main.nr:248), so the whole attack costs one fee.
+  //
+  // Its `to` sits at topic index THREE, not two: the topics are
+  // ["spender_transfer", spender, from, to] against ["transfer", from, to].
+  // Filtering it at index 2 would match on `from` and silently find nothing,
+  // which is the same failure with an extra step.
+  //
+  // One filter object with all three names, so the RPC still does the recipient
+  // filtering and the pagination stays a single cursor.
   const filters = [
     {
       type: "contract" as const,
@@ -275,6 +312,12 @@ export async function findInbound(
       topics: [
         [xdr.ScVal.scvSymbol("transfer").toXDR("base64"), "*", me.toXDR("base64")],
         [xdr.ScVal.scvSymbol("deposit").toXDR("base64"), "*", me.toXDR("base64")],
+        [
+          xdr.ScVal.scvSymbol("spender_transfer").toXDR("base64"),
+          "*",
+          "*",
+          me.toXDR("base64"),
+        ],
       ],
     },
   ];

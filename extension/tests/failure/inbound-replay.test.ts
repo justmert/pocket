@@ -154,6 +154,103 @@ describe("a received payment replays when the archive supplies the invocation", 
   });
 });
 
+/**
+ * The same payment, arriving through `confidential_transfer_from`.
+ *
+ * A delegated spender moves someone else's balance to a recipient. Only the
+ * recipient's side is modelled here, because that is the side that was wedged.
+ *
+ * Built with `sigma_a` exactly where `sigma` goes above, which is not a guess:
+ * the two circuits derive the recipient's opening with the same two lines and
+ * the same domain tags,
+ *
+ *   transfer         T7/T9  Poseidon2(delta_transfer_blind|amount, s, sigma)
+ *   spender_transfer O7/O9  Poseidon2(delta_transfer_blind|amount, s, sigma_a)
+ *
+ * (circuits/transfer/src/main.nr:42,48 and spender_transfer/src/main.nr:38,44)
+ */
+function inboundSpenderTransfer(
+  amount: bigint,
+  opts: { ledger?: number } = {},
+): ConfidentialEvent {
+  const spenderVk = 0x1234567890abcdefn;
+  const rE = ephemeralScalar(spenderVk, SIGMA);
+  const RE = scalarMul(rE, H);
+  const s = sharedScalar(rE, publicViewingKey(MY_VK));
+  const rTransfer = transferBlinding(s, SIGMA);
+  return {
+    id: `${opts.ledger ?? 200}-0-0`,
+    type: "spender_transfer",
+    ledger: opts.ledger ?? 200,
+    txApplicationOrder: 0,
+    eventIndex: 0,
+    // FOUR topics: the spender is first, so the recipient is third.
+    topics: [SENDER, SENDER, ME],
+    data: {
+      r_e_point: pointBytes(RE),
+      v_tilde: toBytesBE(encryptAmount(amount, s, SIGMA)),
+      // Named sigma_a here, and there is no b_tilde on this event at all.
+      sigma_a: toBytesBE(SIGMA),
+      v_tilde_aud_r: toBytesBE(0n),
+      r_tilde_aud_r: toBytesBE(0n),
+      v_tilde_aud_s: toBytesBE(0n),
+      a_tilde_aud_s: toBytesBE(0n),
+    },
+    payload: { cTransfer: commit(amount, rTransfer) },
+  };
+}
+
+describe("a spender_transfer credited to us replays too", () => {
+  // The permanent strand. `confidential_transfer_from` calls
+  // `add_to_receiving(e, to, ...)` (storage.rs:828) and every require_auth in
+  // the module is on the ACTING principal, so a stranger holding any delegation
+  // moves the accumulator of any registered account they pick. The live scan
+  // did not ask for the event and this replay threw on sight of it, so the
+  // pocket read `diverged` and refused every spend, with the documented way out
+  // refusing as well. The circuit puts no lower bound on the amount either, so
+  // the whole thing cost one transaction fee.
+  it("credits the amount, and the opening opens the published commitment", () => {
+    const e = inboundSpenderTransfer(7_250_000n);
+    const out = replay(INITIAL_STATE, [e], keys);
+    expect(out.receiving.value).toBe(7_250_000n);
+    expect(
+      equals(commit(out.receiving.value, out.receiving.randomness), e.payload!.cTransfer),
+      "the credited opening does not open the commitment the contract holds",
+    ).toBe(true);
+  });
+
+  it("credits a ZERO-value one, which is the cheapest way to wedge a pocket", () => {
+    // spender_transfer/src/main.nr:248 bounds the amount above and never below,
+    // so v_transfer = 0 is a valid proof. C_transfer is still a real point
+    // (r_transfer * H for a hash-derived r), so the accumulator still moves and
+    // the pocket still diverges if this is not replayed.
+    const e = inboundSpenderTransfer(0n);
+    const out = replay(INITIAL_STATE, [e], keys);
+    expect(out.receiving.value).toBe(0n);
+    expect(equals(commit(0n, out.receiving.randomness), e.payload!.cTransfer)).toBe(true);
+  });
+
+  it("still refuses one whose payload does not open", () => {
+    // The control. Without it every assertion above is satisfied by a branch
+    // that credits whatever it derives, which is the invented-balance failure
+    // the refusal existed to prevent.
+    const e = inboundSpenderTransfer(7_250_000n);
+    const tampered = { ...e, payload: { cTransfer: commit(999_000_000n, 7n) } };
+    expect(() => replay(INITIAL_STATE, [tampered], keys)).toThrow(UnreplayableEventError);
+  });
+
+  it("still refuses one the archive stored without its invocation", () => {
+    const e = { ...inboundSpenderTransfer(7_250_000n), payload: undefined };
+    expect(() => replay(INITIAL_STATE, [e], keys)).toThrow(UnreplayableEventError);
+  });
+
+  it("leaves one addressed to somebody else alone", () => {
+    const e = inboundSpenderTransfer(7_250_000n);
+    const theirs = { ...e, topics: [SENDER, SENDER, "GA".padEnd(56, "X")] };
+    expect(replay(INITIAL_STATE, [theirs], keys).receiving.value).toBe(0n);
+  });
+});
+
 describe("the real event from the deployed contract", () => {
   it("publishes no commitment, which is the whole reason for the payload", async () => {
     // Captured off testnet, not written here. If a future contract version

@@ -307,22 +307,42 @@ describe("deposits addressed to us", () => {
   const names = () =>
     asked.map((t) => scValToNativeName(t[0])).filter((n): n is string => n !== null);
 
-  it("ASKS the RPC for deposits, not only transfers", async () => {
-    // The half that decoding tests cannot see. Without this filter the RPC
-    // never returns a deposit event at all, so every assertion below would
-    // pass over a scan that finds nothing in production.
+  it("ASKS the RPC for every event that can credit a receiving commitment", async () => {
+    // The half that decoding tests cannot see. Without the filter the RPC never
+    // returns the event at all, so every assertion below would pass over a scan
+    // that finds nothing in production.
+    //
+    // Three names, not two. `spender_transfer` moves the recipient's
+    // accumulator with no authorisation from the recipient at all
+    // (storage.rs:828 calls add_to_receiving on `to`, and every require_auth in
+    // the module is on the acting principal), so a stranger could wedge any
+    // registered account permanently: unscanned, the all-or-nothing credit
+    // could never reproduce the accumulator and the pocket read `diverged`
+    // forever.
     await scan([]);
     expect(names()).toContain("deposit");
     expect(names()).toContain("transfer");
+    expect(names()).toContain("spender_transfer");
   });
 
-  it("keeps the recipient match on the filter, so the RPC does the filtering", async () => {
-    // On BOTH names. A filter without it pulls every event the contract ever
-    // emitted through this loop.
+  it("keeps the recipient match on every filter, in the slot that event puts it", async () => {
+    // A filter without it pulls every event the contract ever emitted through
+    // this loop. The SLOT differs by event and getting it wrong is silent:
+    //   ["transfer",         from, to]           -> to at 2
+    //   ["deposit",          from, to]           -> to at 2
+    //   ["spender_transfer", spender, from, to]  -> to at 3
+    // Matching spender_transfer at index 2 would match on `from` and find
+    // nothing, which is the original defect with an extra step.
     await scan([]);
     const me = Address.fromString(ACCOUNT).toScVal().toXDR("base64");
-    expect(asked).toHaveLength(2);
-    for (const t of asked) expect(t[2]).toBe(me);
+    expect(asked).toHaveLength(3);
+    for (const t of asked) {
+      const name = scValToNativeName(t[0]);
+      const slot = name === "spender_transfer" ? 3 : 2;
+      expect(t[slot], `${name} does not match the recipient at topic ${slot}`).toBe(me);
+      // And the slots before it are wildcards, so the sender is not constrained.
+      for (let i = 1; i < slot; i++) expect(t[i]).toBe("*");
+    }
   });
 
   it("finds one from a stranger, with the public amount and a zero blinding", async () => {
