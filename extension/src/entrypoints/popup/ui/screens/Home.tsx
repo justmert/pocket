@@ -94,9 +94,6 @@ export function Home() {
     return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
-  const publicLatest =
-    chart && chart.points.length ? chart.points[chart.points.length - 1]!.value : null;
-
   // a market price per held asset, for the dollar value shown under each row. one
   // fetch per distinct asset code (there are one or two), each falling back to null
   // so a missing price leaves the row in its own unit rather than a fabricated $0.
@@ -220,9 +217,11 @@ export function Home() {
     }
     return total;
   })();
-  // the reconciled figure the headline shows at rest; the chart's own latest point is
-  // the fallback for the moment before prices have loaded.
-  const publicShown = publicUsd ?? publicLatest;
+  // the collapsed header echoes the HERO, so it falls back the same way the hero
+  // does: to the ledger's own XLM figure, never to the chart's latest point. the
+  // two disagreeing is the whole reason the hero was rebuilt off per-asset prices
+  // in the first place, and `publicLatest` reintroduced the disagreement in
+  // exactly the case where the prices are missing.
   const privTotal = privateTotalUsd();
   const headerAmount = isPrivate ? (
     multiPrivate ? (
@@ -240,10 +239,12 @@ export function Home() {
         hidden={w.hidden}
       />
     ) : null
-  ) : publicShown !== null ? (
+  ) : publicUsd !== null ? (
     <span style={{ ...text.rowTitle, color: t.text }}>
-      {w.hidden ? "$∗∗∗.∗∗∗" : usd(publicShown)}
+      {w.hidden ? "$∗∗∗.∗∗∗" : usd(publicUsd)}
     </span>
+  ) : native ? (
+    <Amount t={t} value={native.amount} code="XLM" size="row" hidden={w.hidden} />
   ) : null;
 
   return (
@@ -361,7 +362,21 @@ export function Home() {
     // moment. on release it returns to the present: a chart nobody is touching
     // must not leave a past number standing where the balance belongs.
     const scrubbed = scrubAt === null ? null : (chart?.points[scrubAt]?.value ?? null);
-    const shown = scrubbed ?? publicShown;
+    // NOT `publicShown`. that falls back to the chart's own latest point when the
+    // reconciled total cannot be computed, and the chart is built from a separate
+    // mainnet price series: with that host unreachable an XLM-only account
+    // shimmered forever, and an XLM+USDC account (the shipped testnet pair) read
+    // the USDC holding ALONE as the pocket's value, because an empty XLM series is
+    // dropped and USDC's is synthesised at exactly 1. the rule three lines up is
+    // "null until every held asset is priced", and the fallback undid it.
+    //
+    // so when the dollar total is unavailable, fall back to the LEDGER's own
+    // figure in its own unit, which is what `multiAssetHero` does in the same
+    // situation, rather than to a dollar figure that is missing an asset.
+    const shown = scrubbed ?? publicUsd;
+    if (shown === null && native) {
+      return <HeroAmount t={t} value={native.amount} code="XLM" hidden={w.hidden} />;
+    }
 
     return (
       <>
