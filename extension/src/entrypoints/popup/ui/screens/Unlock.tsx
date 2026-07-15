@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { call } from "../rpc";
+import { useWallet } from "../WalletProvider";
 import { Button, Field, Frame, Notice, ScrollArea, TextButton } from "../primitives";
 import { Eye, EyeOff } from "../icons";
 import { Cover } from "../Cover";
@@ -14,6 +15,8 @@ export function Unlock({
   onUnlocked: () => void;
   onForgot: () => void;
 }) {
+  const w = useWallet();
+  const minutes = w.status?.autoLockMinutes ?? 0;
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -103,6 +106,16 @@ export function Unlock({
             <p style={{ ...text.body, color: t.sub, margin: 0 }}>
               Enter your password to unlock Pocket.
             </p>
+            {/* a wallet that locked ITSELF mid-task used to reappear as a bare
+                password prompt: the screen the user was on was gone, anything
+                they had typed was cleared, and nothing on screen said either had
+                happened or why. the minutes come from `status`, so the sentence
+                cannot drift from the setting. */}
+            {w.autoLocked && (
+              <p style={{ ...text.body, color: t.sub, margin: `${space.xs}px 0 0` }}>
+                {`Pocket locked itself after ${minutes} ${minutes === 1 ? "minute" : "minutes"} of inactivity, so anything you had typed was cleared.`}
+              </p>
+            )}
           </div>
 
           <div style={{ marginTop: space.xl }}>

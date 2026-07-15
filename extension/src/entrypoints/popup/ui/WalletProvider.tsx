@@ -217,6 +217,9 @@ interface Wallet {
   refresh(): Promise<void>;
   reloadStatus(): Promise<void>;
   lock(): Promise<void>;
+  /** the wallet locked ITSELF while this page was open (idle timer, or the
+   *  worker recycling), rather than the user pressing Lock. */
+  autoLocked: boolean;
   clearDappRequest(): void;
   clearInFlight(): void;
 
@@ -281,6 +284,11 @@ export function nativeOf(balances: PublicBalance[] | null): PublicBalance | unde
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<WalletStatus | null>(null);
+  // the wallet locked ITSELF while this page was open, rather than the user
+  // pressing Lock. the unlock screen says so, because otherwise a wallet that
+  // idle-locked mid-task simply reappeared as a password prompt with the typing
+  // gone and nothing anywhere explaining either.
+  const [autoLocked, setAutoLocked] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [balances, setBalances] = useState<PublicBalance[] | null>(null);
   const [balanceError, setBalanceError] = useState<string | null>(null);
@@ -566,6 +574,27 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
+  /**
+   * everything the popup must forget when the session ends, however it ended.
+   *
+   * named and shared because it was the body of `lock()` alone, so the worker's
+   * own "locked" push (the idle timer, and the port's disconnect when the worker
+   * recycles) called `reloadStatus` and nothing else. the popup routed to the
+   * unlock screen with the whole stack still mounted underneath, so unlocking
+   * came back to it: with Settings -> Erase this wallet open, the screen that
+   * returned after the password ended on the erase confirmation. the idle
+   * options start at one minute.
+   */
+  const dropSession = useCallback(async () => {
+    setBalances(null);
+    setPrivAssets(null);
+    setYieldPosition(null);
+    setSheets([]);
+    setTab("home");
+    setPocketState("public");
+    await reloadStatus();
+  }, [reloadStatus]);
+
   // hold a port open to the worker while this page shows an UNLOCKED wallet.
   //
   // it moves no data. it tells the worker a wallet page is on screen, which is
@@ -600,7 +629,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         // the worker idle-locked while we were still here: re-read status so the
         // app routes to the lock screen. that flips status.locked, which tears
         // this effect down and drops the port, which is correct.
-        if (m?.type === "locked") void reloadStatus();
+        // the SAME teardown the Lock button runs, not just a status re-read:
+        // the sheets, tab and pocket are this popup's own memory of a session
+        // that is over, and `autoLocked` is what lets the unlock screen say so.
+        if (m?.type === "locked") {
+          setAutoLocked(true);
+          void dropSession();
+        }
       });
       port.onDisconnect.addListener(() => {
         port = undefined;
@@ -621,7 +656,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       // not trigger a reconnect; it just releases the worker.
       port?.disconnect();
     };
-  }, [status?.locked, reloadStatus]);
+  }, [status?.locked, dropSession]);
 
   // a site waiting on a signature outranks everything the popup could show, so
   // it is checked on every mount and whenever the lock state moves.
@@ -650,20 +685,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setPocketState(p);
   }, []);
 
+
   const lock = useCallback(async () => {
     try {
       await call({ type: "lock" });
     } finally {
       // whatever the worker answered, this popup must stop showing balances.
-      setBalances(null);
-      setPrivAssets(null);
-      setYieldPosition(null);
-      setSheets([]);
-      setTab("home");
-      setPocketState("public");
-      await reloadStatus();
+      await dropSession();
     }
-  }, [reloadStatus]);
+  }, [dropSession]);
 
   // the private pocket cannot be open on a deployment that has none.
   useEffect(() => {
@@ -835,6 +865,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     refresh,
     reloadStatus,
     lock,
+    autoLocked,
     clearDappRequest: () => setDappRequest(null),
     clearInFlight: () => setInFlight(null),
     tab,

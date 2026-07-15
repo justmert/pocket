@@ -115,8 +115,16 @@ export function AmountComposer({
   // the fiat line. a plain caption by default; a toggle when the screen supplies
   // onToggleFiat, so tapping it swaps between the dollar figure and the amount in
   // the asset's own unit.
+  // an amount the screen has ALREADY decided is too large keeps the balance on
+  // screen instead of the dollar figure. one caption slot does two jobs, and it
+  // was dropping the one the user needs at the exact moment they need it:
+  // `fiatOf` returns a number as soon as the field parses, so typing "100"
+  // against a 10 XLM balance greyed Continue out and replaced "10 XLM available"
+  // with "$32.41", leaving no balance anywhere on Send, Swap or a yield deposit
+  // and nothing at all saying why the button had gone dead.
+  const over = spendable !== null && amount !== "" && !withinSpendable(amount, spendable);
   const fiatText =
-    fiat != null
+    fiat != null && !over
       ? asFiat && onToggleFiat
         ? `${amount || "0"} ${code}`
         : usd(fiat)
