@@ -341,6 +341,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // to be pure and react is free to run it more than once per update.
   const opsRef = useRef<BgOp[]>(backgroundOps);
   opsRef.current = backgroundOps;
+  // same reason: `loadPrivate` is a `useCallback` with empty deps (adding one
+  // would re-run every effect that depends on its identity), and it has to know
+  // how many private assets this deployment actually has.
+  const statusRef = useRef<WalletStatus | null>(null);
 
   const [tab, setTab] = useState<Tab>("home");
   const [sheets, setSheets] = useState<SheetId[]>([]);
@@ -394,8 +398,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         // list of one beats a list of none. Reported alongside, because a
         // silently short list of balances is the same class of lie as a zero.
         assets = [await call({ type: "privatePocket" })];
+        // compared against how many the WORKER says this deployment has, not
+        // against a literal 2. `assets` is a one-element array literal on the line
+        // above, so `assets.length < 2` was constant-true: the incomplete-list
+        // sentence right below could never render, and on a two-asset wallet the
+        // second asset disappeared from every private screen while the hero
+        // summed the one that was left and presented it as the pocket's total.
+        // the comment above states the intent ("a silently short list of balances
+        // is the same class of lie as a zero") and the guard did not implement it.
+        const expected = statusRef.current?.privateAssets?.length ?? 1;
         setPrivError(
-          assets.length < 2
+          assets.length >= expected
             ? message(plural)
             : "Pocket could not read every private asset, so this list may be incomplete.",
         );
@@ -415,6 +428,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       });
       if (next) {
         setStatus(next);
+        statusRef.current = next;
         setBootError(null);
         // An erase must take the popup's own memory with it. `backgroundOps`,
         // the balances, the private pockets and the yield position are all held

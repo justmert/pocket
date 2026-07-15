@@ -276,14 +276,23 @@ function Root() {
     );
   }
 
-  // a site is blocked waiting on an answer, so it outranks anything the user
-  // could have opened the popup for.
-  if (w.dappRequest) {
-    return <DappApproval t={t} request={w.dappRequest} onDone={w.clearDappRequest} />;
-  }
-
   // a transaction whose outcome nobody saw. shown before any screen that could
-  // build a second one.
+  // build a second one, and that INCLUDES the dApp approval below it.
+  //
+  // these two were the other way round, and the two files each claimed the
+  // precedence: InFlight says "this screen exists to stop a second one being
+  // sent. it outranks every other view for that reason", while the dApp branch
+  // justified itself as outranking "anything the user could have opened the popup
+  // for", which an unresolved submission is not. only one of them could be right.
+  //
+  // the worker does not close the gap either: `assertNothingUnresolved` guards
+  // seven in-wallet build sites and the SEP-43 `signTransaction` path calls it
+  // nowhere, so a site could have its transaction signed over the top of a
+  // submission the wallet had already told the user not to repeat.
+  //
+  // the cost is real and is the trade the wallet already makes when locked: the
+  // site's request waits and is answered as declined if the user does not resolve
+  // this in time.
   if (w.inFlight) {
     return (
       <InFlight
@@ -295,6 +304,12 @@ function Root() {
         }}
       />
     );
+  }
+
+  // a site is blocked waiting on an answer, so it outranks anything the user
+  // could have opened the popup for.
+  if (w.dappRequest) {
+    return <DappApproval t={t} request={w.dappRequest} onDone={w.clearDappRequest} />;
   }
 
   return <Shell />;

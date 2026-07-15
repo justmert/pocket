@@ -691,6 +691,18 @@ export function Home() {
     return (
       <div style={{ marginTop: space.xl }}>
         <Overline t={t}>Assets</Overline>
+        {/* a partial read is reported OVER the list, not instead of it. the hero's
+            branch above only draws `privError` when there is no list at all, so
+            the one case this sentence was written for, a list that loaded but is
+            short, said nothing anywhere: an asset the user holds simply vanished
+            and the total above it was short by its whole value. */}
+        {w.privError && privAssets && (
+          <div style={{ paddingTop: space.xs }}>
+            <Notice t={t} tone="danger">
+              {w.privError}
+            </Notice>
+          </div>
+        )}
         {!privAssets ? (
           <div style={{ display: "grid", gap: space.md, paddingTop: space.xs }}>
             <Skeleton width="100%" height={52} />
