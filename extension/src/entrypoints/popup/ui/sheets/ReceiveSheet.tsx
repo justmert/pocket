@@ -60,6 +60,24 @@ export function ReceiveSheet({ open, onClose }: { open: boolean; onClose: () => 
                 {address}
               </span>
             </div>
+            {/* opened from the private pocket, this sheet is teal on near-black,
+                titled "Receive", and said nothing: scan the QR from an exchange
+                and the money arrives in the PUBLIC pocket. every other private
+                surface carries the statement (Send's tip, Move's tip, the private
+                prompt's tip, the worker's own register text) and the one
+                destination surface did not. the existing comment justifies having
+                no prose because "the wallet has one address", which answers a
+                different question than the one someone asks in the private
+                pocket, which is whether money sent here arrives hidden. */}
+            {w.pocket === "private" && (
+              <div style={{ marginTop: space.sm }}>
+                <Notice t={t} tone="exposed" bare>
+                  This is your public address. Payments to it arrive in the public pocket, visible on
+                  the ledger. Move them across afterwards to hide the amounts.
+                </Notice>
+              </div>
+            )}
+
             {/* which ledger this address is on. a stellar address is valid on
                 both networks and looks identical on each, so an address handed
                 out with nothing naming the network is the one place this wallet

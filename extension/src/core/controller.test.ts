@@ -308,10 +308,16 @@ describe("private pocket reporting", () => {
     // Whatever the state, it must not be a crash and must not invent a balance.
     expect(typeof p.state).toBe("string");
     if (p.state === "unregistered") {
-      // The two facts a user must have BEFORE committing: it is public, and
-      // the auditor binding is permanent.
+      // The facts a user must have BEFORE committing: it is public, the auditor
+      // binding is permanent, and the key being bound is THEIR OWN. The last one
+      // was said only AFTER the transaction, on the register screen, which is one
+      // irreversible step too late: "permanently adds an auditor" with no owner
+      // named reads as a third party being given sight of your balances.
       expect(p.message).toMatch(/publicly visible/i);
-      expect(p.message).toMatch(/permanently adds an auditor/i);
+      expect(p.message).toMatch(/permanently binds an auditor key/i);
+      expect(p.message, "whose key it is decides what this sentence means").toMatch(
+        /your own|derived from your recovery phrase/i,
+      );
     }
   }, 30_000);
 

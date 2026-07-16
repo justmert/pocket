@@ -839,9 +839,19 @@ export class WalletController {
         ...id,
         state: "unregistered",
         message:
+          // "an auditor" reads as a third party, and the post-commit screen then
+          // says the opposite: "Bind your OWN auditor key, derived from your
+          // recovery phrase. Nobody else can read your amounts." That sentence
+          // arrived one irreversible transaction too late, and the bullet it came
+          // from used to sit on the FIRST screen before it was removed. This is
+          // not a softening of the disclosure: the transaction really is public
+          // and really is permanent, and both still say so. It is the disclosure
+          // being specific about WHOSE key it is, which is the fact that decides
+          // whether the sentence is frightening or merely true.
           "Hides your amounts, never your addresses. Setting it up is a one-time, " +
-          "publicly visible transaction that permanently adds an auditor who can see " +
-          "your amounts.",
+          "publicly visible transaction that permanently binds an auditor key who can " +
+          "see your amounts. That key is YOUR OWN, derived from your recovery phrase, " +
+          "so nobody else can read them.",
       };
     }
 

@@ -837,6 +837,22 @@ export function Home() {
             </Button>
           )}
         </div>
+        {/* with NO action, the tip above is the whole content of the card, and
+            the card reduces to an alarm: "Records do not match the ledger", an
+            "i", and nothing to press. that is exactly the `diverged` and
+            `needsRecovery` pair on a build with no archive, which is every
+            shipped one, and the worker's sentence for those states ends "Your
+            funds are safe on chain" and was reachable only by hovering. the
+            comment above moved the reasoning into the tip on the premise that
+            the card offers an action; where it does not, the reassurance comes
+            back out, as `PrivateAssetSheet` already does with the same string. */}
+        {!action && priv.message && (
+          <div style={{ marginTop: space.sm }}>
+            <Notice t={t} tone="exposed" bare>
+              {priv.message}
+            </Notice>
+          </div>
+        )}
       </Card>
     );
   }
