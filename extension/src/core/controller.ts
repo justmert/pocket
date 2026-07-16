@@ -539,9 +539,7 @@ export class WalletController {
     answered: boolean;
     expired: boolean;
   } | null> {
-    const e = await readLocal<{ hash: string; maxTime: number; answered?: boolean }>(
-      KEYS.inFlight,
-    );
+    const e = await readLocal<{ hash: string; maxTime: number; answered?: boolean }>(KEYS.inFlight);
     if (!e) return null;
     const windowPassed = e.maxTime > 0 && Math.floor(Date.now() / 1000) > e.maxTime;
     // Absent on a record written by an earlier build, and absent means "nobody
@@ -4035,6 +4033,38 @@ export class WalletController {
       if (plan.nextCheckMs < soonest) soonest = plan.nextCheckMs;
       notice ??= plan.notice;
       if (!plan.due) continue;
+
+      // A merge is NOT a no-op, and this loop submitted it as one.
+      //
+      // `storage::merge` is unconditional: `spendable = spendable + receiving`
+      // then `receiving = identity`, with no guard on receiving being empty
+      // (storage.rs:539-547). keepalive.ts says "a merge on an empty receiving
+      // balance is a no-op in state terms", which is true only for the empty
+      // case, and nothing here restricted it to that case. So a background
+      // alarm firing against a pocket holding a received-but-unmerged balance
+      // moved the chain's accumulators while this device wrote nothing, and the
+      // next read of that pocket returned `diverged`: every spend refused, by an
+      // action the user never took and never saw. The offered exit is
+      // `rebuildFromHistory`, which `rebuildAdvice` itself says is impossible
+      // with no archive configured.
+      //
+      // Staged like every other private submission, so `applyStaged` folds the
+      // same two accumulators locally that the contract folded on chain, and
+      // `persistVerified` checks the result against the commitment the contract
+      // now holds before it is written.
+      const stored = await this.readOpenings(session.address, cfg.token);
+      if (!stored) {
+        // No local record to fold, so there is no post-state this device could
+        // verify: submitting would produce exactly the divergence above, only
+        // with nothing to reconcile against. Skipped rather than bumped, and
+        // skipped rather than thrown, so one unreadable asset does not stop the
+        // bump every other asset may be due.
+        //
+        // Letting the entry archive is the lesser harm on this deployment:
+        // protocol 27 auto-restores an archived persistent entry into the
+        // readWrite footprint rather than failing the transaction.
+        continue;
+      }
       // Fetched per bump: two bumps from one stale source object would collide
       // on the sequence number.
       const source = await this.server().getAccount(session.address);
@@ -4044,9 +4074,12 @@ export class WalletController {
         session.address,
         NETWORKS[this.network].passphrase,
       );
-      // Same path as every other invocation, so it is simulated for its footprint
-      // and auth entries before signing.
-      const outcome = await this.signAndSubmit(tx);
+      // `submitStaged`, not `signAndSubmit`: staging a consequence and never
+      // applying it is worse than not staging one, because the record then
+      // points at a post-state nothing writes. This is the wrapper that writes
+      // the consequence FIRST and clears the in-flight record second, and it is
+      // the path every other private submission already takes.
+      const outcome = await this.submitStaged(tx, { kind: "merge" }, "merge", cfg.token);
       // PER TOKEN, and that is the whole fix. This was one shared timestamp
       // assigned inside this loop, and `recentlyActive` is tested at the top of
       // every later iteration, so the first asset to need a bump told every

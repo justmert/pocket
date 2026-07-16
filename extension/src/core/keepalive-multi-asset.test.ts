@@ -13,6 +13,10 @@
 // silenced is the one about to archive.
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import "../lib/polyfill";
+// Static, not deferred: neither module is mocked here, and `onChain` below is
+// initialised from IDENTITY at module scope.
+import { commit, IDENTITY } from "./crypto/grumpkin";
+import { addModQ } from "./crypto/field";
 
 const store = new Map<string, unknown>();
 vi.stubGlobal("chrome", {
@@ -51,6 +55,33 @@ vi.mock("./chain/ttl", async (orig) => {
   };
 });
 
+/**
+ * The confidential account the post-merge write verifies itself against.
+ *
+ * The keep-alive now stages a `merge` resolution, because the contract's merge
+ * is not a no-op: it folds receiving into spendable unconditionally, and
+ * submitting it with nothing staged is what moved the chain out from under this
+ * device's record. Staging means `persistVerified` reads the account back and
+ * refuses a post-state the chain disagrees with, which is the point.
+ *
+ * Both accumulators are the identity here, matching the zero openings seeded
+ * below: merging zero into zero leaves zero, so the check passes on the real
+ * comparison rather than on a stubbed one.
+ */
+let onChain = { spendableCommitment: IDENTITY, receivingCommitment: IDENTITY };
+
+vi.mock("./chain/confidential", async (orig) => {
+  const real = (await orig()) as Record<string, unknown>;
+  return {
+    ...real,
+    readConfidentialAccount: async () => ({
+      ...onChain,
+      viewingPublicKey: { x: 1n, y: 2n },
+      auditorId: 0,
+    }),
+  };
+});
+
 /** Every wrapper this run actually submitted a bump for. */
 const bumped: string[] = [];
 
@@ -78,7 +109,35 @@ beforeEach(() => {
   store.clear();
   bumped.length = 0;
   headroom = {};
+  onChain = { spendableCommitment: IDENTITY, receivingCommitment: IDENTITY };
 });
+
+/**
+ * Seed a local opening record for a wrapper, which a due keep-alive implies.
+ *
+ * `readAccountTtl` reads the CONFIDENTIAL ACCOUNT entry, so it only ever
+ * reports "expiring" for an account that is registered on chain, and a
+ * registered account this device can act for has openings. Without them the
+ * loop now skips the bump, and rightly: the keep-alive submits a real `merge`,
+ * which folds receiving into spendable unconditionally, so a device with no
+ * local record to fold would be moving accumulators it cannot reconcile.
+ *
+ * Zeroes are the honest post-registration state and are enough here: this file
+ * is about which wrappers get bumped, not about what the merge computes.
+ */
+async function seedOpenings(address: string) {
+  const { openingKey } = await import("../lib/storage");
+  const { sealPayload } = await import("./vault/vault");
+  const { requireSession } = await import("./session");
+  const { dek } = requireSession();
+  const zero = { value: "0", randomness: "0" };
+  for (const cfg of LIST) {
+    store.set(
+      openingKey(cfg.token, address),
+      await sealPayload(dek, { spendable: zero, receiving: zero, syncedThrough: 0 }),
+    );
+  }
+}
 
 async function worker() {
   const c = new WalletController();
@@ -91,6 +150,7 @@ async function worker() {
     getTransaction: async () => ({ status: "SUCCESS", ledger: 9, applicationOrder: 1 }),
     getLedgerEntries: async () => ({ entries: [] }),
   });
+  await seedOpenings(address);
   return c;
 }
 
@@ -131,6 +191,146 @@ describe("two wrappers, two TTLs", () => {
 
     await c.runKeepAlive();
     expect(bumped).toEqual([]);
+  });
+
+  it("folds the received balance locally, matching what the merge did on chain", async () => {
+    // The defect, with a NON-EMPTY receiving side, which is the only shape that
+    // shows it. `storage::merge` is unconditional: spendable = spendable +
+    // receiving, then receiving = identity, with no guard on receiving being
+    // empty (storage.rs:539-547). keepalive.ts calls an empty merge "a no-op in
+    // state terms", true only for the empty case, and nothing restricted the
+    // bump to that case.
+    //
+    // Submitted unstaged, the chain folded and this device wrote nothing, so
+    // the next read returned `diverged` and every spend was refused, by an
+    // action the user never took and never saw.
+    const c = new WalletController();
+    await c.init();
+    const { address } = await c.create("pw");
+    (c as unknown as { servers: Map<string, unknown> }).servers.set("testnet", {
+      getAccount: async () => new Account(address, "100"),
+      prepareTransaction: async (tx: unknown) => tx,
+      sendTransaction: async () => ({ status: "PENDING" }),
+      getTransaction: async () => ({ status: "SUCCESS", ledger: 9, applicationOrder: 1 }),
+      getLedgerEntries: async () => ({ entries: [] }),
+    });
+
+    const spendable = { value: 5_000_000n, randomness: 11n };
+    const receiving = { value: 3_000_000n, randomness: 22n };
+    const { openingKey } = await import("../lib/storage");
+    const { sealPayload, openPayload } = await import("./vault/vault");
+    const { requireSession } = await import("./session");
+    const { dek } = requireSession();
+    store.set(
+      openingKey(XLM, address),
+      await sealPayload(dek, {
+        spendable: { value: "5000000", randomness: "11" },
+        receiving: { value: "3000000", randomness: "22" },
+        syncedThrough: 0,
+      }),
+    );
+    // What the contract holds AFTER its merge: the two commitments added, and
+    // the receiving side cleared. `persistVerified` compares against this, so a
+    // wrong local fold is refused rather than written.
+    onChain = {
+      spendableCommitment: commit(
+        spendable.value + receiving.value,
+        addModQ(spendable.randomness, receiving.randomness),
+      ),
+      receivingCommitment: IDENTITY,
+    };
+    headroom = { [XLM]: 5 };
+
+    await c.runKeepAlive();
+
+    const sealed = store.get(openingKey(XLM, address)) as never;
+    const after = await openPayload<{
+      spendable: { value: string };
+      receiving: { value: string };
+    }>(dek, sealed);
+    expect(after.spendable.value, "the received balance was not folded locally").toBe("8000000");
+    expect(after.receiving.value, "the receiving side was not cleared locally").toBe("0");
+  });
+
+  it("stages the merge it submits, instead of moving the chain and writing nothing", async () => {
+    // `storage::merge` is unconditional: spendable = spendable + receiving,
+    // then receiving = identity, with no guard on receiving being empty
+    // (storage.rs:539-547). keepalive.ts calls an empty merge "a no-op in state
+    // terms", which is true only for the empty case, and nothing restricted the
+    // bump to that case.
+    //
+    // So a background alarm against a pocket holding a received-but-unmerged
+    // balance folded the accumulators on chain while this device wrote nothing,
+    // and the next read returned `diverged`: every spend refused, by an action
+    // the user never took and never saw. Every other private submission goes
+    // through submitStaged with a resolution; this was the only one that did
+    // not, and it was the only one nobody watches.
+    const c = await worker();
+    headroom = { [XLM]: 5, [USDC]: 5 };
+
+    await c.runKeepAlive();
+
+    // The consequence is written, not merely submitted: applyStaged ran and
+    // left no staged record behind.
+    expect(bumped).toEqual([XLM, USDC]);
+    expect(store.has("pocket.staged"), "a staged merge was left unapplied").toBe(false);
+    expect(store.has("pocket.inflight"), "the in-flight record was never cleared").toBe(false);
+  });
+
+  it("skips a wrapper this device has no openings for, rather than merging blind", async () => {
+    // No local record means no post-state this device could verify, so a merge
+    // here would produce exactly the divergence above with nothing to reconcile
+    // against. Letting the entry archive is the lesser harm on this deployment:
+    // protocol 27 auto-restores an archived persistent entry into the readWrite
+    // footprint rather than failing the transaction.
+    const c = new WalletController();
+    await c.init();
+    const { address } = await c.create("pw");
+    (c as unknown as { servers: Map<string, unknown> }).servers.set("testnet", {
+      getAccount: async () => new Account(address, "100"),
+      prepareTransaction: async (tx: unknown) => tx,
+      sendTransaction: async () => ({ status: "PENDING" }),
+      getTransaction: async () => ({ status: "SUCCESS", ledger: 9, applicationOrder: 1 }),
+      getLedgerEntries: async () => ({ entries: [] }),
+    });
+    headroom = { [XLM]: 5, [USDC]: 5 };
+
+    await c.runKeepAlive();
+
+    expect(bumped).toEqual([]);
+  });
+
+  it("skips only the wrapper that is missing, not the ones that are not", async () => {
+    // One unreadable asset must not stop the bump every other asset may be due,
+    // which is why the skip is a `continue` and not a throw.
+    const c = new WalletController();
+    await c.init();
+    const { address } = await c.create("pw");
+    (c as unknown as { servers: Map<string, unknown> }).servers.set("testnet", {
+      getAccount: async () => new Account(address, "100"),
+      prepareTransaction: async (tx: unknown) => tx,
+      sendTransaction: async () => ({ status: "PENDING" }),
+      getTransaction: async () => ({ status: "SUCCESS", ledger: 9, applicationOrder: 1 }),
+      getLedgerEntries: async () => ({ entries: [] }),
+    });
+    const { openingKey } = await import("../lib/storage");
+    const { sealPayload } = await import("./vault/vault");
+    const { requireSession } = await import("./session");
+    const zero = { value: "0", randomness: "0" };
+    // Only the SECOND wrapper has a record.
+    store.set(
+      openingKey(USDC, address),
+      await sealPayload(requireSession().dek, {
+        spendable: zero,
+        receiving: zero,
+        syncedThrough: 0,
+      }),
+    );
+    headroom = { [XLM]: 5, [USDC]: 5 };
+
+    await c.runKeepAlive();
+
+    expect(bumped).toEqual([USDC]);
   });
 
   it("reports the SOONEST asset's next check, not a flat week", async () => {
