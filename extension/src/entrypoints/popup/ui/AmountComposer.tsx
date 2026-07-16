@@ -123,6 +123,18 @@ export function AmountComposer({
   // with "$32.41", leaving no balance anywhere on Send, Swap or a yield deposit
   // and nothing at all saying why the button had gone dead.
   const over = spendable !== null && amount !== "" && !withinSpendable(amount, spendable);
+  // a STRING check is not a number check. `spendable` is a decimal string, so
+  // "0.0000000" is truthy and every zero-balance asset drew "Use max": pressing
+  // it filled "0", Continue turned live, and the press came back with "A payment
+  // has to be for more than zero." the wallet knew before the button was drawn.
+  const hasSpendable = (() => {
+    if (!spendable) return false;
+    try {
+      return parseAmount(spendable) > 0n;
+    } catch {
+      return false;
+    }
+  })();
   const fiatText =
     fiat != null && !over
       ? asFiat && onToggleFiat
@@ -167,7 +179,7 @@ export function AmountComposer({
             disabled pill on the field-coloured card is invisible (field on field)
             and reads as stray plain text, so an asset with nothing to send simply
             has no "Use max" rather than a ghost of one. */}
-        {spendable && (
+        {hasSpendable && (
           <Button t={t} size="pill" onClick={onMax}>
             Use max
           </Button>

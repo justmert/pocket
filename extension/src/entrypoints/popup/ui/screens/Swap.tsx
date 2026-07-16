@@ -56,7 +56,6 @@ export function Swap({ onClose }: { onClose: () => void }) {
   const assets = swapUniverse(network);
   const usdc = assets.find((a) => a.code === "USDC");
 
-  const balances = w.balances ?? [];
   const [inId, setInId] = useState("native");
   // default the output to USDC when it is configured, else the next asset that is
   // not the input; a swap needs two different assets.
@@ -445,7 +444,8 @@ export function Swap({ onClose }: { onClose: () => void }) {
         t={t}
         open={picking !== null}
         assets={assets.filter((a) => a.id !== (picking === "in" ? outId : inId))}
-        balances={balances}
+        balances={w.balances}
+        balanceError={w.balanceError}
         onPick={(a) => {
           if (picking === "in") setInId(a.id);
           else setOutId(a.id);
@@ -595,13 +595,16 @@ function SwapAssetPicker({
   open,
   assets,
   balances,
+  balanceError,
   onPick,
   onClose,
 }: {
   t: Theme;
   open: boolean;
   assets: SwapAsset[];
-  balances: PublicBalance[];
+  /** the RAW list: null is "not read yet", which is not an empty wallet. */
+  balances: PublicBalance[] | null;
+  balanceError: string | null;
   onPick: (a: SwapAsset) => void;
   onClose: () => void;
 }) {
@@ -609,7 +612,14 @@ function SwapAssetPicker({
     <Sheet t={t} open={open} onClose={onClose} title="Choose an asset">
       <div style={{ paddingBottom: space.gutter }}>
         {assets.map((a, i) => {
-          const held = balances.find((b) => b.id === a.id);
+          // "Not held" is a POSITIVE CLAIM about the account, and it was being
+          // derived from `?? []`, which reads a failed or unfinished balance read
+          // as an empty wallet: with the first `balances` call failing, every
+          // asset in this list said "Not held". the four-answer question is what
+          // `findHeld` exists for, and this file already uses it correctly for
+          // the swap's own input asset under a comment saying so.
+          const h = findHeld(balances, balanceError, (b) => b.id === a.id);
+          const amount = holdingAmount(h);
           return (
             <Row
               key={a.id}
@@ -619,9 +629,24 @@ function SwapAssetPicker({
               icon={<AssetMark t={t} id={a.id} code={a.code} />}
               title={a.code}
               sub={a.id === "native" ? "Stellar Lumens" : undefined}
-              value={held ? <Figure value={held.amount} /> : undefined}
-              valueSub={held ? undefined : "Not held"}
-              onClick={() => onPick(a)}
+              value={amount !== null ? <Figure value={amount} /> : undefined}
+              // an unauthorised trustline is held and unusable, which is a third
+              // thing again. Send's picker already draws it inert with the reason;
+              // this one offered it as ordinary and let a whole swap be composed
+              // against it before the network refused.
+              tone={h.kind === "held" && !h.balance.authorized ? "inert" : "plain"}
+              valueSub={
+                h.kind === "held" && !h.balance.authorized
+                  ? "Not authorised by the issuer"
+                  : amount !== null
+                    ? undefined
+                    : h.kind === "loading"
+                      ? "Reading"
+                      : h.kind === "unreadable"
+                        ? "Balance unavailable"
+                        : "Not held"
+              }
+              {...(h.kind === "held" && !h.balance.authorized ? {} : { onClick: () => onPick(a) })}
             />
           );
         })}
