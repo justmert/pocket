@@ -170,6 +170,8 @@ export function History() {
   const [cursor, setCursor] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  /** an older page that could not be read, so the tail of the list is missing. */
+  const [olderError, setOlderError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [range, setRange] = useState<DateRange>({ start: null, end: null });
   const [types, setTypes] = useState<Set<FilterCategory>>(new Set());
@@ -257,9 +259,16 @@ export function History() {
         if (myGen !== gen.current) return;
         setEntries((prev) => [...(prev ?? []), ...p.entries]);
         setCursor(p.cursor);
+        setOlderError(null);
       })
-      .catch(() => {
-        // keep what is on screen; a later scroll retries.
+      .catch((e) => {
+        if (myGen !== gen.current) return;
+        // keep what is on screen, and SAY the tail is missing. discarding this
+        // silently made a truncated history pixel-identical to one that ended:
+        // there is no shape a partial list has that a whole one does not, which
+        // is the same argument the unread notice above is built on. a later
+        // scroll still retries, and a retry that succeeds clears it.
+        setOlderError(message(e));
       })
       .finally(() => {
         if (myGen === gen.current) {
@@ -360,13 +369,26 @@ export function History() {
   // Bounded like the reconcile poll beside it, so a filter that genuinely
   // matches nothing walks the stream once and stops rather than paging forever.
   const autoPages = useRef(0);
+  // set when the bound above was spent with older pages still unread, so the
+  // screen can stop claiming it is "still reading" while nothing is reading.
+  const [pagingGaveUp, setPagingGaveUp] = useState(false);
   useEffect(() => {
     if (!filtersActive && !q) {
       autoPages.current = 0;
+      setPagingGaveUp(false);
       return;
     }
-    if (shown.length > 0 || cursor == null || loadingRef.current) return;
-    if (autoPages.current >= MAX_AUTO_PAGES) return;
+    // NOT `shown.length > 0`. that stopped the pager the moment ANY match was
+    // found, and the only other caller needs the list to overflow the 600px
+    // frame: one match measures ~358px and four ~538px, so a search matching a
+    // handful of loaded entries could never reach the older ones and the screen
+    // said nothing about being partial. "I never paid that address" is a
+    // conclusion someone acts on.
+    if (cursor == null || loadingRef.current) return;
+    if (autoPages.current >= MAX_AUTO_PAGES) {
+      setPagingGaveUp(true);
+      return;
+    }
     autoPages.current += 1;
     loadMore();
   });
@@ -552,7 +574,12 @@ export function History() {
                   shape a partial history has that a whole one does not. so it
                   is said above the rows rather than left to be inferred from an
                   absence, which is by definition invisible. */}
-              {unread.length > 0 && shown.length > 0 && (
+              {/* NOT gated on `shown.length > 0` any more. the filtered-empty
+                  state was the one case this sentence was written for and the one
+                  case it could not reach: the screen said "Nothing matches those
+                  filters." while knowing it could not read the half of the history
+                  those transactions live in. */}
+              {unread.length > 0 && (
                 <div style={{ marginBottom: space.md }}>
                   <Notice t={t} tone="exposed" bare>
                     {unread.map((u) => u.reason).join(" ")} What is shown below is incomplete.
@@ -580,7 +607,9 @@ export function History() {
                   <span style={{ ...text.body, color: t.faint }}>
                     {cursor == null
                       ? "Nothing matches those filters."
-                      : "Nothing matches those filters yet. Still reading older history."}
+                      : pagingGaveUp
+                        ? "Nothing matches those filters in the history read so far, and there is more that has not been read."
+                        : "Nothing matches those filters yet. Still reading older history."}
                   </span>
                   <Button
                     t={t}
@@ -627,6 +656,17 @@ export function History() {
           {loadingMore && (
             <div style={{ paddingTop: space.md }}>
               <Skeleton width="100%" height={52} />
+            </div>
+          )}
+
+          {/* the tail could not be read. said at the END of the list, which is
+              where the missing rows would have been, and where a reader who has
+              scrolled that far is actually looking. */}
+          {!loadingMore && olderError && (
+            <div style={{ paddingTop: space.md }}>
+              <Notice t={t} tone="exposed" bare>
+                {olderError} Older activity is missing from this list; scroll again to retry.
+              </Notice>
             </div>
           )}
         </div>
