@@ -1311,6 +1311,14 @@ export class WalletController {
           fee: formatAmount(BigInt(tx.fee)),
           effects: [
             `Open a trustline so this account can hold ${asset.getCode()}`,
+            // The ISSUER, in full, as its own effect. Testnet returns several
+            // assets all called USDC with different issuers, and the code is not
+            // identity: without this line the confirm for a genuine USDC and a
+            // counterfeit one were identical strings. `ChooseAsset` passes no
+            // `to`, so `WalletReview`'s full-address block never renders and this
+            // is the only place the issuer can reach the screen. Never truncated,
+            // for the same reason no address in this wallet is.
+            `Trust the issuer ${issuer}`,
             "This locks 0.5 XLM as a reserve while the trustline is open; removing it later releases the reserve",
             "This is in the PUBLIC pocket and is visible on the ledger",
             `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
@@ -1473,6 +1481,8 @@ export class WalletController {
           fee: formatAmount(BigInt(tx.fee)),
           effects: [
             `Remove the ${asset.getCode()} trustline; this account will no longer hold ${asset.getCode()}`,
+            // Which of several same-coded assets is being dropped.
+            `Stop trusting the issuer ${issuer}`,
             "This releases the 0.5 XLM reserve the trustline locked",
             "This is in the PUBLIC pocket and is visible on the ledger",
             `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,

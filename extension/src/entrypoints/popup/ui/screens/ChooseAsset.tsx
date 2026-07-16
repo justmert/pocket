@@ -4,7 +4,7 @@
 // matches with their domain (so a spoofed code is distinguishable), and opens a
 // trustline through the shared approval sheet. it warns when several assets share
 // a code, because the code alone is not identity: the issuer is.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Frame, Header, Notice, Spinner } from "../primitives";
@@ -156,8 +156,18 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
   // so there the config-known set carries it. verified assets sort to the top so
   // that among several same-code results the trusted Add is the first one.
   const known = w.status ? (NETWORKS[w.status.network].knownAssets ?? []) : [];
-  const isVerified = (a: AssetSearchResult) =>
-    Boolean(a.domain) || known.some((k) => k.code === a.code && k.issuer === a.issuer);
+  // TWO different claims, and they were one word.
+  //
+  // `known` is an asset THIS BUILD configures by code AND issuer, which is the
+  // only thing here the wallet can vouch for. `a.domain` is StellarExpert echoing
+  // the issuer's own `home_domain`, which is one `set_options` operation away for
+  // anybody, including the counterfeit sitting directly above or below in the same
+  // list. both wore one solid accent pill at weight 700, so on the exact screen
+  // whose job is "the code is not identity: check the domain", both candidates of
+  // that judgement carried the loudest mark in the product.
+  const isKnown = (a: AssetSearchResult) =>
+    known.some((k) => k.code === a.code && k.issuer === a.issuer);
+  const isVerified = (a: AssetSearchResult) => Boolean(a.domain) || isKnown(a);
   const shown = results
     ? [...results].sort((a, b) => (isVerified(b) ? 1 : 0) - (isVerified(a) ? 1 : 0))
     : null;
@@ -257,7 +267,7 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
                 key={`${a.code}:${a.issuer}`}
                 t={t}
                 asset={a}
-                verified={isVerified(a)}
+                verified={isKnown(a) ? "known" : isVerified(a) ? "domain" : null}
                 onAdd={() => void startAdd(a)}
               />
             ))}
@@ -300,9 +310,21 @@ function ResultRow({
 }: {
   t: Theme;
   asset: AssetSearchResult;
-  verified: boolean;
+  /** `known` is configured by this build, code AND issuer. `domain` is only that
+   *  the issuer published a home domain, which anyone can do. */
+  verified: "known" | "domain" | null;
   onAdd: () => void;
 }) {
+  // anchored to the END of the domain, the same layout-effect the approval
+  // screen's `OriginBlock` uses and for the same reason: a name cut at the right
+  // hides the part that identifies it, and the paint that follows must already be
+  // anchored or the misleading prefix is on screen for a frame.
+  const domainBox = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const el = domainBox.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [asset.domain]);
+
   return (
     <div
       style={{
@@ -331,11 +353,15 @@ function ResultRow({
       <span style={{ flex: "1 1 60px", minWidth: 0 }}>
         <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           <span style={{ ...text.rowTitle, color: t.text }}>{asset.code}</span>
-          {verified && (
-            // a compact verified badge in the "Use max" pill's colours (solid accent
-            // fill, pill radius) so it reads as the same product, but sized DOWN: it is
-            // a passive label, not a tap target, so it drops the button's padding and
-            // sits on the caption scale instead.
+          {/* the solid accent pill is kept for the ONE claim the wallet can make
+              on its own: an asset this build configures by code and issuer. the
+              weaker fact, that the issuer published a home domain, gets a quiet
+              neutral chip that says what it actually means, because setting a
+              home domain is one operation and a counterfeit in the same list can
+              do it too. one word covering both was the defect: the loudest mark
+              in the product sat on both candidates of the identity judgement this
+              screen exists to help the user make. */}
+          {verified === "known" && (
             <span
               style={{
                 ...text.caption,
@@ -347,19 +373,43 @@ function ResultRow({
                 flex: "0 0 auto",
                 whiteSpace: "nowrap",
               }}
+              title="Pocket ships this asset's issuer address"
             >
-              Verified
+              Known to Pocket
+            </span>
+          )}
+          {verified === "domain" && (
+            <span
+              style={{
+                ...text.caption,
+                fontWeight: 600,
+                padding: "3px 8px",
+                borderRadius: radius.pill,
+                background: t.field,
+                color: t.sub,
+                flex: "0 0 auto",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Domain listed
             </span>
           )}
         </span>
+        {/* the domain is the one identity string on this row, and it was being
+            cut at the RIGHT, which is the end that identifies the site: with an
+            ellipsis, `circle.com.attacker.example` and `circle.com...` read the
+            same. it scrolls instead, anchored to its end, the treatment
+            `OriginBlock` already uses on the approval screen. deliberately NOT
+            allowed to wrap: a wrap point chosen by whoever picked the domain is
+            what D16 forbids. */}
         <span
+          ref={domainBox}
           style={{
             ...text.rowSub,
             color: t.sub,
             display: "block",
             fontFamily: asset.domain ? undefined : fonts.mono,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
+            overflowX: "auto",
             whiteSpace: "nowrap",
           }}
         >
