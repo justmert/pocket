@@ -145,7 +145,13 @@ describe("a wedged prover ends the wait rather than spinning forever", () => {
       PROVER_DEADLINE_MS,
     );
     expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toMatch(/did not answer within \d+s and has been reset/);
+    // The NAME is the load-bearing part: `dispatch.ts` keeps an allowlist by
+    // error name, so a bare Error reaches the user as "check your connection",
+    // which names a cause the prover cannot have. It is an offscreen document
+    // and touches no network.
+    expect((failure as Error).name).toBe("ProverError");
+    expect((failure as Error).message).toMatch(/took longer than \d+s and was stopped/);
+    expect((failure as Error).message).toMatch(/Nothing was sent/);
   });
 
   it("destroys the document, so the next proof is not queued behind the wedge", async () => {
@@ -186,7 +192,13 @@ describe("a wedged prover ends the wait rather than spinning forever", () => {
     doc.behaviour = { kind: "jobTimedOut" };
     await expect(
       client.prove("transfer", new Uint8Array([1]), new Uint8Array([2])),
-    ).rejects.toThrow(/timed out/);
+    ).rejects.toThrow(/could not build the proof/i);
+    // The RESET is the property under test, and it still distinguishes this
+    // case from an ordinary error (which leaves the document alone, below).
+    // The SENTENCE no longer does: a job reporting its own timeout and a job
+    // failing outright now read identically, because the prover's own text is
+    // deliberately not passed through. Worth knowing, and asserted here so a
+    // future attempt to tell them apart in words has a place to start.
     expect(doc.closed).toBe(1);
   });
 
@@ -195,10 +207,16 @@ describe("a wedged prover ends the wait rather than spinning forever", () => {
     // would pay wasm instantiation again for a mistake the caller made.
     await client.ensureProver();
     doc.behaviour = { kind: "errors", message: "malformed prover request" };
-    await expect(
-      client.prove("transfer", new Uint8Array([1]), new Uint8Array([2])),
-    ).rejects.toThrow(/malformed prover request/);
+    const failure = await client
+      .prove("transfer", new Uint8Array([1]), new Uint8Array([2]))
+      .catch((e: Error) => e);
+    // The document survives, which is the property under test.
     expect(doc.closed).toBe(0);
+    expect((failure as Error).name).toBe("ProverError");
+    expect((failure as Error).message).toMatch(/could not build the proof/i);
+    // And bb's own text does not reach the user: a library message can carry a
+    // stack fragment or a wasm trap string.
+    expect((failure as Error).message).not.toMatch(/malformed prover request/);
   });
 
   it("says the prover did not respond when the channel answers with nothing", async () => {
@@ -206,7 +224,7 @@ describe("a wedged prover ends the wait rather than spinning forever", () => {
     doc.behaviour = { kind: "silent" };
     await expect(
       client.prove("transfer", new Uint8Array([1]), new Uint8Array([2])),
-    ).rejects.toThrow(/did not respond/);
+    ).rejects.toThrow(/could not start the component that builds private proofs/i);
   });
 
   it("bounds a status ping too, so a wedge cannot hide behind it", async () => {
@@ -217,7 +235,7 @@ describe("a wedged prover ends the wait rather than spinning forever", () => {
       15_000,
     );
     expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toMatch(/did not answer within/);
+    expect((failure as Error).message).toMatch(/took longer than \d+s and was stopped/);
   });
 });
 
