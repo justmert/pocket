@@ -35,11 +35,41 @@ vi.mock("./chain/history", async (orig) => {
   return { ...real, publicHistory: () => publicRead() };
 });
 
+/** What the ARCHIVE does. Only the network read is faked; the loop is the real one. */
+let archiveRead: (token: string) => Promise<unknown[]>;
+
+vi.mock("./chain/archive", async (orig) => {
+  const real = (await orig()) as Record<string, unknown>;
+  return {
+    ...real,
+    ArchiveClient: class {
+      async allEvents(token: string) {
+        return archiveRead(token);
+      }
+    },
+  };
+});
+
+// Yield and the archive URL are build-time env, absent in a unit run. Supplied
+// here so `computePrivateHistory` gets past its own `!net.archiveUrl` branch and
+// the per-asset loop under test is reachable at all.
+vi.mock("./config", async (orig) => {
+  const real = (await orig()) as { NETWORKS: Record<string, Record<string, unknown>> };
+  return {
+    ...real,
+    NETWORKS: {
+      ...real.NETWORKS,
+      testnet: { ...real.NETWORKS.testnet, archiveUrl: "https://archive.invalid" },
+    },
+  };
+});
+
 const { WalletController } = await import("./controller");
 
 beforeEach(() => {
   store.clear();
   publicRead = async () => ({ entries: [], more: false, tokenOf: {} });
+  archiveRead = async () => [];
 });
 
 async function worker() {
@@ -62,8 +92,8 @@ function privateFails(c: InstanceType<typeof WalletController>, name: string) {
 describe("a history half that could not be read", () => {
   it("says nothing is unread when the account really is empty", async () => {
     const c = await worker();
-    (c as unknown as { computePrivateHistory: () => Promise<unknown[]> }).computePrivateHistory =
-      async () => [];
+    (c as unknown as { computePrivateHistory: () => Promise<unknown> }).computePrivateHistory =
+      async () => ({ entries: [] });
 
     const page = await c.history();
     expect(page.entries).toEqual([]);
@@ -83,8 +113,8 @@ describe("a history half that could not be read", () => {
 
   it("reports the public half when Horizon does not answer", async () => {
     const c = await worker();
-    (c as unknown as { computePrivateHistory: () => Promise<unknown[]> }).computePrivateHistory =
-      async () => [];
+    (c as unknown as { computePrivateHistory: () => Promise<unknown> }).computePrivateHistory =
+      async () => ({ entries: [] });
     publicRead = async () => {
       throw new Error("fetch failed");
     };
@@ -113,10 +143,110 @@ describe("a history half that could not be read", () => {
     privateFails(c, "ArchiveUnavailableError");
     expect((await c.history()).unread).toHaveLength(1);
 
-    (c as unknown as { computePrivateHistory: () => Promise<unknown[]> }).computePrivateHistory =
-      async () => [];
+    (c as unknown as { computePrivateHistory: () => Promise<unknown> }).computePrivateHistory =
+      async () => ({ entries: [] });
     const after = await c.history();
     expect(after.unread).toBeUndefined();
+  });
+});
+
+describe("the REAL private read, not a stub standing in for it", () => {
+  // Every test above replaces `computePrivateHistory` wholesale, and that method
+  // is exactly where the defect lived: a per-asset `catch {}` swallowed every
+  // failure of the replay, so the method could never reject, so the reporting
+  // the tests above assert was unreachable in production. A test that mocks over
+  // the broken function passes while the bug ships. These drive the real loop.
+
+  it("reports an archive outage instead of calling it an empty account", async () => {
+    const c = await worker();
+    archiveRead = async () => {
+      throw new Error("https://archive.invalid refused the connection");
+    };
+
+    const page = await c.history(undefined, 30, "private");
+    expect(page.entries).toEqual([]);
+    expect(page.unread, "an archive outage rendered as 'No activity yet'").toHaveLength(1);
+    expect(page.unread?.[0]?.pocket).toBe("private");
+  });
+
+  it("names the assets it could not read, and nothing the archive said", async () => {
+    const c = await worker();
+    archiveRead = async () => {
+      throw new Error("https://archive.invalid:8080 refused the connection");
+    };
+
+    const page = await c.history(undefined, 30, "private");
+    const reason = page.unread?.[0]?.reason ?? "";
+    expect(reason).toMatch(/XLM/);
+    expect(reason, "the archive's own words reached the screen").not.toMatch(
+      /archive\.invalid|8080|refused/,
+    );
+  });
+
+  it("still shows the assets it COULD read, and says the list is incomplete", async () => {
+    // The per-asset isolation is right and stays. Only the silence was wrong.
+    const c = await worker();
+    const { NETWORKS } = await import("./config");
+    const first = NETWORKS.testnet.confidential[0]!.token;
+    archiveRead = async (token: string) => {
+      if (token === first) throw new Error("gap");
+      return [];
+    };
+
+    const page = await c.history(undefined, 30, "private");
+    expect(page.unread).toHaveLength(1);
+    expect(page.unread?.[0]?.reason).toMatch(/incomplete/i);
+  });
+
+  it("does not pin a partial answer in the memo for twenty seconds", async () => {
+    // The memo caches a successful read so scrolling does not re-replay the
+    // archive. Caching a PARTIAL one kept the wrong answer on screen after the
+    // archive came back, which is the same defect one level down.
+    const c = await worker();
+    let calls = 0;
+    let down = true;
+    archiveRead = async () => {
+      calls++;
+      if (down) throw new Error("down");
+      return [];
+    };
+    await c.history(undefined, 30, "private");
+    const firstCalls = calls;
+    expect(firstCalls).toBeGreaterThan(0);
+
+    down = false;
+    const after = await c.history(undefined, 30, "private");
+    expect(calls, "the failed read was memoised and never retried").toBeGreaterThan(firstCalls);
+    expect(after.unread).toBeUndefined();
+  });
+
+  it("says so when the build has no archive at all, rather than 'no activity'", async () => {
+    // `.env.production` ships VITE_ARCHIVE_URL commented out, and nothing else
+    // about the private pocket needs an archive: shield, transfer, merge and
+    // unshield all work off local openings. So this build has a working private
+    // pocket whose Activity claimed the account had never done anything.
+    vi.resetModules();
+    vi.doMock("./config", async (orig) => {
+      const real = (await orig()) as { NETWORKS: Record<string, Record<string, unknown>> };
+      return {
+        ...real,
+        NETWORKS: {
+          ...real.NETWORKS,
+          testnet: { ...real.NETWORKS.testnet, archiveUrl: undefined },
+        },
+      };
+    });
+    const { WalletController: Fresh } = await import("./controller");
+    const c2 = new Fresh();
+    await c2.init();
+    await c2.create("pw2");
+
+    const page = await c2.history(undefined, 30, "private");
+    expect(page.entries).toEqual([]);
+    expect(page.unread, "a build with no archive claimed the account was empty").toHaveLength(1);
+    expect(page.unread?.[0]?.reason).toMatch(/archive/i);
+    vi.doUnmock("./config");
+    vi.resetModules();
   });
 });
 
@@ -128,8 +258,8 @@ describe("a page that found nothing but knows there is more", () => {
   // forever, and Activity stopped partway back saying nothing.
   it("still issues a cursor, so the list can keep going", async () => {
     const c = await worker();
-    (c as unknown as { computePrivateHistory: () => Promise<unknown[]> }).computePrivateHistory =
-      async () => [];
+    (c as unknown as { computePrivateHistory: () => Promise<unknown> }).computePrivateHistory =
+      async () => ({ entries: [] });
     publicRead = async () => ({ entries: [], more: true, tokenOf: {} });
 
     const { encodeCursor } = await import("./chain/history");
@@ -146,8 +276,8 @@ describe("a page that found nothing but knows there is more", () => {
   it("carries the Horizon position forward through that empty page", async () => {
     // Otherwise the next call restarts the walk and hits the same wall.
     const c = await worker();
-    (c as unknown as { computePrivateHistory: () => Promise<unknown[]> }).computePrivateHistory =
-      async () => [];
+    (c as unknown as { computePrivateHistory: () => Promise<unknown> }).computePrivateHistory =
+      async () => ({ entries: [] });
     publicRead = async () => ({ entries: [], more: true, tokenOf: {} });
 
     const { encodeCursor, decodeCursor } = await import("./chain/history");
@@ -160,8 +290,8 @@ describe("a page that found nothing but knows there is more", () => {
   it("ends the list when there really is no more", async () => {
     // The other direction: a null cursor still has to mean "that is all".
     const c = await worker();
-    (c as unknown as { computePrivateHistory: () => Promise<unknown[]> }).computePrivateHistory =
-      async () => [];
+    (c as unknown as { computePrivateHistory: () => Promise<unknown> }).computePrivateHistory =
+      async () => ({ entries: [] });
     publicRead = async () => ({ entries: [], more: false, tokenOf: {} });
 
     const { encodeCursor } = await import("./chain/history");

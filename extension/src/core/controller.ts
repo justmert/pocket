@@ -2926,7 +2926,7 @@ export class WalletController {
   }
 
   /** Cached full private history, keyed by account+network, short-lived. */
-  private privHistoryMemo?: { key: string; at: number; entries: HistoryEntry[] };
+  private privHistoryMemo?: { key: string; at: number; read: PrivateHistoryRead };
 
   /**
    * The account's transaction history, newest first, merged across both pockets.
@@ -2967,13 +2967,18 @@ export class WalletController {
     // The private list is computed whole (a stateful replay cannot be paged) and
     // memoised, so scrolling does not re-fetch and re-replay the archive per page.
     // A failed private read is not fatal: the public half still shows.
-    const priv = wantPrivate
+    const privRead = wantPrivate
       ? await this.privateHistoryAll(address, asset).catch((e: unknown) => {
           unread.push({ pocket: "private", reason: describeHistoryFailure(e, "private") });
-          return [] as HistoryEntry[];
+          return { entries: [] as HistoryEntry[] } as PrivateHistoryRead;
         })
-      : [];
-    const privBelow = priv.filter((e) => beforeCursor(e.at, e.id, before));
+      : { entries: [] as HistoryEntry[] };
+    // A read that PARTLY failed reports too. The catch above only fires when
+    // the whole call rejects, and it never could: every failure mode of the
+    // replay sits inside a per-asset catch, so this half of the report was
+    // unreachable and an archive outage rendered as "No activity yet."
+    if (privRead.unreadable) unread.push({ pocket: "private", reason: privRead.unreadable });
+    const privBelow = privRead.entries.filter((e) => beforeCursor(e.at, e.id, before));
 
     // Public is paged from Horizon. A failed public read is not fatal: the
     // private half still shows, and vice versa.
@@ -3035,19 +3040,23 @@ export class WalletController {
     return { entries, cursor: nextCursor, ...(unread.length ? { unread } : {}) };
   }
 
-  private async privateHistoryAll(address: string, asset?: string): Promise<HistoryEntry[]> {
+  private async privateHistoryAll(address: string, asset?: string): Promise<PrivateHistoryRead> {
     // Asset in the key: a filtered view and the merged view are different lists
     // and must not share a memo slot.
     const key = `${this.network}:${address}:${asset ?? "all"}`;
     const memo = this.privHistoryMemo;
-    if (memo && memo.key === key && Date.now() - memo.at < 20_000) return memo.entries;
+    if (memo && memo.key === key && Date.now() - memo.at < 20_000) return memo.read;
     // NOT caught here, and NOT memoised on failure. Swallowing it produced an
     // empty list, and memoising that pinned "you have no private history" in
     // front of the user for twenty seconds after the read recovered. The caller
     // catches this and reports it as an unread half.
-    const entries = await this.computePrivateHistory(address, asset);
-    this.privHistoryMemo = { key, at: Date.now(), entries };
-    return entries;
+    const read = await this.computePrivateHistory(address, asset);
+    // A read that could not see part of itself is not a result worth pinning.
+    // Memoising a partial answer kept "you have no private history" on screen
+    // for twenty seconds after the archive came back, which is the same defect
+    // the line above was written to prevent, one level down.
+    if (!read.unreadable) this.privHistoryMemo = { key, at: Date.now(), read };
+    return read;
   }
 
   /**
@@ -3056,17 +3065,33 @@ export class WalletController {
    * viewing key and its own symbol, so each is replayed separately; one asset
    * failing (an archive gap, say) drops only that asset, not the others.
    */
-  private async computePrivateHistory(address: string, asset?: string): Promise<HistoryEntry[]> {
+  private async computePrivateHistory(
+    address: string,
+    asset?: string,
+  ): Promise<PrivateHistoryRead> {
     const net = NETWORKS[this.network];
-    // No archive to replay from: there is simply no private history to show,
-    // which is not an error.
-    if (!net.archiveUrl) return [];
+    // No archive is NOT "no history". Nothing else about the private pocket
+    // needs one: register, shield, private transfer, merge and unshield all run
+    // off local openings and Soroban RPC, and only the rebuild reads the
+    // archive. So a build shipped without VITE_ARCHIVE_URL has a fully working
+    // private pocket whose Activity read "No activity yet. Your transactions
+    // will appear here." forever, which is a statement about the account and is
+    // false. `.env.production` ships the variable commented out, so this is not
+    // a hypothetical configuration.
+    if (!net.archiveUrl) {
+      return {
+        entries: [],
+        unreadable:
+          "Private activity needs the durable event archive, and this build has none configured. " +
+          "Your private transactions still happened and your balances are unaffected.",
+      };
+    }
     const assets = asset
       ? net.confidential.filter(
           (c) => c.token === asset || c.underlying === asset || c.symbol === asset,
         )
       : net.confidential;
-    if (assets.length === 0) return [];
+    if (assets.length === 0) return { entries: [] };
 
     const { deriveConfidentialKeys } = await import("./confidential-ops");
     const { ArchiveClient } = await import("./chain/archive");
@@ -3074,6 +3099,14 @@ export class WalletController {
     const client = new ArchiveClient(net.archiveUrl);
 
     const all: HistoryEntry[] = [];
+    // Which assets could not be read, so a partial list can say it is partial.
+    // The per-asset isolation below is right and stays; the SILENCE was the
+    // defect. Every failure mode of the replay lives inside that try, so the
+    // method could never throw, so `describeHistoryFailure` and the `unread`
+    // banner built to prevent exactly this were unreachable code, and an
+    // archive outage rendered as a positive claim that the account has no
+    // private history at all.
+    const failed: string[] = [];
     for (const cfg of assets) {
       try {
         const ctx = await this.opContext(cfg.token);
@@ -3085,10 +3118,18 @@ export class WalletController {
         const stored = await client.allEvents(cfg.token, address);
         all.push(...privateHistory(stored, { vk, address }, cfg.symbol));
       } catch {
-        // This asset's history is unavailable right now; the others still show.
+        // Named, not described: the symbol is ours and from a closed set, while
+        // an archive's own error text is not something to put in front of a user.
+        failed.push(cfg.symbol);
       }
     }
-    return all;
+    if (failed.length === 0) return { entries: all };
+    return {
+      entries: all,
+      unreadable:
+        `Pocket could not read the private activity for ${listOf(failed)}. ` +
+        `Anything shown below is incomplete. Your balances are unaffected.`,
+    };
   }
 
   private keypair(): Keypair {
@@ -4531,6 +4572,31 @@ function spendResolution(spendable: Opening): StagedResolution {
     kind: "spend",
     spendable: [spendable.value.toString(), spendable.randomness.toString()],
   };
+}
+
+/**
+ * Asset symbols as a readable list: "XLM", "XLM and USDC", "XLM, USDC and EURC".
+ *
+ * Symbols only, and symbols come from `config.ts`, so nothing an archive or an
+ * RPC authored can reach a user through this sentence.
+ */
+export function listOf(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/**
+ * What a private-history read produced, including what it could not read.
+ *
+ * Two fields because a partial answer is a real outcome and had no way to be
+ * expressed: the per-asset catch dropped a failed asset and returned the rest,
+ * so an archive outage and an account with no private history were the same
+ * value, and the screen renders that value as "No activity yet."
+ */
+interface PrivateHistoryRead {
+  entries: HistoryEntry[];
+  /** Absent when everything asked for was read. */
+  unreadable?: string;
 }
 
 /**
