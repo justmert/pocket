@@ -16,7 +16,13 @@ export interface IrisConfig {
 }
 
 export interface Attestation {
-  /** Circle's status string, e.g. "complete" or "pending_confirmations". */
+  /**
+   * Circle's status string, e.g. "complete" or "pending_confirmations", plus one
+   * value of OUR own: `not_found`, when Circle has no record of the transaction
+   * at all. That is a different fact from a transfer still being confirmed, and
+   * collapsing the two is what left the claim screen telling a user to "try again
+   * shortly" forever for a hash that will never be a CCTP burn.
+   */
   status: string;
   /** True only when a complete message AND attestation are both present. */
   ready: boolean;
@@ -68,8 +74,15 @@ export class IrisClient {
           : "network error";
       throw new IrisError(`Could not reach the attestation service (${why}).`);
     }
-    // Not indexed yet is a normal early state, not a failure.
-    if (res.status === 404) return { status: "pending", ready: false };
+    // NOT the same as "pending", and reporting it as such is what made the claim
+    // screen unable to ever say "there is nothing to claim". A 404 covers two
+    // cases that need different sentences: a burn Circle has not indexed YET, and
+    // a hash that is not a CCTP burn at all. The wallet cannot tell them apart
+    // from here, and that is exactly why it must not pick one: reported as
+    // `pending`, a mistyped hash produced "Circle has not published its
+    // attestation. Try again shortly." forever. `not_found` is ours, not Circle's,
+    // and the caller authors a sentence that covers both readings honestly.
+    if (res.status === 404) return { status: "not_found", ready: false };
     if (!res.ok) {
       throw new IrisError(`The attestation service returned ${res.status}.`, res.status);
     }
@@ -81,7 +94,8 @@ export class IrisClient {
     }
     const messages = Array.isArray(body.messages) ? (body.messages as IrisMessage[]) : [];
     const m = messages[0];
-    if (!m) return { status: "pending", ready: false };
+    // An empty `messages` array is the same fact as a 404: Circle has no record.
+    if (!m) return { status: "not_found", ready: false };
     const status = typeof m.status === "string" ? m.status : "pending";
     const message = typeof m.message === "string" ? m.message : undefined;
     // Until it is signed, `attestation` is the literal "PENDING" or absent.

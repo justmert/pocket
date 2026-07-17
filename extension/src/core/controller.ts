@@ -1984,9 +1984,16 @@ export class WalletController {
       const chain = cctp.CCTP[this.network];
       const att = await new IrisClient({ baseUrl: chain.iris }).attestation(sourceDomain, txHash);
       if (!att.ready || !att.message || !att.attestation) {
+        // Split on WHAT Circle answered. These were one sentence, and the one it
+        // chose was the one that can never come true for the commonest mistake on
+        // this screen: a hash that is not a CCTP burn returned "try again
+        // shortly", forever, next to a button 4.3 had also disabled.
         throw new IrisError(
-          "This transfer is not ready to claim yet: Circle has not published its attestation. " +
-            "Try again shortly.",
+          att.status === "not_found"
+            ? "Circle has no record of that burn. Check the transaction hash and the chain it was " +
+              "burned on. If you burned it in the last few minutes, it may not be indexed yet."
+            : "This transfer is not ready to claim yet: Circle has not published its attestation. " +
+              "Try again shortly.",
         );
       }
 
@@ -2151,9 +2158,27 @@ export class WalletController {
   }
 
   /** The user's answer. Anything other than an explicit yes is a refusal. */
-  resolveDappRequest(id: string, approved: boolean): void {
+  /**
+   * Answer a parked approval, and say whether there was still one to answer.
+   *
+   * `?.resolve(...)` on a missing id is a no-op that returns void, so an approval
+   * screen that outlived the worker's own timeout answered Approve by resolving
+   * normally and closing exactly as a success does, while the site had been told
+   * `USER_REJECTED "You declined that in Pocket."` minutes earlier and SEP-43
+   * tells a site not to retry a rejection. The popup's `catch` for this case has
+   * the right comment ("a refusal that failed to reach the worker must not close
+   * the screen") and could never run, because nothing threw.
+   *
+   * It fails SAFE, which is why the answer is a boolean rather than an exception:
+   * nothing was signed, and the screen simply needs to say the request expired
+   * instead of implying it went through.
+   */
+  resolveDappRequest(id: string, approved: boolean): boolean {
     requireSession();
-    this.dappPending.get(id)?.resolve(approved ? "approved" : "declined");
+    const parked = this.dappPending.get(id);
+    if (!parked) return false;
+    parked.resolve(approved ? "approved" : "declined");
+    return true;
   }
 
   /** Sites connected to this wallet, most recent first. */

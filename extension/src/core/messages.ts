@@ -241,7 +241,8 @@ export interface ResponseMap {
   confirmCctpClaim: { hash: string; ledger: number };
   currentPhase: string | null;
   pendingDappRequest: { id: string; origin: string; summary: TxSummary } | null;
-  resolveDappRequest: void;
+  /** false when the id was no longer parked: the request had already expired. */
+  resolveDappRequest: boolean;
   /** `handle` is opaque, exactly as buildPayment's is. */
   buildPrivateOp: { handle: string; summary: PrivateOpSummary };
   confirmPrivateOp: { hash: string; ledger: number; followed?: string };

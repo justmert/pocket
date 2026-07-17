@@ -26,7 +26,18 @@ export function DappApproval({
     setBusy(true);
     setError(null);
     try {
-      await call({ type: "resolveDappRequest", id: request.id, approved });
+      const parked = await call({ type: "resolveDappRequest", id: request.id, approved });
+      // the worker times a request out at 280s and answers the site
+      // `USER_REJECTED` on its own. this screen can outlive that, and pressing
+      // Approve on one that has already expired used to close exactly as a
+      // success does, while the site had been told minutes earlier that the user
+      // declined, and SEP-43 tells a site not to retry a rejection. nothing was
+      // signed, so the honest answer is that the request is gone.
+      if (!parked) {
+        setError("That request expired, so the site was told you did not answer it. Ask it again.");
+        setBusy(false);
+        return;
+      }
       onDone();
     } catch (e) {
       // a refusal that failed to reach the worker must not close the screen: the

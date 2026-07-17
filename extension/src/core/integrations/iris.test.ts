@@ -48,15 +48,30 @@ describe("IrisClient.attestation", () => {
     expect(att.status).toBe("pending_confirmations");
   });
 
-  it("treats a 404 (not indexed yet) as pending, not an error", async () => {
+  it("reports a 404 as not_found rather than pending, and never as an error", async () => {
+    // A 404 covers "not indexed yet" AND "that is not a CCTP burn". Calling it
+    // `pending` picked the first reading, and the caller's sentence for pending
+    // is "try again shortly", which for a mistyped hash is advice that can never
+    // come true. It is still not an error: the request succeeded and the answer
+    // is a real answer.
     vi.stubGlobal("fetch", fetchWith(404, {}));
     const att = await new IrisClient(cfg).attestation(6, "TX");
-    expect(att).toEqual({ status: "pending", ready: false });
+    expect(att).toEqual({ status: "not_found", ready: false });
   });
 
-  it("treats an empty messages array as pending", async () => {
+  it("reports an empty messages array as not_found too, since it is the same fact", async () => {
     vi.stubGlobal("fetch", fetchWith(200, { messages: [] }));
     const att = await new IrisClient(cfg).attestation(6, "TX");
+    expect(att.ready).toBe(false);
+    expect(att.status, "no record is no record, whichever way Circle says it").toBe("not_found");
+  });
+
+  it("keeps a REAL pending distinct from not_found, so the two get different advice", async () => {
+    // The control. Without this, `status: "not_found"` everywhere would also pass
+    // the two above and the split would be no split at all.
+    vi.stubGlobal("fetch", fetchWith(200, { messages: [{ status: "pending_confirmations" }] }));
+    const att = await new IrisClient(cfg).attestation(6, "TX");
+    expect(att.status).toBe("pending_confirmations");
     expect(att.ready).toBe(false);
   });
 
