@@ -346,7 +346,14 @@ export function EraseSheet({ open, onClose }: { open: boolean; onClose: () => vo
     setError(null);
     try {
       await call({ type: "reset", password });
-      await w.reloadStatus();
+      // `refresh`, NOT `reloadStatus`. everything that forgets the popup's own
+      // memory of the erased wallet (the address book, the mask, the watched
+      // ops, the balances) lives inside `refresh`'s `!next.initialised` branch,
+      // and `reloadStatus` is four lines that do not run it. it mattered on the
+      // real path: in the recorded `stuck` window state, onboarding runs in THIS
+      // document, so the previous owner's saved recipients were offered as chips
+      // to the wallet created next.
+      await w.refresh();
       onClose();
     } catch (e) {
       if (opening.current !== mine) return;

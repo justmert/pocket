@@ -11,7 +11,7 @@ import { Button, IconDisc } from "./primitives";
 import { Rolling } from "./Amount";
 import { ArrowDown } from "./icons";
 import { usd } from "./money";
-import { capDecimals, parseAmount } from "../../../core/chain/balances";
+import { displayAmount, parseAmount } from "../../../core/chain/balances";
 import { fontSizes, radius, space, text, type Theme } from "./theme";
 
 /** the fraction a typed amount is of the spendable balance, 0..100, for the slider. */
@@ -141,7 +141,12 @@ export function AmountComposer({
         ? `${amount || "0"} ${code}`
         : usd(fiat)
       : spendable
-        ? `${capDecimals(spendable, 4)} ${code} available`
+        ? // `displayAmount`, not `capDecimals`. capping truncates, so a real balance
+          // of 0.00009 XLM was stated as "0 XLM available" while "Use max" on the
+          // same card filled 0.00009. `displayAmount` answers "<0.0001" for exactly
+          // this, and its own comment names the identical bug in the history row:
+          // "it is the screen asserting nothing moved when something did."
+          `${displayAmount(spendable)} ${code} available`
         : " ";
 
   // the raw input has none of Amount's fit(), so a long figure ran under the code

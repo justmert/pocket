@@ -212,6 +212,8 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
       t={t}
       open={open}
       onClose={busy ? () => undefined : close}
+      // refused while the close is a no-op, or the drag strands the panel.
+      dismissible={!busy}
       title={title}
       // NEVER full. every confirm and receipt in the wallet is a bottom sheet that
       // sizes to its content (see ConfirmSheet in flow.tsx: "NOT full"), with the

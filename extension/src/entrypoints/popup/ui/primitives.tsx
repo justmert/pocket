@@ -333,7 +333,13 @@ export function Button({
     primary: { background: t.accentFill, color: t.onAccent, boxShadow: glow },
     soft: { background: t.accentSoft, color: t.accentOnSoft },
     quiet: { background: t.field, color: t.text },
-    danger: { background: t.danger, color: t.onAccent, boxShadow: glow },
+    // `onDanger`, NOT `onAccent`. they coincide in the public pocket, which is why
+    // this read as fine from there, and in the private pocket `onAccent` #fcfdfe on
+    // `danger` #fb6e64 is 2.74:1 against `onDanger`'s 7.48:1. every logged-out
+    // screen renders under the private theme, so the coral fill is the one always
+    // in force on Recover: the lowest-contrast text in the product was the label
+    // on the button that erases the wallet.
+    danger: { background: t.danger, color: t.onDanger, boxShadow: glow },
   };
   // one place decides scale: the block CTA fills its column at 52px on the button
   // role; the pill hugs its label at chip scale. everything else (fill, radius,
@@ -1113,6 +1119,14 @@ export function Sheet({
   focusKey,
   /** nothing moves while someone is reading the thing they are confirming. */
   still = false,
+  /**
+   * whether the header can be pulled down to dismiss.
+   *
+   * false while a confirm sheet is working: its `onClose` is a no-op then, so a
+   * drag would take the dismiss branch, call nothing, and strand the panel at its
+   * dragged offset. see `onGrabDown`.
+   */
+  dismissible = true,
   /** a small info affordance rendered beside the title, e.g. an InfoTip whose
    *  hover carries a consequence that used to sit as a paragraph in the body. */
   info,
@@ -1135,6 +1149,7 @@ export function Sheet({
   full?: boolean;
   focusKey?: string;
   still?: boolean;
+  dismissible?: boolean;
   info?: ReactNode;
   onClosed?: () => void;
   hideClose?: boolean;
@@ -1184,6 +1199,17 @@ export function Sheet({
   // grab the header and pull down to dismiss; released short of the threshold it
   // springs back.
   const onGrabDown = (e: React.PointerEvent<HTMLElement>) => {
+    // a sheet that cannot be closed cannot be dragged either. every confirm sheet
+    // passes `onClose={busy ? () => undefined : ...}` while a transaction is in
+    // flight, so a >90px pull took the dismiss branch, called a no-op, skipped
+    // `setY(0)`, and left the panel parked at its dragged offset: the mount
+    // effect that resets `y` keys on `[open, mounted]` and neither had changed.
+    // inside a 384x600 frame with `overflow: hidden`, that pushes "Go to Home"
+    // off the bottom during the one window where the product deliberately
+    // removes every other exit, and the receipt then draws in the same displaced
+    // panel. refusing the grab is better than always calling `setY(0)`, which
+    // reintroduces the snap this one-transform design exists to avoid.
+    if (!dismissible) return;
     if ((e.target as HTMLElement).closest("button, input, textarea, a, [role='button']")) return;
     startY.current = e.clientY;
     setGrabbing(true);

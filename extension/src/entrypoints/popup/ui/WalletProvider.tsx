@@ -465,6 +465,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           // is.
           setSavedAddresses([]);
           clearAddressBook();
+          // and the mask, which was in neither sweep. it is a display preference,
+          // not a secret, but it belongs to the wallet that set it: erase with it
+          // on, create a fresh wallet, and its very first Home masked every
+          // figure including its own address, with the only switch buried in a
+          // header overflow menu on a screen the user has never seen before.
+          setHiddenState(false);
+          try {
+            localStorage.removeItem("pocket:hideBalance");
+          } catch {
+            // a storage that refuses to forget still leaves a usable wallet.
+          }
         }
         if (!next.locked && next.initialised) {
           await Promise.all([

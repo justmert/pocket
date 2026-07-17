@@ -19,7 +19,7 @@ import {
   fractionOf,
   sendableAfterFee,
   composeAmount,
-  capDecimals,
+  displayAmount,
   SOROBAN_FEE_RESERVE_STROOPS,
 } from "../../../../core/chain/balances";
 import { radius, space, text, type Theme } from "../theme";
@@ -277,9 +277,9 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
                     >
                       <span style={{ ...text.rowTitle, color: t.text }}>
                         {y.underlyingBalance ? (
-                          <Figure value={`${capDecimals(y.underlyingBalance, 4)} ${code}`} />
+                          <Figure value={`${displayAmount(y.underlyingBalance)} ${code}`} />
                         ) : y.balance ? (
-                          <Figure value={`${capDecimals(y.balance, 4)} shares`} />
+                          <Figure value={`${displayAmount(y.balance)} shares`} />
                         ) : (
                           "None yet"
                         )}

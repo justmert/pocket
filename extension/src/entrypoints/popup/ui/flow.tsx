@@ -981,6 +981,9 @@ export function ConfirmSheet({
       hideClose
       // still ONLY while reviewing: the working state must move (its sweep) and the
       // receipt draws its checkmark in.
+      // the drag is refused for exactly as long as the close is: `onClose` above
+      // is a no-op while busy, so a pull would report a dismiss nothing acts on.
+      dismissible={!busy}
       still={!busy && !result}
       focusKey={result ? "done" : busy ? "working" : "review"}
     >

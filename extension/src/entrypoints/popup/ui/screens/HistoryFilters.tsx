@@ -321,6 +321,16 @@ export function DateRangeSheet({
     setStart(null);
     setEnd(null);
     setPicking("start");
+    // and APPLY the cleared range, which is the whole point of the control.
+    // it only reset local state, and both footer branches are disabled while
+    // `start === null`, so after pressing Clear there was no live button left to
+    // commit it with: closing the sheet discarded it and the mount effect put
+    // the still-applied range back on reopen. the only ways out were leaving
+    // Activity or the "Clear filters" button that appears solely when the
+    // narrowing matches nothing. the sibling sheet in this same file gets it
+    // right and carried no note about the difference.
+    onApply({ start: null, end: null });
+    onClose();
   };
 
   const summary =
