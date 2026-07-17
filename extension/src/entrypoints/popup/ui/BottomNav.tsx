@@ -72,7 +72,11 @@ export function BottomNav() {
         ...(swapAvailable
           ? [{ key: "swap" as SheetId, label: "Swap", icon: <SwapIcon size={24} /> }]
           : []),
-        ...(w.yieldPosition?.available
+        // kept when the READ failed too. building a deposit does not depend on
+        // this read, and dropping the entry on a DeFindex outage is the defect
+        // `WalletProvider` records in its own words: "the wallet looked like a
+        // build that never had the feature". an outage is not a missing feature.
+        ...(w.yieldPosition?.available || w.yieldError
           ? [{ key: "yieldDeposit" as SheetId, label: "Yield", icon: <Coins size={24} /> }]
           : []),
         { key: "cctpSend", label: "Send to a chain", icon: <BridgeOut size={24} /> },

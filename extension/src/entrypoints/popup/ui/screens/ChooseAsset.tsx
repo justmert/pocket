@@ -233,6 +233,23 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
               </Notice>
             )}
 
+            {/* what adding actually gets you, said BEFORE the 0.5 XLM reserve is
+                spent. `balances()` probes only the assets this build configures
+                (`knownAssets`), and `controller.ts` says so in its own words at
+                `trustlines()`: "it cannot show an asset the user added by hand".
+                so a user could pay a reserve for an asset and then find it absent
+                from Home, from its detail sheet and from Send, while the Settings
+                row that brought them here promises "Add or remove the assets this
+                wallet holds". stated rather than fixed by feeding `trustlines()`
+                into the Home list, because `assetMarket` is keyed on the CODE, so
+                doing that without changing the price key first would price an
+                impostor "USDC" at exactly $1. */}
+            <Notice t={t} tone="exposed" bare>
+              Adding an asset lets this account receive and hold it. Home and Send currently list
+              only the assets Pocket ships for this network; anything else appears here under Your
+              assets.
+            </Notice>
+
             {searchError && (
               <Notice t={t} tone="danger">
                 {searchError}

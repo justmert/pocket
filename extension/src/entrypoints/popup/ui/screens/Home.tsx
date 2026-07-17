@@ -413,7 +413,14 @@ export function Home() {
             `exposed`, not `danger`. the figure is probably correct, it is
             merely unconfirmed, and a red banner over a balance that is fine
             reads as "your money is wrong". */}
-        {w.balanceError && native && (
+        {/* `bootError` counts too. when the STATUS call is what failed, `refresh`
+            sets `bootError`, returns null, and its `if (next)` guard skips the
+            balance, private and yield loads, so `balanceError` is never set
+            either. the only reader of `bootError` sits inside `if (!w.status)`,
+            which is false on a screen that is already drawn, so pressing Refresh
+            on Home after the extension was reloaded ran the spinner and changed
+            nothing on the page at all. */}
+        {(w.balanceError || w.bootError) && native && (
           <div style={{ marginTop: space.xs }}>
             <Notice t={t} tone="exposed" bare>
               Showing the last balance Pocket read. It could not reach the network just now, so this
@@ -881,6 +888,20 @@ export function Home() {
     const hasPosition = Boolean(y.balance && /[1-9]/.test(y.balance));
     return (
       <div style={{ marginTop: space.xl }}>
+        {/* a refresh that failed WITH a position already on screen is the case
+            `yieldError` was written for, and it was the one case it could not
+            reach: both readers sat inside `if (!y)`. the provider's own comment
+            says it keeps the position rather than nulling it, "so replacing it
+            with null deletes the section rather than reporting that the refresh
+            failed" -- and then nothing reported that the refresh failed, so the
+            figure below simply went stale in silence. */}
+        {w.yieldError && (
+          <div style={{ marginBottom: space.sm }}>
+            <Notice t={t} tone="exposed" bare>
+              {w.yieldError}
+            </Notice>
+          </div>
+        )}
         {/* Deposit / Withdraw ride the section header row, beside the "Yield" heading
             they belong to, rather than sitting below the position line. */}
         <div style={{ display: "flex", alignItems: "center", gap: space.sm, marginBottom: space.sm }}>
