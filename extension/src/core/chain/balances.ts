@@ -328,6 +328,28 @@ export function availableToSend(balance: {
 export const SOROBAN_FEE_RESERVE_STROOPS = 5_000_000n; // 0.5 XLM
 
 /**
+ * XLM to keep back for the SECOND leg of a two-leg bridge.
+ *
+ * A CCTP send is an approve and then a burn. The burn is built at confirm time,
+ * against the sequence the approve consumed and the allowance it created, so it
+ * cannot be simulated before the approve exists and its fee cannot be quoted.
+ * That left a real gap: an account with just enough XLM for the approve was
+ * allowed through, paid for it, and then lost the burn for want of a fee, with
+ * a standing allowance left over and no way to resume.
+ *
+ * A RESERVE rather than a prediction, and sized from the ledger:
+ * `deposit_for_burn` fees measured on testnet were 32,559, 32,557 and 51,228
+ * stroops (txs fa4fc0cb, f249c20d, a5f34762). 200,000 is close to four times
+ * the largest of those, which costs 0.02 XLM of headroom in the account and
+ * buys the difference between a bridge that completes and one that strands.
+ *
+ * Deliberately much smaller than the 0.5 XLM screen reserve above: that one
+ * guards an unsimulated amount the user typed, this one guards a single known
+ * invocation whose cost has been measured three times.
+ */
+export const CCTP_BURN_FEE_RESERVE_STROOPS = 200_000n; // 0.02 XLM
+
+/**
  * The most that can actually be SENT of the native asset, once the fee is paid.
  *
  * "Use max" that produces a transaction the account cannot afford is worse than

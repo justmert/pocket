@@ -1468,10 +1468,6 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "swap: clears the live quote when the input is non-positive or the two assets match; a display guard, never a conversion",
   },
   {
-    fragment: "Number(amount) > 0 &&",
-    why: "swap/yield/cctp: each compose page's Continue guard checks there is a positive amount to act on before it is offered; the amount transacted is the decimal string, and the funding check beside it (withinSpendable) is exact bigint",
-  },
-  {
     fragment: "domain: Number(d), name",
     why: "cctp: a CCTP domain id parsed from the config table's string key; an integer chain id, not a balance",
   },

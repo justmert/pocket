@@ -41,6 +41,7 @@ import {
   availableToSend,
   minimumBalance,
   AccountNotFoundError,
+  CCTP_BURN_FEE_RESERVE_STROOPS,
 } from "./chain/balances";
 // aliased: the controller exposes methods of the same names, and an unqualified
 // call inside the class would silently resolve to the module function.
@@ -1879,8 +1880,13 @@ export class WalletController {
       // is checked up front instead: the remaining exposure is a burn that
       // fails for a fee the approve left too little of, which is far narrower
       // than the over-balance case that used to reach here.
-      if (usdcIssuer)
-        await this.assertCanAffordFee(approveTx, new Asset("USDC", usdcIssuer), bridged);
+      // Sized for BOTH legs. The burn's own fee cannot be simulated yet, so a
+      // measured reserve stands in for it (see CCTP_BURN_FEE_RESERVE_STROOPS):
+      // without it an account holding exactly the approve's fee was allowed
+      // through, charged for the approve, and then lost the burn for want of a
+      // fee, leaving a standing allowance and nothing to resume.
+      const twoLegFee = BigInt(approveTx.fee) + CCTP_BURN_FEE_RESERVE_STROOPS;
+      if (usdcIssuer) await this.assertCanSpend(new Asset("USDC", usdcIssuer), bridged, twoLegFee);
 
       const handle = approveTx.hash().toString("hex");
       this.pending.set(handle, {
@@ -1910,7 +1916,13 @@ export class WalletController {
           // the flow was reviewable only on the screen the user had left.
           recipient: cctp.bytes32ToEvmAddress(mintRecipient),
           dust: dust > 0n ? formatAmount(dust) : undefined,
-          fee: formatAmount(BigInt(approveTx.fee)),
+          // The approve's simulated fee plus the reserve held back for the
+          // burn. It was the approve alone, on a flow that signs and pays for
+          // two transactions, so the sheet understated the cost by 2.3x to 3.1x
+          // against fees measured on chain. The burn cannot be simulated until
+          // the approve has landed, so this figure is honest about being an
+          // upper bound rather than a quote, and the effect line says so.
+          fee: formatAmount(twoLegFee),
           effects: [
             `Bridge ${formatAmount(bridged)} USDC from Stellar to ${chainName}`,
             "This burns the USDC on Stellar; the amount and both addresses are PUBLIC",
@@ -1923,6 +1935,8 @@ export class WalletController {
             `It is minted on ${chainName} by a separate transaction THERE, which this wallet ` +
               "cannot make: you need gas on that chain, or a relayer, to finish it",
             "Two Stellar signatures: approve, then burn",
+            `The network fee shown covers both, and the burn's share is an estimate: ` +
+              `it cannot be priced until the approve has landed`,
           ],
         },
       };
@@ -3752,6 +3766,22 @@ export class WalletController {
         // the envelope built alongside it was never signed.
         const { deposit: rawDeposit } = await ops.buildShield(ctx, amount);
         const deposit = await this.prepareForReview(rawDeposit);
+        // BOTH legs, priced now.
+        //
+        // A shield is a deposit AND a merge: the deposit credits the RECEIVING
+        // side, so without the merge the spendable balance stays at zero. Only
+        // the deposit was ever priced, and the merge's fee appeared on no
+        // screen, in no effect line and in no receipt. Measured on the shipped
+        // XLM wrapper: deposit 110,771 stroops, merge 93,726, so the one number
+        // the confirm showed was 54% of what the account was actually charged.
+        //
+        // `merge(account)` takes no arguments beyond the account and reads the
+        // accumulators the contract already holds, so it simulates correctly
+        // BEFORE the deposit lands. The envelope built here is priced and
+        // discarded: the one that gets signed is rebuilt at confirm time
+        // against the sequence the deposit actually consumed.
+        const mergeQuote = await this.prepareForReview(await ops.buildMerge(ctx));
+        const totalFee = BigInt(deposit.fee) + BigInt(mergeQuote.fee);
         // The real fee. A native shield was measured at 350,412 stroops on this
         // deployment, against the 100 the pre-build guard has to assume, so
         // "use max" plus a base-fee reservation produced an amount the account
@@ -3759,7 +3789,11 @@ export class WalletController {
         // By SYMBOL: the wrapper records its underlying as a SAC contract id,
         // which is not something `Asset` can be built from.
         const shielded = this.assetForSymbol(cfg.symbol);
-        if (shielded) await this.assertCanAffordFee(deposit, shielded, amount);
+        // Sized for BOTH, which is what stops the deposit landing and the merge
+        // failing for want of a fee. That left the funds in the receiving
+        // balance, spendable only after a top-up, immediately after the wallet
+        // said it had checked the account could afford this.
+        if (shielded) await this.assertCanSpend(shielded, amount, totalFee);
         return this.stagePrivate(
           deposit,
           {
@@ -3769,11 +3803,12 @@ export class WalletController {
               `Move ${formatAmount(amount)} ${cfg.symbol} from the public pocket into the private one`,
               "This deposit amount is PUBLIC on the ledger. Only later transfers hide amounts",
               "A second signature then makes it spendable",
-              `Pay a network fee of ${formatAmount(BigInt(deposit.fee))} XLM`,
+              `Pay a network fee of ${formatAmount(totalFee)} XLM across BOTH transactions`,
             ],
           },
           { resolve: { kind: "credit", amount: amount.toString() }, follow: true },
           cfg.token,
+          totalFee,
         );
       }
 
@@ -3952,6 +3987,18 @@ export class WalletController {
     summary: Omit<PrivateOpSummary, "fee">,
     after: StagedAfter,
     token: string,
+    /**
+     * Total fee across EVERY transaction this action will sign, when that is
+     * more than the one being staged.
+     *
+     * A shield is a deposit AND a merge, and the confirm quoted the deposit
+     * alone: measured on the shipped XLM wrapper, deposit 110,771 stroops and
+     * merge 93,726, so the single number on the approval screen was 54% of the
+     * real cost. Nothing in the codebase held the count, which is why the same
+     * absent value surfaced as an understated fee, a guard that sized one leg
+     * of two, and receipts that dropped a hash the worker had returned.
+     */
+    totalFeeStroops?: bigint,
   ): { handle: string; summary: PrivateOpSummary } {
     const handle = tx.hash().toString("hex");
     this.pending.set(handle, {
@@ -3965,7 +4012,10 @@ export class WalletController {
       token,
     });
     this.prunePending();
-    return { handle, summary: { ...summary, fee: formatAmount(BigInt(tx.fee)) } };
+    return {
+      handle,
+      summary: { ...summary, fee: formatAmount(totalFeeStroops ?? BigInt(tx.fee)) },
+    };
   }
 
   /**
