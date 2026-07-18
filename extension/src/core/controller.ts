@@ -106,6 +106,23 @@ export class PrivatePocketError extends Error {
 }
 
 /**
+ * The destination cannot hold the classic asset this operation would deliver.
+ *
+ * Its own name rather than a reused one because the remedy is specific and
+ * self-serve: add the trustline, then retry. The alternative was the SAC's
+ * `Error(Contract, #13)`, which arrives as a bare `Error`, is on neither
+ * allowlist in `dispatch.ts`, and therefore reached the user as "check your
+ * connection" on a deterministic refusal no retry can fix.
+ *
+ * Only the asset CODE is interpolated, and codes come from `config.ts` or from
+ * an `Asset` the wallet itself constructed, so nothing a contract authored can
+ * reach a user through this.
+ */
+export class TrustlineRequiredError extends Error {
+  override readonly name = "TrustlineRequiredError";
+}
+
+/**
  * A wallet is already installed here.
  *
  * Named so the message survives `describeError`. Told "Something went wrong,
@@ -538,8 +555,15 @@ export class WalletController {
     windowPassed: boolean;
     answered: boolean;
     expired: boolean;
+    /** when it was submitted. absent on a record from an earlier build. */
+    at?: number;
   } | null> {
-    const e = await readLocal<{ hash: string; maxTime: number; answered?: boolean }>(KEYS.inFlight);
+    const e = await readLocal<{
+      hash: string;
+      maxTime: number;
+      answered?: boolean;
+      at?: number;
+    }>(KEYS.inFlight);
     if (!e) return null;
     const windowPassed = e.maxTime > 0 && Math.floor(Date.now() / 1000) > e.maxTime;
     // Absent on a record written by an earlier build, and absent means "nobody
@@ -1472,6 +1496,30 @@ export class WalletController {
             "before removing the trustline.",
         );
       }
+
+      // The classic balance is not the only thing that needs this line.
+      //
+      // A private pocket for the same asset delivers THROUGH it: the wrapper's
+      // `withdraw` ends in a transfer on the underlying SAC, and that SAC is the
+      // classic asset this trustline is for. Close it while private funds are
+      // still inside and the unshield fails on chain with nothing on any screen
+      // connecting the two, on a path whose only other exit is a private
+      // transfer to somebody else.
+      //
+      // Checked against the local openings rather than the chain, because a
+      // pocket whose balance this device cannot read is exactly the one that
+      // must not lose its way out.
+      const wrapper = net.confidential.find((c) => c.symbol === assetCode);
+      if (wrapper) {
+        const stored = await this.readOpenings(address, wrapper.token);
+        const held = (stored?.spendable.value ?? 0n) + (stored?.receiving.value ?? 0n);
+        if (held > 0n) {
+          throw new TrustlineError(
+            `Your private pocket still holds ${formatAmount(held)} ${assetCode}, and it comes ` +
+              `back out through this trustline. Unshield it first, then remove ${assetCode}.`,
+          );
+        }
+      }
       const source = await this.server().getAccount(address);
       const tx = new TransactionBuilder(source, {
         fee: BASE_FEE,
@@ -1586,15 +1634,10 @@ export class WalletController {
       await this.assertCanSpend(inA.asset, amount);
 
       // Receiving a classic asset needs a trustline, or the swap reverts at
-      // submit with an opaque error. Check first and refuse clearly.
-      if (!outA.asset.isNative()) {
-        const tl = await readTrustline(this.server(), address, outA.asset);
-        if (!tl) {
-          throw new AquariusError(
-            `You need a ${outA.code} trustline before you can receive it. Add ${outA.code} first, then swap.`,
-          );
-        }
-      }
+      // submit with an opaque error. This was the ONLY path that checked, and
+      // the unshield and CCTP claim paths end in the same SAC transfer and did
+      // not. One method now, so there is one rule to keep right.
+      await this.assertCanReceive(outA.asset, address, "swap");
 
       const path = await new AquariusClient({ apiUrl: cfg.apiUrl }).findPath(
         inA.sac,
@@ -1982,6 +2025,15 @@ export class WalletController {
       const { IrisClient, IrisError } = await import("./integrations/iris");
       const cctp = await import("./integrations/cctp");
       const chain = cctp.CCTP[this.network];
+      // Before Circle is even asked. A claim ends in a CLASSIC USDC transfer to
+      // this account: measured on tx 7793604b, `mint_and_forward` mints to the
+      // forwarder and then transfers to the recipient G address, and that leg
+      // needs a trustline. Without one the whole claim reverts and the user was
+      // told to check their connection, having already bridged the money.
+      const [claimCode, claimIssuer] = chain.usdc.split("-");
+      if (claimCode && claimIssuer) {
+        await this.assertCanReceive(new Asset(claimCode, claimIssuer), address, "claim");
+      }
       const att = await new IrisClient({ baseUrl: chain.iris }).attestation(sourceDomain, txHash);
       if (!att.ready || !att.message || !att.attestation) {
         // Split on WHAT Circle answered. These were one sentence, and the one it
@@ -3252,6 +3304,49 @@ export class WalletController {
     await this.assertCanSpend(asset, amount, BigInt(tx.fee));
   }
 
+  /**
+   * Refuse to deliver a classic asset to an account that cannot hold it.
+   *
+   * A classic credit asset arriving at a G address needs a trustline there. The
+   * SAC refuses without one, and it refuses with `Error(Contract, #13)`, which
+   * the SDK raises as a bare `Error`. "Error" is on neither of `dispatch.ts`'s
+   * allowlists, so the user was told to check their connection about a
+   * deterministic refusal that no retry can affect and that names, precisely,
+   * the one thing they need to do.
+   *
+   * `buildSwap` already checked this and nothing else did, which is the shape
+   * that recurred five times in the last audit: fixed on one surface, live on
+   * the others. Three paths end in exactly the same SAC transfer to the user's
+   * own address and all three skipped it:
+   *
+   *   unshield    `withdraw` ends in `token.transfer(contract, to, amount)`
+   *               on the underlying SAC (storage.rs:629-630), after a proof
+   *               that can take 165 seconds
+   *   CCTP claim  `mint_and_forward` ends in a classic USDC transfer from the
+   *               forwarder to the recipient (measured on tx 7793604b)
+   *   swap        the original, kept here so there is one rule
+   *
+   * `who` is the user's own address on every current caller. It is a parameter
+   * anyway because the contract's is, and a check that silently assumes the
+   * recipient is the caller would be wrong the day one of them changes.
+   */
+  private async assertCanReceive(asset: Asset, who: string, verb: string): Promise<void> {
+    if (asset.isNative()) return;
+    const tl = await readTrustline(this.server(), who, asset);
+    if (!tl) {
+      throw new TrustlineRequiredError(
+        `You need a ${asset.getCode()} trustline before you can receive it. ` +
+          `Add ${asset.getCode()} to your assets first, then ${verb}.`,
+      );
+    }
+    if (!tl.authorized) {
+      throw new TrustlineRequiredError(
+        `Your ${asset.getCode()} trustline is not authorised by its issuer, so this account ` +
+          `cannot receive ${asset.getCode()} yet. The issuer has to approve it.`,
+      );
+    }
+  }
+
   private async assertCanSpend(asset: Asset, amount: bigint, feeStroops = BigInt(BASE_FEE)) {
     const { address } = requireSession();
     const fee = feeStroops;
@@ -3440,7 +3535,16 @@ export class WalletController {
               "Pocket will not submit another one over it. Reopen Pocket and check it first.",
           );
         }
-        await writeLocal(KEYS.inFlight, kind ? { ...e, kind } : e);
+        // WHEN, so a reader can tell a confirm that is merely in progress from
+        // one nobody ever saw the end of. the record is written BEFORE
+        // `sendTransaction` and cleared only on a terminal outcome, so it is on
+        // disk for the whole of an ordinary confirm: a popup dismissed and
+        // reopened during one found it and showed the full-screen "Unfinished
+        // transaction" blocker, contradicting the "this will continue in the
+        // background" the processing view had promised seconds earlier and
+        // removing every other control. deriving this from `maxTime` instead
+        // would be guesswork; the writer knows.
+        await writeLocal(KEYS.inFlight, { ...e, at: Date.now(), ...(kind ? { kind } : {}) });
       },
       // The ledger answered "not here" about this hash, inside its window.
       //
@@ -3577,6 +3681,26 @@ export class WalletController {
     // neither of which can rescue a request that was never going to be built.
     const refusal = refusePrivateOp(req, address);
     if (refusal) throw new PrivatePocketError(refusal);
+
+    // Before the verification-key read and long before the proof, which can
+    // take 165 seconds.
+    //
+    // `withdraw` ends in `token.transfer(contract, to, amount)` on the
+    // underlying SAC (storage.rs:629-630), and a classic asset arriving at a G
+    // address needs a trustline there. Checked after proving, the user waits
+    // nearly three minutes to be told to check their connection; checked here,
+    // they are told the one thing they can act on before anything happens at
+    // all. Nothing about this refusal depends on the verifier or the circuit,
+    // so it belongs ahead of both.
+    //
+    // By SYMBOL, for the same reason the shield path uses it: the wrapper
+    // records its underlying as a SAC contract id, which `Asset` cannot be
+    // built from. A symbol this build does not know yields null, and an unknown
+    // asset is not one this check can speak about.
+    if (req.kind === "unshield") {
+      const out = this.assetForSymbol(cfg.symbol);
+      if (out) await this.assertCanReceive(out, address, "unshield");
+    }
 
     const circuit = CIRCUIT_FOR[req.kind];
     // Each phase is named as it STARTS, and only when it really starts. The

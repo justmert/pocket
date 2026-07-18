@@ -341,6 +341,12 @@ const SAFE_ERRORS = new Set([
   "UnspendableBlindingError",
   "CctpParameterError",
   "AquariusError",
+  // A classic asset cannot arrive at an account with no trustline for it. The
+  // SAC refuses with Error(Contract, #13), which the SDK raises as a bare
+  // `Error`, so unshielding private USDC and claiming a bridged transfer both
+  // told the user to check their connection about a deterministic refusal whose
+  // remedy is one button away. Its message names only the asset code.
+  "TrustlineRequiredError",
   // The prover's three failure points threw bare `Error`s, so `e.name` was
   // "Error" and all of them fell through to "Something went wrong. Try again,
   // and check your connection." The prover is an offscreen document inside this
