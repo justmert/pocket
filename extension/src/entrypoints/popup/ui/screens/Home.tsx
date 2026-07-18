@@ -190,11 +190,21 @@ export function Home() {
     return () => sc.removeEventListener("wheel", onWheel);
   }, []);
 
-  // a fallback for non-wheel scrolls (keyboard, scrollbar): commit the collapse.
+  // a fallback for non-wheel scrolls (keyboard, scrollbar, touch panning): commit
+  // the collapse, and let it back OUT again at the top.
+  //
+  // it only ever collapsed. both directions live inside the wheel listener, and a
+  // trackpad two-finger pan or a touch drag produces no wheel event, so a header
+  // collapsed that way could not be expanded again by any gesture: scrolling back
+  // to the very top left the balance hidden with nothing to press.
   const onScroll = (e: UIEvent<HTMLDivElement>) => {
-    if (progressRef.current < 1 && e.currentTarget.scrollTop > 8) {
+    const top = e.currentTarget.scrollTop;
+    if (progressRef.current < 1 && top > 8) {
       setSnapping(true);
       setP(1);
+    } else if (progressRef.current > 0 && top <= 0) {
+      setSnapping(true);
+      setP(0);
     }
   };
 

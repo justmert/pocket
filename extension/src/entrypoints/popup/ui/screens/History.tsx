@@ -703,6 +703,7 @@ export function History() {
         t={t}
         open={showFilter}
         value={types}
+        pocket={pocket}
         onClose={() => setShowFilter(false)}
         onApply={setTypes}
       />
@@ -775,7 +776,11 @@ function List({
       lastLabel = label;
       rows.push(
         <div
-          key={`h-${label}-${i}`}
+          // keyed by the LABEL, not the index: keyed by position every heading
+          // remounted on each keystroke and replayed a `both`-filled entrance,
+          // invisible for up to 360ms, while the rows beside them, keyed by
+          // identity, sat still.
+          key={`h-${label}`}
           className="pocket-row-in"
           style={{ marginTop: i === 0 ? 0 : space.lg, animationDelay: delay }}
         >
@@ -1114,13 +1119,12 @@ function DetailSheet({
           />
 
           <div style={{ display: "grid", gap: space.xs }}>
-            <DetailRow
-              t={t}
-              label="Wallet"
-              value={short(ownAddress)}
-              onCopy={ownAddress ? () => onCopy(ownAddress) : undefined}
-              href={ownAddress ? explorerUrl(network, "account", ownAddress) : undefined}
-            />
+            {/* the OTHER party first. "Wallet" is the user's own address and led
+                every detail, drawn identically to the counterparty's (DetailRow
+                paints any copyable value in the accent, and this row always
+                passes `onCopy`), so the first address on a receipt was the one
+                the reader already knows. it stays: for a private entry with no
+                counterparty it is the only explorer link there is. */}
             {e.counterparty && (
               <DetailRow
                 t={t}
@@ -1138,6 +1142,13 @@ function DetailSheet({
               href={explorerUrl(network, "tx", e.hash)}
             />
             {e.fee && <DetailRow t={t} label="Onchain fee" value={`${e.fee} XLM`} />}
+            <DetailRow
+              t={t}
+              label="Wallet"
+              value={short(ownAddress)}
+              onCopy={ownAddress ? () => onCopy(ownAddress) : undefined}
+              href={ownAddress ? explorerUrl(network, "account", ownAddress) : undefined}
+            />
           </div>
         </div>
       )}
@@ -1240,7 +1251,12 @@ function ProcessingMark({ t, op, size = 40 }: { t: Theme; op: BgOp; size?: numbe
       >
         {done ? (
           <Check size={badge - 8} sw={2.8} />
-        ) : failed ? (
+        ) : failed || unresolved ? (
+          // `unresolved` fell through to the spinner, so a row reading "Not
+          // confirmed yet. Do not send it again." turned forever beside its own
+          // words. the provider states the rule where it sets this status: "A
+          // stuck spinner is a worse lie than a wrong label." the colours already
+          // distinguish the two (exposed, not danger); only the glyph did not.
           <Alert size={badge - 8} />
         ) : (
           <Spinner size={badge - 6} color={fg} />
@@ -1294,7 +1310,21 @@ export function TransactionsSheet({ open, onClose }: { open: boolean; onClose: (
         ) : (
           <div style={{ display: "grid", gap: space.sm, paddingBottom: space.gutter }}>
             {pending.map((op, i) => (
-              <ProcessingRow key={op.id} t={t} op={op} index={i} onClick={() => setOpenOp(op)} />
+              <ProcessingRow
+                key={op.id}
+                t={t}
+                op={op}
+                index={i}
+                // the list sheet CLOSES as the detail opens. they are siblings in
+                // one stacking context with matching z-indexes, so the list panel
+                // painted over the detail's own backdrop: two sheets lit at once,
+                // the lower one still clickable, and two scrims compositing to an
+                // effective 0.856.
+                onClick={() => {
+                  setOpenOp(op);
+                  onClose();
+                }}
+              />
             ))}
           </div>
         )}
@@ -1545,13 +1575,8 @@ function ProcessingDetailSheet({
           />
 
           <div style={{ display: "grid", gap: space.xs }}>
-            <DetailRow
-              t={t}
-              label="Wallet"
-              value={short(ownAddress)}
-              onCopy={ownAddress ? () => onCopy(ownAddress) : undefined}
-              href={ownAddress ? explorerUrl(op.network, "account", ownAddress) : undefined}
-            />
+            {/* see the settled sheet above: the counterparty leads, the user's own
+                address is last. these two also ended in opposite orders. */}
             {op.to && (
               <DetailRow
                 t={t}
@@ -1571,7 +1596,6 @@ function ProcessingDetailSheet({
                 }
               />
             )}
-            {op.fee && <DetailRow t={t} label="Onchain fee" value={`${op.fee} XLM`} />}
             {op.hash && (
               <DetailRow
                 t={t}
@@ -1581,6 +1605,14 @@ function ProcessingDetailSheet({
                 href={explorerUrl(op.network, "tx", op.hash)}
               />
             )}
+            {op.fee && <DetailRow t={t} label="Onchain fee" value={`${op.fee} XLM`} />}
+            <DetailRow
+              t={t}
+              label="Wallet"
+              value={short(ownAddress)}
+              onCopy={ownAddress ? () => onCopy(ownAddress) : undefined}
+              href={ownAddress ? explorerUrl(op.network, "account", ownAddress) : undefined}
+            />
           </div>
 
           {op.status === "processing" ? null : (

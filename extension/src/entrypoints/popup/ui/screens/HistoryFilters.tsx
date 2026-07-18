@@ -118,12 +118,15 @@ export function TypeFilterSheet({
   t,
   open,
   value,
+  pocket,
   onClose,
   onApply,
 }: {
   t: Theme;
   open: boolean;
   value: Set<FilterCategory>;
+  /** which pocket's stream is being filtered; two categories only exist in one. */
+  pocket: "public" | "private";
   onClose: () => void;
   onApply: (v: Set<FilterCategory>) => void;
 }) {
@@ -171,7 +174,12 @@ export function TypeFilterSheet({
         </LinkButton>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: space.sm }}>
-        {CATS.map((c) => {
+        {/* Shielded and Unshielded are produced only by PRIVATE entries, so in
+            the public pocket either chip guarantees an empty list, and the empty
+            list then drives the auto-pager through up to twenty pages while the
+            screen reads "Still reading older history". a filter that cannot match
+            is not a filter. */}
+        {CATS.filter((c) => pocket === "private" || (c.key !== "movedIn" && c.key !== "movedOut")).map((c) => {
           const on = sel.has(c.key);
           return (
             <button
@@ -292,10 +300,15 @@ export function DateRangeSheet({
 
   const pick = (day: number) => {
     const ms = dayMs(viewY, viewM, day);
-    if (picking === "start") {
+    // picking an END with no start yet is the same gesture as picking a start,
+    // and it used to fill a day in the grid while leaving the primary button
+    // disabled with nothing saying why: `apply` returns early on a null start and
+    // both footer branches are `disabled={start === null}`. reachable without
+    // ever pressing Clear (tap "End", tap a day), so it is its own path.
+    if (picking === "start" || start === null) {
       setStart(ms);
       if (end !== null && ms > end) setEnd(null);
-    } else if (start !== null && ms < start) {
+    } else if (ms < start) {
       // an end before the start just becomes the new start.
       setEnd(start);
       setStart(ms);
