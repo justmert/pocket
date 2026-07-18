@@ -261,6 +261,12 @@ export interface ResponseMap {
     windowPassed: boolean;
     answered: boolean;
     expired: boolean;
+    /**
+     * When it was submitted, so a reader can tell a confirm still in progress
+     * from one whose outcome nobody ever saw. Absent on a record written by an
+     * earlier build, which reads as "old", the safe answer.
+     */
+    at?: number;
   } | null;
   reconcileInFlight: SubmitOutcome | null;
   recoverFromMnemonic: string;

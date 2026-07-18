@@ -65,6 +65,8 @@ export interface DappRequest {
 export interface InFlightRecord {
   hash: string;
   maxTime: number;
+  /** when it was submitted; absent on a record from an earlier build. */
+  at?: number;
   /** the envelope's own deadline has passed: it can never be included now. */
   windowPassed: boolean;
   /** the ledger has been asked and said it does not have it. */

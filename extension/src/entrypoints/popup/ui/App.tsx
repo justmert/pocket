@@ -224,6 +224,37 @@ function FinishOnboarding({ t, onContinue }: { t: Theme; onContinue: () => void 
   );
 }
 
+/**
+ * how long a submission may be outstanding before the wallet blocks on it.
+ *
+ * The in-flight record is written BEFORE `sendTransaction` and cleared only on a
+ * terminal outcome, so it is on disk for the whole of every ordinary confirm.
+ * Chrome dismisses a toolbar popup whenever it loses focus, and reopening one
+ * mid-confirm re-mounts this tree, found the record, and drew the full-screen
+ * "Unfinished transaction / Pocket submitted a transaction and did not see
+ * whether it confirmed" blocker: no sentence on it was false, it is written for
+ * the crash case, it reads as one, and it removed every other control while
+ * contradicting the "this will continue in the background" the processing view
+ * had promised seconds earlier.
+ *
+ * The budget is the longest an honest confirm can take, from the two deadlines
+ * that bound it: proving is capped at 165s (`PROVER_DEADLINE_MS`) and the
+ * submit poll runs 15 attempts at ~1s (`pollToTerminal`), plus room for the
+ * submit itself. Past that, nobody is watching it any more and the blocker is
+ * the right screen.
+ */
+const IN_FLIGHT_GRACE_MS = 210_000;
+
+/** whether an unresolved submission should take the whole screen. */
+export function blockingInFlight(r: { expired: boolean; at?: number }): boolean {
+  // Expired means it can never apply now, which is worth blocking on whenever it
+  // happened. An `at` absent (a record from an earlier build) reads as old, which
+  // is the same answer this screen gave before and the safe one.
+  if (r.expired) return true;
+  if (r.at === undefined) return true;
+  return Date.now() - r.at > IN_FLIGHT_GRACE_MS;
+}
+
 function Root() {
   const w = useWallet();
   const t = w.t;
@@ -293,7 +324,7 @@ function Root() {
   // the cost is real and is the trade the wallet already makes when locked: the
   // site's request waits and is answered as declined if the user does not resolve
   // this in time.
-  if (w.inFlight) {
+  if (w.inFlight && blockingInFlight(w.inFlight)) {
     return (
       <InFlight
         t={t}
