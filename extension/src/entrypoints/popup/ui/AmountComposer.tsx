@@ -42,6 +42,40 @@ export function withinSpendable(amount: string, spendable: string | null): boole
   }
 }
 
+/**
+ * Whether an amount is ready to build a transaction from.
+ *
+ * `withinSpendable` alone is not the question: it answers "is this at most the
+ * balance", and `withinSpendable("0", s)` is true by construction, so every
+ * compose screen enabled its primary action on a typed zero and the worker
+ * answered "A payment has to be for more than zero." One screen, Move, had no
+ * ceiling at all (`const ready = amount !== ""`) despite driving a percentage
+ * slider off `spendable`.
+ *
+ * A `spendable` of null means the balance is not known, which is not the same as
+ * a balance of zero: the caller decides whether to allow that (a yield WITHDRAW
+ * draws from the vault, not from a wallet balance), so it is passed explicitly
+ * rather than guessed here.
+ */
+export function amountReady(
+  amount: string,
+  spendable: string | null,
+  { allowUnknownBalance = false } = {},
+): boolean {
+  if (amount === "") return false;
+  let value: bigint;
+  try {
+    value = parseAmount(amount);
+  } catch {
+    // half-typed. the composer deliberately lets these through while the caret is
+    // in the field; they are simply not ready yet.
+    return false;
+  }
+  if (value <= 0n) return false;
+  if (spendable === null) return allowUnknownBalance;
+  return withinSpendable(amount, spendable);
+}
+
 /** the amount, as the largest thing on the page, in a soft card with no hard border. */
 export function AmountComposer({
   t,
@@ -234,7 +268,13 @@ export function AmountComposer({
             value={amount}
             onChange={(e) => {
               setEditing(true);
-              onAmount(e.target.value);
+              // ".5" is a shape people type and `parseAmount` requires a digit
+              // before the point, so it was refused by a message naming two rules
+              // it satisfies ("Amounts go to 7 decimal places"), while "5." was
+              // accepted. normalised HERE rather than by widening the core regex,
+              // which is what everything signed is parsed by.
+              const v = e.target.value;
+              onAmount(v.startsWith(".") ? `0${v}` : v);
             }}
             onFocus={() => setEditing(true)}
             onBlur={() => setEditing(false)}

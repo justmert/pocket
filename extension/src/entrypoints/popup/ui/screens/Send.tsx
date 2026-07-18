@@ -14,8 +14,9 @@ import { Button, Frame, Header, Notice, Sheet, Row } from "../primitives";
 import { InfoTip } from "../Tooltip";
 import { fiatOf } from "../money";
 import { shortAddress } from "../Address";
-import { AmountComposer, AmountSlider, sliderPercent, withinSpendable } from "../AmountComposer";
+import { AmountComposer, AmountSlider, sliderPercent, amountReady } from "../AmountComposer";
 import { ConfirmSheet, useOnce } from "../flow";
+import { privateAbsence } from "../holdings";
 import { AssetMark, privateMarkId } from "./Home";
 import { PrivateAssetPicker } from "../sheets/PrivateAssetPicker";
 import {
@@ -267,7 +268,10 @@ export function Send({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const ready = to !== "" && amount !== "" && withinSpendable(amount, spendable);
+  // `withinSpendable` alone lets a typed zero through by construction, so
+  // Continue turned live on "0" and the worker answered "A payment has to be for
+  // more than zero." one gate for all five compose screens.
+  const ready = to !== "" && amountReady(amount, spendable);
   const blocked = isPrivate && localPriv?.state !== "ready";
   const fiat = fiatOf(amount, price);
 
@@ -314,7 +318,13 @@ export function Send({ onClose }: { onClose: () => void }) {
                         // the whole pocket is closed when another asset is already live.
                         `Setting up ${privSymbol} in your private pocket takes two transactions, and you review the second one.`
                       : PRIVATE_NOT_READY[localPriv.state]
-                    : "Pocket is still reading this account. Try again in a moment."}
+                    : // three unrelated facts produce a null pocket and only one of
+                      // them is "still reading". this asserted that one always, so a
+                      // failed read and a network with no private pocket at all both
+                      // told the user to wait for work that was over or had never
+                      // started. `MoveSheet` already branched correctly; the helper is
+                      // that branch, in one place.
+                      privateAbsence(w.privError, w.status?.privateAvailable).message}
                 </Notice>
               ) : (
                 <>

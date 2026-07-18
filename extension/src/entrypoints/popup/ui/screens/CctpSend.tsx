@@ -11,7 +11,7 @@ import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Field, Frame, Header, Notice, Row, Sheet } from "../primitives";
 import { InfoTip } from "../Tooltip";
-import { AmountComposer, withinSpendable } from "../AmountComposer";
+import { AmountComposer, amountReady } from "../AmountComposer";
 import { findHeld, holdingAmount } from "../holdings";
 import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark, privateMarkId } from "./Home";
@@ -247,12 +247,7 @@ export function CctpSend({ onClose }: { onClose: () => void }) {
   // it. `spendable` is null whenever there is no figure to be sure of, which
   // covers "holds none", "not loaded" and "could not read" alike: all three are
   // reasons not to offer a bridge, and only the first is a reason to say so.
-  const ready =
-    domain !== null &&
-    recipientValid &&
-    amount !== "" &&
-    Number(amount) > 0 &&
-    withinSpendable(amount, spendable);
+  const ready = domain !== null && recipientValid && amountReady(amount, spendable);
 
   return (
     <>

@@ -44,3 +44,28 @@ export function findHeld(
 export function holdingAmount(h: Holding): string | null {
   return h.kind === "held" ? h.balance.amount : null;
 }
+
+/**
+ * Why there is no private pocket to read, when there is not one.
+ *
+ * THREE unrelated facts produce a null pocket and only one of them is "still
+ * reading": a deployment with no confidential wrapper will never have one, so
+ * "Pocket is still reading this account. Try again in a moment." is a claim
+ * about work that is not happening and never will; a failed read has a sentence
+ * the worker already wrote; and only the third is actually in progress. Send and
+ * Move each asserted the third unconditionally.
+ *
+ * `MoveSheet` already had the branch right and the other two screens had a copy
+ * of the wrong half, which is the shape this module exists to stop: the same
+ * question answered in three places, correctly in one.
+ */
+export function privateAbsence(
+  privError: string | null,
+  privateAvailable: boolean | undefined,
+): { tone: "danger" | "plain"; message: string } {
+  if (privError) return { tone: "danger", message: privError };
+  if (privateAvailable === false) {
+    return { tone: "plain", message: "This network has no private pocket." };
+  }
+  return { tone: "plain", message: "Pocket is still reading this account. Try again in a moment." };
+}

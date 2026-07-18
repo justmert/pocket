@@ -12,8 +12,9 @@ import { call } from "../rpc";
 import { Button, Frame, Header, Notice } from "../primitives";
 import { InfoTip } from "../Tooltip";
 import { fiatOf } from "../money";
-import { AmountComposer, AmountSlider, sliderPercent } from "../AmountComposer";
+import { AmountComposer, AmountSlider, sliderPercent, amountReady } from "../AmountComposer";
 import { ConfirmSheet, useOnce } from "../flow";
+import { privateAbsence } from "../holdings";
 import { AssetMark, privateMarkId } from "./Home";
 import { PrivateAssetPicker } from "../sheets/PrivateAssetPicker";
 import {
@@ -235,7 +236,9 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
     setAmount(composeAmount(raw, 4));
   };
 
-  const ready = amount !== "";
+  // Move was the only compose screen with NO ceiling at all, while driving a
+  // percentage slider off the same `spendable` it did not check against.
+  const ready = amountReady(amount, spendable);
   const percent = sliderPercent(amount, spendable);
   const fiat = fiatOf(amount, price);
 
@@ -279,7 +282,13 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
                         // the asset rather than implying the whole pocket is closed.
                         `Setting up ${symbol} in your private pocket takes two transactions, and you review the second one.`
                       : NOT_READY[localPriv.state]
-                    : "Pocket is still reading this account. Try again in a moment."}
+                    : // three unrelated facts produce a null pocket and only one of
+                      // them is "still reading". this asserted that one always, so a
+                      // failed read and a network with no private pocket at all both
+                      // told the user to wait for work that was over or had never
+                      // started. `MoveSheet` already branched correctly; the helper is
+                      // that branch, in one place.
+                      privateAbsence(w.privError, w.status?.privateAvailable).message}
                 </Notice>
               ) : (
                 <>

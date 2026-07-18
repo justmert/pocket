@@ -11,7 +11,7 @@ import { call } from "../rpc";
 import { Button, Frame, Header, Notice, Row, Sheet } from "../primitives";
 import { InfoTip } from "../Tooltip";
 import { fiatOf } from "../money";
-import { AmountComposer, withinSpendable } from "../AmountComposer";
+import { AmountComposer, amountReady } from "../AmountComposer";
 import { AssetPath } from "../AssetPath";
 import { findHeld, holdingAmount } from "../holdings";
 import { ConfirmSheet, useOnce } from "../flow";
@@ -254,12 +254,7 @@ export function Swap({ onClose }: { onClose: () => void }) {
   // Continue is offered only when the swap can be funded AND received: a positive
   // amount, two different assets, enough of the input asset (spendable is null
   // when the input is not held), and a trustline for the output.
-  const ready =
-    amount !== "" &&
-    Number(amount) > 0 &&
-    inId !== outId &&
-    withinSpendable(amount, spendable) &&
-    canReceive;
+  const ready = amountReady(amount, spendable) && inId !== outId && canReceive;
   const fiat = fiatOf(amount, price);
 
   return (
@@ -296,6 +291,21 @@ export function Swap({ onClose }: { onClose: () => void }) {
                   last (the same order the CCTP screens put "you hold no USDC" in). it
                   reads as an error because it BLOCKS the swap; the way to resolve it,
                   Manage assets, is a link inside the sentence rather than a control. */}
+              {/* moved ABOVE the composer, to the same place as the blocker
+                  below it: this file states the ordering rule two comments down
+                  ("the reason the swap is disabled should be the first thing
+                  read, not the last") and then rendered this one last. it is the
+                  worker's own sentence; sending someone to Manage assets to add
+                  an asset they may already hold is a specific instruction to do
+                  wasted work. */}
+              {outFound.kind === "unreadable" && (
+                <div style={{ marginBottom: space.md }}>
+                  <Notice t={t} tone="danger" bare>
+                    {outFound.message}
+                  </Notice>
+                </div>
+              )}
+
               {inId !== outId && outAsset.code !== "XLM" && outFound.kind === "absent" && (
                 <div style={{ marginBottom: space.md }}>
                   <Notice t={t} tone="danger" bare>
@@ -403,17 +413,6 @@ export function Swap({ onClose }: { onClose: () => void }) {
                   ))}
                 </div>
               </div>
-
-              {outFound.kind === "unreadable" && (
-                <div style={{ marginTop: space.md }}>
-                  {/* the worker's own sentence. sending someone to Manage assets
-                      to add an asset they may already hold is a specific
-                      instruction to do wasted work. */}
-                  <Notice t={t} tone="danger" bare>
-                    {outFound.message}
-                  </Notice>
-                </div>
-              )}
 
               {error && !confirming && (
                 <div style={{ marginTop: space.md }}>

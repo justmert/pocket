@@ -12,7 +12,7 @@ import { call } from "../rpc";
 import { Button, Frame, Header, Notice } from "../primitives";
 import { InfoTip } from "../Tooltip";
 import { fiatOf, usdOf } from "../money";
-import { AmountComposer, withinSpendable } from "../AmountComposer";
+import { AmountComposer, amountReady } from "../AmountComposer";
 import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark } from "./Home";
 import {
@@ -183,10 +183,9 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
   // deposit is gated on holding enough of the underlying. withdraw is gated on
   // the position's underlying value WHEN the vault reports it; when it does not
   // (spendable null), withdraw falls back to the worker validating at build.
-  const ready =
-    amount !== "" &&
-    Number(amount) > 0 &&
-    (kind === "withdraw" && spendable === null ? true : withinSpendable(amount, spendable));
+  // a WITHDRAW draws from the vault, not from a wallet balance, so an unknown
+  // `spendable` is not a reason to refuse it. every other case needs the ceiling.
+  const ready = amountReady(amount, spendable, { allowUnknownBalance: kind === "withdraw" });
   const fiat = fiatOf(amount, price);
 
   return (

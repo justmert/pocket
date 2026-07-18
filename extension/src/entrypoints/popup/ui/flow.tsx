@@ -296,7 +296,18 @@ export function ConfirmBody({
  *  rows, one per signed fact, so the review reads as a short table not a paragraph.
  *  the label wears the pocket's accent (the reference's blue captions), the value
  *  the ink, and the value may carry a small asset glyph before the figure. */
-function FactRow({ t, label, children }: { t: Theme; label: string; children: ReactNode }) {
+function FactRow({
+  t,
+  label,
+  info,
+  children,
+}: {
+  t: Theme;
+  label: string;
+  /** an InfoTip beside the label, for a fact whose consequence needs a sentence. */
+  info?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <div
       style={{
@@ -307,8 +318,19 @@ function FactRow({ t, label, children }: { t: Theme; label: string; children: Re
         minHeight: 24,
       }}
     >
-      <span style={{ ...text.rowSub, fontWeight: 600, color: t.accent, flex: "0 0 auto" }}>
+      <span
+        style={{
+          ...text.rowSub,
+          fontWeight: 600,
+          color: t.accent,
+          flex: "0 0 auto",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
         {label}
+        {info}
       </span>
       <span
         style={{
@@ -494,7 +516,23 @@ export function WalletReview({
           )}
           {fee && <FactRow t={t} label="Network fee">{`${fee} XLM`}</FactRow>}
           {memo && (
-            <FactRow t={t} label="Memo">
+            <FactRow
+              t={t}
+              label="Memo"
+              // the same sentence, on the wallet's OWN confirm. `NO_MEMO` exists
+              // in `copy.ts` because two doors to one consequence must not
+              // describe it differently, and it had exactly one reader: the dApp
+              // approval screen. the wallet's own send drew a faint "None" and
+              // said nothing, on the path most people actually take to an
+              // exchange deposit.
+              info={
+                !memo.value ? (
+                  <InfoTip t={t} label="About memos" size={16}>
+                    {NO_MEMO}
+                  </InfoTip>
+                ) : undefined
+              }
+            >
               {memo.value ? (
                 <span style={{ fontFamily: fonts.mono }}>{memo.value}</span>
               ) : (

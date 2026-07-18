@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { call } from "../rpc";
+import { useWallet } from "../WalletProvider";
 import { OriginBlock } from "../Address";
 import { Button, ButtonRow, ButtonStack, Header, Label, Notice, Screen } from "../primitives";
 import { ConfirmBody, useOnce } from "../flow";
@@ -16,10 +17,15 @@ export function DappApproval({
   request: { id: string; origin: string; summary: TxSummary };
   onDone: () => void;
 }) {
+  const w = useWallet();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const once = useOnce();
   const { summary } = request;
+
+  // just the host, for the toast: a full origin with its scheme is a long string
+  // for a transient line, and the host is the part the approval screen is about.
+  const hostOf = (origin: string) => origin.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
 
   const answer = async (approved: boolean) => {
     if (!once.claim()) return;
@@ -38,6 +44,12 @@ export function DappApproval({
         setBusy(false);
         return;
       }
+      // the site has its signature and this screen is about to vanish. without a
+      // word, the only evidence the user ever gave one is on the site's side:
+      // there is no `beginOp`, nothing in Activity, and nothing to see if the tab
+      // moved on. a wallet's own record of what it signed should not be the
+      // signing party's alone.
+      w.showToast(`Signature sent to ${hostOf(request.origin)}`, "positive");
       onDone();
     } catch (e) {
       // a refusal that failed to reach the worker must not close the screen: the
