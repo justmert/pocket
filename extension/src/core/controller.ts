@@ -1426,6 +1426,7 @@ export class WalletController {
         asset_code?: string;
         asset_issuer?: string;
         is_authorized?: boolean;
+        selling_liabilities?: string;
       }[];
     };
     const out: {
@@ -1438,10 +1439,19 @@ export class WalletController {
     for (const b of body.balances ?? []) {
       // native XLM and liquidity-pool shares are not trustlines the user manages.
       if (b.asset_type === "native" || !b.asset_code || !b.asset_issuer) continue;
+      // SPENDABLE, matching what `balances()` publishes for the same asset.
+      //
+      // This passed Horizon's raw `balance` straight through while `balances()`
+      // subtracted selling liabilities, so with one open offer Home said 60
+      // USDC and Settings > Your assets said 100, both unlabelled and both
+      // claiming to be the amount held. `balances.ts` documents that exact bug
+      // being fixed on its own side and it was never applied to this reader.
+      const locked = parseAmount(b.selling_liabilities ?? "0");
+      const held = parseAmount(b.balance);
       out.push({
         code: b.asset_code,
         issuer: b.asset_issuer,
-        balance: b.balance,
+        balance: formatAmount(held > locked ? held - locked : 0n),
         limit: b.limit ?? "0",
         authorized: b.is_authorized !== false,
       });
@@ -2909,15 +2919,25 @@ export class WalletController {
       out.push({ id: "native", code: "XLM", amount: "0.0000000", authorized: true });
     }
 
-    // Known credit assets (e.g. USDC), read only once the account exists. A
-    // trustline the account does not hold reads as null and is OMITTED, never
-    // shown as zero: "you do not trust this asset" and "you hold zero of it" are
-    // different facts. A read error propagates like the native one rather than
-    // fabricating a balance. This is the same reserve-and-authorized shape the
-    // native entry uses, so the UI renders each asset identically.
+    // Every credit asset the ACCOUNT actually holds, read only once it exists.
+    //
+    // This iterated `knownAssets`, a hardcoded list with one entry on each
+    // network. Meanwhile "Add an asset" searches the whole stellar.expert
+    // directory and `buildAddTrustline` opens a trustline for anything valid,
+    // so an asset a user added, paid a 0.5 XLM reserve for, and received funds
+    // in was invisible to every surface that reads this: Home, the send picker,
+    // the swap picker, the totals. It could not be sent, and it could not be
+    // removed either, because the remove path refuses a non-zero balance it
+    // has no way to help the user spend down.
+    //
+    // The SET now comes from Horizon, which knows what the account holds, and
+    // each entry's NUMBERS still come from `readTrustline` so they agree with
+    // the native entry above and with the guards, which read the same way. A
+    // trustline the account does not hold is simply absent from the set, which
+    // keeps "you do not trust this asset" distinct from "you hold zero of it".
     if (exists) {
-      for (const known of NETWORKS[this.network].knownAssets ?? []) {
-        const tl = await readTrustline(this.server(), address, new Asset(known.code, known.issuer));
+      for (const line of await this.trustlines()) {
+        const tl = await readTrustline(this.server(), address, new Asset(line.code, line.issuer));
         if (!tl) continue;
         out.push({
           id: tl.id,
