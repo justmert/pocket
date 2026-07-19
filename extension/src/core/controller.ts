@@ -2997,7 +2997,21 @@ export class WalletController {
         balances.map(async (b) => {
           if (!isPriceable(b.code)) return [];
           const prices = await readPriceSeries(b.code, range);
-          if (prices.length === 0) return [];
+          // An unreadable PRICE abandons the total, exactly as an unreadable
+          // BALANCE history does below. This returned an empty series, which
+          // `sumSeries` then filters out, so the asset silently left the total.
+          //
+          // That is not symmetric with anything and it is not survivable. XLM
+          // and USDC are read from the SAME mainnet endpoint, but USDC never
+          // makes a request: `priceSeries` short-circuits on `isQuoteAsset` and
+          // synthesises a full-length series at exactly 1. So the one asset that
+          // can fail is the one that is usually most of the money, and when it
+          // did the headline became the USDC-only figure, presented as the whole
+          // account, with the chart agreeing.
+          //
+          // The rule is stated four lines up, on UNREADABLE itself: a total
+          // quietly missing one of its parts is worse than no total at all.
+          if (prices.length === 0) throw new WalletController.UNREADABLE();
           // `total`, not the spendable figure. The reserve is still money the
           // account holds; it is merely unspendable, and a chart that dropped it
           // would disagree with the ledger for no reason a user could follow.
