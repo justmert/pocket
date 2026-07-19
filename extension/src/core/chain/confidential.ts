@@ -51,6 +51,56 @@ export function describeContractError(code: number): string {
   return CONTRACT_ERRORS[code] ?? `The contract rejected this (error ${code}).`;
 }
 
+/** A contract refused a WRITE, in the wallet's own words. Never the RPC's. */
+export class ContractRefusedError extends Error {
+  override readonly name = "ContractRefusedError";
+}
+
+/**
+ * Turn a failed simulation into a sentence, or leave it alone.
+ *
+ * `prepareTransaction` is the wallet's only route from an envelope to the
+ * ledger, and stellar-sdk implements its failure as
+ * `throw new Error(simResponse.error)` (rpc/server.js:1098). `name` is
+ * therefore "Error", which is on neither allowlist in `dispatch.ts`, so EVERY
+ * contract refusal on EVERY write path rendered as "Something went wrong. Try
+ * again, and check your connection." Measured live: six of six real failures
+ * produced that sentence, including #3506, for which the wallet already holds
+ * the words "The proof was rejected."
+ *
+ * That sentence is worse than useless here. It names a cause that is not the
+ * cause, and it invites a retry of something deterministic: a diverged private
+ * transfer re-proves the same state and fails identically, forever.
+ *
+ * The read path has done this correctly for a long time; only writes were
+ * missed. `readConfidentialAccount` extracts the same code from the same shape
+ * a few lines below.
+ *
+ * The RPC's own text is NEVER passed through. It runs to hundreds of characters
+ * and can carry a URL, a stack fragment or an address decoded from the reply,
+ * which is the reason `dispatch.ts` keeps an allowlist by name at all. Only the
+ * matched code number crosses, and only into a sentence we wrote.
+ *
+ * An error this cannot explain is returned UNCHANGED, so an already-named error
+ * passing through keeps its own name and its own sentence.
+ */
+export function explainSimulationFailure(e: unknown): unknown {
+  if (!(e instanceof Error) || e.name !== "Error") return e;
+  const text = e.message;
+  const code = /Error\(Contract, #(\d+)\)/.exec(text)?.[1];
+  if (code) return new ContractRefusedError(describeContractError(Number(code)));
+  // `server.getAccount` throws `Error("Account not found: G...")`, which
+  // interpolates an address decoded from the RPC's own reply. Matched, and then
+  // answered with our own sentence rather than that one.
+  if (/^Account not found/i.test(text)) {
+    return new ContractRefusedError(
+      "This account does not exist on the network yet, so it cannot sign anything. " +
+        "It needs to be funded first.",
+    );
+  }
+  return e;
+}
+
 /**
  * Read an account's confidential state via simulation. Returns null when the
  * account has no private pocket on this deployment.

@@ -80,7 +80,11 @@ import type {
   CctpSummary,
   TrustlineSummary,
 } from "./messages";
-import { readConfidentialAccount, readAuditorKey } from "./chain/confidential";
+import {
+  readConfidentialAccount,
+  readAuditorKey,
+  explainSimulationFailure,
+} from "./chain/confidential";
 import { assertVerificationKey, type CircuitName } from "./chain/verification-key";
 import { readAccountTtl, jitteredDelayMs, type TtlStatus } from "./chain/ttl";
 import { buildKeepAlive, planKeepAlive, type KeepAlivePlan } from "./chain/keepalive";
@@ -4226,7 +4230,25 @@ export class WalletController {
    * bytes that get signed.
    */
   private async prepareForReview(tx: Transaction): Promise<Transaction> {
-    return this.server().prepareTransaction(tx);
+    return this.simulate(tx);
+  }
+
+  /**
+   * Simulate, and say what the contract said when it refuses.
+   *
+   * The one route from an envelope to the ledger, so it is the one place a
+   * contract refusal can be named. stellar-sdk throws a BARE `Error` from
+   * `prepareTransaction` (rpc/server.js:1098), whose name is on neither
+   * allowlist in `dispatch.ts`, so every refusal on every write path rendered
+   * as "check your connection" and the fifteen authored sentences in
+   * `CONTRACT_ERRORS` were unreachable.
+   */
+  private async simulate(tx: Transaction): Promise<Transaction> {
+    try {
+      return await this.server().prepareTransaction(tx);
+    } catch (e) {
+      throw explainSimulationFailure(e);
+    }
   }
 
   private async signAndSubmit(
@@ -4239,7 +4261,7 @@ export class WalletController {
     // simulation is the only thing that can do it. Signing before this would
     // produce an envelope the network rejects at once.
     this.setPhase("Simulating against the ledger…");
-    const prepared = await this.server().prepareTransaction(tx);
+    const prepared = await this.simulate(tx);
     // The precondition `submitAndConfirm` states in words, enforced at the one
     // point every envelope passes through. Without a decidable expiry a stuck
     // transaction can never be safely rebuilt: `inFlight()` reports it live

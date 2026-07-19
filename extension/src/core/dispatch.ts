@@ -350,6 +350,13 @@ const SAFE_ERRORS = new Set([
   // told the user to check their connection about a deterministic refusal whose
   // remedy is one button away. Its message names only the asset code.
   "TrustlineRequiredError",
+  // Every contract refusal on every WRITE path. prepareTransaction throws a
+  // bare `Error`, so all fifteen authored CONTRACT_ERRORS sentences were
+  // unreachable and the user was told to check their connection about a
+  // deterministic refusal. Its message is always one of ours; the RPC's own
+  // text, which runs to hundreds of characters and can carry an address decoded
+  // from the reply, never crosses.
+  "ContractRefusedError",
   // The prover's three failure points threw bare `Error`s, so `e.name` was
   // "Error" and all of them fell through to "Something went wrong. Try again,
   // and check your connection." The prover is an offscreen document inside this
