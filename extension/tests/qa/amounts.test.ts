@@ -1289,8 +1289,12 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "defindex's DTO declares JSON numbers; guarded to the safe range on the line above",
   },
   {
-    fragment: "return `${apy.toFixed(2)}% over the last ${windowDays} days",
+    fragment: "figure: `${apy.toFixed(2)}%`,",
     why: "an APY is a rate the service reports as a float; it is not a balance",
+  },
+  {
+    fragment: "sentence: `${apy.toFixed(2)}% over the last ${windowDays} days",
+    why: "the same rate as prose, beside the figure above; still not a balance",
   },
   {
     fragment: "if (apy === undefined || apy === null || !Number.isFinite(apy))",
