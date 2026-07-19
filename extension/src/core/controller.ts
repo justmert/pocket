@@ -3022,9 +3022,30 @@ export class WalletController {
     }
   }
 
-  /** Market facts about one asset, for the detail sheet. */
-  async assetMarket(symbol: string): Promise<AssetMarketView> {
+  /**
+   * Market facts about one asset, for the detail sheet.
+   *
+   * The ISSUER is required to price a credit asset, and a mismatch means no
+   * price rather than a wrong one. `prices.ts` keys on the bare CODE
+   * (`isQuoteAsset` is `symbol.toUpperCase() === "USDC"`, and `PRICED` is a code
+   * table), which was safe only while `balances()` iterated the configured
+   * `knownAssets` and no other asset could reach a screen. It now reads the
+   * account's real trustlines, so any asset a user adds is priced too, and an
+   * asset called USDC from an issuer nobody has heard of would have been valued
+   * at exactly $1.00 a row, and summed into the pocket total at the top of Home.
+   *
+   * A user-added asset simply has no feed here, and saying so is the honest
+   * answer: the rows already fall back to the asset's own unit when the price is
+   * null, which is what they do for every unpriced asset today.
+   */
+  async assetMarket(symbol: string, issuer?: string): Promise<AssetMarketView> {
     requireSession();
+    if (issuer !== undefined) {
+      const known = (NETWORKS[this.network].knownAssets ?? []).find(
+        (k) => k.code === symbol && k.issuer === issuer,
+      );
+      if (!known) return { price: null, change24h: null, volume24h: null };
+    }
     return readAssetMarket(symbol);
   }
 

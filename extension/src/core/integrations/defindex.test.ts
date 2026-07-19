@@ -111,7 +111,13 @@ describe("failure handling", () => {
         json: async () => ({}),
       })) as unknown as typeof fetch,
     );
-    await expect(new DefindexClient(cfg).vault("C")).rejects.toThrow(/502/);
+    // The STATUS is carried on the error for anything that wants to branch on
+    // it; it is not the user's sentence. "The yield service returned 502." was
+    // being drawn verbatim in the danger colour.
+    const err = await new DefindexClient(cfg).vault("C").catch((e: Error & { status?: number }) => e);
+    expect(err.status).toBe(502);
+    expect(err.message).toMatch(/not answering right now/i);
+    expect(err.message, "an HTTP status is not a sentence").not.toMatch(/502/);
   });
 
   it("reports a body that is not JSON as this module's own error", async () => {
@@ -235,29 +241,42 @@ describe("APY presentation", () => {
   // 20.57381881828393. Multiplying by 100 rendered a real 19.41% vault as
   // "1941.00%", which is a financial misstatement, not a formatting slip.
   it("treats the reported number as a percentage, not a fraction", () => {
-    expect(describeApy(19.41, 7)).toContain("19.41%");
-    expect(describeApy(19.41, 7)).not.toContain("1941");
+    expect(describeApy(19.41, 7).sentence).toContain("19.41%");
+    expect(describeApy(19.41, 7).sentence).not.toContain("1941");
   });
 
   it("renders the spec's own account-performance example unchanged", () => {
-    expect(describeApy(20.57381881828393, 1)).toContain("20.57%");
+    expect(describeApy(20.57381881828393, 1).sentence).toContain("20.57%");
   });
 
   it("always states the window and that it is not guaranteed", () => {
-    const s = describeApy(5.23, 7);
-    expect(s).toContain("5.23%");
-    expect(s).toContain("7 days");
-    expect(s).toMatch(/variable and not guaranteed/);
+    const { sentence } = describeApy(5.23, 7);
+    expect(sentence).toContain("5.23%");
+    expect(sentence).toContain("7 days");
+    expect(sentence).toMatch(/variable and not guaranteed/);
   });
 
-  it("says so plainly when no yield is reported", () => {
-    expect(describeApy(undefined, 7)).toBe("Yield not reported");
+  it("offers the bare figure separately, so no caller has to regex the sentence", () => {
+    // The whole reason for the pair. Every caller wanted the figure for a table
+    // cell and got a sentence, so one of them ran `/[\d.]+%/` over it and threw
+    // the WINDOW away, which is the definition of the number.
+    expect(describeApy(19.41, 7).figure).toBe("19.41%");
+  });
+
+  it("says so plainly when no yield is reported, and offers NO figure for it", () => {
+    // `figure` is null rather than the sentinel string, because the sentinel was
+    // being drawn as a rate: "Yield not reported" in the positive colour at
+    // weight 600, and interpolated as "The vault reports Yield not reported".
+    expect(describeApy(undefined, 7).sentence).toBe("Yield not reported");
+    expect(describeApy(undefined, 7).figure).toBeNull();
   });
 
   it("says so plainly for a null or non-finite apy rather than printing NaN%", () => {
     // The 30d field is documented as "or null if calculation failed".
-    expect(describeApy(null as unknown as number, 30)).toBe("Yield not reported");
-    expect(describeApy(NaN, 30)).toBe("Yield not reported");
+    expect(describeApy(null as unknown as number, 30).sentence).toBe("Yield not reported");
+    expect(describeApy(null as unknown as number, 30).figure).toBeNull();
+    expect(describeApy(NaN, 30).sentence).toBe("Yield not reported");
+    expect(describeApy(NaN, 30).figure).toBeNull();
   });
 });
 
@@ -333,7 +352,28 @@ describe("actionable errors from the live API", () => {
     );
     await expect(
       new DefindexClient(cfg).buildDeposit("CVAULT", { caller: "GUSER", amounts: [1n] }),
-    ).rejects.toThrow(/returned 500/);
+    ).rejects.toThrow(/not answering right now/i);
+  });
+
+  it("tells a refusal from an outage, because the remedies differ", async () => {
+    // 4xx is "that request was wrong", which the user can act on; 5xx is "the
+    // service is down", which they can only wait out. Both used to be one
+    // sentence with a number in it, and 4xx is the commoner one: only errorCode
+    // 13 is mapped, and the API returns 10 and 124 for ordinary mistakes.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 400,
+        json: async () => ({ errorCode: 124 }),
+      })) as unknown as typeof fetch,
+    );
+    const err = await new DefindexClient(cfg)
+      .buildDeposit("CVAULT", { caller: "GUSER", amounts: [1n] })
+      .catch((e: Error & { status?: number }) => e);
+    expect(err.message).toMatch(/refused that request/i);
+    expect(err.message).not.toMatch(/not answering/i);
+    expect(err.status, "the status is still carried, just not shown").toBe(400);
   });
 });
 

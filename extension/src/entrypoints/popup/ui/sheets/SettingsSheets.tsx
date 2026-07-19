@@ -210,9 +210,13 @@ export function ConnectionsSheet({ open, onClose }: { open: boolean; onClose: ()
           {error}
         </Notice>
       )}
-      {sessions === null ? (
+      {/* the skeleton is for a read still in FLIGHT. with an error already drawn
+          above it, this rendered both at once and then shimmered forever, because
+          `sessions` stays null on a failure. the correct guard exists twice
+          elsewhere (`ManageAssets`, `ChooseAsset`); this is that guard. */}
+      {sessions === null && !error ? (
         <Skeleton width="100%" height={44} />
-      ) : sessions.length === 0 ? (
+      ) : sessions === null ? null : sessions.length === 0 ? (
         <div style={{ ...text.body, color: t.sub, lineHeight: 1.5 }}>
           {/* this said "a site asks to connect the first time it needs your
               address", which describes a flow that does not exist: nothing in

@@ -33,7 +33,7 @@ const OTHER_CHAINS = Object.entries(CCTP_DOMAIN_NAMES)
   .sort((a, b) => a.domain - b.domain);
 
 /** Solana. Its addresses are base58, not 0x, and its tx ids are base58 too. */
-const SOLANA_DOMAIN = 5;
+export const SOLANA_DOMAIN = 5;
 
 /**
  * Chains this wallet can SEND to: the EVM ones.

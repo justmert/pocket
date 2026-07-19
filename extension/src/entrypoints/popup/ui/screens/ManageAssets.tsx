@@ -127,10 +127,20 @@ export function ManageAssets({ onClose }: { onClose: () => void }) {
               padding: `0 ${space.gutter}px`,
             }}
           >
+            {/* the error told the user to try again and gave them nothing to
+                press: this screen loads once on mount, so "try again" meant
+                leaving and coming back. */}
             {error && (
-              <Notice t={t} tone="danger">
-                {error}
-              </Notice>
+              <>
+                <Notice t={t} tone="danger">
+                  {error}
+                </Notice>
+                <div style={{ marginTop: space.sm }}>
+                  <Button t={t} variant="quiet" size="pill" onClick={load}>
+                    Try again
+                  </Button>
+                </div>
+              </>
             )}
 
             {lines === null && !error && (

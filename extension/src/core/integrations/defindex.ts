@@ -149,7 +149,12 @@ export class DefindexClient {
       // on screen from a real empty position, and telling someone they hold
       // nothing when the answer was unreadable is the fabricated-balance
       // failure this module exists to avoid.
-      throw new DefindexError("the vault balance response carried no readable dfTokens");
+      // Written for a user, not a reader of this file. `DefindexError` is on
+      // `dispatch.ts` SAFE_ERRORS, so whatever is written here is drawn verbatim
+      // in the danger colour, and "carried no readable dfTokens" names an API
+      // field nobody outside this module has heard of. The module's own register
+      // three lines away already had it right.
+      throw new DefindexError("The yield service sent a balance Pocket could not read.");
     }
     const underlying = Array.isArray(body.underlyingBalance)
       ? body.underlyingBalance[0]
@@ -237,7 +242,17 @@ export class DefindexClient {
           res.status,
         );
       }
-      throw new DefindexError(`The yield service returned ${res.status}.`, res.status);
+      // An HTTP status is not a sentence. This is the MOST LIKELY message a user
+      // sees from this module: only errorCode 13 is mapped above, and the API
+      // returns 10 and 124 for ordinary mistakes, all of which arrived as "The
+      // yield service returned 400." The status is still carried on the error for
+      // anything that wants to branch on it; it is simply not the user's line.
+      throw new DefindexError(
+        res.status >= 500
+          ? "The yield service is not answering right now. Try again in a moment."
+          : "The yield service refused that request. Check the amount and try again.",
+        res.status,
+      );
     }
     try {
       return (await res.json()) as T;
@@ -263,7 +278,27 @@ export class DefindexClient {
  * percentage would be a financial representation we cannot substantiate, so the
  * window and the variability are always stated with it.
  */
-export function describeApy(apy: number | undefined, windowDays: number): string {
-  if (apy === undefined || apy === null || !Number.isFinite(apy)) return "Yield not reported";
-  return `${apy.toFixed(2)}% over the last ${windowDays} days, variable and not guaranteed`;
+export function describeApy(
+  apy: number | undefined,
+  windowDays: number,
+): { figure: string | null; sentence: string } {
+  // TWO values, because the callers need two and were splitting one with a regex.
+  //
+  // It returned a finished sentence and every caller treated it as a figure:
+  // `y.apy.match(/[\d.]+%/)?.[0] ?? y.apy` on the rate row, and two tips that
+  // interpolated the whole thing into another sentence, producing "The vault
+  // reports 19.41% over the last 7 days, variable and not guaranteed; it is
+  // variable and not guaranteed." The window, which is the DEFINITION of the
+  // number, was the part the regex threw away.
+  //
+  // `figure` is null, not a sentinel string, when there is nothing to report.
+  // "Yield not reported" was being drawn as a rate in the positive colour at
+  // weight 600 and interpolated as "The vault reports Yield not reported".
+  if (apy === undefined || apy === null || !Number.isFinite(apy)) {
+    return { figure: null, sentence: "Yield not reported" };
+  }
+  return {
+    figure: `${apy.toFixed(2)}%`,
+    sentence: `${apy.toFixed(2)}% over the last ${windowDays} days, variable and not guaranteed`,
+  };
 }

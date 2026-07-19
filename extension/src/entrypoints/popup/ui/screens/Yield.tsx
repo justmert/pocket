@@ -202,9 +202,12 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
                   <InfoTip t={t} label="About the yield vault">
                     A non-custodial DeFindex vault. Deposits and withdrawals are in the PUBLIC
                     pocket and are visible on the ledger.
-                    {y?.apy
-                      ? ` The vault reports ${y.apy}; it is variable and not guaranteed.`
-                      : ""}
+                    {/* the whole disclosure, once. it used to interpolate a
+                        sentence into a sentence: "The vault reports 19.41% over
+                        the last 7 days, variable and not guaranteed; it is
+                        variable and not guaranteed." and with nothing reported
+                        it read "The vault reports Yield not reported". */}
+                    {y?.apy ? ` The vault reports ${y.apy.sentence}.` : ""}
                   </InfoTip>
                 }
               />
@@ -310,13 +313,16 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
                         style={{
                           ...text.rowSub,
                           fontWeight: 600,
-                          color: t.positive,
+                          // a missing rate is not a positive one. "Yield not
+                          // reported" was drawn here in the positive colour at
+                          // weight 600, exactly like a real rate.
+                          color: y.apy.figure ? t.positive : t.faint,
                           whiteSpace: "nowrap",
                         }}
                       >
                         {/* just the figure; "variable, not guaranteed" lives in the
                             header tip rather than wrapping across the card. */}
-                        {y.apy.match(/[\d.]+%/)?.[0] ?? y.apy}
+                        {y.apy.figure ?? "Not reported"}
                       </span>
                     </div>
                   )}

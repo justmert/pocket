@@ -247,7 +247,10 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
     case "valueSeries":
       return c.valueSeries(rangeId(msg.range));
     case "assetMarket":
-      return c.assetMarket(str(msg.symbol, "symbol"));
+      return c.assetMarket(
+        str(msg.symbol, "symbol"),
+        msg.issuer === undefined ? undefined : str(msg.issuer, "issuer"),
+      );
     case "assetSeries":
       return c.assetSeries(str(msg.symbol, "symbol"), rangeId(msg.range));
     case "history":

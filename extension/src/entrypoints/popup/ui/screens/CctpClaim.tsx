@@ -15,7 +15,7 @@ import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark, privateMarkId } from "./Home";
 import { ChevronRight, Globe } from "../icons";
 import { ChainLogo } from "../ChainLogo";
-import { CLAIM_DOMAINS, ChainPicker, isTxId } from "./CctpSend";
+import { CLAIM_DOMAINS, ChainPicker, isTxId, SOLANA_DOMAIN } from "./CctpSend";
 import { cctpDomainName } from "../../../../core/integrations/cctp";
 import { radius, space, text } from "../theme";
 import type { CctpSummary } from "../../../../core/messages";
@@ -227,13 +227,21 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
                     // (without this, disabling Continue on error would deadlock here).
                     setError(null);
                   }}
-                  placeholder="0x…"
+                  // the SHAPE follows the chain, exactly as the validator beside it
+                  // does. `isTxId` branches on the domain because Solana signs in
+                  // base58 and everything else in hex, and both the placeholder and
+                  // the invalid hint stated the EVM rule unconditionally: on Solana
+                  // the field refused a correct signature and then explained the
+                  // refusal with a rule that does not apply to it.
+                  placeholder={domain === SOLANA_DOMAIN ? "base58 signature" : "0x…"}
                   mono
                   multiline
                   invalid={txHash !== "" && !txValid}
                   hint={
                     txHash !== "" && !txValid
-                      ? "That is not a 32-byte transaction hash (0x followed by 64 hex characters)."
+                      ? domain === SOLANA_DOMAIN
+                        ? "That is not a Solana transaction signature (base58, 64 to 90 characters)."
+                        : "That is not a 32-byte transaction hash (0x followed by 64 hex characters)."
                       : "The hash of the burn transaction on the source chain."
                   }
                 />

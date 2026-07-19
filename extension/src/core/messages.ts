@@ -158,7 +158,13 @@ export type WalletRequest =
   | { type: "setAutoLock"; minutes: number }
   | { type: "fundTestnet" }
   | { type: "valueSeries"; range: RangeId }
-  | { type: "assetMarket"; symbol: string }
+  | {
+      type: "assetMarket";
+      symbol: string;
+      /** Required to price a CREDIT asset: the code alone is not identity, and
+       *  `prices.ts` keys on the code. Omitted for native XLM. */
+      issuer?: string;
+    }
   | { type: "assetSeries"; symbol: string; range: RangeId }
   | {
       type: "history";
@@ -519,7 +525,15 @@ export interface YieldPosition {
   available: boolean;
   reason?: string;
   vault?: string;
-  apy?: string;
+  /**
+   * The reported rate, split so a caller never has to take one apart.
+   *
+   * `figure` is the bare percentage for a table cell and is null when nothing was
+   * reported; `sentence` is the full disclosure, window included, for a tip. A
+   * single string forced every caller to regex the figure out of the sentence and
+   * lose the window with it.
+   */
+  apy?: { figure: string | null; sentence: string };
   /** Vault SHARES held (the API's dfTokens), NOT an underlying amount. */
   balance?: string;
   /** The underlying asset's symbol, e.g. "XLM" or "USDC". */

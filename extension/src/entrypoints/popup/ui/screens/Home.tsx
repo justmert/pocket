@@ -38,8 +38,14 @@ import {
 } from "../theme";
 import { usd, usdOf } from "../money";
 import { NETWORKS, type NetworkId } from "../../../../core/config";
-import { capDecimals } from "../../../../core/chain/balances";
+import { capDecimals, displayAmount } from "../../../../core/chain/balances";
 import type { PrivatePocket, PrivatePocketState } from "../../../../core/messages";
+
+/** the issuer out of a canonical `CODE:ISSUER` id; undefined for native XLM. */
+function issuerOf(id: string): string | undefined {
+  const i = id.indexOf(":");
+  return i === -1 ? undefined : id.slice(i + 1);
+}
 
 export function Home() {
   const w = useWallet();
@@ -101,18 +107,25 @@ export function Home() {
   // the private assets are priced too, so the private hero can total their value
   // and each private row can show its own dollar figure, exactly like public.
   const privateSymbols = (status?.privateAssets ?? []).map((a) => a.symbol);
-  const codeKey = [...(w.balances ?? []).map((b) => b.code), ...privateSymbols].join(",");
+  // keyed by code AND issuer, because the code alone is not identity and the
+  // price table is a code table: `balances()` now lists every trustline the
+  // account really holds, so an asset a user added called "USDC" would otherwise
+  // be priced at exactly $1 per unit and summed into the pocket total.
+  const priceable = [
+    ...(w.balances ?? []).map((b) => ({ code: b.code, issuer: issuerOf(b.id) })),
+    ...privateSymbols.map((symbol) => ({ code: symbol, issuer: undefined })),
+  ];
+  const codeKey = priceable.map((a) => `${a.code}:${a.issuer ?? ""}`).join(",");
   useEffect(() => {
-    const codes = Array.from(
-      new Set([...(w.balances ?? []).map((b) => b.code), ...privateSymbols]),
-    );
-    if (codes.length === 0) return;
+    const seen = new Map<string, { code: string; issuer?: string }>();
+    for (const a of priceable) seen.set(`${a.code}:${a.issuer ?? ""}`, a);
+    if (seen.size === 0) return;
     let live = true;
     Promise.all(
-      codes.map((c) =>
-        call({ type: "assetMarket", symbol: c })
-          .then((m) => [c, m.price] as const)
-          .catch(() => [c, null] as const),
+      [...seen.values()].map((a) =>
+        call({ type: "assetMarket", symbol: a.code, ...(a.issuer ? { issuer: a.issuer } : {}) })
+          .then((m) => [a.code, m.price] as const)
+          .catch(() => [a.code, null] as const),
       ),
     ).then((entries) => {
       if (live) setPrices(Object.fromEntries(entries));
@@ -639,7 +652,14 @@ export function Home() {
 
         <div style={{ marginTop: space.xl }}>
           <Overline t={t}>Assets</Overline>
-          {w.balances === null ? (
+          {/* a failed read leaves `balances` null forever, so an unguarded skeleton
+              shimmers for good: a wait that has already ended, drawn as one that
+              has not. the error itself is already stated at the hero. */}
+          {w.balances === null && (w.balanceError || w.bootError) ? (
+            <div style={{ ...text.body, color: t.faint, paddingTop: space.sm }}>
+              Pocket could not read this account&rsquo;s assets.
+            </div>
+          ) : w.balances === null ? (
             // the placeholders match the real Row height (52) and count, so the list
             // does not jump when the balances arrive.
             <div style={{ display: "grid", gap: space.md, paddingTop: space.xs }}>
@@ -953,16 +973,32 @@ export function Home() {
                 {/* the APY and its caveat were a sentence jammed into a subtitle
                     ("14.67% over the last 7 days, variable and not guaranteed
                     reported"). the figure stays; the sentence becomes a tip. */}
-                {y.apy && (
+                {y.apy?.figure && (
                   <InfoTip t={t} label="About this yield">
-                    {y.apy} at the moment. It is variable and not guaranteed, and it is reported by
-                    the vault rather than earned in the private pocket.
+                    {y.apy.sentence}. Reported by the vault rather than earned in the private
+                    pocket.
                   </InfoTip>
                 )}
               </span>
+              {/* the SAME figure the Yield screen shows, in the same unit and at
+                  the same precision. this printed the raw share count uncapped
+                  while Yield preferred `underlyingBalance` with the asset code,
+                  so one deposit read "0.0019987 shares" here and "3.3331 XLM"
+                  one tap away.
+
+                  `hasPosition` is the predicate, not `y.balance`: the balance is
+                  a formatted string, so "0.0000000" is truthy and "None
+                  deposited" was dead code. that predicate is declared five lines
+                  above this and was not used here. */}
               <span style={{ ...text.rowTitle, color: t.text }}>
-                {y.balance ? (
-                  <Figure value={`${y.balance} shares`} />
+                {hasPosition ? (
+                  <Figure
+                    value={
+                      y.underlyingBalance
+                        ? `${displayAmount(y.underlyingBalance)} ${y.underlying ?? ""}`.trim()
+                        : `${displayAmount(y.balance!)} shares`
+                    }
+                  />
                 ) : (
                   "None deposited"
                 )}
