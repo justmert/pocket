@@ -760,8 +760,23 @@ export function Row({
               {value}
             </span>
           )}
+          {/* the same figure treatment as the line above it. this column is a
+              column of dollar amounts sitting directly under a column of asset
+              amounts, and it was set in a prose role while the one above declares
+              `tabular-nums`, so the two jittered against each other as digits
+              changed. three hand-patches elsewhere in the tree already add this
+              per call site. */}
           {valueSub && (
-            <span style={{ ...text.rowSub, color: t.sub, display: "block" }}>{valueSub}</span>
+            <span
+              style={{
+                ...text.rowSub,
+                fontVariantNumeric: "tabular-nums lining-nums",
+                color: t.sub,
+                display: "block",
+              }}
+            >
+              {valueSub}
+            </span>
           )}
         </span>
       )}

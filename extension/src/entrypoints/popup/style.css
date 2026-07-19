@@ -16,6 +16,24 @@
   --pocket-shimmer-calm: 2400ms;
   --pocket-roll: 560ms;
   --pocket-hover-veil: rgba(128, 128, 128, 0.1);
+  /* the page floor, before react has mounted anything to set it.
+   *
+   * every other rule that paints a background is inside the `min-width: 801px`
+   * block, which by its own comment can never match a toolbar popup, so nothing
+   * painted the popup at all until the first React commit: ~50ms of browser
+   * white in front of a near-black theme, on every open. the product's own
+   * cold-start spec measures that window at 48-50ms.
+   *
+   * this is the PRIVATE floor, `cool.bg`, because that is what every logged-out
+   * screen wears and what an unlocked wallet flips away from rather than toward.
+   * WalletProvider overwrites it with the live pocket's value the moment it
+   * mounts, so this value is only ever seen in that first frame. */
+  --pocket-bg: #020b0e;
+}
+
+html,
+body {
+  background: var(--pocket-bg);
 }
 
 * {

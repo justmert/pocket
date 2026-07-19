@@ -5,7 +5,7 @@ import { call } from "../rpc";
 import { canRebuild } from "../copy";
 import { ChangeChip, ValueChartBlock, useValueChart } from "../Chart";
 import { NAV_SPACE } from "../BottomNav";
-import { Amount, HeroAmount, Figure } from "../Amount";
+import { Amount, HeroAmount, Figure, MASK } from "../Amount";
 import { shortAddress } from "../Address";
 import { Avatar, useAvatarReaction } from "../Avatar";
 import { AssetLogo, tokenIconFile } from "../AssetIcon";
@@ -250,7 +250,7 @@ export function Home() {
     multiPrivate ? (
       privTotal !== null ? (
         <span style={{ ...text.rowTitle, color: t.text }}>
-          {w.hidden ? "$∗∗∗.∗∗∗" : usd(privTotal)}
+          {w.hidden ? `$${MASK}.${MASK}` : usd(privTotal)}
         </span>
       ) : null
     ) : priv && priv.state === "ready" && priv.spendable ? (
@@ -264,7 +264,7 @@ export function Home() {
     ) : null
   ) : publicUsd !== null ? (
     <span style={{ ...text.rowTitle, color: t.text }}>
-      {w.hidden ? "$∗∗∗.∗∗∗" : usd(publicUsd)}
+      {w.hidden ? `$${MASK}.${MASK}` : usd(publicUsd)}
     </span>
   ) : native ? (
     <Amount t={t} value={native.amount} code="XLM" size="row" hidden={w.hidden} />
@@ -678,7 +678,17 @@ export function Home() {
                 title={b.code}
                 sub={
                   b.id === "native" ? (
-                    "Stellar Lumens"
+                    // the RESERVE, named. the worker publishes `reserved` on every
+                    // native balance and nothing in the popup read it, so Home
+                    // showed 8.5 XLM where an explorer shows 10 and nothing on any
+                    // screen accounted for the missing 1.5. it is not spendable,
+                    // which is why the figure beside it is right; it is also not
+                    // gone, which is why its absence read as a discrepancy.
+                    b.reserved && /[1-9]/.test(b.reserved) ? (
+                      `Stellar Lumens · ${displayAmount(b.reserved)} held as network reserve`
+                    ) : (
+                      "Stellar Lumens"
+                    )
                   ) : b.issuer ? (
                     // an issuer is verbatim address data, read one glyph at a time, so
                     // it belongs in the mono face like every other address in the wallet.
@@ -693,7 +703,7 @@ export function Home() {
                   !b.authorized
                     ? "Not authorised"
                     : w.hidden
-                      ? "∗∗∗"
+                      ? MASK
                       : (usdOf(b.amount, prices[b.code] ?? null) ?? undefined)
                 }
                 onClick={() => w.openAsset(b)}
@@ -1087,7 +1097,7 @@ export function Home() {
                   fontVariantNumeric: "tabular-nums",
                 }}
               >
-                {w.hidden ? "∗∗∗ ∗∗∗" : shortAddress(status.address)}
+                {w.hidden ? `${MASK} ${MASK}` : shortAddress(status.address)}
               </span>
               {/* the check matches the copy glyph's size so the swap does not jog the icon. */}
               {w.copied ? <Check size={13} sw={2.4} /> : <Copy size={13} />}
@@ -1421,7 +1431,7 @@ export function PrivateAssetRow({
 
   const valueSub = ready
     ? hidden
-      ? "∗∗∗"
+      ? MASK
       : p.spendable
         ? (usdOf(p.spendable, price) ?? undefined)
         : undefined

@@ -296,11 +296,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [balanceError, setBalanceError] = useState<string | null>(null);
   const [privAssets, setPrivAssets] = useState<PrivatePocket[] | null>(null);
   const [privError, setPrivError] = useState<string | null>(null);
-  // which confidential asset a private op runs against, by wrapper token. seeded
-  // from localStorage so the choice survives a reopen; reconciled against the
-  // the private asset whose detail sheet is open (the tapped row). there is no
-  // persisted "selected asset" any more: each form picks its own asset locally, so
-  // nothing a form does bleeds into the home or the next form.
+  // the private asset whose detail sheet is open (the tapped row).
+  //
+  // NOT persisted and not seeded from anywhere: the first half of this comment
+  // was left over from a design that did keep a selection in localStorage, and it
+  // sat directly above a `useState(null)` describing the opposite. there is no
+  // persisted "selected asset" any more: each form picks its own asset locally,
+  // so nothing a form does bleeds into the home or the next form.
   const [privateDetail, setPrivateDetail] = useState<PrivatePocket | null>(null);
   const [yieldPosition, setYieldPosition] = useState<YieldPosition | null>(null);
   const [yieldError, setYieldError] = useState<string | null>(null);

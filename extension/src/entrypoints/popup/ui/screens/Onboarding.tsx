@@ -644,7 +644,13 @@ function Verify({
                     style={{
                       ...text.rowSub,
                       fontFamily: fonts.mono,
-                      fontWeight: 600,
+                      // only the 500 cut of DM Mono ships (`main.tsx` imports
+                      // `dm-mono/500.css` and nothing else), so 600 made chrome
+                      // SYNTHESISE a bold: it smears the glyphs of the face that
+                      // was chosen because "a slip between two glyphs loses
+                      // money", on the recovery-phrase screen. the same reset is
+                      // already written out in `Address.tsx`.
+                      fontWeight: 500,
                       color: t.accent,
                       minWidth: 0,
                       overflow: "hidden",

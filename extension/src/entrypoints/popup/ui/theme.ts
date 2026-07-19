@@ -10,10 +10,18 @@ export type Pocket = "public" | "private";
 /**
  * the palette: the single source of every colour value in the product.
  *
- * these ramps are measured, not chosen by eye (resources/colors.md). each stop
- * targets a CIELAB L* and its WCAG contrast against the surfaces it sits on is
- * recorded there. change a stop here and every pocket that references it follows,
- * because nothing below this block names a raw colour. the two anchor pairs are
+ * these ramps are measured, not chosen by eye. each stop targets a CIELAB L* and
+ * its WCAG contrast against the surface it is drawn on; where a stop exists for a
+ * contrast reason the number is written beside it here.
+ *
+ * `resources/colors.md` is NOT the provenance and must not be cited as it: that
+ * file documents a ROSE accent, a green semantic ramp and a pure white, none of
+ * which the product ships, and grepping any current stop in it returns nothing.
+ * It was cited here twice, which made a stale document read as the authority for
+ * values it has never contained.
+ *
+ * change a stop here and every pocket that references it follows, because nothing
+ * below this block names a raw colour. the two anchor pairs are
  * sky-400 on warm-bg (the public pocket) and teal-400 on cool-bg (the private
  * one); everything else derives from them.
  */
@@ -30,6 +38,9 @@ const sky = {
   // a deep, readable blue for the "this is public" info role (exposed): clears
   // ~6:1 on the sky[50] tint it is drawn on, so it reads as info, not an error.
   700: "#005c8a",
+  // 800 is the "exposed" stop: deeper than 700 so an info note is distinguishable
+  // from a positive one, which 700 carries. 10.33:1 on sky[50].
+  800: "#003c5c",
 } as const;
 // the private pocket's accent: a deep teal. it shares the public sky's HUE (198) so
 // the two pockets read as one hue family, light-blue (public) vs deep-teal (private),
@@ -82,13 +93,21 @@ const cool = {
   650: "#06121a",
   // 625 is the private hairline/border stop, just below the shared 600.
   625: "#264554",
-  // the mid stops of the measured ramp (resources/colors.md, HSL 200): the private
+  // the mid stops of the measured ramp (HSL 200): the private
   // pocket surfaces sit one step LIGHTER than the near-black floor so pages, popups
   // and the cards inside them read as distinct raised planes rather than one dark
   // mass. 600 was darkened off the measured stop: it fills the active nav tile and
   // the input field in the private pocket, and the old value read too light there.
   600: "#21323e",
+  // 550 and 450 are the public pocket's TYPE ramp, added for the same reason
+  // paper[150] was added to the private one: `text` and `sub` were cool[700] and
+  // cool[600], which are 1.05:1 apart on the page (13.66 against 12.96), so the
+  // two levels were the same colour and nothing separated a placeholder from a
+  // typed value. these give 13.66 / 7.83 / 5.02, whose step ratios (1.74, 1.56)
+  // are the private ramp's own (1.79, 1.58). measured against warm.bg #fcfdfe.
+  550: "#3a5464",
   500: "#456271",
+  450: "#547283",
   400: "#7493a2",
   100: "#eef1f2",
 } as const;
@@ -187,28 +206,53 @@ export const fonts = {
  * text roles. each carries size, weight and family together so the same kind of
  * text matches everywhere without anyone picking a face or a weight by hand.
  *
- * three weights and no more: 700 for headings and the balance, 600 for buttons,
- * labels and row titles, 400 for prose. verbatim data (addresses, the phrase) is
- * set in `fonts.mono` at 500 at the few call sites that render it, over whichever
- * role applies.
+ * four weights: 700 for headings and the balance, 600 for buttons, labels and row
+ * titles, 500 for prose and for verbatim data, and 400 at a few non-prose sites.
+ * this said "three weights and no more ... 400 for prose", and every prose role
+ * here is 500, so the sentence described neither the roles below it nor the tree.
+ * verbatim data (addresses, the phrase) is set in `fonts.mono` at 500 at the few
+ * call sites that render it, over whichever role applies.
  */
 // every prose role can break inside a word. chrome zooms to 500%, which leaves
 // the popup 160px wide, and a title that refuses to break is a title that is
 // simply cut off with nothing to scroll to.
 const BREAKS = { overflowWrap: "anywhere" } as const;
 
+/**
+ * line height, per role, because no role carried one.
+ *
+ * `text.body` rendered at four different densities across ~20 call sites (unset,
+ * 1.45, 1.5, 1.55) and `text.caption` split the same way: each site that needed
+ * comfortable prose added its own. The role owns it now, so the same kind of text
+ * is set the same way without anyone choosing.
+ *
+ * Figures and headings stay TIGHT: a balance is one line by construction and a
+ * loose leading on a 42px number just pushes the screen down.
+ */
+const PROSE_LEADING = 1.5;
+const TIGHT_LEADING = 1.2;
+
 export const text = {
+  // hero and display carry BREAKS too. they were the only two roles without it,
+  // against the rule stated at `BREAKS` itself: at 500% zoom the popup is 160px
+  // and a figure or a state word that refuses to break is simply cut off with
+  // nothing to scroll to. call sites had started patching the roles by hand,
+  // inconsistently, which is the drift a role exists to prevent.
   hero: {
     fontFamily: fonts.display,
     fontSize: fontSizes.hero,
     fontWeight: 700,
     letterSpacing: "-0.035em",
+    lineHeight: TIGHT_LEADING,
+    ...BREAKS,
   },
   display: {
     fontFamily: fonts.display,
     fontSize: fontSizes.display,
     fontWeight: 700,
     letterSpacing: "-0.03em",
+    lineHeight: TIGHT_LEADING,
+    ...BREAKS,
   },
   screenTitle: {
     fontFamily: fonts.display,
@@ -236,7 +280,13 @@ export const text = {
     ...BREAKS,
   },
   rowTitle: { fontFamily: fonts.display, fontSize: fontSizes.body, fontWeight: 600, ...BREAKS },
-  rowSub: { fontFamily: fonts.body, fontSize: fontSizes.small, fontWeight: 500, ...BREAKS },
+  rowSub: {
+    fontFamily: fonts.body,
+    fontSize: fontSizes.small,
+    fontWeight: 500,
+    lineHeight: PROSE_LEADING,
+    ...BREAKS,
+  },
   button: { fontFamily: fonts.display, fontSize: fontSizes.body, fontWeight: 600, ...BREAKS },
   value: {
     fontFamily: fonts.display,
@@ -248,8 +298,20 @@ export const text = {
   chip: { fontFamily: fonts.body, fontSize: fontSizes.small, fontWeight: 600, ...BREAKS },
   label: { fontFamily: fonts.body, fontSize: fontSizes.small, fontWeight: 600, ...BREAKS },
   input: { fontFamily: fonts.body, fontSize: fontSizes.body, fontWeight: 500 },
-  body: { fontFamily: fonts.body, fontSize: fontSizes.small, fontWeight: 500, ...BREAKS },
-  caption: { fontFamily: fonts.body, fontSize: fontSizes.caption, fontWeight: 500, ...BREAKS },
+  body: {
+    fontFamily: fonts.body,
+    fontSize: fontSizes.small,
+    fontWeight: 500,
+    lineHeight: PROSE_LEADING,
+    ...BREAKS,
+  },
+  caption: {
+    fontFamily: fonts.body,
+    fontSize: fontSizes.caption,
+    fontWeight: 500,
+    lineHeight: PROSE_LEADING,
+    ...BREAKS,
+  },
 } as const;
 
 export const space = {
@@ -326,7 +388,21 @@ export interface Theme {
   pocket: Pocket;
   dark: boolean;
   accent: string;
-  /** ink drawn on top of the accent. both accents are light, so it is near-black. */
+  /**
+   * ink drawn on top of the accent.
+   *
+   * NEAR-BLACK, which is what "both accents are light" was always an argument
+   * for and not what the value was. It was `warm[0]` #fcfdfe in both pockets:
+   * 2.30:1 on sky[400] and 3.46:1 on teal[400], so no accent-filled control in
+   * the product cleared 4.5:1 and the public one missed even the 3:1 floor for a
+   * graphical object. `text.button` is 16/600 and `text.pocketTab` 16/700, and
+   * neither is WCAG "large". Darkening the FILL instead is not available: white
+   * needs a luminance at or below 0.179 and sky[400] is 0.399.
+   *
+   * This is the most visible single change in the palette, and it is the one the
+   * file's own claim at the top of `PUBLIC` ("contrast was verified against the
+   * surface each colour is actually drawn on") required all along.
+   */
   onAccent: string;
   /** accent at low opacity, for icon circles, active tiles and soft cards. */
   accentSoft: string;
@@ -355,8 +431,15 @@ export interface Theme {
   hairline: string;
   line: string;
   field: string;
-  /** a soft, accent-tinted surface: a card that should read as the wallet's own,
-   *  not a neutral panel. used for the amount composer in send / move. */
+  /**
+   * a soft, accent-tinted surface, one step deeper than `field`.
+   *
+   * its one consumer is the quiet button's hover (`--pocket-quiet-hover`). this
+   * said "used for the amount composer in send / move", and the composer does not
+   * use it: `AmountComposer` fills its card from `t.bg` and reserves `t.field` for
+   * the asset chip's recess. the sentence was describing an arrangement that had
+   * been replaced, on a token whose whole job is to say where it belongs.
+   */
   tint: string;
   /** floating bar and sheet fills, sitting over blurred content. */
   bar: string;
@@ -396,12 +479,14 @@ export function theme(pocket: Pocket): Theme {
 
 // every field maps to a measured ramp stop; the mapping is the only place a
 // colour gets a job. contrast was verified against the surface each colour is
-// actually drawn on (resources/colors.md §9), not chosen by eye.
+// actually drawn on, not chosen by eye. contrast figures are recorded beside the
+// stops they justify rather than in a separate document that has since drifted.
 const PUBLIC: Theme = {
   pocket: "public",
   dark: false,
   accent: sky[400],
-  onAccent: warm[0],
+  // 7.19:1 on sky[400].
+  onAccent: ink[900],
   // the accent-tint stop: a soft accent fill for icon circles, tiles and cards.
   accentSoft: sky[100],
   accentOnSoft: ink[900],
@@ -418,15 +503,18 @@ const PUBLIC: Theme = {
   surface: warm[0],
   // a faint step darker than the page, so the tooltip reads as a raised layer.
   tip: warm[100],
-  promptBg: "#dff4ff",
+  // the ramp stop, not a hand-written near-copy of it. this was "#dff4ff", a raw
+  // hex sitting below the block whose own first paragraph says "nothing below
+  // this block names a raw colour", and within one unit per channel of sky[50].
+  promptBg: sky[50],
   // blue-tinted slates rather than neutral ink: neutral black type read as not
   // belonging on the sky-blue cards and fields (the amount card, the recipient
   // field). these are the measured blue-grey stops, tinted toward the pocket's own
   // accent, so the type sits ON the blue instead of clashing with it. still deep
   // enough to clear contrast on the near-white page.
   text: cool[700],
-  sub: cool[600],
-  faint: cool[500],
+  sub: cool[550],
+  faint: cool[450],
   hairline: ink[400],
   line: warm[200],
   // fields and soft panels wear a light blue tint, not a neutral gray, so inputs,
@@ -453,8 +541,15 @@ const PUBLIC: Theme = {
   positiveSoft: sky[50],
   // "exposed" marks an amount that is public: the pocket's own accent at a deep,
   // readable stop, so it reads as an INFO note ("this is visible") rather than the
-  // red of a real error (`danger`). 700, not 600, to clear 4.5:1 on the sky[50] tint.
-  exposed: sky[700],
+  // red of a real error (`danger`).
+  //
+  // its OWN stop, because it was `sky[700]` and so was `positive`: byte-identical,
+  // with identical softs. History states the reasoning for choosing `exposed` over
+  // `danger` on an unresolved submission, and in the public pocket that choice
+  // produced the same pixels as a completed one. the private pocket keeps the two
+  // 17 L* apart and this file states that as a rule. 10.33:1 on sky[50], and 1.61:1
+  // from `positive`, the same order of separation the private pair has.
+  exposed: sky[800],
   exposedSoft: sky[50],
   ring: warm[900],
 };
@@ -463,7 +558,8 @@ const PRIVATE: Theme = {
   pocket: "private",
   dark: true,
   accent: teal[400],
-  onAccent: warm[0],
+  // 4.77:1 on teal[400].
+  onAccent: ink[900],
   accentSoft: teal[800],
   // a light teal, NOT the raw accent: teal[400] on teal[800] is only ~3.2:1.
   accentOnSoft: teal[200],
@@ -496,8 +592,11 @@ const PRIVATE: Theme = {
   // so it reads as a field rather than a hole.
   field: cool[600],
   tint: cool[500],
-  // the floating nav sits one stop LIGHTER than the cards (650 vs surface 700) so it
-  // separates from the cards under it rather than merging into them.
+  // the floating nav sits DARKER than the cards (cool[650] L* 4.93 against the
+  // surface's 8.35) and close to the page floor, so it recedes and its teal glow
+  // does the lifting. the comment here used to say "one stop LIGHTER ... so it
+  // separates from the cards", which is the opposite of both the code and the
+  // stop's own note twenty lines up.
   bar: cool[650],
   sheet: cool[750],
   shadow: "0 14px 34px -14px rgba(0, 0, 0, 0.7)",

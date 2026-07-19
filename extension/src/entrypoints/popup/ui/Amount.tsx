@@ -64,7 +64,19 @@ export function splitAmount(value: string): { whole: string; fraction: string } 
 }
 
 /** the fixed run of stars a masked figure shows, per part. */
-const MASK = "∗∗∗";
+/**
+ * The mask glyphs, in a codepoint the shipped font actually has.
+ *
+ * This was U+2217 ASTERISK OPERATOR, which no subset here declares: Figtree's
+ * latin range is `U+0000-00FF ... U+2000-206F ... U+2212, U+2215`, so U+2217
+ * fell through to `system-ui` and a hidden balance rendered its asterisks in one
+ * face beside Figtree's own dollar sign and decimal point. U+2022 BULLET is
+ * inside `U+2000-206F`, so it is drawn by the same face as everything around it.
+ *
+ * Exported because it was hand-copied into `Home.tsx` five times in two
+ * spellings, both of which were on screen at once.
+ */
+export const MASK = "•••";
 
 /**
  * The same mask, for a figure drawn as plain text rather than through `Amount`.
@@ -291,7 +303,19 @@ export function Amount({
             {doAnimate ? <Rolling value={dispWhole} /> : dispWhole}
             {dispFraction && (
               <span
-                style={{ fontSize: Math.round(px * fractionOf), fontWeight: 400, opacity: 0.62 }}
+                style={{
+                  fontSize: Math.round(px * fractionOf),
+                  fontWeight: 400,
+                  // a MEASURED stop, not an opacity. `opacity: 0.62` composited to
+                  // 4.16:1 on the page, 3.99:1 on a field and 3.41:1 over the
+                  // canvas wash where the Home hero actually sits, and at the
+                  // hero's 42px the fraction is ~21px at weight 400, which is not
+                  // WCAG large, so the floor is 4.5. an opacity-derived colour
+                  // also has no recorded contrast by construction: it depends on
+                  // whatever it happens to be drawn over. `faint` is 5.02:1
+                  // public and 6.06:1 private.
+                  color: t.faint,
+                }}
               >
                 {doAnimate ? <Rolling value={`.${dispFraction}`} /> : `.${dispFraction}`}
               </span>
