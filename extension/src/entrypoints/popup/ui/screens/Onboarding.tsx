@@ -5,7 +5,7 @@ import { Button, ButtonStack, Field, Notice, Screen, TextButton } from "../primi
 import { clearOnboardingUnfinished, markOnboardingUnfinished } from "../onboardingTab";
 import { Check, Eye } from "../icons";
 import { Logo } from "../Brand";
-import { fonts, radius, space, text, theme, type Theme } from "../theme";
+import { COPY_HOLD_MS, fonts, radius, space, text, theme, type Theme } from "../theme";
 
 type Step = "choose" | "create" | "backup" | "import" | "ready";
 
@@ -429,7 +429,7 @@ function Backup({
 
   useEffect(() => {
     if (copy === "idle") return;
-    const id = setTimeout(() => setCopy("idle"), 2500);
+    const id = setTimeout(() => setCopy("idle"), COPY_HOLD_MS);
     return () => clearTimeout(id);
   }, [copy]);
 

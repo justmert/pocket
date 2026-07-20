@@ -50,7 +50,7 @@ import {
   type DateRange,
   type FilterCategory,
 } from "./HistoryFilters";
-import { fonts, radius, ROW_STAGGER_MS, space, text, type Theme } from "../theme";
+import { COPY_HOLD_MS, fonts, radius, ROW_STAGGER_MS, space, text, type Theme } from "../theme";
 import type { HistoryEntry } from "../../../../core/messages";
 
 const PAGE = 30;
@@ -972,7 +972,7 @@ function DetailRow({
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
-    const id = setTimeout(() => setCopied(false), 1200);
+    const id = setTimeout(() => setCopied(false), COPY_HOLD_MS);
     return () => clearTimeout(id);
   }, [copied]);
   const fire = onCopy
@@ -1007,6 +1007,11 @@ function DetailRow({
             color: onCopy ? t.accent : t.text,
           }}
         >
+          {/* the VALUE stays. swapping it for the word "Copied" replaced a hash
+              that wraps to three lines with one short word, so the panel being
+              read lost about 40px and everything under it jumped up for the hold
+              and back down after: an acknowledgement that moves the thing it is
+              acknowledging. the tick is the acknowledgement. */}
           {copied && <Check size={14} sw={2.4} />}
           <span
             style={{
@@ -1017,7 +1022,7 @@ function DetailRow({
               textAlign: "right",
             }}
           >
-            {copied ? "Copied" : value}
+            {value}
           </span>
         </button>
         {href && (

@@ -195,12 +195,16 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
                 alignItems: "center",
                 gap: space.sm,
                 background: t.field,
-                borderRadius: radius.lg,
-                padding: `2px ${space.md}px`,
+                // the SAME shape as the activity search: the two agreed on
+                // nothing but the magnifier's size (999 against 18 radius, 42
+                // against ~48 tall, two different glyph tones, 16 against 14
+                // input), one screen apart.
+                borderRadius: radius.pill,
+                padding: `10px ${space.md}px`,
                 marginBottom: space.md,
               }}
             >
-              <span aria-hidden style={{ color: t.faint, display: "flex" }}>
+              <span aria-hidden style={{ color: t.sub, display: "flex", flex: "0 0 auto" }}>
                 <Search size={18} />
               </span>
               <input
@@ -213,15 +217,10 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
                 autoComplete="off"
                 autoCorrect="off"
                 autoCapitalize="off"
-                style={{
-                  all: "unset",
-                  boxSizing: "border-box",
-                  flex: 1,
-                  minWidth: 0,
-                  padding: `${space.md}px 0`,
-                  ...text.rowSub,
-                  color: t.text,
-                }}
+                // `text.body`, the same role the activity search uses: this was
+                // `text.rowSub`, a 14px prose role, in the one field a user types
+                // an asset code into.
+                style={{ all: "unset", flex: 1, minWidth: 0, ...text.body, color: t.text }}
               />
               {searching && <Spinner size={16} color={t.accent} />}
             </div>
@@ -362,7 +361,10 @@ function ResultRow({
       >
         <AssetMark t={t} id={`${asset.code}:${asset.issuer}`} code={asset.code} />
       </span>
-      <span style={{ flex: "1 1 60px", minWidth: 0 }}>
+      {/* the basis `Row` uses, not a smaller one. `primitives.tsx` records the
+          clipping that produced 90px, and these are the two screens whose
+          right-hand value is widest, so they are the ones that needed it most. */}
+      <span style={{ flex: "1 1 90px", minWidth: 0 }}>
         <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
           <span style={{ ...text.rowTitle, color: t.text }}>{asset.code}</span>
           {/* the solid accent pill is kept for the ONE claim the wallet can make

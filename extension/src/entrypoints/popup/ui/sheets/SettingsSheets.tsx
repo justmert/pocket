@@ -15,7 +15,7 @@ import {
 } from "../primitives";
 import { Check, External, Lock, Trash } from "../icons";
 import { InfoTip } from "../Tooltip";
-import { fonts, radius, space, text } from "../theme";
+import { COPY_HOLD_MS, fonts, radius, space, text } from "../theme";
 import { privateLossAfterErase } from "../copy";
 import type { NetworkId } from "../../../../core/config";
 
@@ -489,7 +489,7 @@ export function PhraseSheet({ open, onClose }: { open: boolean; onClose: () => v
   // the "Copied" echo is transient, like every other copy affordance here.
   useEffect(() => {
     if (copy === "idle") return;
-    const id = setTimeout(() => setCopy("idle"), 2500);
+    const id = setTimeout(() => setCopy("idle"), COPY_HOLD_MS);
     return () => clearTimeout(id);
   }, [copy]);
 

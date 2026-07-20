@@ -15,7 +15,7 @@ import { Check, Copy, External, Eye } from "./icons";
 import { explorerUrl } from "./explorer";
 import { usd } from "./money";
 import { NO_MEMO } from "./copy";
-import { fonts, radius, space, text, type Theme } from "./theme";
+import { COPY_HOLD_MS, fonts, radius, space, text, type Theme } from "./theme";
 
 /**
  * the worker's current phase while an operation is running.
@@ -803,7 +803,7 @@ export function Receipt({
   const [saved, setSaved] = useState(false);
   useEffect(() => {
     if (!copied) return;
-    const id = setTimeout(() => setCopied(false), 1500);
+    const id = setTimeout(() => setCopied(false), COPY_HOLD_MS);
     return () => clearTimeout(id);
   }, [copied]);
   return (

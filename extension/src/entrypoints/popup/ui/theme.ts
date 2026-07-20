@@ -373,6 +373,15 @@ export const motion = {
   ambientSlow: "1500ms",
 } as const;
 
+/**
+ * how long a "Copied" acknowledgement stays up.
+ *
+ * ONE window. there were four (1200, 1400, 1500, 2500), none within 100ms of
+ * another and none a token, across six copy controls, while two comments claimed
+ * a uniformity the numbers did not have.
+ */
+export const COPY_HOLD_MS = 1500;
+
 /** the stagger between one row and the next. */
 export const ROW_STAGGER_MS = 45;
 

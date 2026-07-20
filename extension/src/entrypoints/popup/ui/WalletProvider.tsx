@@ -19,7 +19,7 @@ import { call } from "./rpc";
 import { stillUnresolved } from "./backgroundOps";
 import { readAddressBook, addToAddressBook, clearAddressBook } from "./addressBook";
 import { selectPrivateAsset } from "./selectAsset";
-import { motion, theme, type Pocket, type Theme } from "./theme";
+import { COPY_HOLD_MS, motion, theme, type Pocket, type Theme } from "./theme";
 import type {
   PrivatePocket,
   PublicBalance,
@@ -790,7 +790,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         () => {
           setCopied(true);
           clearTimeout(copyTimer.current);
-          copyTimer.current = setTimeout(() => setCopied(false), 1400);
+          copyTimer.current = setTimeout(() => setCopied(false), COPY_HOLD_MS);
         },
         () => showToast("Could not copy"),
       );

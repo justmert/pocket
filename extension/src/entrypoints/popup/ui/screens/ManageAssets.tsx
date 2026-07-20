@@ -13,7 +13,7 @@ import { AssetMark } from "./Home";
 import { Amount } from "../Amount";
 import { shortAddress } from "../Address";
 import { Trash } from "../icons";
-import { ROW_STAGGER_MS, space, text, type Theme } from "../theme";
+import { fonts, ROW_STAGGER_MS, space, text, type Theme } from "../theme";
 import type { Trustline, TrustlineSummary } from "../../../../core/messages";
 
 export function ManageAssets({ onClose }: { onClose: () => void }) {
@@ -250,9 +250,17 @@ function AssetLine({
       >
         <AssetMark t={t} id={`${tl.code}:${tl.issuer}`} code={tl.code} />
       </span>
-      <span style={{ flex: "1 1 60px", minWidth: 0 }}>
+      {/* the basis `Row` uses, not a smaller one. `primitives.tsx` records the
+          clipping that produced 90px, and these are the two screens whose
+          right-hand value is widest, so they are the ones that needed it most. */}
+      <span style={{ flex: "1 1 90px", minWidth: 0 }}>
         <span style={{ ...text.rowTitle, color: t.text, display: "block" }}>{tl.code}</span>
-        <span style={{ ...text.rowSub, color: t.sub, display: "block" }}>
+        {/* the MONO face the theme reserves for verbatim data, as Home and the
+            asset directory already set the same value. this screen's whole job is
+            checking an issuer and it was the one setting it in the prose face. */}
+        <span
+          style={{ ...text.rowSub, fontFamily: fonts.mono, color: t.sub, display: "block" }}
+        >
           {shortAddress(tl.issuer)}
         </span>
       </span>
