@@ -126,7 +126,12 @@ export function Screen({
   return (
     <Frame t={t}>
       <ScrollArea
-        className={still ? "pocket-still" : "pocket-page"}
+        // BOTH, not one or the other. `.pocket-still`'s selector excludes the
+        // element it is on (`.pocket-still *`), which is exactly so the two can
+        // compose: the screen still settles into place, and nothing INSIDE it
+        // moves while someone reads what they are about to make permanent. as an
+        // either/or, five of the calmest screens in the product hard-cut in.
+        className={still ? "pocket-page pocket-still" : "pocket-page"}
         background={background ?? t.canvas}
       >
         <div style={{ padding: `${space.gutter}px ${space.gutter}px ${space.xl}px` }}>
@@ -439,9 +444,15 @@ export function TextButton({
     <button
       {...rest}
       type="button"
+      className="pk-tap"
       style={{
         all: "unset",
         cursor: "pointer",
+        // `all: unset` computes to `display: inline`, and a transform does not
+        // apply to a non-replaced inline box, so the global press scale was
+        // silently dropped here. inline-block restores it without changing the
+        // flow at any of the call sites.
+        display: "inline-block",
         ...text.label,
         color: colors[tone],
         padding: "8px 4px",

@@ -117,9 +117,19 @@ export function Onboarding({
  * ephemeral popup fallback still uses `Screen`; everything routes through `Shell`
  * so a step does not have to know which one it is in.
  */
-function FullPage({ t, children }: { t: Theme; children: ReactNode }) {
+function FullPage({
+  t,
+  still = false,
+  children,
+}: {
+  t: Theme;
+  /** nothing inside moves while the phrase or a review is being read. */
+  still?: boolean;
+  children: ReactNode;
+}) {
   return (
     <div
+      className={still ? "pocket-still" : undefined}
       style={
         {
           position: "fixed",
@@ -182,8 +192,15 @@ function Shell({
   still?: boolean;
   children: ReactNode;
 }) {
+  // `still` reaches BOTH branches. it was passed only to `Screen`, so the
+  // `fullPage` branch, which is the branch every normal onboarding takes, silently
+  // discarded it: the recovery-phrase step and the verify step were the two
+  // screens in the product most deliberately frozen, and they were frozen only in
+  // the degraded window state.
   return fullPage ? (
-    <FullPage t={t}>{children}</FullPage>
+    <FullPage t={t} still={still}>
+      {children}
+    </FullPage>
   ) : (
     <Screen t={t} still={still}>
       {children}

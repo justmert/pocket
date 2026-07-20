@@ -349,6 +349,10 @@ function Tile({
       type="button"
       aria-label={label}
       aria-current={active ? "page" : undefined}
+      // `style.css` states "one hover for every tappable, however it was built"
+      // and names "a tile" in the same sentence. all four nav tiles answered a
+      // pointer with nothing, one gesture away from the FAB menu items that do.
+      className="pk-tap"
       onClick={onClick}
       style={{
         all: "unset",

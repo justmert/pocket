@@ -6,6 +6,7 @@
 // is that the UI states the fact and an info affordance carries the why, shown
 // on hover and on focus, dismissed on leave and on escape.
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useLeave } from "./primitives";
 import { createPortal } from "react-dom";
 import type { CSSProperties, ReactNode } from "react";
 import { FRAME, radius, space, text, type Theme } from "./theme";
@@ -41,6 +42,7 @@ export function InfoTip({
   size?: number;
 }) {
   const [open, setOpen] = useState(false);
+  const { render, leaving } = useLeave(open);
   const [pos, setPos] = useState<CSSProperties | null>(null);
   const id = useId();
   const wrap = useRef<HTMLSpanElement>(null);
@@ -109,11 +111,20 @@ export function InfoTip({
     <span
       ref={wrap}
       style={{ position: "relative", display: "inline-flex", flex: "0 0 auto", lineHeight: 0 }}
-      onPointerEnter={() => {
+      // MOUSE only. a touch fires pointerenter and then click, so on a touchscreen
+      // one tap ran open-then-toggle-closed and the bubble never appeared, which
+      // makes every "why" in the product unreachable on a hover-less pointer. this
+      // component's own docstring already claims "tap toggles it, for a pointer
+      // with no hover"; the enter handler was undoing it.
+      onPointerEnter={(e) => {
+        if (e.pointerType !== "mouse") return;
         cancelClose();
         setOpen(true);
       }}
-      onPointerLeave={scheduleClose}
+      onPointerLeave={(e) => {
+        if (e.pointerType !== "mouse") return;
+        scheduleClose();
+      }}
     >
       <button
         type="button"
@@ -144,15 +155,21 @@ export function InfoTip({
       >
         <Info size={Math.round(size * 0.72)} sw={2.2} />
       </button>
-      {open &&
+      {/* mounted through its EXIT. this was the last overlay in the product on a
+          bare `&&`: it faded in over 200ms and vanished in a single frame, which
+          is the exact failure `useLeave`'s own doc names. */}
+      {render &&
         createPortal(
           <span
             id={id}
             ref={bubble}
             role="tooltip"
-            className="pocket-fade-in"
+            className={leaving ? "pocket-fade-out" : "pocket-fade-in"}
             onPointerEnter={cancelClose}
-            onPointerLeave={scheduleClose}
+            onPointerLeave={(e) => {
+        if (e.pointerType !== "mouse") return;
+        scheduleClose();
+      }}
             style={{
             // its own tone, OFF the surface/sheet it opens over, so the explanation
             // reads as a layer rather than the card: a touch darker than the light

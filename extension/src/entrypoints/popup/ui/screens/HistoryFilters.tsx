@@ -474,6 +474,9 @@ export function DateRangeSheet({
                   : "Earlier years"
             }
             onClick={onPrev}
+            // the commit that gave `.pk-tap` to every calendar day, month and
+            // year cell did not give it to the two arrows that page between them.
+            className="pk-tap"
             style={{ all: "unset", cursor: "pointer", display: "flex", padding: 4 }}
           >
             <Back size={20} />
@@ -485,6 +488,7 @@ export function DateRangeSheet({
             }
             disabled={nextDisabled}
             onClick={nextDisabled ? undefined : onNext}
+            className="pk-tap"
             style={{
               all: "unset",
               cursor: nextDisabled ? "default" : "pointer",
