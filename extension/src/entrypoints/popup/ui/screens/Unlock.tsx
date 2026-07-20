@@ -72,8 +72,8 @@ export function Unlock({
                 The drawn logo itself, packaged. The accent wash lives in the
                 `Cover` behind it, so the mark stays the mark.
 
-                Root-relative, which resolves against the DOCUMENT — the popup at
-                chrome-extension://<id>/popup.html — in both a development and a
+                Root-relative, which resolves against the DOCUMENT (the popup at
+                chrome-extension://<id>/popup.html) in both a development and a
                 shipped build. `img-src 'self'` allows it precisely because it is
                 packaged rather than fetched. */}
             <img
@@ -119,11 +119,6 @@ export function Unlock({
           </div>
 
           <div style={{ marginTop: space.xl }}>
-            {error && (
-              <Notice t={t} tone="danger">
-                {error}
-              </Notice>
-            )}
             {/* The form sits on its own surface. Without it the field and the
                 button float on the cover with nothing holding them, and the
                 dot field reads straight through the input. */}
@@ -171,6 +166,18 @@ export function Unlock({
                   </button>
                 }
               />
+              {/* AFTER the field, which is where every other password form in this
+                  product puts it, and where the eye already is. above the card it
+                  landed 95px from the field and pushed the field and the button
+                  down 27px as it appeared, so the second attempt began by moving
+                  the target: measured at 384x600, the input went 329 -> 356 and
+                  the button 391 -> 418. this is also the one screen that clears
+                  the field on failure, so a second attempt is guaranteed. */}
+              {error && (
+                <Notice t={t} tone="danger">
+                  {error}
+                </Notice>
+              )}
               <Button t={t} type="submit" disabled={!password} busy={busy}>
                 {busy ? "Unlocking" : "Unlock"}
               </Button>

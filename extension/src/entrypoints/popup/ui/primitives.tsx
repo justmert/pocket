@@ -1380,7 +1380,20 @@ export function Sheet({
               handle says so. the grab area holds ONLY the handle, so the whole
               strip drags: an interactive control here (the close X used to sit on
               this line) makes part of the drag strip refuse the drag. */}
-          <div aria-hidden style={grabHandle(t)} />
+          {/* on a TITLED sheet the title row sits inside this drag strip, so the
+              target is ~58px tall. on a headerless one the strip is `space.sm`
+              plus a 4px handle: 14px, for one of the two documented ways out of
+              a sheet. the handle keeps its own 4px bar and grows its hit area
+              instead, so nothing moves on the sheets that were already fine. */}
+          <div
+            aria-hidden
+            style={{
+              ...grabHandle(t),
+              ...(hasTitle
+                ? {}
+                : { height: 4 + space.md * 2, paddingBlock: space.md, backgroundClip: "content-box" }),
+            }}
+          />
           {hasTitle && (
             // the close X rides the SAME row as the title, right-aligned, so a
             // title'd sheet keeps one header row, now with a way out.

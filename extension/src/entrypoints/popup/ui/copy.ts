@@ -37,7 +37,7 @@ export const NO_MEMO = "None. Exchanges usually require one; a deposit without i
  * whether this build can rebuild private balances at all.
  *
  * the rebuild replays the confidential event history from a durable archive.
- * `archiveUrl` is supplied at build time and no shipped build sets it —
+ * `archiveUrl` is supplied at build time and no shipped build sets it:
  * config.ts records that the release gate refuses the only value that exists,
  * a loopback address. so on every artifact a user can install, the answer is no.
  *
@@ -50,4 +50,26 @@ export const NO_MEMO = "None. Exchanges usually require one; a deposit without i
  */
 export function canRebuild(network: NetworkId): boolean {
   return Boolean(NETWORKS[network].archiveUrl);
+}
+
+/**
+ * every recovery-phrase length this wallet accepts.
+ *
+ * BIP-39 defines five, and the worker accepts all five: `doImport` and
+ * `doRecoverFromMnemonic` both gate on `validateMnemonic`, which passes 128,
+ * 160, 192, 224 and 256 bits of entropy. Executed against the shipped worker
+ * through the real message router: import and recoverFromMnemonic both returned
+ * ok for 12, 15, 18, 21 and 24 words.
+ *
+ * The forgotten-password screen allowed only 12 or 24, so it refused phrases
+ * this same wallet had accepted at set-up, and it is the ONLY route back in.
+ * Here rather than in one screen because two doors read it, and a set the two
+ * doors disagree about is how this happened.
+ */
+export const PHRASE_LENGTHS = [12, 15, 18, 21, 24];
+
+/** "12, 15, 18, 21 or 24", for a sentence about the above. */
+export function phraseLengthList(): string {
+  const all = PHRASE_LENGTHS;
+  return `${all.slice(0, -1).join(", ")} or ${all[all.length - 1]}`;
 }

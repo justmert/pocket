@@ -96,7 +96,7 @@ export function Settings() {
             on every artifact a user can install this row is absent rather than
             present-and-refusing. it was shown to every user, gated only on the
             network having a confidential deployment, which is always true on
-            testnet — including to wallets with no private pocket at all. */}
+            testnet, including to wallets with no private pocket at all. */}
         {w.status?.privateAvailable && canRebuild(w.status.network) && (
           <div style={{ marginTop: space.lg }}>
             <Overline t={t}>Private pocket</Overline>

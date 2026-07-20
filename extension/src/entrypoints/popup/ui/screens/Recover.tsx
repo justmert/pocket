@@ -2,6 +2,7 @@ import { useState } from "react";
 import { call } from "../rpc";
 import { Button, ButtonStack, Field, Header, Notice, Screen, TextButton } from "../primitives";
 import { space, text, type Theme } from "../theme";
+import { PHRASE_LENGTHS, phraseLengthList } from "../copy";
 
 /**
  * the only way past a forgotten password, and it destroys the device's copy of
@@ -26,7 +27,13 @@ export function Recover({
   const [busy, setBusy] = useState(false);
 
   const words = phrase.trim() ? phrase.trim().split(/\s+/).length : 0;
-  const countOk = words === 12 || words === 24;
+  // every BIP-39 length, because the worker underneath accepts every BIP-39
+  // length. `doRecoverFromMnemonic` gates on `validateMnemonic`, which passes
+  // 12, 15, 18, 21 and 24, and `import` does too, so this screen refused
+  // phrases the same wallet had accepted at set-up. It is the ONLY
+  // forgotten-password route, so a 15-word holder was locked out of their own
+  // funds by a check the wallet did not actually need.
+  const countOk = PHRASE_LENGTHS.includes(words);
   const short = password.length > 0 && password.length < 8;
   const mismatch = confirm.length > 0 && password !== confirm;
   const ready = countOk && password.length >= 8 && password === confirm;
@@ -109,14 +116,14 @@ export function Recover({
           }
           value={phrase}
           onChange={setPhrase}
-          placeholder="12 or 24 words, separated by spaces"
+          placeholder="your recovery phrase, words separated by spaces"
           multiline
           mono
           autoFocus
           invalid={words > 0 && !countOk}
           hint={
             words > 0 && !countOk
-              ? `A recovery phrase is 12 or 24 words. This one has ${words}.`
+              ? `A recovery phrase is ${phraseLengthList()} words. This one has ${words}.`
               : undefined
           }
         />

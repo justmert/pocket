@@ -20,6 +20,7 @@ import { ChainLogo } from "../ChainLogo";
 import { fractionOf, composeAmount } from "../../../../core/chain/balances";
 import {
   CCTP_DOMAIN_NAMES,
+  cctpCanBurnTo,
   STELLAR_DOMAIN,
   cctpDomainName,
 } from "../../../../core/integrations/cctp";
@@ -36,13 +37,20 @@ const OTHER_CHAINS = Object.entries(CCTP_DOMAIN_NAMES)
 export const SOLANA_DOMAIN = 5;
 
 /**
- * Chains this wallet can SEND to: the EVM ones.
+ * Chains this wallet can SEND to: the EVM ones CCTP can actually reach.
  *
  * Solana is excluded for a reason specific to sending: the recipient field
  * composes a 32-byte `mintRecipient` from an EVM 0x address, and there is no
  * screen that can take a base58 one.
+ *
+ * `cctpCanBurnTo` excludes the rest, and it is not a style choice. BNB Smart
+ * Chain is in the name table, was offered here by name, and has no route: the
+ * approve was charged and the burn trapped at Error(Contract, #7106) every
+ * time. The worker refuses it too; this only stops the screen offering it.
  */
-export const SEND_DOMAINS = OTHER_CHAINS.filter((c) => c.domain !== SOLANA_DOMAIN);
+export const SEND_DOMAINS = OTHER_CHAINS.filter(
+  (c) => c.domain !== SOLANA_DOMAIN && cctpCanBurnTo(c.domain),
+);
 
 /**
  * Chains a claim can come FROM: all of them.

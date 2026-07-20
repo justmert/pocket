@@ -13,7 +13,7 @@ import { AssetMark } from "./Home";
 import { Amount } from "../Amount";
 import { shortAddress } from "../Address";
 import { Trash } from "../icons";
-import { space, text, type Theme } from "../theme";
+import { ROW_STAGGER_MS, space, text, type Theme } from "../theme";
 import type { Trustline, TrustlineSummary } from "../../../../core/messages";
 
 export function ManageAssets({ onClose }: { onClose: () => void }) {
@@ -232,7 +232,7 @@ function AssetLine({
         gap: space.md,
         padding: `${space.sm}px 0`,
         minWidth: 0,
-        animationDelay: `${index * 40}ms`,
+        animationDelay: `${index * ROW_STAGGER_MS}ms`,
       }}
     >
       <span

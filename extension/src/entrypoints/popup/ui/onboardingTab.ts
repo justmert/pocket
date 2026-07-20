@@ -137,7 +137,7 @@ async function raise(id: number): Promise<boolean> {
  *
  * `create` installs the vault before the phrase is ever drawn, so from the
  * instant it resolves `status()` reports a complete, unlocked wallet. Every
- * window except the one holding the words agrees — which meant that a user who
+ * window except the one holding the words agrees: which meant that a user who
  * clicked the toolbar icon mid-transcription was shown a working wallet with an
  * address and a balance: the most authoritative statement the product can make
  * that setup is done, made while the only copy of the recovery phrase was still

@@ -287,7 +287,7 @@ function Root() {
   // `create` installs the vault before the phrase is drawn, so every window
   // except the one holding the words reports a complete, unlocked wallet. a
   // toolbar click mid-transcription used to land on Home, with an address and a
-  // balance — the strongest possible statement that setup is done, made while
+  // balance: the strongest possible statement that setup is done, made while
   // the only copy of the recovery phrase was still unrecorded on another screen.
   // this window says nothing of the kind and sends the user back to the words.
   if (unfinished) return <FinishOnboarding t={t} onContinue={release} />;

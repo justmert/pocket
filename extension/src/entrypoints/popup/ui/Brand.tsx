@@ -16,9 +16,11 @@ export function Brand({ t, size = 56 }: { t: Theme; size?: number }) {
         display: "inline-flex",
         alignItems: "center",
         justifyContent: "center",
-        boxShadow: t.dark
-          ? `0 12px 30px -14px ${t.accent}`
-          : "0 12px 28px -16px rgba(20,21,26,0.55)",
+        // the accent glow in the dark pocket is this mark's own and is deliberate.
+        // the light one is NOT: it was the shadow token's geometry with a
+        // hand-written 0.55 alpha against the token's 0.35, in a theme that
+        // carries exactly one drop shadow so elevation reads the same everywhere.
+        boxShadow: t.dark ? `0 12px 30px -14px ${t.accent}` : t.shadow,
       }}
     >
       <svg

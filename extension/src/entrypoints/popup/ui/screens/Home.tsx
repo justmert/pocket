@@ -139,7 +139,7 @@ export function Home() {
   // tabs stay pinned; the balance/chart/range block collapses in place (max-height +
   // opacity) as you wheel down and expands as you wheel up, FOLLOWING the wheel by a
   // progress 0..1. a light scroll only pulls it partway, and if you let go short of
-  // the midpoint it springs back rather than committing — so it resists a single
+  // the midpoint it springs back rather than committing: so it resists a single
   // flick in either direction instead of flipping on one tick.
   const heroInner = useRef<HTMLDivElement>(null);
   const [heroH, setHeroH] = useState(0);

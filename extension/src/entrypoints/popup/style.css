@@ -452,7 +452,7 @@ textarea:focus-visible {
 }
 .pocket-proc-dot {
   transform-origin: center;
-  animation: pocket-proc-dot 1.25s ease-in-out infinite both;
+  animation: pocket-proc-dot var(--pocket-ambient) ease-in-out infinite both;
 }
 
 /* nothing moves while someone is reading the thing they are about to make
@@ -478,6 +478,12 @@ textarea:focus-visible {
     transition-duration: 0.001ms !important;
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
+    /* the DELAY too. zeroing duration alone left `pocket-draw`'s 260ms delay
+     * standing, and that animation is `both`-filled, so a reader who asked for
+     * less motion watched an empty accent disc for a quarter of a second at the
+     * exact moment a payment landed. it also flattens the row stagger, which is
+     * what this block is for. */
+    animation-delay: 0.001ms !important;
   }
 
   /* the press feedback is declared with `!important` because most tappables

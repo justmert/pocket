@@ -494,6 +494,12 @@ function Backup({
               type="button"
               onClick={() => setShown(true)}
               style={{
+                // the browser's own chrome, off. this is the one button in the
+                // product without the reset, so chrome's UA bevel and default
+                // border painted over its fill, on the recovery-phrase step.
+                // `primitives.tsx` records the same artefact from experience.
+                all: "unset",
+                appearance: "none",
                 ...text.button,
                 boxSizing: "border-box",
                 cursor: "pointer",

@@ -375,8 +375,8 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
             </>
           );
 
-        // the three states below are the same fact about the user's money —
-        // it is there and it is not spendable yet — so they are one shape.
+        // the three states below are the same fact about the user's money:
+        // it is there and it is not spendable yet: so they are one shape.
         // see ui/Held.tsx.
         case "archived":
           return (
@@ -387,7 +387,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
             // not work and it cannot: `rebuildFromHistory` reads the account
             // before it reads any archive (controller.ts, `readOwnAccount`),
             // and for an archived entry `readConfidentialAccount` answers null
-            // — which is the very thing that makes the state `archived`. so the
+            //: which is the very thing that makes the state `archived`. so the
             // button threw "This account has no private pocket yet." at a user
             // who is holding a private balance and looking at it.
             //
