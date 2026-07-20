@@ -14,7 +14,7 @@
 // behind it was written down, and no test held either in place.
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { installChrome } from "../auth/_harness/chrome";
-import { fundedAccountResult } from "./_harness/ledger";
+import { anyFundedAccount } from "./_harness/ledger";
 
 const chrome = installChrome();
 const { WalletController, UnresolvedTransactionError } = await import("../../src/core/controller");
@@ -35,8 +35,8 @@ async function wallet() {
     // reads the native balance and refuses to send more than the reserve
     // leaves. An empty entries list is an account that does not exist, and
     // that error would stand in for the guard's and prove nothing.
-    getLedgerEntries: async () => fundedAccountResult(address, 100_0000000n),
-    _getLedgerEntries: async () => fundedAccountResult(address, 100_0000000n),
+    getLedgerEntries: anyFundedAccount(),
+    _getLedgerEntries: anyFundedAccount(),
   });
   return { c, address };
 }
@@ -77,7 +77,11 @@ const deadlineOnly = (kind?: string) =>
     ...(kind ? { kind } : {}),
   });
 
-const payment = { to: "GBIQM4D2YEJEQ7HEDO62QJJEBHUZKXNEGTOXQGI6SGSG3T5N3X5YGRAF", amount: "1", assetId: "native" };
+const payment = {
+  to: "GBIQM4D2YEJEQ7HEDO62QJJEBHUZKXNEGTOXQGI6SGSG3T5N3X5YGRAF",
+  amount: "1",
+  assetId: "native",
+};
 
 beforeEach(async () => {
   chrome.local.clear();
@@ -162,10 +166,9 @@ describe("the merge exemption turns on WHICH transaction is unresolved", () => {
     const { c } = await wallet();
     await unresolved("merge");
     for (const kind of ["deposit", "withdraw", "transfer"] as const) {
-      await expect(
-        c.buildPrivateOp({ kind, amount: "1" } as never),
-        kind,
-      ).rejects.toThrow(UnresolvedTransactionError);
+      await expect(c.buildPrivateOp({ kind, amount: "1" } as never), kind).rejects.toThrow(
+        UnresolvedTransactionError,
+      );
     }
   });
 
@@ -215,10 +218,18 @@ describe("the integration builders are behind the same guard", () => {
   // or network call, so these assertions do not need a configured integration.
   const builders: [string, (c: InstanceType<typeof WalletController>) => Promise<unknown>][] = [
     ["buildYieldMove", (c) => c.buildYieldMove("deposit", "1")],
-    ["buildSwap", (c) => c.buildSwap("native", "USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5", "1")],
+    [
+      "buildSwap",
+      (c) =>
+        c.buildSwap("native", "USDC:GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5", "1"),
+    ],
     ["buildCctpSend", (c) => c.buildCctpSend(0, "0x" + "1".repeat(40), "1")],
     ["buildCctpClaim", (c) => c.buildCctpClaim(0, "c".repeat(64))],
-    ["buildAddTrustline", (c) => c.buildAddTrustline("USDC", "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5")],
+    [
+      "buildAddTrustline",
+      (c) =>
+        c.buildAddTrustline("USDC", "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"),
+    ],
   ];
 
   for (const [name, run] of builders) {
@@ -279,7 +290,10 @@ describe("the in-flight slot refuses to be written over", () => {
       .record({ hash: "f".repeat(64), maxTime: nowSec() + 300 })
       .catch(() => undefined);
     const { readLocal } = await import("../../src/lib/storage");
-    expect(await readLocal(KEYS.inFlight)).toMatchObject({ hash: "a".repeat(64), kind: "transfer" });
+    expect(await readLocal(KEYS.inFlight)).toMatchObject({
+      hash: "a".repeat(64),
+      kind: "transfer",
+    });
   });
 
   it("allows re-recording the SAME transaction", async () => {

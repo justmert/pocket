@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "../../src/lib/polyfill";
 import { installChrome } from "./_harness/chrome";
 import { FaultServer, rpcOk } from "../failure/_harness/faults";
-import { accountKey, accountEntry, entryFor, entriesResult } from "../failure/_harness/ledger";
+import { entriesResult, entriesForRequest } from "../failure/_harness/ledger";
 
 const chrome = installChrome();
 
@@ -50,11 +50,10 @@ async function funded() {
   const c = new WalletController();
   await c.init();
   const { address } = await c.create(PASSWORD);
-  server.heal({
-    fallback: rpcOk(
-      entriesResult([entryFor(accountKey(address), accountEntry(address, 1000_0000000n))]),
-    ),
-  });
+  // Every account asked about, not just the signer: the send path reads the
+  // DESTINATION too, because a payment to an account that does not exist can
+  // never succeed, and a one-address answerer is rejected as a key mismatch.
+  server.heal({ fallback: (req) => rpcOk(entriesForRequest(req.body, 1000_0000000n)) });
   return { controller: c, server, address };
 }
 
@@ -253,9 +252,8 @@ describe("the bytes signed are the bytes summarised", () => {
 
     const sent = server.requests.find((r) => r.method === "sendTransaction");
     expect(sent, "nothing was submitted").toBeTruthy();
-    const envelopeB64 = (
-      JSON.parse(sent!.body) as { params: { transaction: string } }
-    ).params.transaction;
+    const envelopeB64 = (JSON.parse(sent!.body) as { params: { transaction: string } }).params
+      .transaction;
     const decoded = TransactionBuilder.fromXDR(envelopeB64, NETWORKS.testnet.passphrase);
     // `instanceof`, not `"operations" in`: the `in` check narrows nothing for
     // TypeScript across a class union, so every read below was unchecked.
@@ -293,9 +291,7 @@ describe("the bytes signed are the bytes summarised", () => {
     const handle = foreign.hash().toString("hex");
     pending.set(handle, { xdr: foreign.toXDR(), at: Date.now() });
 
-    await expect(controller.confirmPayment(handle)).rejects.toThrow(
-      /different source account/i,
-    );
+    await expect(controller.confirmPayment(handle)).rejects.toThrow(/different source account/i);
   });
 
   it("refuses to sign a retained envelope that is not a single payment", async () => {
@@ -338,7 +334,9 @@ describe("the three refusals a mutation pass found untested", () => {
       networkPassphrase: NETWORKS.testnet.passphrase,
       timebounds: { minTime: 0, maxTime: Math.floor(Date.now() / 1000) + 600 },
     })
-      .addOperation(Operation.payment({ destination: RECIPIENT, asset: Asset.native(), amount: "1" }))
+      .addOperation(
+        Operation.payment({ destination: RECIPIENT, asset: Asset.native(), amount: "1" }),
+      )
       .build();
 
     const pending = (controller as unknown as { pending: Map<string, unknown> }).pending;
@@ -394,7 +392,9 @@ describe("the three refusals a mutation pass found untested", () => {
       networkPassphrase: NETWORKS.testnet.passphrase,
       timebounds: { minTime: 0, maxTime: Math.floor(Date.now() / 1000) + 600 },
     })
-      .addOperation(Operation.payment({ destination: RECIPIENT, asset: Asset.native(), amount: "1" }))
+      .addOperation(
+        Operation.payment({ destination: RECIPIENT, asset: Asset.native(), amount: "1" }),
+      )
       .build();
 
     const pending = (controller as unknown as { pending: Map<string, unknown> }).pending;

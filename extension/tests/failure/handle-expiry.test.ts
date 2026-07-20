@@ -16,7 +16,7 @@
 // happy path never waits, so no existing test is anywhere near the boundary.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { installChrome } from "../auth/_harness/chrome";
-import { fundedAccountResult } from "./_harness/ledger";
+import { anyFundedAccount } from "./_harness/ledger";
 
 const chrome = installChrome();
 const { WalletController, StaleHandleError } = await import("../../src/core/controller");
@@ -47,8 +47,8 @@ async function wallet() {
   (c as unknown as { servers: Map<string, unknown> }).servers.set("testnet", {
     getAccount: async () => new Account(address, "100"),
     prepareTransaction: async (tx: unknown) => tx,
-    getLedgerEntries: async () => fundedAccountResult(address, 100_0000000n),
-    _getLedgerEntries: async () => fundedAccountResult(address, 100_0000000n),
+    getLedgerEntries: anyFundedAccount(),
+    _getLedgerEntries: anyFundedAccount(),
     sendTransaction: async (tx: unknown) => {
       sent.push(tx);
       return { status: "PENDING", hash: "c".repeat(64) };

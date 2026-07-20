@@ -13,7 +13,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "../../src/lib/polyfill";
 import { FaultServer, rpcOk, rpcError, type Fault, type RecordedRequest } from "./_harness/faults";
-import { accountKey, accountEntry, entryFor, entriesResult } from "./_harness/ledger";
+import {
+  accountKey,
+  accountEntry,
+  entryFor,
+  entriesResult,
+  entriesForRequest,
+} from "./_harness/ledger";
 
 const store = new Map<string, unknown>();
 vi.stubGlobal("chrome", {
@@ -84,6 +90,12 @@ async function wallet(
 /** A healthy answer about this wallet's own account entry. */
 const fundedAccount = (address: string, stroops = 100_0000000n): Fault =>
   rpcOk(entriesResult([entryFor(accountKey(address), accountEntry(address, stroops))]));
+
+/** Every ACCOUNT the caller asks about, funded, echoed under its own key. */
+const anyFunded =
+  (stroops = 100_0000000n) =>
+  (req: RecordedRequest): Fault =>
+    rpcOk(entriesForRequest(req.body, stroops));
 
 // A funded account answered the way a REAL RPC does: the account key returns the
 // account entry, and ANY OTHER key (e.g. a USDC trustline the account does not
@@ -355,8 +367,7 @@ describe("the inbound-credit path must not route around the error allowlist", ()
 
   /** A confidential account whose receiving side does NOT match the stored zero. */
   function divergedAccount(): Fault {
-    const bytes = (p: { x: bigint; y: bigint }) =>
-      xdr.ScVal.scvBytes(Buffer.from(encodePoint(p)));
+    const bytes = (p: { x: bigint; y: bigint }) => xdr.ScVal.scvBytes(Buffer.from(encodePoint(p)));
     const entry = (name: string, val: xdrTypes.ScVal) =>
       new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(name), val });
     return rpcOk({
@@ -367,17 +378,15 @@ describe("the inbound-credit path must not route around the error allowlist", ()
       results: [
         {
           auth: [],
-          xdr: xdr.ScVal
-            .scvMap([
-              entry("auditor_id", xdr.ScVal.scvU32(1)),
-              // Non-identity, so it cannot open to the stored zero and the
-              // pocket is genuinely diverged.
-              entry("receiving_commitment", bytes(H)),
-              entry("spendable_commitment", bytes(IDENTITY)),
-              entry("spending_public_key", bytes(G)),
-              entry("viewing_public_key", bytes(H)),
-            ])
-            .toXDR("base64"),
+          xdr: xdr.ScVal.scvMap([
+            entry("auditor_id", xdr.ScVal.scvU32(1)),
+            // Non-identity, so it cannot open to the stored zero and the
+            // pocket is genuinely diverged.
+            entry("receiving_commitment", bytes(H)),
+            entry("spendable_commitment", bytes(IDENTITY)),
+            entry("spending_public_key", bytes(G)),
+            entry("viewing_public_key", bytes(H)),
+          ]).toXDR("base64"),
         },
       ],
     });
@@ -469,15 +478,13 @@ describe("the inbound search asks the RPC where its window starts", () => {
       results: [
         {
           auth: [],
-          xdr: xdr.ScVal
-            .scvMap([
-              entry("auditor_id", xdr.ScVal.scvU32(1)),
-              entry("receiving_commitment", bytes(H)),
-              entry("spendable_commitment", bytes(IDENTITY)),
-              entry("spending_public_key", bytes(G)),
-              entry("viewing_public_key", bytes(H)),
-            ])
-            .toXDR("base64"),
+          xdr: xdr.ScVal.scvMap([
+            entry("auditor_id", xdr.ScVal.scvU32(1)),
+            entry("receiving_commitment", bytes(H)),
+            entry("spendable_commitment", bytes(IDENTITY)),
+            entry("spending_public_key", bytes(G)),
+            entry("viewing_public_key", bytes(H)),
+          ]).toXDR("base64"),
         },
       ],
     });
@@ -513,9 +520,8 @@ describe("the inbound search asks the RPC where its window starts", () => {
 
     const asked = server.requests.filter((r) => r.method === "getEvents");
     expect(asked.length, "the inbound search never ran").toBeGreaterThan(0);
-    const startLedger = (
-      JSON.parse(asked[0]!.body) as { params?: { startLedger?: number } }
-    ).params?.startLedger;
+    const startLedger = (JSON.parse(asked[0]!.body) as { params?: { startLedger?: number } }).params
+      ?.startLedger;
 
     expect(startLedger, "getEvents was called without a startLedger").toBeTypeOf("number");
     expect(
@@ -594,8 +600,10 @@ describe("buildPayment(): refuses to build against a ledger it could not read", 
     // Past its maxTime the first envelope is decidably dead, so a rebuild is
     // safe. Refusing forever would strand the wallet on a transaction that can
     // never land.
-    const { controller, server, address } = await wallet();
-    server.heal({ fallback: fundedAccount(address) });
+    const { controller, server } = await wallet();
+    // Every account asked about, not just the signer: the send path reads the
+    // DESTINATION too, and a one-address answerer is rejected as a key mismatch.
+    server.heal({ fallback: anyFunded() });
     store.set("pocket.inflight", {
       hash: "c23d994e",
       maxTime: Math.floor(Date.now() / 1000) - 60,

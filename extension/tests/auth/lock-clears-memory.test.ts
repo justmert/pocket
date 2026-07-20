@@ -12,7 +12,7 @@
 // walked away and locked up.
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { installChrome } from "./_harness/chrome";
-import { fundedAccountResult } from "../failure/_harness/ledger";
+import { anyFundedAccount } from "../failure/_harness/ledger";
 
 const chrome = installChrome();
 const { WalletController } = await import("../../src/core/controller");
@@ -36,8 +36,8 @@ async function wallet() {
   (c as unknown as { servers: Map<string, unknown> }).servers.set("testnet", {
     getAccount: async () => new Account(address, "100"),
     prepareTransaction: async (tx: unknown) => tx,
-    getLedgerEntries: async () => fundedAccountResult(address, 100_0000000n),
-    _getLedgerEntries: async () => fundedAccountResult(address, 100_0000000n),
+    getLedgerEntries: anyFundedAccount(),
+    _getLedgerEntries: anyFundedAccount(),
   });
   return { c, address };
 }

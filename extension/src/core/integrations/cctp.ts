@@ -177,6 +177,38 @@ export function cctpDomainName(domain: number): string {
   return CCTP_DOMAIN_NAMES[domain] ?? `domain ${domain}`;
 }
 
+/**
+ * Domains a burn from Stellar can actually reach, read off the deployed
+ * contract rather than off the name table.
+ *
+ * Being NAMED is not being reachable. BNB Smart Chain (17) sits in
+ * `CCTP_DOMAIN_NAMES` and the picker offered it, and the route does not exist:
+ * the user picked it, paid for the approve, and the burn then trapped at
+ * `Error(Contract, #7106)`, deterministically, every time.
+ *
+ * Three live oracles agreed, 2026-08-08:
+ *
+ *   1. The deployed TokenMessengerMinter,
+ *      CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP:
+ *      `get_remote_token_messenger(17)` returns None, while 0, 1, 2, 3, 5, 6,
+ *      7, 10, 11 and 16 all return a value.
+ *   2. Circle's Iris: GET /v2/burn/USDC/fees/27/17 answers
+ *      {"error":"Invalid source/destination domain id"} on sandbox AND on
+ *      mainnet, and mainnet answers the same for 0 -> 17.
+ *   3. A real `deposit_for_burn` to 17, composed exactly as `confirmCctpSend`
+ *      composes it, simulated to Error(Contract, #7106).
+ *
+ * Kept here beside the names so the picker and the worker read one list. They
+ * read two, and that is how a chain nobody can bridge to came to be offered by
+ * name on the screen that charges for trying.
+ */
+export const CCTP_BURN_REACHABLE = new Set([0, 1, 2, 3, 5, 6, 7, 10, 11, 16]);
+
+/** Can a burn from Stellar be delivered to this domain at all? */
+export function cctpCanBurnTo(domain: number): boolean {
+  return CCTP_BURN_REACHABLE.has(domain);
+}
+
 /** 1000 = fast, 2000 = standard. */
 export const FINALITY = { fast: 1000, standard: 2000 } as const;
 

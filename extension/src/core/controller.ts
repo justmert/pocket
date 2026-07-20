@@ -1814,6 +1814,17 @@ export class WalletController {
           "That is Stellar's own domain; choose a different chain.",
         );
       }
+      // Being NAMED is not being reachable. BNB Smart Chain sits in the name
+      // table and the picker offered it, and no route exists: the approve was
+      // charged and the burn then trapped at Error(Contract, #7106), every
+      // time. Refused here as well as hidden in the picker, because the picker
+      // is a screen and this is the thing that spends money.
+      if (!cctp.cctpCanBurnTo(destinationDomain)) {
+        throw new cctp.CctpParameterError(
+          `CCTP cannot carry USDC from Stellar to ${cctp.cctpDomainName(destinationDomain)}. ` +
+            `Nothing has been sent and nothing has been charged. Choose another chain.`,
+        );
+      }
       const amount = parseAmount(amountStr);
       if (amount <= 0n) throw new cctp.CctpParameterError("amount must be positive");
       const mintRecipient = cctp.evmAddressToBytes32(recipient); // throws on a bad address
@@ -3525,10 +3536,36 @@ export class WalletController {
     // has to sit where it cannot be bypassed by whatever calls the worker.
     await this.assertCanSpend(asset, amount);
 
+    // Does the destination exist? A PaymentOp to an account that does not can
+    // never succeed: measured on testnet
+    // (tx 45d35eb8bfea22f7107f4b1dd5165305ce5ad4065c334331d94cacdeb3f118f0) it
+    // is INCLUDED and FAILS with `paymentNoDestination`, charging the fee and
+    // consuming the sequence number. The wallet emitted `createAccount`
+    // nowhere, so paying a friend's brand-new address failed every time and
+    // said only "failed on chain (txFailed)".
+    const createDestination = !(await this.accountExists(to.value));
+    if (createDestination) {
+      if (!asset.isNative()) {
+        throw new AccountNotFoundError(
+          `That account does not exist yet, so it cannot hold ${asset.getCode()}. ` +
+            `Send it XLM first to create it, then send ${asset.getCode()}.`,
+        );
+      }
+      // Stellar refuses a createAccount below the minimum balance, which is two
+      // base reserves. Refused here rather than on chain, where it costs a fee.
+      const minimum = 2n * BASE_RESERVE_STROOPS;
+      if (amount < minimum) {
+        throw new AccountNotFoundError(
+          `That account does not exist yet, so this payment would create it, and a new account ` +
+            `needs at least ${formatAmount(minimum)} XLM. Send at least that much.`,
+        );
+      }
+    }
+
     const seq = await this.server().getAccount(address);
     const tx = buildPayment(
       new Account(address, seq.sequenceNumber()),
-      { from: address, to: to.value, asset, amount, memo: req.memo },
+      { from: address, to: to.value, asset, amount, memo: req.memo, createDestination },
       NETWORKS[this.network].passphrase,
     );
 
@@ -3550,7 +3587,19 @@ export class WalletController {
         fee: tx.fee,
         memo: req.memo,
         effects: [
-          `Send ${formatAmount(amount)} ${asset.isNative() ? "XLM" : asset.getCode()} to this address`,
+          createDestination
+            ? `CREATE this account on Stellar and fund it with ${formatAmount(amount)} XLM`
+            : `Send ${formatAmount(amount)} ${asset.isNative() ? "XLM" : asset.getCode()} to this address`,
+          // Creating an account is a different act from paying one and the
+          // review has to say so: it is the signed operation, and the amount
+          // becomes the new account's whole balance, most of it locked as its
+          // minimum reserve.
+          ...(createDestination
+            ? [
+                `The account does not exist yet. ${formatAmount(2n * BASE_RESERVE_STROOPS)} XLM ` +
+                  `of this stays locked as its minimum balance`,
+              ]
+            : []),
           // The memo is signed, so it is an effect. Stating its absence too:
           // a missing memo is the usual way an exchange deposit is lost.
           req.memo ? `Attach the memo "${req.memo}"` : "Send with NO memo",
@@ -3558,6 +3607,25 @@ export class WalletController {
         ],
       },
     };
+  }
+
+  /**
+   * Does this account exist on the ledger?
+   *
+   * Only "yes" and "no" are answers. A read that FAILS is neither, and must not
+   * be read as "no": concluding absence from an RPC timeout would turn an
+   * ordinary payment into a createAccount, which fails on chain against an
+   * account that does exist and charges for it. So the failure propagates and
+   * the send is refused, which is the same rule `balances()` states for itself.
+   */
+  private async accountExists(who: string): Promise<boolean> {
+    try {
+      await readNative(this.server(), who);
+      return true;
+    } catch (e) {
+      if (e instanceof AccountNotFoundError) return false;
+      throw e;
+    }
   }
 
   /**
@@ -4154,6 +4222,13 @@ export class WalletController {
         entry.private.resolve.kind === "credit"
           ? formatAmount(BigInt(entry.private.resolve.amount))
           : null;
+      // The asset that was actually shielded, never a hardcoded "XLM". A wrapper
+      // binds ONE underlying, so the symbol belongs to the deployment this
+      // operation ran against; with USDC configured, the literal named the wrong
+      // asset in the one message a user reads after a half-completed shield.
+      // Safe to look up: opContext above resolved the same token and would
+      // already have thrown if it were not a configured deployment.
+      const symbol = this.confidentialConfig(entry.token).symbol;
       // What to do next depends on whether the merge is DEAD or merely UNKNOWN,
       // and telling the user the wrong one is how this became a dead end before.
       //
@@ -4168,7 +4243,7 @@ export class WalletController {
       throw new PrivatePocketError(
         `The deposit succeeded (${outcome.hash}) but making it spendable did not. ` +
           (deposited
-            ? `Your ${deposited} XLM is in the receiving balance`
+            ? `Your ${deposited} ${symbol} is in the receiving balance`
             : "Your funds are in the receiving balance") +
           `, and Pocket has recorded it. ` +
           (unknown

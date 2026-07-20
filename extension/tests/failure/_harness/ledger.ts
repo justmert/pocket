@@ -95,6 +95,70 @@ export function entriesResult(entries: RawEntry[], latestLedger = 1_000): unknow
   return { entries, latestLedger };
 }
 
+/**
+ * A ledger where every ACCOUNT asked about exists and is funded.
+ *
+ * `fundedAccountResult` answers with one fixed account's entry whatever key it
+ * was handed, and `readEntry` compares the echoed key against the one it sent,
+ * so the moment anything reads a SECOND account the reply is rejected with
+ * `LedgerEntryMismatchError`. That was invisible while only the signer's own
+ * balance was ever read. It stops being invisible as soon as the send path
+ * reads the DESTINATION, which it must: a payment to an account that does not
+ * exist can never succeed, so the operation to build depends on the answer.
+ *
+ * Answering per key rather than per account keeps these fixtures saying what
+ * they mean, which is "this is an ordinary send between two real accounts".
+ * A test that needs an absent destination should use `ledgerAnswering`, whose
+ * empty `entries` is the only shape `readEntry` reads as genuinely not there.
+ */
+export function anyFundedAccount(
+  balanceStroops = 100_0000000n,
+  opts: { subEntries?: number; latestLedger?: number } = {},
+): (key: xdr.LedgerKey) => unknown {
+  return (key: xdr.LedgerKey) => {
+    if (key.switch().name !== "account") return entriesResult([], opts.latestLedger);
+    const id = StrKey.encodeEd25519PublicKey(key.account().accountId().ed25519());
+    return entriesResult(
+      [entryFor(key, accountEntry(id, balanceStroops, { subEntries: opts.subEntries }))],
+      opts.latestLedger,
+    );
+  };
+}
+
+/**
+ * The entries a `getLedgerEntries` REQUEST should get back if every account it
+ * names exists and is funded.
+ *
+ * Takes the raw JSON-RPC body so a `FaultServer` fallback can answer per
+ * request. Same reason as `anyFundedAccount` above: a one-address answerer is
+ * rejected by `readEntry` as a key mismatch the moment a second account is
+ * read, and the send path reads the destination now.
+ *
+ * Non-account keys answer empty, which is what a real RPC does for a trustline
+ * the account does not hold.
+ */
+export function entriesForRequest(body: string, balanceStroops = 100_0000000n): unknown {
+  let keys: string[] = [];
+  try {
+    keys = (JSON.parse(body) as { params?: { keys?: string[] } }).params?.keys ?? [];
+  } catch {
+    return entriesResult([]);
+  }
+  const rows: RawEntry[] = [];
+  for (const raw of keys) {
+    let key: xdr.LedgerKey;
+    try {
+      key = xdr.LedgerKey.fromXDR(raw, "base64");
+    } catch {
+      continue;
+    }
+    if (key.switch().name !== "account") continue;
+    const id = StrKey.encodeEd25519PublicKey(key.account().accountId().ed25519());
+    rows.push(entryFor(key, accountEntry(id, balanceStroops)));
+  }
+  return entriesResult(rows);
+}
+
 /** A funded account, answered correctly. What recovery should produce. */
 export function fundedAccountResult(
   accountId: string,

@@ -26,6 +26,14 @@ export interface PaymentRequest {
   memo?: string;
   /** Inclusion fee per operation, in stroops. */
   feeStroops?: string;
+  /**
+   * The destination does not exist yet, so create it instead of paying it.
+   *
+   * Only ever true for the native asset: `createAccount` funds a new account
+   * with XLM, and there is no operation that opens an account and delivers a
+   * credit asset to it in one step.
+   */
+  createDestination?: boolean;
 }
 
 /**
@@ -53,13 +61,26 @@ export function buildPayment(
     networkPassphrase,
   })
     .addOperation(
-      Operation.payment({
-        destination: req.to,
-        asset: req.asset,
-        // The SDK takes a decimal string; we hold stroops, so format at the
-        // boundary rather than carrying a float anywhere.
-        amount: formatAmount(req.amount),
-      }),
+      // A destination that does not exist yet needs CREATING, not paying.
+      //
+      // `Operation.payment` to an unfunded address can never succeed: measured
+      // on testnet (tx 45d35eb8bfea22f7107f4b1dd5165305ce5ad4065c334331d94cacdeb3f118f0),
+      // it is INCLUDED and FAILS with `paymentNoDestination`, charging a fee and
+      // consuming the sequence number. The wallet emitted `createAccount`
+      // nowhere at all, so paying a friend's brand-new address failed every
+      // time with nothing saying the address had to be funded first.
+      req.createDestination
+        ? Operation.createAccount({
+            destination: req.to,
+            startingBalance: formatAmount(req.amount),
+          })
+        : Operation.payment({
+            destination: req.to,
+            asset: req.asset,
+            // The SDK takes a decimal string; we hold stroops, so format at the
+            // boundary rather than carrying a float anywhere.
+            amount: formatAmount(req.amount),
+          }),
     )
     .setTimeout(DEFAULT_TIMEOUT_SECONDS);
 
