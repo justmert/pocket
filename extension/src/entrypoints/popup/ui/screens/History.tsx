@@ -38,7 +38,7 @@ import {
   Search,
 } from "../icons";
 import { usd } from "../money";
-import { periodLabel } from "../period";
+import { DATE_LOCALE, periodLabel } from "../period";
 import { explorerUrl } from "../explorer";
 import { shortAddress } from "../Address";
 import { conciseReason, opToEntry } from "../opEntry";
@@ -147,7 +147,7 @@ function isStellarAddress(a: string): boolean {
 
 /** a full date and time, for the detail. */
 function fullDate(at: number): string {
-  return new Date(at).toLocaleString([], {
+  return new Date(at).toLocaleString(DATE_LOCALE, {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -1069,7 +1069,14 @@ function DetailSheet({
   const network = useWallet().status?.network;
 
   return (
-    <Sheet t={t} open={entry !== null} onClose={onClose} title=" " focusKey={e?.id}>
+    <Sheet
+      t={t}
+      open={entry !== null}
+      onClose={onClose}
+      title=" "
+      ariaLabel="Transaction detail"
+      focusKey={e?.id}
+    >
       {e && (
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: space.md }}>
@@ -1146,7 +1153,7 @@ function DetailSheet({
               onCopy={() => onCopy(e.hash)}
               href={explorerUrl(network, "tx", e.hash)}
             />
-            {e.fee && <DetailRow t={t} label="Onchain fee" value={`${e.fee} XLM`} />}
+            {e.fee && <DetailRow t={t} label="Network fee" value={`${e.fee} XLM`} />}
             <DetailRow
               t={t}
               label="Wallet"
@@ -1289,7 +1296,7 @@ export function TransactionsSheet({ open, onClose }: { open: boolean; onClose: (
 
   return (
     <>
-      <Sheet t={t} open={open} onClose={onClose} title=" ">
+      <Sheet t={t} open={open} onClose={onClose} title=" " ariaLabel="Transactions in progress">
         <div style={{ textAlign: "center", marginBottom: space.lg }}>
           <div style={{ ...text.screenTitle, color: t.text }}>Transactions</div>
           <div style={{ ...text.body, fontWeight: 600, color: t.sub, marginTop: 4 }}>
@@ -1512,7 +1519,14 @@ function ProcessingDetailSheet({
   // not an empty card; `liveOp` drives open/close, `op` the body.
   const op = useRetained(liveOp, 300);
   return (
-    <Sheet t={t} open={liveOp !== null} onClose={onClose} title=" " focusKey={op?.id}>
+    <Sheet
+      t={t}
+      open={liveOp !== null}
+      onClose={onClose}
+      title=" "
+      ariaLabel="Transaction in progress"
+      focusKey={op?.id}
+    >
       {op && (
         <div>
           <div
@@ -1610,7 +1624,7 @@ function ProcessingDetailSheet({
                 href={explorerUrl(op.network, "tx", op.hash)}
               />
             )}
-            {op.fee && <DetailRow t={t} label="Onchain fee" value={`${op.fee} XLM`} />}
+            {op.fee && <DetailRow t={t} label="Network fee" value={`${op.fee} XLM`} />}
             <DetailRow
               t={t}
               label="Wallet"

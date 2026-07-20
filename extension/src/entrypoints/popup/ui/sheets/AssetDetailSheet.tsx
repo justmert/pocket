@@ -184,6 +184,7 @@ export function AssetDetailSheet({
     // the end of the content, and on the short, few-row detail view sticky had
     // nothing to stick against, so the button floated in the middle of the sheet.
     <Sheet
+      ariaLabel="Asset detail"
       t={t}
       open={asset !== null}
       onClose={onClose}

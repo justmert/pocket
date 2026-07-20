@@ -1,6 +1,6 @@
 // Grouping headings, against fixed clocks.
 import { describe, it, expect } from "vitest";
-import { periodLabel } from "./period";
+import { DATE_LOCALE, periodLabel } from "./period";
 
 /** A local-time moment, so the assertions read in the zone the user is in. */
 const at = (y: number, m: number, d: number, h = 12, min = 0) =>
@@ -38,7 +38,7 @@ describe("periodLabel", () => {
     // Whatever the labels are, no moment inside this month may be labelled with
     // this month's own name, or the list contradicts itself.
     const later = at(2026, 8, 20, 14, 30);
-    const thisMonth = new Date(later).toLocaleDateString([], { month: "long", year: "numeric" });
+    const thisMonth = new Date(later).toLocaleDateString(DATE_LOCALE, { month: "long", year: "numeric" });
     for (let day = 1; day <= 20; day++) {
       for (const hour of [0, 6, 14, 23]) {
         const t = at(2026, 8, day, hour);
@@ -51,7 +51,7 @@ describe("periodLabel", () => {
   it("falls back to the month name for anything older", () => {
     const later = at(2026, 8, 20, 14, 30);
     expect(periodLabel(at(2026, 7, 31, 23, 59), later)).toBe(
-      new Date(at(2026, 7, 31)).toLocaleDateString([], { month: "long", year: "numeric" }),
+      new Date(at(2026, 7, 31)).toLocaleDateString(DATE_LOCALE, { month: "long", year: "numeric" }),
     );
   });
 

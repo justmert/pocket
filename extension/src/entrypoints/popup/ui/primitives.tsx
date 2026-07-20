@@ -1144,6 +1144,14 @@ export function Sheet({
    */
   focusKey,
   /** nothing moves while someone is reading the thing they are confirming. */
+  /**
+   * the dialog's accessible NAME, when it is not the visible title.
+   *
+   * six sheets announced as a dialog with no name: two pass no `title` and four
+   * pass `title=" "`, which the accessible-name computation discards and which
+   * buys nothing visually either, since `hasTitle` is already false for a blank.
+   */
+  ariaLabel,
   still = false,
   /**
    * whether the header can be pulled down to dismiss.
@@ -1174,6 +1182,7 @@ export function Sheet({
   footer?: ReactNode;
   full?: boolean;
   focusKey?: string;
+  ariaLabel?: string;
   still?: boolean;
   dismissible?: boolean;
   info?: ReactNode;
@@ -1341,7 +1350,7 @@ export function Sheet({
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-label={ariaLabel ?? (title && title.trim() ? title : undefined)}
         onKeyDown={keepFocusInside}
         className={
           `${entering && !grabbing ? "pocket-sheet-in" : ""}${still ? " pocket-still" : ""}`.trim() ||

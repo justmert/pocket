@@ -254,7 +254,14 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
                 ? "Your auditor key is already registered on the ledger, and the fee for it is paid. This step creates the confidential account."
                 : undefined
             }
-            cancelLabel={summary.kind === "register" ? "Cancel" : "Back"}
+            // "Leave this for now", the string `ux/decisions.md` D2 chose and
+            // wrote its reasoning for: this step appears AFTER its first
+            // transaction is already on the ledger, so "Back" describes a return
+            // that is not available and "Cancel" describes an undo that is not
+            // either. it had been replaced with the exact word D2 refused, with no
+            // comment and no decisions entry, and `flow.tsx` still documents why
+            // the prop exists.
+            cancelLabel={summary.kind === "register" ? "Leave this for now" : "Back"}
             error={error}
         unresolved={unresolved}
             busy={busy}

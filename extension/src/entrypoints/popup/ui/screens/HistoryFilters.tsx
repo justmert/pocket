@@ -4,6 +4,7 @@
 // the same honest narrowing the search box does. the labels ("Today", month
 // names) are all computed from the real clock, never stored.
 import { useEffect, useState } from "react";
+import { DATE_LOCALE } from "../period";
 import type { ReactNode } from "react";
 import { Sheet, Button } from "../primitives";
 import { Back, ChevronRight, ArrowDown, Send, Shield, Unshield } from "../icons";
@@ -85,9 +86,9 @@ const endOfDay = (ms: number): number => {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999).getTime();
 };
 const fmtDay = (ms: number): string =>
-  new Date(ms).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  new Date(ms).toLocaleDateString(DATE_LOCALE, { month: "short", day: "numeric", year: "numeric" });
 
-/** a small text link, for Clear / Clear All. */
+/** a small text link, for Clear / Clear all. */
 function LinkButton({
   t,
   onClick,
@@ -157,7 +158,7 @@ export function TypeFilterSheet({
             onClose();
           }}
         >
-          Apply Filters
+          Apply filters
         </Button>
       }
     >
@@ -170,7 +171,7 @@ export function TypeFilterSheet({
         }}
       >
         <LinkButton t={t} onClick={() => setSel(new Set())}>
-          Clear All
+          Clear all
         </LinkButton>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: space.sm }}>
@@ -356,7 +357,7 @@ export function DateRangeSheet({
       t={t}
       open={open}
       onClose={onClose}
-      title="Date Range"
+      title="Date range"
       footer={
         picking === "start" ? (
           <Button t={t} disabled={start === null} onClick={() => setPicking("end")}>
@@ -364,7 +365,7 @@ export function DateRangeSheet({
           </Button>
         ) : (
           <Button t={t} disabled={start === null} onClick={apply}>
-            Apply Date Range
+            Apply date range
           </Button>
         )
       }

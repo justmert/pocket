@@ -115,7 +115,7 @@ export function ManageAssets({ onClose }: { onClose: () => void }) {
       <Frame t={t} className="pocket-page">
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
           <div style={{ padding: `${space.gutter}px ${space.gutter}px ${space.sm}px` }}>
-            <Header t={t} title="Your assets" onBack={onClose} />
+            <Header t={t} title="Manage assets" onBack={onClose} />
           </div>
 
           <div

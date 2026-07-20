@@ -822,7 +822,7 @@ function Import({ t, onDone, onCancel }: { t: Theme; onDone: () => void; onCance
       )}
       <ButtonStack>
         <Button t={t} disabled={!ready} busy={busy} onClick={() => void submit()}>
-          {busy ? "Importing" : "Import wallet"}
+          {busy ? "Restoring" : "Restore wallet"}
         </Button>
         <div style={{ textAlign: "center" }}>
           <TextButton t={t} tone="sub" onClick={onCancel}>

@@ -9,6 +9,7 @@
 // nothing", which is a claim about the user rather than about the request. a
 // stretch that predates the account IS drawn at zero, because that one is true.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { DATE_LOCALE } from "./period";
 import type { CSSProperties } from "react";
 import { motion, radius, space, text, type Theme } from "./theme";
 import { Skeleton } from "./primitives";
@@ -84,9 +85,9 @@ function resample(arr: number[], n: number): number[] {
 export function rangeLabel(range: RangeId): (ms: number) => string {
   return (ms) => {
     const d = new Date(ms);
-    if (range === "1D") return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    if (range === "1Y") return d.toLocaleDateString([], { month: "short", year: "numeric" });
-    return d.toLocaleDateString([], { month: "short", day: "numeric" });
+    if (range === "1D") return d.toLocaleTimeString(DATE_LOCALE, { hour: "2-digit", minute: "2-digit" });
+    if (range === "1Y") return d.toLocaleDateString(DATE_LOCALE, { month: "short", year: "numeric" });
+    return d.toLocaleDateString(DATE_LOCALE, { month: "short", day: "numeric" });
   };
 }
 

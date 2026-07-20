@@ -1005,6 +1005,9 @@ export function ConfirmSheet({
   const phase = usePhase(busy);
   return (
     <Sheet
+      // the confirm announces what it is confirming: it passes no visible
+      // title (the review's own heading carries that) and so had no name at all.
+      ariaLabel={heading ?? "Confirm this transaction"}
       t={t}
       open={open}
       onClose={busy ? () => undefined : result ? onDone : onCancel}

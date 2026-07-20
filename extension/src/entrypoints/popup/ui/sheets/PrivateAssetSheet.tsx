@@ -93,7 +93,14 @@ export function PrivateAssetSheet({ open, onClose }: { open: boolean; onClose: (
   };
 
   return (
-    <Sheet t={t} open={open} onClose={onClose} title=" " focusKey={priv?.token ?? symbol}>
+    <Sheet
+      t={t}
+      open={open}
+      onClose={onClose}
+      title=" "
+      ariaLabel="Private asset detail"
+      focusKey={priv?.token ?? symbol}
+    >
       {priv && (
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: space.md }}>

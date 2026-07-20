@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { DATE_LOCALE } from "../period";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import {
@@ -62,13 +63,24 @@ export function NetworkSheet({ open, onClose }: { open: boolean; onClose: () => 
           {error}
         </Notice>
       )}
-      {NETWORKS.map((n, i) => (
+      {NETWORKS.map((n, i) => {
+        // mainnet always refuses (the controller throws for it), so it was a live
+        // row whose only outcome was an error, on the ONE surface that tells a
+        // user this build is testnet-only, and only after they pressed it. `Row`
+        // carries `tone: "inert"` documented for exactly this: present, explained,
+        // not pressable.
+        const usable = n.id === "testnet";
+        return (
         <Row
           key={n.id}
           t={t}
           index={i}
+          tone={usable ? "plain" : "inert"}
           icon={<External size={19} />}
           title={n.label}
+          // the `sub` strings that distinguish the rows were being dropped
+          // entirely; they are the whole reason a user can tell them apart.
+          sub={usable ? n.sub : `${n.sub}. Not available in this build.`}
           value={
             w.status?.network === n.id ? (
               <Check size={19} sw={2.4} />
@@ -78,9 +90,10 @@ export function NetworkSheet({ open, onClose }: { open: boolean; onClose: () => 
               <Spinner size={17} color={t.accent} />
             ) : undefined
           }
-          onClick={() => void choose(n.id)}
+          {...(usable ? { onClick: () => void choose(n.id) } : {})}
         />
-      ))}
+        );
+      })}
     </Sheet>
   );
 }
@@ -234,7 +247,7 @@ export function ConnectionsSheet({ open, onClose }: { open: boolean; onClose: ()
             t={t}
             index={i}
             title={s.origin}
-            sub={`Connected ${new Date(s.connectedAt).toLocaleDateString()}`}
+            sub={`Connected ${new Date(s.connectedAt).toLocaleDateString(DATE_LOCALE, { month: "short", day: "numeric", year: "numeric" })}`}
             value={<Trash size={17} />}
             tone="danger"
             onClick={() => void disconnect(s.origin)}

@@ -14,6 +14,19 @@
  * inside the wrong date, so an entry made yesterday morning files under "This
  * week" and one made this morning can file under "Yesterday".
  */
+/**
+ * the locale every date in the product is formatted in.
+ *
+ * `[]` means "the browser's", inside an interface whose every other word is
+ * hardcoded English. Under --lang=fr-FR one sheet named the same month twice, two
+ * ways: "8 aout 2026" ninety pixels above "August 2026"; under ar-EG the range
+ * summary rendered its day in Arabic-Indic digits while the grid cell beside it
+ * used ASCII. Until the product is actually translated, one language everywhere
+ * is the honest answer, and the day it is translated this is the one line that
+ * changes.
+ */
+export const DATE_LOCALE = "en-US";
+
 export function periodLabel(at: number, now: number): string {
   const today = new Date(now);
   today.setHours(0, 0, 0, 0);
@@ -40,5 +53,5 @@ export function periodLabel(at: number, now: number): string {
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).getTime();
   if (at >= firstOfMonth) return "This month";
 
-  return new Date(at).toLocaleDateString([], { month: "long", year: "numeric" });
+  return new Date(at).toLocaleDateString(DATE_LOCALE, { month: "long", year: "numeric" });
 }
