@@ -179,7 +179,24 @@ export async function ingestRange(
     const filters = [{ type: "contract" as const, contractIds: [contractId] }];
     const page = await (cursor
       ? server.getEvents({ cursor, filters, limit: 200 })
-      : server.getEvents({ startLedger: fromLedger, endLedger: toLedger, filters, limit: 200 }));
+      : server.getEvents({
+          startLedger: fromLedger,
+          // EXCLUSIVE, measured against soroban-rpc. `startLedger` is
+          // inclusive and `endLedger` is not, so asking for
+          // {startLedger: from, endLedger: to} scans [from, to) and never
+          // looks at `to` itself.
+          //
+          // `recordRange` then claimed [from, to] regardless and the backfill
+          // advanced with `from = to + 1`, so ledger `to` was skipped, never
+          // revisited, and reported as covered: one lost ledger per 10,000, a
+          // hole the completeness signal says is not there. An event on one of
+          // them is a private balance the rebuild refuses to reconstruct, and
+          // that refusal is the only thing standing between a restored wallet
+          // and its money.
+          endLedger: toLedger + 1,
+          filters,
+          limit: 200,
+        }));
 
     if (page.events.length === 0) break;
 
