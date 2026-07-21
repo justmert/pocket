@@ -20,7 +20,9 @@ const chrome = installChrome();
 const { WalletController, UnresolvedTransactionError } = await import("../../src/core/controller");
 const { KEYS, writeLocal, removeLocal } = await import("../../src/lib/storage");
 const { clearSession } = await import("../../src/core/session");
-const { Account } = await import("@stellar/stellar-sdk/base");
+const { Account, TransactionBuilder, Operation, BASE_FEE, Networks } = await import(
+  "@stellar/stellar-sdk/base"
+);
 
 const PASSWORD = "correct horse battery staple";
 
@@ -76,6 +78,17 @@ const deadlineOnly = (kind?: string) =>
     maxTime: nowSec() - 300,
     ...(kind ? { kind } : {}),
   });
+
+/** Any signable envelope with time bounds, for driving signAndSubmit directly. */
+function envelope(address: string) {
+  return new TransactionBuilder(new Account(address, "100"), {
+    fee: BASE_FEE,
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(Operation.bumpSequence({ bumpTo: "0" }))
+    .setTimeout(180)
+    .build();
+}
 
 const payment = {
   to: "GBIQM4D2YEJEQ7HEDO62QJJEBHUZKXNEGTOXQGI6SGSG3T5N3X5YGRAF",
@@ -279,6 +292,42 @@ describe("the in-flight slot refuses to be written over", () => {
     await expect(
       sinkOf(c, "swap").record({ hash: "f".repeat(64), maxTime: nowSec() + 300 }),
     ).rejects.toThrow(UnresolvedTransactionError);
+  });
+
+  it("refuses BEFORE the staged record is written, not after", async () => {
+    // The refusal was true and late. `signAndSubmit` wrote the new staged
+    // record and only then called `submitAndConfirm`, where the backstop lives,
+    // so a submission that was about to be refused had already overwritten
+    // `pocket.staged`. That slot holds exactly one record: the post-state of
+    // the earlier operation, the only copy that exists and the only thing
+    // `reconcileInFlight` can apply. The caller saw a clean rejection while the
+    // thing the rejection was protecting had already been destroyed.
+    const { c, address } = await wallet();
+    // The key is module-private in controller.ts, so it is named here rather
+    // than imported. A rename breaks this test, which is the right outcome:
+    // the assertion is about that exact slot.
+    const STAGED_KEY = "pocket.staged";
+    const { readLocal } = await import("../../src/lib/storage");
+    // An earlier private operation's consequence, staged and unresolved.
+    const before = { hash: "a".repeat(64), token: "T", address, resolve: { kind: "merge" } };
+    await (c as unknown as { writeStaged(r: unknown): Promise<void> }).writeStaged(before);
+    const staged = await readLocal(STAGED_KEY);
+    expect(staged, "nothing was staged, so this test proves nothing").toBeTruthy();
+    await unresolved("transfer");
+
+    // Any second submission through the shared path. It must refuse...
+    await expect(
+      (c as unknown as { signAndSubmit(tx: unknown, r: unknown): Promise<unknown> }).signAndSubmit(
+        envelope(address),
+        { kind: "merge" },
+      ),
+    ).rejects.toThrow(UnresolvedTransactionError);
+
+    // ...and the earlier operation's only record must still be there.
+    expect(
+      await readLocal(STAGED_KEY),
+      "a refused submission destroyed the staged record it was refusing to overwrite",
+    ).toEqual(staged);
   });
 
   it("leaves the earlier record intact when it refuses", async () => {

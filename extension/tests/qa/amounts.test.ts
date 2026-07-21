@@ -1394,7 +1394,7 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "clamps the scrub position to an array index",
   },
   {
-    fragment: "const pillX = dot ? Math.max(30, Math.min(w - 30, dot[0])) : 0;",
+    fragment: "const pillX = dot ? Math.max(half, Math.min(w - half, dot[0])) : 0;",
     why: "keeps the scrub pill off the chart edges, in pixels",
   },
   {
@@ -1451,12 +1451,12 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "the slider percentage 0..100; the amount it sets is computed in bigint by fractionOf",
   },
   {
-    fragment: "const fitPx = Math.floor(430 / Math.max(1, amount.length));",
+    fragment: "const fitPx = Math.floor(COMPOSER_COLUMN / (Math.max(1, amount.length) * DIGIT_EM));",
     why: "the compose amount's font size in pixels, scaled down so a long figure fits the card; a layout measure, not the value (which stays the string)",
   },
   {
-    fragment: "const amountPx = Math.min(fontSizes.hero, Math.max(fontSizes.title, fitPx));",
-    why: "clamps that compose font size between the title and hero sizes; still pixels, not a value",
+    fragment: "const amountPx = Math.min(fontSizes.hero, Math.max(fontSizes.small, fitPx));",
+    why: "clamps that same font size between the two type sizes; still pixels, still not the value",
   },
   {
     fragment: "onChange={(e) => onPercent(Number(e.target.value))}",
@@ -1470,6 +1470,10 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
   {
     fragment: "Number(amount) <= 0 || inId === outId",
     why: "swap: clears the live quote when the input is non-positive or the two assets match; a display guard, never a conversion",
+  },
+  {
+    fragment: "setQuoteAge(Math.round((Date.now() - quotedAt) / 1000))",
+    why: "how many seconds old the displayed swap quote is, for the staleness notice; elapsed time, never an amount",
   },
   {
     fragment: "domain: Number(d), name",

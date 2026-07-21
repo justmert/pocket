@@ -3610,6 +3610,29 @@ export class WalletController {
   }
 
   /**
+   * Refuse when the slot already holds a DIFFERENT unresolved submission.
+   *
+   * The backstop `inFlightSink.record` has always applied, extracted so
+   * `signAndSubmit` can ask it BEFORE it writes anything. It used to be asked
+   * only from inside `submitAndConfirm`, which `writeStaged` runs ahead of, so
+   * a submission this was about to refuse had already overwritten
+   * `pocket.staged`: one slot, holding the only copy of the earlier operation's
+   * post-state, destroyed by an attempt that then reported a clean refusal.
+   *
+   * Same hash is not another submission: that is a retry of this one, and
+   * `submitAndConfirm` is safe to call again on an envelope it already recorded.
+   */
+  private async assertNotHoldingAnother(hash: string): Promise<void> {
+    const held = await this.inFlight();
+    if (held && !held.expired && held.hash !== hash) {
+      throw new UnresolvedTransactionError(
+        "A transaction submitted earlier has not resolved yet, and it may still land. " +
+          "Pocket will not submit another one over it. Reopen Pocket and check it first.",
+      );
+    }
+  }
+
+  /**
    * Does this account exist on the ledger?
    *
    * Only "yes" and "no" are answers. A read that FAILS is neither, and must not
@@ -3669,13 +3692,7 @@ export class WalletController {
   private inFlightSink(kind?: string) {
     return {
       record: async (e: { hash: string; maxTime: number }) => {
-        const held = await this.inFlight();
-        if (held && !held.expired && held.hash !== e.hash) {
-          throw new UnresolvedTransactionError(
-            "A transaction submitted earlier has not resolved yet, and it may still land. " +
-              "Pocket will not submit another one over it. Reopen Pocket and check it first.",
-          );
-        }
+        await this.assertNotHoldingAnother(e.hash);
         // WHEN, so a reader can tell a confirm that is merely in progress from
         // one nobody ever saw the end of. the record is written BEFORE
         // `sendTransaction` and cleared only on a terminal outcome, so it is on
@@ -4348,12 +4365,29 @@ export class WalletController {
     prepared.sign(this.keypair());
     this.setPhase("Submitting, then waiting for the ledger to confirm…");
 
+    // The in-flight backstop, asked BEFORE anything is written.
+    //
+    // It used to live only inside `submitAndConfirm`, which `writeStaged` runs
+    // ahead of. So a submission the backstop was about to REFUSE had already
+    // overwritten `pocket.staged`, and that slot holds exactly one record: the
+    // post-state of the earlier operation, which is the only copy that exists
+    // and the only thing `reconcileInFlight` can apply. The refusal then
+    // propagated as an error and the caller saw a clean rejection, while the
+    // record it was protecting had already been destroyed by the attempt.
+    //
+    // Asking here makes the refusal true: nothing is written and nothing is
+    // sent. `submitAndConfirm` still asks again on its own way through, because
+    // a submission can start between these two lines and that one is the check
+    // that runs immediately before the envelope leaves.
+    const preparedHash = prepared.hash().toString("hex");
+    await this.assertNotHoldingAnother(preparedHash);
+
     if (resolve) {
       // Simulation rewrites the envelope, so the hash to stage against is the
       // prepared one, not the hash the approval screen was keyed by.
       const { address } = requireSession();
       await this.writeStaged({
-        hash: prepared.hash().toString("hex"),
+        hash: preparedHash,
         // The op's own token, threaded from confirm. Falls back to the primary
         // only for a staged write with no token supplied, which today never
         // happens on the private path.
