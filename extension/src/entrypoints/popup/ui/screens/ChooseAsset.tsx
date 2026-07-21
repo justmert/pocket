@@ -8,6 +8,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Frame, Header, Notice, Spinner } from "../primitives";
+import { InfoTip } from "../Tooltip";
 import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark } from "./Home";
 import { shortAddress } from "../Address";
@@ -177,7 +178,21 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
       <Frame t={t} className="pocket-page">
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
           <div style={{ padding: `${space.gutter}px ${space.gutter}px ${space.sm}px` }}>
-            <Header t={t} title="Choose asset" onBack={onClose} />
+            <Header
+              t={t}
+              title="Choose asset"
+              onBack={onClose}
+              // the four sibling integration screens all name their third party in
+              // the header tip and this one, which sends what the user types to an
+              // outside service, had no tip at all.
+              right={
+                <InfoTip t={t} label="About the asset directory">
+                  Search runs against StellarExpert&rsquo;s public asset directory, so what you type
+                  here is sent to them. Adding an asset opens a trustline from your own account and
+                  is signed by this wallet.
+                </InfoTip>
+              }
+            />
           </div>
 
           <div

@@ -781,7 +781,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setToast(m);
     setToastTone(tone);
     clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 1800);
+    // scaled to what there is to read. 1800ms INCLUDES a 200ms fade in and out,
+    // so a message was fully opaque for about 1.4 seconds, and the toast is the
+    // whole error surface for at least one Settings row whose own comment says it
+    // has "no body to grow an inline notice". a short acknowledgement keeps the
+    // old dwell; a sentence gets time to be read.
+    const dwell = Math.min(6000, Math.max(1800, 900 + m.length * 55));
+    toastTimer.current = setTimeout(() => setToast(null), dwell);
   }, []);
 
   const copy = useCallback(

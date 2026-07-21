@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, UIEvent } from "react";
 import { nativeOf, useWallet } from "../WalletProvider";
 import { call } from "../rpc";
-import { canRebuild } from "../copy";
+import { canRebuild, privateLossAfterErase } from "../copy";
 import { ChangeChip, ValueChartBlock, useValueChart } from "../Chart";
 import { NAV_SPACE } from "../BottomNav";
 import { Amount, HeroAmount, Figure, MASK } from "../Amount";
@@ -875,6 +875,17 @@ export function Home() {
                 <span style={{ display: "block", marginBottom: 6 }}>{priv.message}</span>
               ) : null}
               Hides amounts, never addresses. Who you pay stays public on the ledger.
+              {/* the DURABILITY fact, on the screen where the pocket is opened
+                  rather than only on the screen where it is destroyed. it lived in
+                  `copy.ts` with exactly one caller, the erase sheet, so the one
+                  place it was said was the place it was already too late to act
+                  on. on testnet the omission costs nothing, which is why it would
+                  still be missing the day mainnet is enabled. */}
+              {priv.state === "unregistered" && (
+                <span style={{ display: "block", marginTop: 6 }}>
+                  {privateLossAfterErase(w.status?.network ?? "testnet")}
+                </span>
+              )}
             </InfoTip>
           </span>
           {action && (
@@ -1412,6 +1423,7 @@ export function PrivateAssetRow({
   onClick: () => void;
 }) {
   const w = useWallet();
+  const network = w.status?.network ?? "testnet";
   const symbol = p.symbol ?? "XLM";
   const ready = p.state === "ready";
   const receiving = ready && p.receiving && /[1-9]/.test(p.receiving) ? p.receiving : null;
@@ -1421,8 +1433,15 @@ export function PrivateAssetRow({
   // thing WalletProvider says must never happen: "a zero would be a lie". the
   // hero on this very screen already refuses to do it, so the row and the hero
   // disagreed about the same pocket.
+  // "Rebuild" is only a real offer where there is an archive to replay from, and
+  // this map was the one of five that did not consult `canRebuild`: on every
+  // shipped build (none configures an archive) the row invited an action whose
+  // only outcome is the worker refusing it. the prompt card two hundred lines up
+  // was gated for exactly this and this map was left behind.
+  const label =
+    NEEDS_ARCHIVE.includes(p.state) && !canRebuild(network) ? "Needs rebuilding" : ROW_STATE_LABEL[p.state];
   const value = !ready ? (
-    <span style={{ ...text.value, color: t.exposed }}>{ROW_STATE_LABEL[p.state]}</span>
+    <span style={{ ...text.value, color: t.exposed }}>{label}</span>
   ) : p.spendable ? (
     <Amount t={t} value={p.spendable} size="row" hidden={hidden} />
   ) : (

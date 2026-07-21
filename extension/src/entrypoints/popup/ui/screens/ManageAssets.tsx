@@ -5,6 +5,7 @@
 // trustline via the directory search, and close one it no longer wants. XLM is
 // not shown: it is always held and has no trustline to manage.
 import { useEffect, useRef, useState } from "react";
+import { displayAmount } from "../../../../core/chain/balances";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Frame, Header, Notice, Skeleton } from "../primitives";
@@ -50,6 +51,19 @@ export function ManageAssets({ onClose }: { onClose: () => void }) {
   const startRemove = async (tl: Trustline) => {
     setRemoving(tl);
     setError(null);
+    // answered LOCALLY, from the balance already in `lines`. the worker refuses
+    // this too and its sentence is the authority, but it refused after a build
+    // round trip with no busy state, into a notice at the top of a list that can
+    // be scrolled well past it: eight 60px rows in a ~440px body is enough, and
+    // the observable behaviour of the trash icon was then that it did nothing.
+    // the wallet already had the number.
+    if (/[1-9]/.test(tl.balance)) {
+      setError(
+        `You still hold ${displayAmount(tl.balance)} ${tl.code}. Send or swap it away first, then remove the asset.`,
+      );
+      setRemoving(null);
+      return;
+    }
     try {
       const r = await call({ type: "buildRemoveTrustline", assetCode: tl.code, issuer: tl.issuer });
       setHandle(r.handle);

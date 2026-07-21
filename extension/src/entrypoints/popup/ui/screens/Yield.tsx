@@ -202,6 +202,11 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
                   <InfoTip t={t} label="About the yield vault">
                     A non-custodial DeFindex vault. Deposits and withdrawals are in the PUBLIC
                     pocket and are visible on the ledger.
+                    {/* WHICH vault. `YieldPosition.vault` is fetched, typed and
+                        carried across the wire, and nothing drew it: the contract
+                        the funds actually go to was the one fact the screen did
+                        not state. */}
+                    {y?.vault ? ` The vault is ${y.vault}.` : ""}
                     {/* the whole disclosure, once. it used to interpolate a
                         sentence into a sentence: "The vault reports 19.41% over
                         the last 7 days, variable and not guaranteed; it is
