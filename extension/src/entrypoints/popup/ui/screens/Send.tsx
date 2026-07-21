@@ -10,7 +10,7 @@ import { Figure } from "../Amount";
 import { BASE_FEE } from "@stellar/stellar-sdk/base";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
-import { Button, Frame, Header, Notice, Sheet, Row } from "../primitives";
+import { Button, Field, Frame, Header, Notice, Sheet, Row } from "../primitives";
 import { InfoTip } from "../Tooltip";
 import { fiatOf } from "../money";
 import { shortAddress } from "../Address";
@@ -356,7 +356,16 @@ export function Send({ onClose }: { onClose: () => void }) {
                     onSubmit={() => ready && void review()}
                   />
 
-                  <RecipientField t={t} value={to} onChange={setTo} onPaste={() => void paste()} />
+                  <RecipientField
+                    t={t}
+                    value={to}
+                    onChange={setTo}
+                    onPaste={() => void paste()}
+                    // only once there is enough typed to judge: marking a
+                    // half-typed address invalid is the irritation `Field`'s own
+                    // callers avoid, so this waits for a full-length string.
+                    invalid={to.trim().length >= 56 && !/^[GCM][A-Z2-7]{55}$/.test(to.trim())}
+                  />
 
                   {/* the local address book, used from here: while the field is
                       empty, the addresses saved from past receipts are one tap away.
@@ -506,54 +515,48 @@ export function Send({ onClose }: { onClose: () => void }) {
     </>
   );
 }
-/** the recipient, with a Paste affordance in the field. */
+/**
+ * the recipient and the memo, through the SHARED field.
+ *
+ * these two were the only text inputs in the product that bypassed `Field`, on
+ * the screen where an address is checked before money leaves: no label, no hint,
+ * and no invalid state, while every other field in the wallet has all three. the
+ * reason the copies existed was the Paste pill, and `Field` grew a `trailing`
+ * slot for exactly that.
+ */
 function RecipientField({
   t,
   value,
   onChange,
   onPaste,
+  invalid,
 }: {
   t: Theme;
   value: string;
   onChange: (v: string) => void;
   onPaste: () => void;
+  invalid?: boolean;
 }) {
   return (
-    <div
-      className="pk-field"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: space.sm,
-        marginTop: space.md,
-        background: t.field,
-        borderRadius: radius.lg,
-        padding: `2px 6px 2px ${space.md}px`,
-      }}
-    >
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="Recipient address"
-        aria-label="To"
-        style={{
-          all: "unset",
-          boxSizing: "border-box",
-          flex: 1,
-          minWidth: 0,
-          padding: `${space.md}px 0`,
-          ...text.rowSub,
-          // the recipient is a stellar address: verbatim data, so mono wins over
-          // the role's body face, at the mono weight of 500.
-          fontFamily: fonts.mono,
-          fontWeight: 500,
-          color: t.text,
-        }}
-      />
-      <Button t={t} size="pill" onClick={onPaste}>
-        Paste
-      </Button>
-    </div>
+    <Field
+      t={t}
+      label="To"
+      value={value}
+      onChange={onChange}
+      placeholder="Recipient address"
+      mono
+      invalid={invalid}
+      hint={
+        invalid
+          ? "That is not a Stellar address. They are 56 characters and begin with G, C or M."
+          : undefined
+      }
+      trailing={
+        <Button t={t} size="pill" onClick={onPaste}>
+          Paste
+        </Button>
+      }
+    />
   );
 }
 
@@ -568,26 +571,16 @@ function MemoField({
   onChange: (v: string) => void;
 }) {
   return (
-    <input
+    <Field
+      t={t}
+      label="Memo (optional)"
       value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder="Memo (optional)"
-      aria-label="Memo (optional)"
-      className="pk-field"
-      style={{
-        all: "unset",
-        boxSizing: "border-box",
-        display: "block",
-        width: "100%",
-        background: t.field,
-        borderRadius: radius.lg,
-        padding: `${space.md}px ${space.md}px`,
-        ...text.rowSub,
-        color: t.text,
-      }}
+      onChange={onChange}
+      placeholder="For exchanges that ask for one"
     />
   );
 }
+
 /** which asset is being sent. a sheet, because it is an aside from composing. */
 function AssetPicker({
   t,

@@ -64,6 +64,12 @@ export function Swap({ onClose }: { onClose: () => void }) {
   const [slippageBps, setSlippageBps] = useState(100);
 
   const [quote, setQuote] = useState<SwapQuoteView | null>(null);
+  // WHEN this quote was read. a pool price moves, and the screen showed an
+  // estimate with nothing saying how old it was: the binding numbers come from
+  // `buildSwap` at review, so a stale one can never be signed, but a figure a
+  // decision is made on should say when it was true.
+  const [quotedAt, setQuotedAt] = useState<number | null>(null);
+  const [quoteAge, setQuoteAge] = useState(0);
   const [quoting, setQuoting] = useState(false);
   const [price, setPrice] = useState<number | null>(null);
 
@@ -117,6 +123,17 @@ export function Swap({ onClose }: { onClose: () => void }) {
     };
   }, [inAsset.code]);
 
+  // tick while a quote is on screen, so its age is stated rather than implied.
+  useEffect(() => {
+    if (quotedAt === null) {
+      setQuoteAge(0);
+      return;
+    }
+    setQuoteAge(0);
+    const id = setInterval(() => setQuoteAge(Math.round((Date.now() - quotedAt) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [quotedAt]);
+
   // a live quote as the user types: a read, debounced, so every keystroke does not
   // hit Aquarius. it shows the estimated out and the route; the binding numbers
   // (minimum received, fee) come from buildSwap at review.
@@ -133,6 +150,7 @@ export function Swap({ onClose }: { onClose: () => void }) {
         .then((q) => {
           if (live) {
             setQuote(q);
+            setQuotedAt(Date.now());
             setQuoting(false);
           }
         })
@@ -375,6 +393,7 @@ export function Swap({ onClose }: { onClose: () => void }) {
                 asset={outAsset}
                 quote={quote}
                 quoting={quoting}
+                quoteAge={quoteAge}
                 onPick={() => setPicking("out")}
               />
 
@@ -497,12 +516,15 @@ function ReceiveCard({
   asset,
   quote,
   quoting,
+  quoteAge,
   onPick,
 }: {
   t: Theme;
   asset: SwapAsset;
   quote: SwapQuoteView | null;
   quoting: boolean;
+  /** seconds since this quote was read. */
+  quoteAge: number;
   onPick: () => void;
 }) {
   const est = quote?.estOut ?? null;
@@ -549,6 +571,17 @@ function ReceiveCard({
         {est ? `${est}` : quoting ? "…" : "—"}
       </div>
       {quote && quote.route.length > 2 && <AssetPath t={t} route={quote.route} />}
+      {/* how old this estimate is. a pool price moves and the figure above it was
+          drawn with nothing saying when it was read. the minimum received and the
+          fee still come from `buildSwap` at review, so a stale quote can never be
+          SIGNED; this is about the number the decision is made on. */}
+      {est && !quoting && (
+        <div style={{ ...text.caption, color: t.faint, textAlign: "center", marginTop: 4 }}>
+          {quoteAge < 5
+            ? "Live estimate"
+            : `Estimate from ${quoteAge}s ago. The exact amount is set when you review.`}
+        </div>
+      )}
     </div>
   );
 }

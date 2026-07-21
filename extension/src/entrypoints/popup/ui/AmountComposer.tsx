@@ -15,6 +15,19 @@ import { displayAmount, parseAmount } from "../../../core/chain/balances";
 import { fontSizes, radius, space, text, type Theme } from "./theme";
 
 /** the fraction a typed amount is of the spendable balance, 0..100, for the slider. */
+/**
+ * the width the composed figure actually has, and how wide a digit is in it.
+ *
+ * the frame is 384 and the composer sits inside the page gutter on both sides
+ * plus its own card padding. `DIGIT_EM` is the same estimate `Amount` uses, kept
+ * in step by name rather than by two people remembering.
+ */
+const COMPOSER_COLUMN = 259;
+const DIGIT_EM = 0.62;
+
+/** the longest amount the field accepts. the int64 maximum is 20 characters. */
+export const MAX_AMOUNT_CHARS = 24;
+
 export function sliderPercent(amount: string, spendable: string | null): number {
   if (!spendable || amount === "") return 0;
   const a = Number(amount);
@@ -186,8 +199,17 @@ export function AmountComposer({
   // the raw input has none of Amount's fit(), so a long figure ran under the code
   // and clipped. scale the font down to keep the whole number inside the card. a
   // LAYOUT in pixels, not a value: what is sent is the string `amount`, untouched.
-  const fitPx = Math.floor(430 / Math.max(1, amount.length));
-  const amountPx = Math.min(fontSizes.hero, Math.max(fontSizes.title, fitPx));
+  // the same floor `Amount.fit` uses, and a numerator derived from the column this
+  // figure actually has rather than the literal 430.
+  //
+  // it floored at `fontSizes.title` (24) where `fit` floors at `small` (14), and
+  // the overflow direction here is LEFT, so the digits that ran off were the most
+  // significant ones. at 20 characters the figure was 22px over its ~259px column
+  // and at 25 it was 92px over. there is no `maxLength` on the input either, and
+  // `MAX_AMOUNT_CHARS` is now that cap: the largest amount stellar can express is
+  // 922,337,203,685.4775807, so nothing honest reaches it.
+  const fitPx = Math.floor(COMPOSER_COLUMN / (Math.max(1, amount.length) * DIGIT_EM));
+  const amountPx = Math.min(fontSizes.hero, Math.max(fontSizes.small, fitPx));
   // one metric object shared by the visible Rolling layer and the transparent
   // input over it, so the digits and the caret sit in the very same box.
   const numberStyle = {
@@ -265,6 +287,7 @@ export function AmountComposer({
           <input
             className="pocket-bare"
             inputMode="decimal"
+            maxLength={MAX_AMOUNT_CHARS}
             value={amount}
             onChange={(e) => {
               setEditing(true);
