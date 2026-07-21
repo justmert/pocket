@@ -559,6 +559,10 @@ function ReceiveCard({
         </button>
       </div>
       <div
+        // the figure the decision to swap is made on. it was a plain <div>, so a
+        // screen reader was told nothing when the estimate arrived or changed.
+        role="status"
+        aria-live="polite"
         style={{
           marginTop: space.md,
           ...text.display,

@@ -842,7 +842,12 @@ export function Row({
 export function Overline({ t, children }: { t: Theme; children: ReactNode }) {
   // a section header, not a tiny eyebrow: these read at the heading size and
   // weight in the pocket's own ink, so "Assets" and "Yield" look like headings.
-  return <div style={{ ...text.heading, color: t.text, marginBottom: space.sm }}>{children}</div>;
+  //
+  // and an <h2>, not a <div>. the comment already said they "look like headings"
+  // and nothing in the tree said they WERE: Home's whole heading outline was the
+  // wordmark, so a screen reader jumping by heading found one item on the busiest
+  // screen in the product.
+  return <h2 style={{ ...text.heading, color: t.text, margin: `0 0 ${space.sm}px` }}>{children}</h2>;
 }
 
 /** a field or section label inside a screen. sentence case: a review is read,
@@ -948,6 +953,47 @@ export function Notice({
 }
 
 /* ------------------------------------------------------------- feedback -- */
+
+/**
+ * "there is nothing here", said the same way everywhere.
+ *
+ * Six empty states shared no structure and drew the same kind of sentence in
+ * `t.faint` on three surfaces and `t.sub` on three, with no comment anywhere
+ * explaining the split. The icon is optional, the action is optional, and the
+ * sentence is the one required part.
+ */
+export function EmptyState({
+  t,
+  icon,
+  children,
+  action,
+}: {
+  t: Theme;
+  icon?: ReactNode;
+  children: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: space.md,
+        padding: `${space.xl}px 0`,
+        textAlign: "center",
+      }}
+    >
+      {icon && (
+        <span aria-hidden style={{ color: t.faint, display: "flex" }}>
+          {icon}
+        </span>
+      )}
+      <span style={{ ...text.body, color: t.sub }}>{children}</span>
+      {action}
+    </div>
+  );
+}
 
 export function Spinner({ size = 20, color }: { size?: number; color?: string }) {
   return (

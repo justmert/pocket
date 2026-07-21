@@ -7,7 +7,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
-import { Button, Frame, Header, Notice, Spinner } from "../primitives";
+import { Button, Frame, Header, Notice, Spinner, EmptyState } from "../primitives";
 import { InfoTip } from "../Tooltip";
 import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark } from "./Home";
@@ -283,9 +283,9 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
             )}
 
             {results !== null && results.length === 0 && !searching && !searchError && (
-              <div style={{ ...text.body, color: t.sub, textAlign: "center", padding: space.xl }}>
+              <EmptyState t={t} icon={<Search size={28} />}>
                 No assets found for “{query.trim()}”.
-              </div>
+              </EmptyState>
             )}
 
             {shown?.map((a) => (

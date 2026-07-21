@@ -280,7 +280,11 @@ function AssetLine({
       </span>
       <span style={{ textAlign: "right", minWidth: 0 }}>
         <span style={{ display: "block" }}>
-          <Amount t={t} value={tl.balance} />
+          {/* the CODE reaches the accessibility tree even though the row draws it
+              on the left: without it a screen reader hears a bare number in a list
+              of assets. `Amount` keeps it out of the visible figure and in the
+              spoken one, which is the arrangement it was built for. */}
+          <Amount t={t} value={tl.balance} code={tl.code} />
         </span>
         {!tl.authorized && (
           <span style={{ ...text.rowSub, color: t.sub, display: "block" }}>Not authorised</span>

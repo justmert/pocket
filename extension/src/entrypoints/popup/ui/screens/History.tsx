@@ -24,6 +24,7 @@ import {
   Overline,
   Spinner,
   useRetained,
+  EmptyState,
 } from "../primitives";
 import {
   Alert,
@@ -591,39 +592,40 @@ export function History() {
               {shown.length === 0 && (q || filtersActive) && (
                 // filters hid the settled history: a filter glyph says why, and one
                 // tap clears them. the in-progress list above is not filtered.
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: space.md,
-                    paddingTop: space.xl,
-                    textAlign: "center",
-                  }}
+                <EmptyState
+                  t={t}
+                  icon={q ? <Search size={28} /> : <Filter size={28} />}
+                  action={
+                    <Button
+                      t={t}
+                      variant="quiet"
+                      size="pill"
+                      onClick={() => {
+                        setQuery("");
+                        setRange({ start: null, end: null });
+                        setTypes(new Set());
+                      }}
+                    >
+                      {q && !filtersActive ? "Clear search" : "Clear filters"}
+                    </Button>
+                  }
                 >
-                  <span aria-hidden style={{ color: t.faint, display: "flex" }}>
-                    <Filter size={28} />
-                  </span>
-                  <span style={{ ...text.body, color: t.faint }}>
-                    {cursor == null
+                  {/* a SEARCH is not a filter. this branch is entered on
+                      `q || filtersActive` and every sentence in it was written for
+                      the second disjunct, so typing into the search box and matching
+                      nothing was reported as filters hiding things. */}
+                  {q && !filtersActive
+                    ? cursor == null
+                      ? `Nothing in your activity matches “${q}”.`
+                      : pagingGaveUp
+                        ? `Nothing matches “${q}” in the history read so far, and there is more that has not been read.`
+                        : `Nothing matches “${q}” yet. Still reading older history.`
+                    : cursor == null
                       ? "Nothing matches those filters."
                       : pagingGaveUp
                         ? "Nothing matches those filters in the history read so far, and there is more that has not been read."
                         : "Nothing matches those filters yet. Still reading older history."}
-                  </span>
-                  <Button
-                    t={t}
-                    variant="quiet"
-                    size="pill"
-                    onClick={() => {
-                      setQuery("");
-                      setRange({ start: null, end: null });
-                      setTypes(new Set());
-                    }}
-                  >
-                    Clear filters
-                  </Button>
-                </div>
+                </EmptyState>
               )}
 
               {shown.length === 0 && !q && !filtersActive && inProgress.length === 0 && (
@@ -1304,21 +1306,9 @@ export function TransactionsSheet({ open, onClose }: { open: boolean; onClose: (
           </div>
         </div>
         {pending.length === 0 ? (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: space.md,
-              padding: `${space.md}px 0 ${space.lg}px`,
-              textAlign: "center",
-            }}
-          >
-            <span aria-hidden style={{ color: t.faint, display: "flex" }}>
-              <Clock size={28} />
-            </span>
-            <span style={{ ...text.body, color: t.faint }}>Nothing in progress.</span>
-          </div>
+          <EmptyState t={t} icon={<Clock size={28} />}>
+            Nothing in progress.
+          </EmptyState>
         ) : (
           <div style={{ display: "grid", gap: space.sm, paddingBottom: space.gutter }}>
             {pending.map((op, i) => (

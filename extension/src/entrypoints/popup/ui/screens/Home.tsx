@@ -1443,7 +1443,9 @@ export function PrivateAssetRow({
   const value = !ready ? (
     <span style={{ ...text.value, color: t.exposed }}>{label}</span>
   ) : p.spendable ? (
-    <Amount t={t} value={p.spendable} size="row" hidden={hidden} />
+    // the symbol reaches the accessibility tree; `hideCode` keeps it out of the
+    // drawn figure, where the row already names the asset on its left.
+    <Amount t={t} value={p.spendable} code={symbol} hideCode size="row" hidden={hidden} />
   ) : (
     <Skeleton width={72} height={16} />
   );
