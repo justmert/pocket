@@ -462,8 +462,19 @@ function Backup({
             told the opposite of what they need. so the tab branch names what the
             user must not do rather than what the page will do. */}
         {ephemeral
-          ? ", and this window closes the moment you click anything outside it."
+          ? // ". " like the other branch. this joined a warning to an imperative
+            // with ", and", which reads as one instruction rather than two facts.
+            ". This window closes the moment you click anything outside it."
           : ". Do not close this tab until you have confirmed the words."}
+      </p>
+      {/* the SAME warnings the Settings sheet gives, on the screen that gives the
+          phrase for the first time. "keep them offline", "never type them into a
+          website or hand them to anyone, Pocket included" and "only where no one
+          is watching" were all on the repeat path and none was here, in front of
+          the reader who has never seen twelve words before. */}
+      <p style={{ ...text.body, color: t.sub, margin: `0 0 ${space.md}px`, lineHeight: 1.5 }}>
+        Keep them offline, and read them only where no one is watching. Never type them into a
+        website or hand them to anyone, Pocket included.
       </p>
 
       <div style={{ position: "relative", marginBottom: space.md }}>
@@ -555,11 +566,20 @@ function Backup({
             )
           }
         >
-          {copy === "done" ? "Copied" : "Copy the phrase"}
+          {/* what copying actually does, on the control that does it: this puts a
+              seed on the system clipboard, where every other application on the
+              machine can read it, and the label said only "Copy the phrase". */}
+          {copy === "done" ? "Copied" : "Copy to clipboard"}
         </Button>
         <Button t={t} disabled={!shown} onClick={() => setChecking(true)}>
           I have written it down
         </Button>
+        {copy === "done" && (
+          <div style={{ ...text.caption, color: t.sub, textAlign: "center" }}>
+            Your phrase is on this machine&rsquo;s clipboard, where other applications can read it.
+            Paste it where you are keeping it, then copy something else.
+          </div>
+        )}
       </ButtonStack>
     </Shell>
   );

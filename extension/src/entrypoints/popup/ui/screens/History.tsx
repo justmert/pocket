@@ -1182,7 +1182,12 @@ function statusText(op: BgOp): string {
   // the concise cause reads well in the row's one line; the full sentence (fee
   // charged, sequence used) stays in the detail sheet below.
   if (op.status === "failed") return conciseReason(op.error) ?? "Could not complete";
-  return op.verb === "Send" ? "Confirming on the ledger…" : "Proving and submitting…";
+  // "Proving" is a PRIVATE-pocket word, and this branched on the verb being
+  // exactly "Send", so seven of the twelve public operations (a swap, a yield
+  // move, both bridge legs, both trustline ops, a private send's public leg) told
+  // the user they were being proved when nothing was. the pocket is the fact that
+  // decides it and the op already carries it.
+  return op.pocket === "private" ? "Proving and submitting…" : "Confirming on the ledger…";
 }
 
 /** the coloured status token for the detail header. */

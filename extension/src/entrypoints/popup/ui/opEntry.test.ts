@@ -41,6 +41,10 @@ describe("a watched operation drawn as its settled row", () => {
       "Withdraw",
       "Bridge",
       "Claim",
+      // money words, matching every other surface for the same act. the second
+      // pair is kept so a rename cannot silently reintroduce a stand-in row.
+      "Add asset",
+      "Remove asset",
       "Add trustline",
       "Remove trustline",
     ]) {

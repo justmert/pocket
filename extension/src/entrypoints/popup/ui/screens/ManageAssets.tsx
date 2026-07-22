@@ -80,7 +80,7 @@ export function ManageAssets({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     const id = w.beginOp({
-      verb: "Remove trustline",
+      verb: "Remove asset",
       pocket: "public",
       code: removing?.code ?? "",
       fee: summary?.fee,

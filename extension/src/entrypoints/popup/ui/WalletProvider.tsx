@@ -229,7 +229,7 @@ interface Wallet {
   setTab(tab: Tab): void;
   sheets: SheetId[];
   openSheet(id: SheetId): void;
-  closeSheet(): void;
+  closeSheet(id?: SheetId): void;
   /** clear the whole sheet stack and return to the home tab. */
   goHome(): void;
   /**
@@ -818,7 +818,22 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     (id: SheetId) => setSheets((s) => (s[s.length - 1] === id ? s : [...s, id])),
     [],
   );
-  const closeSheet = useCallback(() => setSheets((s) => s.slice(0, -1)), []);
+  /**
+   * close a sheet, but only if it is still the one on top.
+   *
+   * this popped blindly, and two Settings sheets call `onClose()` after two
+   * awaits, so a late resolution closed whatever the user had opened since:
+   * Settings -> Network -> Mainnet -> dismiss -> open Auto-lock, and one to three
+   * seconds later the Auto-lock sheet closed by itself. `openSheet` already
+   * guards its own mirror of this and says so; nothing guarded the pop side.
+   *
+   * The id is optional so the many callers that legitimately mean "close me, I am
+   * on top" keep working unchanged.
+   */
+  const closeSheet = useCallback(
+    (id?: SheetId) => setSheets((s) => (id && s[s.length - 1] !== id ? s : s.slice(0, -1))),
+    [],
+  );
   // actually go home, from anywhere, whatever is stacked over it.
   //
   // the processing view's "Go to Home" is called its "only way out" by flow.tsx,
@@ -887,7 +902,22 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     reloadStatus,
     lock,
     autoLocked,
-    clearDappRequest: () => setDappRequest(null),
+    // RE-ASK, rather than blank. a second request parked behind the one just
+    // answered never appeared, and its site was later told the user declined it,
+    // because clearing simply set null and only a fresh MOUNT reads the queue.
+    // this is the one-line version of E7/E8 and is neither of the alternatives D1
+    // rejected: it is not a timer, it costs one message on an action the user just
+    // took, and if nothing is parked the answer is null and the screen closes
+    // exactly as it does today.
+    clearDappRequest: () => {
+      setDappRequest(null);
+      void call({ type: "pendingDappRequest" })
+        .then((next) => next && setDappRequest(next))
+        .catch(() => {
+          // nothing parked, or a worker that cannot answer: the screen is closed
+          // either way, which is what clearing meant before this.
+        });
+    },
     clearInFlight: () => setInFlight(null),
     tab,
     setTab,

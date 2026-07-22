@@ -121,9 +121,19 @@ function OnboardingGate({ t, onDone }: { t: Theme; onDone: () => void }) {
 /**
  * whether a phrase is on a screen somewhere, unconfirmed.
  *
- * only asked once a wallet exists, because before that the gate handles it. null
- * while the answer is unknown, which `Root` treats as "not yet" rather than
- * flashing Home and correcting itself.
+ * Only asked once a wallet exists, because before that the gate handles it.
+ *
+ * It starts FALSE, not null: this said it was a tri-state and that `Root` treats
+ * the unknown as "not yet", and the implementation is `useState(false)`, so for
+ * the frame between mount and the storage read answering, Home is what `Root`
+ * renders. Instrumented with a per-rAF sampler the flash did not occur in that
+ * run, and the comment is what the next person will trust, over a path whose
+ * failure mode is showing a working wallet while the phrase is unrecorded.
+ *
+ * It is left as `false` rather than made tri-state because `Root` would then have
+ * to hold a third rendering, and the honest description is cheaper than a state
+ * nothing has been shown to need. If a flash is ever observed, this is the line
+ * to change and the reason is written down here.
  */
 function useUnfinishedOnboarding(hasWallet: boolean): {
   unfinished: boolean;
@@ -391,12 +401,15 @@ function Shell() {
       <PrivateAssetSheet open={top === "privateAsset"} onClose={w.closeSheet} />
       <TransactionsSheet open={top === "transactions"} onClose={w.closeSheet} />
       <MoveSheet open={top === "move"} onClose={w.closeSheet} />
-      <NetworkSheet open={top === "network"} onClose={w.closeSheet} />
-      <AutoLockSheet open={top === "autolock"} onClose={w.closeSheet} />
-      <ConnectionsSheet open={top === "connections"} onClose={w.closeSheet} />
-      <RebuildSheet open={top === "rebuild"} onClose={w.closeSheet} />
-      <PhraseSheet open={top === "phrase"} onClose={w.closeSheet} />
-      <EraseSheet open={top === "erase"} onClose={w.closeSheet} />
+      {/* these four close themselves AFTER an await, so each says WHICH sheet it
+          is closing: a late resolution used to pop whatever the user had opened
+          since. see `closeSheet`. */}
+      <NetworkSheet open={top === "network"} onClose={() => w.closeSheet("network")} />
+      <AutoLockSheet open={top === "autolock"} onClose={() => w.closeSheet("autolock")} />
+      <ConnectionsSheet open={top === "connections"} onClose={() => w.closeSheet("connections")} />
+      <RebuildSheet open={top === "rebuild"} onClose={() => w.closeSheet("rebuild")} />
+      <PhraseSheet open={top === "phrase"} onClose={() => w.closeSheet("phrase")} />
+      <EraseSheet open={top === "erase"} onClose={() => w.closeSheet("erase")} />
 
       <Toast t={t} message={w.toast} tone={w.toastTone} />
     </Frame>

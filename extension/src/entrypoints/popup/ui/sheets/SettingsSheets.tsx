@@ -332,6 +332,10 @@ export function EraseSheet({ open, onClose }: { open: boolean; onClose: () => vo
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // What the archive actually reports, read when the sheet OPENS rather than at
+  // render: it is a network call, and the answer only means anything at the
+  // moment the user is deciding.
+  const [readiness, setReadiness] = useState<{ ok: boolean; sentence: string } | null>(null);
 
   // clear everything the moment the sheet closes, exactly as PhraseSheet does.
   //
@@ -354,7 +358,24 @@ export function EraseSheet({ open, onClose }: { open: boolean; onClose: () => vo
     setConfirmed(false);
     setBusy(false);
     setError(null);
+    setReadiness(null);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !canRebuild(network)) return;
+    let live = true;
+    void call({ type: "archiveReadiness" })
+      .then((r) => {
+        if (live) setReadiness(archiveReadiness(r.reachable ? r : null, r.chainLedger));
+      })
+      .catch(() => {
+        // A failure IS the answer here, and it is the one that matters most.
+        if (live) setReadiness(archiveReadiness(null, null));
+      });
+    return () => {
+      live = false;
+    };
+  }, [open, network]);
 
   const run = async () => {
     if (!password || busy) return;

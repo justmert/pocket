@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { call } from "../rpc";
+import { useWallet } from "../WalletProvider";
 import { Button, ButtonStack, Field, Header, Notice, Screen, TextButton } from "../primitives";
 import { space, text, type Theme } from "../theme";
-import { PHRASE_LENGTHS, phraseLengthList } from "../copy";
+import { PHRASE_LENGTHS, phraseLengthList, privateLossAfterErase } from "../copy";
 
 /**
  * the only way past a forgotten password, and it destroys the device's copy of
  * everything. the gate exists because the private pocket's openings are not on
- * the chain: whether they can be rebuilt depends on there being an archive, so
- * that is read from config rather than asserted.
+ * the chain: whether they can be rebuilt depends on there being an archive, and
+ * that answer comes from `copy.ts`, which reads the config, so this door and the
+ * erase door cannot describe the same consequence differently.
  */
 export function Recover({
   t,
@@ -19,6 +21,7 @@ export function Recover({
   onDone: () => void;
   onCancel: () => void;
 }) {
+  const network = useWallet().status?.network ?? "testnet";
   const [acknowledged, setAcknowledged] = useState(false);
   const [phrase, setPhrase] = useState("");
   const [password, setPassword] = useState("");
@@ -72,10 +75,14 @@ export function Recover({
             Your <strong>public pocket</strong> comes back in full from the phrase; its balance is
             on the ledger.
           </li>
-          <li>
-            Your <strong>private pocket balances do not</strong>. Only this device holds the keys
-            that open them.
-          </li>
+          {/* the SHARED sentence, from the same place the erase sheet reads it.
+              this wrote its own version and the docstring above claimed the
+              rebuild fact was "read from config" in a file that imported no
+              config: on a build with an archive configured the two doors to this
+              consequence would have flatly contradicted each other, with the
+              softer answer on the door more people reach, which is the failure
+              `copy.ts` was created to end. */}
+          <li>{privateLossAfterErase(network)}</li>
         </ul>
 
         <Notice t={t} tone="exposed">

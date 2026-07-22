@@ -93,7 +93,7 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     const id = w.beginOp({
-      verb: "Add trustline",
+      verb: "Add asset",
       pocket: "public",
       code: adding?.code ?? "",
       fee: summary?.fee,

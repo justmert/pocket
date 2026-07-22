@@ -20,8 +20,68 @@ import type { NetworkId } from "../../../core/config";
  */
 export function privateLossAfterErase(network: NetworkId): string {
   return NETWORKS[network].archiveUrl
-    ? "Your private balances are on the ledger too, but only this device holds the keys that unlock them. Erasing deletes those keys; they can be rebuilt afterwards by replaying your history from the archive."
+    ? // NOT a promise, and it used to be one: "they can be rebuilt afterwards"
+      // was returned on `Boolean(archiveUrl)` alone, which says only that a URL
+      // is configured. It does not say the archive is reachable, that it is
+      // current, or that it holds this account's history. Measured against the
+      // archive this checkout configures: ingested_through 4033277 against a
+      // chain at 4035534, about three hours behind, so any private movement in
+      // that window would meet RecoveryMismatchError and come back with
+      // nothing. This is the last sentence a user reads before the one
+      // irreversible act in the product, so it states the dependency instead of
+      // guaranteeing the outcome.
+      "Your private balances are on the ledger too, but only this device holds the keys that unlock them. Erasing deletes those keys. Rebuilding them afterwards replays your history from the archive, which works only if the archive is reachable and has already recorded everything you have done. Check below before you erase."
     : "Your private balances are on the ledger too, but only this device holds the keys that unlock them. Erasing deletes those keys, and rebuilding them would need a durable archive of your history to replay. This build has none, so those balances could not be recovered.";
+}
+
+/**
+ * whether the archive could actually rebuild what erasing is about to delete,
+ * as a sentence, from what the archive itself reports.
+ *
+ * `canRebuild` answers "is a URL configured", which is the question the copy
+ * above used to answer with. This one answers "is it ready", and only a live
+ * read can: unreachable, behind the chain, or missing this contract are three
+ * different states and all three end the same way, with the rebuild refusing
+ * after the keys are already gone.
+ */
+export function archiveReadiness(
+  health: { latest_ledger: number | null; ingested_through: number | null } | null,
+  chainLedger: number | null,
+): { ok: boolean; sentence: string } {
+  if (!health) {
+    return {
+      ok: false,
+      sentence:
+        "Pocket could not reach the archive just now, so it cannot promise your private balances could be rebuilt. Try again before erasing.",
+    };
+  }
+  const through = health.ingested_through;
+  if (through === null) {
+    return {
+      ok: false,
+      sentence:
+        "The archive has recorded nothing for this deployment yet, so there is nothing to rebuild from.",
+    };
+  }
+  // A lag in LEDGERS, not seconds: seconds is what the archive believes about
+  // the clock, and ledgers is what the replay actually needs.
+  const behind = chainLedger === null ? null : chainLedger - through;
+  if (behind === null) {
+    return {
+      ok: false,
+      sentence: `The archive has recorded your history up to ledger ${through}. Pocket could not read the chain's own position to check whether that is current.`,
+    };
+  }
+  if (behind > 0) {
+    return {
+      ok: false,
+      sentence: `The archive is ${behind} ledgers behind the chain. Anything you have done in that window could not be rebuilt after erasing.`,
+    };
+  }
+  return {
+    ok: true,
+    sentence: "The archive is up to date with the chain, so your private balances could be rebuilt.",
+  };
 }
 
 /**
