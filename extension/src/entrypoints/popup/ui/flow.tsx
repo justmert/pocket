@@ -1033,7 +1033,17 @@ export function ConfirmSheet({
           signing flow crossfade rather than snapping. the review phase is `still`,
           which freezes this fade, which is exactly right: nothing moves while the
           facts are being read. */}
-      <div key={result ? "done" : busy ? "working" : "review"} className="pocket-fade-in">
+      {/* a FLOOR under the body, so the panel does not resize in a single frame
+          under a body that is crossfading over 200ms. the panel transitions
+          `transform` and `border-radius` and nothing else, and the body is keyed
+          and remounted per phase, so a ~500px review dropping to a ~300px
+          processing view collapsed instantly beneath the fade. `MoveSheet` already
+          precedents exactly this floor for the same reason. */}
+      <div
+        key={result ? "done" : busy ? "working" : "review"}
+        className="pocket-fade-in"
+        style={{ minHeight: busy || result ? 232 : undefined }}
+      >
         {result ? (
           <Receipt
             t={t}

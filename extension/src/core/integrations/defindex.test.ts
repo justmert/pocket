@@ -114,7 +114,10 @@ describe("failure handling", () => {
     // The STATUS is carried on the error for anything that wants to branch on
     // it; it is not the user's sentence. "The yield service returned 502." was
     // being drawn verbatim in the danger colour.
-    const err = await new DefindexClient(cfg).vault("C").catch((e: Error & { status?: number }) => e);
+    const err = (await new DefindexClient(cfg)
+      .vault("C")
+      .then(() => null)
+      .catch((e: unknown) => e)) as Error & { status?: number };
     expect(err.status).toBe(502);
     expect(err.message).toMatch(/not answering right now/i);
     expect(err.message, "an HTTP status is not a sentence").not.toMatch(/502/);
@@ -368,9 +371,10 @@ describe("actionable errors from the live API", () => {
         json: async () => ({ errorCode: 124 }),
       })) as unknown as typeof fetch,
     );
-    const err = await new DefindexClient(cfg)
+    const err = (await new DefindexClient(cfg)
       .buildDeposit("CVAULT", { caller: "GUSER", amounts: [1n] })
-      .catch((e: Error & { status?: number }) => e);
+      .then(() => null)
+      .catch((e: unknown) => e)) as Error & { status?: number };
     expect(err.message).toMatch(/refused that request/i);
     expect(err.message).not.toMatch(/not answering/i);
     expect(err.status, "the status is still carried, just not shown").toBe(400);

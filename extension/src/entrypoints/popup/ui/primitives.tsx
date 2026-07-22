@@ -101,7 +101,13 @@ export function ScrollArea({
         inset: 0,
         overflowX: "hidden",
         overflowY: "auto",
-        background,
+        // the glow rides as an IMAGE over the pocket's flat colour, so the colour
+        // is what crosses on a pocket switch. handed as one `background` shorthand
+        // it was opaque and covered `Frame`'s 620ms crossfade entirely, which is
+        // why that transition measured 0ms on every surface a user can see.
+        backgroundColor: "var(--pocket-bg)",
+        backgroundImage: background,
+        transition: `background-color ${motion.pocket} ${motion.enter}`,
         ...style,
       }}
     >

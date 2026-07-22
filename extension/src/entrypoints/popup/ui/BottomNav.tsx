@@ -275,9 +275,16 @@ function FabMenu({
       <div
         role="menu"
         aria-label={ariaLabel}
-        className={leaving ? "pocket-fade-out" : "pocket-row-in"}
+        // it rises FROM the FAB and falls back INTO it, both ways, from the same
+        // origin: it entered on `pocket-row-in` over 320ms and left on
+        // `pocket-fade-out` over 200ms, neither of which is anchored to the
+        // control it belongs to, one press away from the header menu that folds
+        // both ways from its own corner. the origin is the bottom centre, which is
+        // where the FAB is.
+        className={leaving ? "pocket-menu-out" : "pocket-menu-in"}
         onKeyDown={onKey}
         style={{
+          transformOrigin: "bottom center",
           pointerEvents: "auto",
           // a compact horizontal row of icons, not a stacked list: the three ways
           // value moves, side by side above the action they came from.

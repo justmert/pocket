@@ -422,7 +422,18 @@ export interface Theme {
   /** the fill under a primary button. */
   accentFill: string;
   bg: string;
-  /** the page backdrop, including the glow the dark pocket carries. */
+  /**
+   * the glow the top of each page carries, as a background IMAGE with a
+   * transparent outer stop.
+   *
+   * it used to end on the flat page colour, which made it opaque, and an opaque
+   * gradient cannot crossfade: a gradient is not an animatable value, so
+   * `motion.pocket` (620ms) had one consumer, `Frame`'s background, sitting behind
+   * a `ScrollArea` at `inset: 0` that covered it completely. the pocket switch,
+   * the product's signature move, measured 0ms on the canvas, the cards, the
+   * plates and the nav. ending transparent lets the flat colour underneath show
+   * through and TRANSITION, which is most of the screen's area.
+   */
   canvas: string;
   surface: string;
   /** the "i" tooltip bubble: deliberately OFF the surface/sheet tone so the
@@ -508,7 +519,7 @@ const PUBLIC: Theme = {
   // a pool of hue that is deepest at the top-centre and fades in every direction
   // from there: strong under the tabs, thinning toward the edges and downward,
   // rather than a flat band of one colour across the whole width.
-  canvas: `radial-gradient(130% 130px at 50% 0px, ${sky[200]} 0%, ${warm.bg} 72%)`,
+  canvas: `radial-gradient(130% 130px at 50% 0px, ${sky[200]} 0%, transparent 72%)`,
   surface: warm[0],
   // a faint step darker than the page, so the tooltip reads as a raised layer.
   tip: warm[100],
@@ -582,7 +593,7 @@ const PRIVATE: Theme = {
   // they read as distinct planes rather than one dark mass. the order still reads
   // page < raised (bar/cards) < field < composer.
   bg: cool.bg,
-  canvas: `radial-gradient(130% 130px at 50% 0px, ${teal[850]} 0%, ${cool.bg} 72%)`,
+  canvas: `radial-gradient(130% 130px at 50% 0px, ${teal[850]} 0%, transparent 72%)`,
   surface: cool[750],
   // the same fill the field and text components use (#21323e), a clear step lighter
   // than the near-black surface so the tooltip lifts off the sheet.

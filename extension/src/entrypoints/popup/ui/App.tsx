@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { WalletProvider, useWallet } from "./WalletProvider";
-import { Button, ButtonStack, Frame, Notice, Spinner, Toast } from "./primitives";
+import { WalletProvider, useWallet, type SheetId } from "./WalletProvider";
+import { Button, ButtonStack, Frame, Notice, Spinner, Toast, useRetained } from "./primitives";
 import { Logo } from "./Brand";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { BottomNav } from "./BottomNav";
@@ -356,32 +356,75 @@ function Root() {
   return <Shell />;
 }
 
+/** the sheet ids that are full-frame ROUTES rather than bottom sheets. */
+const ROUTE_IDS: SheetId[] = [
+  "send",
+  "moveIn",
+  "moveOut",
+  "swap",
+  "yieldDeposit",
+  "yieldWithdraw",
+  "cctpSend",
+  "cctpClaim",
+  "assets",
+  "chooseAsset",
+];
+
+/** matches `.pocket-fade-out`, which runs at `--pocket-quick`. */
+const ROUTE_EXIT_MS = 200;
+
 function Shell() {
   const w = useWallet();
   const t = w.t;
   const top = w.sheets[w.sheets.length - 1];
 
-  // send is a ROUTE, not a sheet: it fills the frame and replaces what is
-  // behind it. it still lives on the sheet stack so that every existing
-  // `openSheet("send")` call site, the bottom bar and the asset detail among
-  // them, keeps working and so that close and escape behave as they always did.
-  if (top === "send") return <Send onClose={w.closeSheet} />;
-
-  // move-in / move-out are pages too, not popups: the same full-frame compose
-  // step as Send, since to the user this is a send between their own pockets.
-  if (top === "moveIn") return <Move kind="shield" onClose={w.closeSheet} />;
-  if (top === "moveOut") return <Move kind="unshield" onClose={w.closeSheet} />;
-
-  // the public-pocket integrations are full-frame compose pages too, wired
-  // exactly like send: they live on the sheet stack so open/close and escape
-  // behave the same, and each fills the frame over what is behind it.
-  if (top === "swap") return <Swap onClose={w.closeSheet} />;
-  if (top === "yieldDeposit") return <Yield kind="deposit" onClose={w.closeSheet} />;
-  if (top === "yieldWithdraw") return <Yield kind="withdraw" onClose={w.closeSheet} />;
-  if (top === "cctpSend") return <CctpSend onClose={w.closeSheet} />;
-  if (top === "cctpClaim") return <CctpClaim onClose={w.closeSheet} />;
-  if (top === "assets") return <ManageAssets onClose={w.closeSheet} />;
-  if (top === "chooseAsset") return <ChooseAsset onClose={w.closeSheet} />;
+  // a ROUTE, not a sheet: it fills the frame and replaces what is behind it. it
+  // still lives on the sheet stack so that every existing `openSheet` call site,
+  // the bottom bar and the asset detail among them, keeps working and so that
+  // close and escape behave as they always did.
+  //
+  // HELD THROUGH ITS EXIT. these were early returns, so a route vanished in one
+  // frame while every sheet in the product slides away: the most-travelled edge
+  // here (asset row -> Send) was the one transition that snapped, and the last
+  // frame of a completed trustline operation was its blank review panel, faded IN
+  // as it left. `useRetained` is the mechanism the sheets already use, and
+  // `pocket-fade-out` is the "anything leaving" easing.
+  const route = ROUTE_IDS.includes(top as SheetId) ? (top as SheetId) : null;
+  const held = useRetained(route, ROUTE_EXIT_MS);
+  if (held) {
+    const close = () => w.closeSheet(held);
+    return (
+      <div
+        // keyed on the route so a swap straight into another route replays the
+        // entrance instead of morphing one page into the next.
+        key={held}
+        className={route ? undefined : "pocket-fade-out"}
+        style={{ display: "flex" }}
+      >
+        {held === "send" ? (
+          <Send onClose={close} />
+        ) : held === "moveIn" ? (
+          <Move kind="shield" onClose={close} />
+        ) : held === "moveOut" ? (
+          <Move kind="unshield" onClose={close} />
+        ) : held === "swap" ? (
+          <Swap onClose={close} />
+        ) : held === "yieldDeposit" ? (
+          <Yield kind="deposit" onClose={close} />
+        ) : held === "yieldWithdraw" ? (
+          <Yield kind="withdraw" onClose={close} />
+        ) : held === "cctpSend" ? (
+          <CctpSend onClose={close} />
+        ) : held === "cctpClaim" ? (
+          <CctpClaim onClose={close} />
+        ) : held === "assets" ? (
+          <ManageAssets onClose={close} />
+        ) : (
+          <ChooseAsset onClose={close} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <Frame t={t}>
