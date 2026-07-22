@@ -106,6 +106,11 @@ export type WalletRequest =
   | { type: "privatePocket"; asset?: string }
   | { type: "privatePockets" }
   | { type: "rebuildFromHistory"; asset?: string }
+  // Whether a rebuild could actually work right now, asked immediately before
+  // erase. Not the same question as "is an archive configured": that one is
+  // answered from build-time config, and this one needs the archive and the
+  // chain to both say where they are.
+  | { type: "archiveReadiness" }
   | { type: "dappSessions" }
   | { type: "connectDapp"; origin: string }
   | { type: "disconnectDapp"; origin: string }
@@ -224,6 +229,16 @@ export interface ResponseMap {
   /** One pocket per configured confidential asset, in config order. */
   privatePockets: PrivatePocket[];
   rebuildFromHistory: PrivatePocket;
+  archiveReadiness: {
+    /** A build-time fact: is there an archive URL at all. */
+    configured: boolean;
+    /** Did it answer just now. */
+    reachable: boolean;
+    /** The last ledger it has recorded, when it said. */
+    ingestedThrough: number | null;
+    /** Where the chain is, so "current" can be checked rather than assumed. */
+    chainLedger: number | null;
+  };
   dappSessions: { origin: string; connectedAt: number; address: string }[];
   connectDapp: { origin: string; connectedAt: number };
   disconnectDapp: void;

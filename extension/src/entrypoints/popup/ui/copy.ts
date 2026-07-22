@@ -45,7 +45,7 @@ export function privateLossAfterErase(network: NetworkId): string {
  * after the keys are already gone.
  */
 export function archiveReadiness(
-  health: { latest_ledger: number | null; ingested_through: number | null } | null,
+  health: { ingestedThrough: number | null } | null,
   chainLedger: number | null,
 ): { ok: boolean; sentence: string } {
   if (!health) {
@@ -55,7 +55,7 @@ export function archiveReadiness(
         "Pocket could not reach the archive just now, so it cannot promise your private balances could be rebuilt. Try again before erasing.",
     };
   }
-  const through = health.ingested_through;
+  const through = health.ingestedThrough;
   if (through === null) {
     return {
       ok: false,
@@ -80,7 +80,8 @@ export function archiveReadiness(
   }
   return {
     ok: true,
-    sentence: "The archive is up to date with the chain, so your private balances could be rebuilt.",
+    sentence:
+      "The archive is up to date with the chain, so your private balances could be rebuilt.",
   };
 }
 

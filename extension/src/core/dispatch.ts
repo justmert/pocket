@@ -173,6 +173,8 @@ export async function dispatch(c: WalletController, msg: WalletRequest): Promise
       return c.privatePockets();
     case "rebuildFromHistory":
       return c.rebuildFromHistory(optionalStr(msg.asset, "asset"));
+    case "archiveReadiness":
+      return c.archiveReadiness();
     case "dappSessions":
       return c.dappSessions();
     case "connectDapp":

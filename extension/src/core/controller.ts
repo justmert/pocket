@@ -1041,6 +1041,56 @@ export class WalletController {
    * configured, when the archive cannot serve a gap-free window, or when the
    * replayed result does not reproduce the commitments the contract holds.
    */
+  /**
+   * Could a rebuild actually work right now?
+   *
+   * Asked immediately before erase, which is the one irreversible act in the
+   * product. The copy there used to promise "they can be rebuilt afterwards" on
+   * `Boolean(archiveUrl)` alone, which says only that a URL is configured: not
+   * that the archive answers, not that it is current, not that it holds this
+   * contract. Measured on the configured archive, ingested_through 4033277
+   * against a chain at 4035534, three hours behind, so a private movement in
+   * that window would meet RecoveryMismatchError with the keys already gone.
+   *
+   * Every failure is reported as "not ready" rather than thrown. A user asking
+   * "can I get this back" is owed an answer either way, and an exception on
+   * this screen would render as the generic sentence beside an Erase button.
+   */
+  async archiveReadiness(): Promise<{
+    configured: boolean;
+    reachable: boolean;
+    ingestedThrough: number | null;
+    chainLedger: number | null;
+  }> {
+    requireSession();
+    const net = NETWORKS[this.network];
+    if (!net.archiveUrl) {
+      return { configured: false, reachable: false, ingestedThrough: null, chainLedger: null };
+    }
+    const token = net.confidential[0]?.token;
+    if (!token) {
+      return { configured: true, reachable: false, ingestedThrough: null, chainLedger: null };
+    }
+    const { ArchiveClient } = await import("./chain/archive");
+    let ingestedThrough: number | null = null;
+    let reachable = false;
+    try {
+      ingestedThrough = (await new ArchiveClient(net.archiveUrl).health(token)).ingested_through;
+      reachable = true;
+    } catch {
+      // Unreachable is an ANSWER here, not an error: it is precisely the state
+      // the user needs to know about before erasing.
+    }
+    let chainLedger: number | null = null;
+    try {
+      chainLedger = (await this.server().getLatestLedger()).sequence;
+    } catch {
+      // Same: without the chain's own position, "up to date" cannot be claimed,
+      // and the readiness sentence says so rather than guessing.
+    }
+    return { configured: true, reachable, ingestedThrough, chainLedger };
+  }
+
   async rebuildFromHistory(asset?: string): Promise<PrivatePocket> {
     const cfg = this.confidentialConfig(asset);
     await this.exclusive(async () => {

@@ -17,7 +17,7 @@ import {
 import { Check, External, Lock, Trash } from "../icons";
 import { InfoTip } from "../Tooltip";
 import { COPY_HOLD_MS, fonts, radius, space, text } from "../theme";
-import { privateLossAfterErase } from "../copy";
+import { privateLossAfterErase, archiveReadiness, canRebuild } from "../copy";
 import type { NetworkId } from "../../../../core/config";
 
 const NETWORKS: { id: NetworkId; label: string; sub: string }[] = [
@@ -71,27 +71,27 @@ export function NetworkSheet({ open, onClose }: { open: boolean; onClose: () => 
         // not pressable.
         const usable = n.id === "testnet";
         return (
-        <Row
-          key={n.id}
-          t={t}
-          index={i}
-          tone={usable ? "plain" : "inert"}
-          icon={<External size={19} />}
-          title={n.label}
-          // the `sub` strings that distinguish the rows were being dropped
-          // entirely; they are the whole reason a user can tell them apart.
-          sub={usable ? n.sub : `${n.sub}. Not available in this build.`}
-          value={
-            w.status?.network === n.id ? (
-              <Check size={19} sw={2.4} />
-            ) : busy === n.id ? (
-              // an action in progress reads as motion, not as an absent value:
-              // Skeleton is reserved for "this has not arrived yet".
-              <Spinner size={17} color={t.accent} />
-            ) : undefined
-          }
-          {...(usable ? { onClick: () => void choose(n.id) } : {})}
-        />
+          <Row
+            key={n.id}
+            t={t}
+            index={i}
+            tone={usable ? "plain" : "inert"}
+            icon={<External size={19} />}
+            title={n.label}
+            // the `sub` strings that distinguish the rows were being dropped
+            // entirely; they are the whole reason a user can tell them apart.
+            sub={usable ? n.sub : `${n.sub}. Not available in this build.`}
+            value={
+              w.status?.network === n.id ? (
+                <Check size={19} sw={2.4} />
+              ) : busy === n.id ? (
+                // an action in progress reads as motion, not as an absent value:
+                // Skeleton is reserved for "this has not arrived yet".
+                <Spinner size={17} color={t.accent} />
+              ) : undefined
+            }
+            {...(usable ? { onClick: () => void choose(n.id) } : {})}
+          />
         );
       })}
     </Sheet>
@@ -423,6 +423,16 @@ export function EraseSheet({ open, onClose }: { open: boolean; onClose: () => vo
               wallet.
             </li>
             <li>{privateLossAfterErase(network)}</li>
+            {/* what the archive ACTUALLY reports, read live. the line above
+                states a dependency and this is the only thing that can say
+                whether it holds: a configured URL is not a reachable archive,
+                and a reachable one is not a current one. all three end the same
+                way, with the rebuild refusing after the keys are gone. */}
+            {canRebuild(network) && (
+              <li style={{ marginTop: 6, color: readiness && !readiness.ok ? t.danger : t.sub }}>
+                {readiness ? readiness.sentence : "Checking the archive…"}
+              </li>
+            )}
           </ul>
           <ButtonStack>
             {/* the safe exit is the recommended action on a destructive confirm,
@@ -568,11 +578,9 @@ export function PhraseSheet({ open, onClose }: { open: boolean; onClose: () => v
               boxed warning is saved for the reveal step where the words are on
               screen. a filled panel here read as an alert before anything was
               shown. */}
-          <div
-            style={{ ...text.body, color: t.sub, lineHeight: 1.5, marginBottom: space.md }}
-          >
-            Your recovery phrase restores this wallet on any device, and anyone who reads it can take
-            your funds. Enter your password to show it, and only where no one is watching.
+          <div style={{ ...text.body, color: t.sub, lineHeight: 1.5, marginBottom: space.md }}>
+            Your recovery phrase restores this wallet on any device, and anyone who reads it can
+            take your funds. Enter your password to show it, and only where no one is watching.
           </div>
           <Field
             t={t}
