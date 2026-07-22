@@ -830,7 +830,19 @@ export function Receipt({
         >
           Transaction successful
         </span>
-        {note && <div style={{ ...text.body, fontWeight: 600, color: t.sub }}>{note}</div>}
+        {/* INSIDE a live region. the note is the only thing on a receipt that
+            changes after it is drawn (a bridge attests, or the wallet stops
+            watching), and it sat outside the `role="status"` span above, so a
+            screen reader was told the transaction succeeded and then nothing. */}
+        {note && (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{ ...text.body, fontWeight: 600, color: t.sub }}
+          >
+            {note}
+          </div>
+        )}
       </div>
 
       {/* the hash and the explorer as rows, not a block: the row shows a label and

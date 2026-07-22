@@ -48,9 +48,23 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
   // the private asset this move runs against, chosen LOCALLY (default primary): no
   // global selection, so picking here changes only this form. its pocket carries the
   // symbol for display, the wrapper token for the op, and the state.
-  const [privToken, setPrivToken] = useState<string | null>(null);
+  //
+  // it starts at the asset whose sheet OPENED this form, when one did.
+  // `PrivateAssetSheet` is per asset and its Shield/Unshield rows call
+  // `go("moveIn")`/`go("moveOut")`, and this screen never read `privateDetail`
+  // at all: tapping Unshield on the USDC pocket opened a form composing against
+  // XLM, with the amount, the balance and the built operation all belonging to
+  // an asset the user had not chosen. Still LOCAL after that, so picking here
+  // changes only this form.
+  const [privToken, setPrivToken] = useState<string | null>(w.privateDetail?.token ?? null);
   const privList = w.privAssets ?? [];
-  const localPriv = privList.find((p) => p.token === privToken) ?? privList[0] ?? null;
+  // `selectPrivateAsset`, not `find(...) ?? privList[0]`. That fallback is the
+  // rule this helper exists to abolish: when the chosen asset is not in the
+  // loaded list it silently substitutes a different one, and the form then
+  // shows that asset's balance and builds that asset's operation under a choice
+  // the user did not make. Nothing selected yet still defaults to the first,
+  // which is a default rather than a substitution, and the helper says so.
+  const localPriv = selectPrivateAsset(w.privAssets, privToken);
   const symbol = localPriv?.symbol ?? "XLM";
   const assetToken = localPriv?.token ?? undefined;
   const isNativeAsset = symbol === "XLM";

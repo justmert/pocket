@@ -565,6 +565,12 @@ export function useValueChart(
   useEffect(() => {
     let live = true;
     setLoading(true);
+    // the PREVIOUS range's curve goes with the request. it only ever set `chart`
+    // on success, so `!drawable` was never true once any chart existed: switching
+    // 1W to 1M left the old curve and its percentage on screen, unlabelled, for
+    // the whole wait, and the wait is never zero (`valueSeries` awaits `balances`
+    // and a per-asset history on every call, uncached).
+    setChart(null);
     fetch
       .current(range)
       .then((c) => {

@@ -547,9 +547,13 @@ export function History() {
               {error}
             </Notice>
           ) : entries === null ? (
-            <div style={{ display: "grid", gap: space.md }}>
+            // the pitch of a real entry, not a guess: a settled row is 60px and
+            // the gap between them is `space.sm`, so five of these at 52 with a
+            // `space.md` gap measured 316px of placeholder for ~341px of content
+            // and the list stepped when it landed.
+            <div style={{ display: "grid", gap: space.sm }}>
               {[0, 1, 2, 3, 4].map((i) => (
-                <Skeleton key={i} width="100%" height={52} />
+                <Skeleton key={i} width="100%" height={60} />
               ))}
             </div>
           ) : (

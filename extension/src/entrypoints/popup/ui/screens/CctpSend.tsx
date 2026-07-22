@@ -80,6 +80,10 @@ export function isTxId(value: string, domain: number | null): boolean {
 /** the backend validates a 20-byte EVM address; mirror the rule for live feedback. */
 const EVM_RE = /^(0x)?[0-9a-fA-F]{40}$/;
 
+/** how many attestation polls the receipt runs before it says it has stopped.
+ *  3s + 39 x 6s is about four minutes. */
+const ATTESTATION_TRIES = 40;
+
 export function CctpSend({ onClose }: { onClose: () => void }) {
   const w = useWallet();
   const t = w.t;
@@ -224,7 +228,17 @@ export function CctpSend({ onClose }: { onClose: () => void }) {
         // an attestation read that fails changes nothing about the burn; keep
         // polling and leave the last note in place.
       }
-      if (live && tries < 40) setTimeout(() => void poll(), 6000);
+      if (live && tries < ATTESTATION_TRIES) {
+        setTimeout(() => void poll(), 6000);
+      } else if (live) {
+        // the watching STOPS here, at 3 + 39x6 = 237 seconds, and it said nothing:
+        // the receipt kept "This can take a few minutes" on screen forever while
+        // nothing was polling any more, so a transfer that simply needed longer
+        // looked identical to one being watched.
+        setAttNote(
+          "Pocket stopped watching for the attestation. The burn is on the ledger and Circle will still attest it; check from Claim, or on the other chain, in a few minutes.",
+        );
+      }
     };
     const id = setTimeout(() => void poll(), 3000);
     return () => {

@@ -1030,7 +1030,10 @@ export function Spinner({ size = 20, color }: { size?: number; color?: string })
 export function Skeleton({
   width,
   height = 16,
-  radius: r = 8,
+  // the SMALL stop from the radius scale, not a hand-picked 8 that is on no
+  // scale at all. a placeholder's whole job is to be the shape of what replaces
+  // it, and every card and row it stands in for is rounded from `radius`.
+  radius: r = radius.sm,
 }: {
   width: number | string;
   height?: number;

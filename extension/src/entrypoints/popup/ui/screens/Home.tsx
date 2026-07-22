@@ -418,6 +418,20 @@ export function Home() {
           </div>
           <ChangeChip t={t} pct={scrubAt === null ? (chart?.changePct ?? null) : null} />
         </div>
+        {/* the two figures measure DIFFERENT things and the hero swaps between
+            them silently: at rest it is the sum of what is spendable, priced at
+            spot; scrubbed it is the chart's own point, which is the account TOTAL
+            at that candle's close and therefore includes the network reserve. on
+            a 10 XLM account with one trustline the figure steps up on hover by the
+            value of 1.5 XLM and drops again on release, with nothing saying why.
+            the two cannot be reconciled here (a past reserve is not recoverable
+            from this data), so the screen says which one it is showing rather than
+            letting the step read as a balance change. */}
+        {scrubAt !== null && (
+          <div style={{ ...text.caption, color: t.faint }}>
+            Account total at that time, including the network reserve.
+          </div>
+        )}
 
         {/* the number on screen is the last one the ledger gave us, and the most
             recent attempt to refresh it did not answer.
@@ -660,12 +674,14 @@ export function Home() {
               Pocket could not read this account&rsquo;s assets.
             </div>
           ) : w.balances === null ? (
-            // the placeholders match the real Row height (52) and count, so the list
-            // does not jump when the balances arrive.
-            <div style={{ display: "grid", gap: space.md, paddingTop: space.xs }}>
-              <Skeleton width="100%" height={52} />
-              <Skeleton width="100%" height={52} />
-              <Skeleton width="100%" height={52} />
+            // the placeholders match the real Row PITCH: a row is 60px and the
+            // grid gap is `space.sm`, and the comment here claimed 52 and a
+            // matching count while three of them plus a `space.md` gap measured
+            // 190px against a freshly funded XLM-only account's 60. two, because
+            // a shipped testnet configures XLM and USDC.
+            <div style={{ display: "grid", gap: space.sm, paddingTop: space.xs }}>
+              <Skeleton width="100%" height={60} />
+              <Skeleton width="100%" height={60} />
             </div>
           ) : (
             w.balances.map((b, i) => (
@@ -1040,7 +1056,9 @@ export function Home() {
         {status?.address ? (
           <Avatar t={t} size={44} reaction={avatar.reaction} nonce={avatar.nonce} />
         ) : (
-          <Skeleton width={44} height={44} />
+          // a 44px CIRCLE, so its placeholder is one: at the default radius it was
+          // a rounded square that visibly changed shape when the mark landed.
+          <Skeleton width={44} height={44} radius={22} />
         )}
         <div style={{ minWidth: 0, flex: "1 1 90px" }}>
           {/* the wordmark is set in the app's own face (figtree) at its heaviest

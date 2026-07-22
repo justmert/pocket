@@ -33,6 +33,16 @@ type DecodedOp = Transaction["operations"][number];
 
 function describeOperation(op: DecodedOp, index: number): string {
   const n = `${index + 1}.`;
+  // an operation can carry its OWN source account, which overrides the
+  // transaction's, and that was dropped: an operation spending from a different
+  // account than the one the screen names is a different fact about who pays.
+  // appended rather than woven into each sentence, so every case keeps its own
+  // wording and none can forget it.
+  const from = op.source ? ` (from ${op.source})` : "";
+  return describeBody(op, n) + from;
+}
+
+function describeBody(op: DecodedOp, n: string): string {
   switch (op.type) {
     case "payment":
       return `${n} Send ${op.amount} ${op.asset.isNative() ? "XLM" : op.asset.getCode()} to ${op.destination}`;
