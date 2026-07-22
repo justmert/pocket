@@ -11,7 +11,7 @@ import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Field, Frame, Header, Notice, Row, Sheet } from "../primitives";
 import { InfoTip } from "../Tooltip";
-import { AmountComposer, amountReady } from "../AmountComposer";
+import { AmountComposer, amountReady, AmountSlider, sliderPercent } from "../AmountComposer";
 import { findHeld, holdingAmount } from "../holdings";
 import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark, privateMarkId } from "./Home";
@@ -134,6 +134,23 @@ export function CctpSend({ onClose }: { onClose: () => void }) {
 
   const chainName = domain !== null ? cctpDomainName(domain) : null;
   const recipientValid = EVM_RE.test(recipient.trim());
+
+  /**
+   * a fraction of the balance, so every compose screen offers the same control.
+   *
+   * the slider was on two of five flows: Send and Move had it and a swap, a yield
+   * move and a bridge, which spend a fraction of a balance in exactly the same
+   * way, did not. `setMax` stays the whole-balance case and keeps whatever fee
+   * reserve it already applies.
+   */
+  const setFraction = (numerator: bigint, denominator: bigint) => {
+    if (!spendable) return;
+    if (numerator === denominator) {
+      setMax();
+      return;
+    }
+    setAmount(composeAmount(fractionOf(spendable, numerator, denominator), 4));
+  };
 
   const setMax = () => {
     if (!spendable) return;
@@ -348,6 +365,16 @@ export function CctpSend({ onClose }: { onClose: () => void }) {
                 onMax={setMax}
                 mark={<AssetMark t={t} id={markId} code="USDC" />}
                 onSubmit={() => ready && void review()}
+              />
+
+              {/* the same fraction control Send and Move offer. this spends a fraction of a
+                  balance in exactly the same way and had only a whole-balance pill. */}
+              <AmountSlider
+                t={t}
+                code={"USDC"}
+                disabled={!spendable}
+                percent={sliderPercent(amount, spendable)}
+                onPercent={(pc) => setFraction(BigInt(pc), 100n)}
               />
 
               {/* the destination chain */}

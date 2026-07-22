@@ -413,14 +413,19 @@ export function DateRangeSheet({
                 flex: 1,
                 textAlign: "center",
                 cursor: "pointer",
-                padding: "9px 0",
+                // the SAME segment as the history pocket toggle one screen away:
+                // identical pill-in-track shape, and this copy was the only one at
+                // `text.chip` 14/600 against the other two at `text.pocketTab`
+                // 16/700, with a different vertical padding as well.
+                padding: "8px 0",
                 borderRadius: radius.pill,
                 background: on ? t.accent : "transparent",
                 color: on ? t.onAccent : t.sub,
-                ...text.chip,
+                ...text.pocketTab,
               }}
             >
-              {p === "start" ? "Start Date" : "End Date"}
+              {/* sentence case, like every other control in the product. */}
+              {p === "start" ? "Start date" : "End date"}
             </button>
           );
         })}

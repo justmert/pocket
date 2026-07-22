@@ -65,7 +65,15 @@ function VolumeGlyph({ color }: { color: string }) {
 }
 
 /** label with a leading icon on the left, value on the right. */
-function DetailRow({
+/**
+ * a market fact about one asset: an icon, a label, a value.
+ *
+ * named `MarketRow` and not `DetailRow` because `History.tsx` has a different
+ * component under that name, with a different label role and 22px less row
+ * height, and a reader jumping between the two transaction surfaces met the same
+ * word meaning two things.
+ */
+function MarketRow({
   t,
   icon,
   label,
@@ -249,18 +257,18 @@ export function AssetDetailSheet({
         <div
           style={{ marginTop: space.xl, display: "flex", flexDirection: "column", gap: space.sm }}
         >
-          <DetailRow
+          <MarketRow
             t={t}
             icon={<AssetTile t={t} id={shown.id} code={code} size={28} />}
             label="Your holdings"
           >
             <Amount t={t} value={shown.amount} code={code} size="row" />
-          </DetailRow>
+          </MarketRow>
 
           {/* market rows shimmer while the fetch is in flight instead of popping
               in a beat late. once loaded, a row we could not source is simply
               absent. */}
-          <DetailRow t={t} icon={<RowIcon t={t}>$</RowIcon>} label="Holdings value">
+          <MarketRow t={t} icon={<RowIcon t={t}>$</RowIcon>} label="Holdings value">
             {holdingsValue !== null ? (
               <Figure value={holdingsValue} />
             ) : marketLoaded ? (
@@ -268,9 +276,9 @@ export function AssetDetailSheet({
             ) : (
               <Skeleton width={64} height={16} />
             )}
-          </DetailRow>
+          </MarketRow>
 
-          <DetailRow
+          <MarketRow
             t={t}
             icon={
               <RowIcon t={t}>
@@ -286,7 +294,7 @@ export function AssetDetailSheet({
             ) : (
               <Skeleton width={64} height={16} />
             )}
-          </DetailRow>
+          </MarketRow>
         </div>
       </div>
     </Sheet>

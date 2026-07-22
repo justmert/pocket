@@ -762,6 +762,20 @@ const HIDDEN: CSSProperties = {
 
 /** a labelled row on the receipt: the reference's Transaction ID / Explorer lines,
  *  a label on the left and a single control on the right. */
+/**
+ * the receipt's label/value row.
+ *
+ * its LABEL is `FactRow`'s, because the two are rendered by the same
+ * `ConfirmSheet` into the same `Sheet`, as the review and then the receipt of one
+ * signing flow, and they were two type steps apart in two different colours: the
+ * review's labels were 14/600 accent and the receipt's 16/600 sub, so the same
+ * sheet changed its own vocabulary halfway through one transaction.
+ *
+ * The height floor stays its own: the receipt's values are controls (a copy
+ * button, an explorer link) rather than text, so they set a taller row by their
+ * content. That is a difference in what the rows HOLD, not in how they are
+ * written.
+ */
 function ReceiptRow({ t, label, children }: { t: Theme; label: string; children: ReactNode }) {
   return (
     <div
@@ -772,7 +786,7 @@ function ReceiptRow({ t, label, children }: { t: Theme; label: string; children:
         minHeight: 46,
       }}
     >
-      <span style={{ ...text.body, fontWeight: 600, color: t.sub }}>{label}</span>
+      <span style={{ ...text.rowSub, fontWeight: 600, color: t.accent }}>{label}</span>
       {children}
     </div>
   );

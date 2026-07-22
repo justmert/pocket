@@ -11,7 +11,7 @@ import { call } from "../rpc";
 import { Button, Frame, Header, Notice, Row, Sheet } from "../primitives";
 import { InfoTip } from "../Tooltip";
 import { fiatOf } from "../money";
-import { AmountComposer, amountReady } from "../AmountComposer";
+import { AmountComposer, amountReady, AmountSlider, sliderPercent } from "../AmountComposer";
 import { AssetPath } from "../AssetPath";
 import { findHeld, holdingAmount } from "../holdings";
 import { ConfirmSheet, useOnce } from "../flow";
@@ -173,6 +173,23 @@ export function Swap({ onClose }: { onClose: () => void }) {
     setInId(outId);
     setOutId(inId);
     setAmount("");
+  };
+
+  /**
+   * a fraction of the balance, so every compose screen offers the same control.
+   *
+   * the slider was on two of five flows: Send and Move had it and a swap, a yield
+   * move and a bridge, which spend a fraction of a balance in exactly the same
+   * way, did not. `setMax` stays the whole-balance case and keeps whatever fee
+   * reserve it already applies.
+   */
+  const setFraction = (numerator: bigint, denominator: bigint) => {
+    if (!spendable) return;
+    if (numerator === denominator) {
+      setMax();
+      return;
+    }
+    setAmount(composeAmount(fractionOf(spendable, numerator, denominator), 4));
   };
 
   const setMax = () => {
@@ -360,6 +377,16 @@ export function Swap({ onClose }: { onClose: () => void }) {
                 onPick={() => setPicking("in")}
                 mark={<AssetMark t={t} id={inId} code={inAsset.code} />}
                 onSubmit={() => ready && void review()}
+              />
+
+              {/* the same fraction control Send and Move offer. this spends a fraction of a
+                  balance in exactly the same way and had only a whole-balance pill. */}
+              <AmountSlider
+                t={t}
+                code={inAsset.code}
+                disabled={!spendable}
+                percent={sliderPercent(amount, spendable)}
+                onPercent={(pc) => setFraction(BigInt(pc), 100n)}
               />
 
               {/* the flip, between the two assets: a swap is symmetric, so one tap

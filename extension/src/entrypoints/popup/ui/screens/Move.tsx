@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
+import { selectPrivateAsset } from "../selectAsset";
 import { Button, Frame, Header, Notice } from "../primitives";
 import { InfoTip } from "../Tooltip";
 import { fiatOf } from "../money";
