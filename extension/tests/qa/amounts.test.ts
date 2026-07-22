@@ -1260,14 +1260,6 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "one character, 0-9, into a CSS row offset; the value itself is rendered as text",
   },
   {
-    fragment: "const windowPassed = e.maxTime > 0 && Math.floor(Date.now() / 1000) > e.maxTime",
-    why: "unix seconds",
-  },
-  {
-    fragment: "Math.floor(Date.now() / 1000) > e.maxTime",
-    why: "unix seconds",
-  },
-  {
     fragment: "...(summary?.dust && Number(summary.dust) > 0",
     why:
       "a presence test, not a value. the float decides only whether the dust ROW is drawn; " +

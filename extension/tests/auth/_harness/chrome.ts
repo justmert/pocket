@@ -226,6 +226,7 @@ export const EVERY_REQUEST: { type: string; msg: Record<string, unknown> }[] = [
   // locked-state allowlist, and all four reach key material or reveal the
   // address, so all four must refuse while locked.
   { type: "rebuildFromHistory", msg: { type: "rebuildFromHistory" } },
+  { type: "archiveReadiness", msg: { type: "archiveReadiness" } },
   { type: "dappSessions", msg: { type: "dappSessions" } },
   { type: "connectDapp", msg: { type: "connectDapp", origin: "https://example.com" } },
   { type: "disconnectDapp", msg: { type: "disconnectDapp", origin: "https://example.com" } },

@@ -223,7 +223,7 @@ async function afterSend(
   // only thing that rules that out is the ledger having actually told us it
   // does not have it. An outage lasting longer than the three-minute window
   // otherwise reads as "expired" for a transaction that succeeded.
-  if (outcome.answered && maxTime > 0 && Math.floor(Date.now() / 1000) > maxTime) {
+  if (outcome.answered && maxTime > 0 && chainNow() > maxTime) {
     await opts.inFlight?.clear(hash);
     return { kind: "expired", hash };
   }
@@ -254,6 +254,8 @@ export async function pollToTerminal(
   for (let i = 0; i < attempts; i++) {
     try {
       const res = await server.getTransaction(hash);
+      // Every reply carries the ledger's own clock, so the offset is free.
+      noteLedgerTime((res as { latestLedgerCloseTime?: number }).latestLedgerCloseTime);
       if (!forgotten(res, opts.maxTime)) answered = true;
       if (res.status === "SUCCESS") {
         return {
@@ -312,8 +314,46 @@ function forgotten(res: { oldestLedgerCloseTime?: number }, maxTime?: number): b
   return typeof oldest === "number" && oldest > maxTime;
 }
 
+/**
+ * How far this machine's clock is from the ledger's, in seconds.
+ *
+ * `timeBounds` is enforced by the NETWORK against the ledger's close time, and
+ * every expiry decision in this wallet compared `Date.now()` against a maxTime
+ * that `Date.now()` had also produced. Consistent with itself and wrong about
+ * the only clock that matters.
+ *
+ * A clock S seconds FAST builds maxTime at realNow + S + 180, so the ledger
+ * keeps including the envelope until realNow + S + 180 while the wallet calls
+ * it dead at realNow + 180: a window of S seconds in which a replacement can be
+ * built for a transaction that can still land. Measured on testnet with a clock
+ * one hour fast, the envelope was accepted and applied.
+ *
+ * Learned rather than configured: every `getTransaction` reply carries
+ * `latestLedgerCloseTime`, so the offset costs no extra read. Zero until
+ * something has answered, which is the honest starting point and identical to
+ * the old behaviour.
+ */
+let clockSkewSeconds = 0;
+
+/** Note the ledger's own clock from any reply that carries it. */
+export function noteLedgerTime(closeTimeSeconds: unknown): void {
+  if (typeof closeTimeSeconds !== "number" || !Number.isFinite(closeTimeSeconds)) return;
+  if (closeTimeSeconds <= 0) return;
+  clockSkewSeconds = closeTimeSeconds - Math.floor(Date.now() / 1000);
+}
+
+/** Now, on the ledger's clock as far as we have been able to observe it. */
+export function chainNow(): number {
+  return Math.floor(Date.now() / 1000) + clockSkewSeconds;
+}
+
+/** Test seam: forget what has been observed about the ledger's clock. */
+export function resetLedgerTime(): void {
+  clockSkewSeconds = 0;
+}
+
 /** True once maxTime has passed, meaning the envelope can never be applied. */
-export function hasExpired(tx: Transaction, nowSeconds = Math.floor(Date.now() / 1000)): boolean {
+export function hasExpired(tx: Transaction, nowSeconds = chainNow()): boolean {
   const max = tx.timeBounds?.maxTime;
   if (!max || max === "0") return false; // no upper bound: never decidably expired
   return nowSeconds > Number(max);

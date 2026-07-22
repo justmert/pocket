@@ -58,6 +58,7 @@ import { buildPayment } from "./chain/payment";
 import {
   submitAndConfirm,
   pollToTerminal,
+  chainNow,
   describeOutcome,
   DEFAULT_TIMEOUT_SECONDS,
   SubmitOutcomeError,
@@ -570,7 +571,11 @@ export class WalletController {
       at?: number;
     }>(KEYS.inFlight);
     if (!e) return null;
-    const windowPassed = e.maxTime > 0 && Math.floor(Date.now() / 1000) > e.maxTime;
+    // The LEDGER's clock, not this machine's. timeBounds is enforced against
+    // the ledger's close time, and deciding on a local clock that runs fast
+    // declares an envelope dead while the network will still include it, which
+    // is a window in which a replacement can be built for a live transaction.
+    const windowPassed = e.maxTime > 0 && chainNow() > e.maxTime;
     // Absent on a record written by an earlier build, and absent means "nobody
     // has heard anything", which is the honest reading and the safe one: the
     // record stays unresolved until a poll answers rather than being rebuilt
@@ -624,7 +629,7 @@ export class WalletController {
         outcome.kind === "pending" &&
         outcome.answered &&
         e.maxTime > 0 &&
-        Math.floor(Date.now() / 1000) > e.maxTime
+        chainNow() > e.maxTime
       ) {
         outcome = { kind: "expired", hash: e.hash };
       }
