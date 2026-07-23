@@ -16,12 +16,20 @@ tool and we would rather say so than let you find out later.
 | Who sees addresses | everyone | **everyone, unchanged** |
 | Earns yield | yes, reported (DeFindex) | no, and this is structural |
 | Bridges | yes (Circle CCTP) | no, unshield first |
-| Connects to dApps | yes (SEP-43) | no, sessions are public-pocket only |
+| Connects to dApps | not in this build, see below | no, sessions are public-pocket only |
 
-**What "connects to dApps" means here, precisely.** A site can discover the
-wallet, ask the network, and ask for the address. A connection is granted per
-ORIGIN by the user, expires in 24 hours, is dropped when the wallet locks or is
-erased, and is refused if the wallet on the device changed since the grant.
+**What "connects to dApps" means here, precisely, and what does not work yet.**
+The provider ships and a site can discover the wallet and ask the network.
+Everything past that needs a CONNECTION, and **no surface in this build can
+grant one**: `connectDapp` exists on the worker and nothing in the popup calls
+it, so `getAddress` and `signTransaction` refuse for every origin. The
+Settings > Connected sites screen says so rather than describing a prompt that
+never appears. What follows describes the design the code implements, not a
+flow a user can reach today.
+
+A connection is granted per ORIGIN by the user, expires in 24 hours, is dropped
+when the wallet locks or is erased, and is refused if the wallet on the device
+changed since the grant.
 Signing is never covered by a connection: every signature is approved
 individually on a screen that lists what the transaction does, and a
 transaction Pocket cannot decode is refused rather than shown as a hash to
