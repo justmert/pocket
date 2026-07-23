@@ -58,9 +58,14 @@ export class Wallet {
     await this.page.getByLabel("Password", { exact: true }).fill(password);
     await this.page.getByLabel("Confirm password").fill(password);
     await this.page.getByRole("button", { name: "Create wallet" }).click();
-    await expect(this.page.getByText("Write this down")).toBeVisible({
-      timeout: WAITS.onboarding,
-    });
+    // The heading the phrase step actually renders. It said "Write this down",
+    // which the Onboarding rewrite removed, and this helper is the shared entry
+    // point of most of the browser tier: every spec that calls it timed out
+    // here, so the whole tier reported a wall of failures with one cause and no
+    // product defect behind any of them.
+    await expect(this.page.getByRole("heading", { name: "Save your recovery phrase" })).toBeVisible(
+      { timeout: WAITS.onboarding },
+    );
     await this.showPhrase();
     const phrase = await this.readBackupPhrase();
     await this.page.getByRole("button", { name: "I have written it down" }).click();
@@ -83,16 +88,20 @@ export class Wallet {
    */
   async answerBackupCheck(phrase: string): Promise<void> {
     const words = phrase.split(" ");
-    const fields = this.page.getByLabel(/^Word \d+$/);
-    const n = await fields.count();
+    // The step is TAP CHIPS, not text fields. It used to render inputs labelled
+    // "Word N" and this helper typed into them; the Onboarding rewrite replaced
+    // that with a pool of word chips placed into three blanks, in order, and
+    // the helper is the shared entry point of most of the browser tier.
+    //
+    // The blanks are asked in phrase order and show their position, so the
+    // answer is read off the screen rather than assumed: find each numbered
+    // blank, then tap the chip carrying the word at that position.
+    const blanks = this.page.getByTestId("verify-blank");
+    const n = await blanks.count();
     for (let i = 0; i < n; i++) {
-      const field = fields.nth(i);
-      const label = await field.evaluate((el) => {
-        const id = el.getAttribute("id");
-        return id ? (document.querySelector(`label[for="${id}"]`)?.textContent ?? "") : "";
-      });
-      const ordinal = Number(label.replace(/\D+/g, ""));
-      await field.fill(words[ordinal - 1] ?? "");
+      const ordinal = Number((await blanks.nth(i).getAttribute("data-position")) ?? "0");
+      const word = words[ordinal - 1] ?? "";
+      await this.page.getByRole("button", { name: word, exact: true }).click();
     }
     await this.page.getByRole("button", { name: "Confirm", exact: true }).click();
   }

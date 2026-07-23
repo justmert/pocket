@@ -13,9 +13,8 @@
 import { describe, it, expect } from "vitest";
 import { withDecoys, VERIFY_POOL_SIZE } from "./Onboarding";
 
-const PHRASE = (
-  "abandon ability able about above absent absorb abstract absurd abuse access accident"
-).split(" ");
+const PHRASE =
+  "abandon ability able about above absent absorb abstract absurd abuse access accident".split(" ");
 
 describe("the chips offered on the backup check", () => {
   it("offers more than just the answers", () => {
@@ -81,11 +80,7 @@ describe("the step as it actually renders", () => {
   // goes straight back to six arrangements. This drives the real component.
   it("puts more chips on screen than there are blanks", async () => {
     const { renderToStaticMarkup } = await import("react-dom/server");
-    const { Onboarding } = await import("./Onboarding");
-    void Onboarding;
-    const { Verify } = (await import("./Onboarding")) as unknown as {
-      Verify: (p: unknown) => JSX.Element;
-    };
+    const { Verify } = await import("./Onboarding");
     const { theme } = await import("../theme");
     const html = renderToStaticMarkup(
       <Verify
@@ -106,9 +101,7 @@ describe("the step as it actually renders", () => {
     // helper has to guess an order, which is how it came to drive fields that
     // no longer existed.
     const { renderToStaticMarkup } = await import("react-dom/server");
-    const { Verify } = (await import("./Onboarding")) as unknown as {
-      Verify: (p: unknown) => JSX.Element;
-    };
+    const { Verify } = await import("./Onboarding");
     const { theme } = await import("../theme");
     const html = renderToStaticMarkup(
       <Verify

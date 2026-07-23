@@ -216,7 +216,14 @@ function Shell({
 function Ready({ t }: { t: Theme }) {
   return (
     <FullPage t={t}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          textAlign: "center",
+        }}
+      >
         <div
           style={{
             width: 84,
@@ -598,7 +605,7 @@ function Backup({
  * component's parent, so nothing crosses the trust boundary and nothing is
  * asked of the worker.
  */
-function Verify({
+export function Verify({
   t,
   words,
   fullPage,
@@ -702,7 +709,9 @@ function Verify({
                 overflow: "hidden",
               }}
             >
-              <span style={{ ...text.rowSub, color: t.faint, userSelect: "none", flex: "0 0 auto" }}>
+              <span
+                style={{ ...text.rowSub, color: t.faint, userSelect: "none", flex: "0 0 auto" }}
+              >
                 {n + 1}.
               </span>
               {isBlank ? (
@@ -728,7 +737,10 @@ function Verify({
                   </span>
                 ) : null
               ) : (
-                <span aria-hidden style={{ color: t.faint, letterSpacing: 1.5, overflow: "hidden" }}>
+                <span
+                  aria-hidden
+                  style={{ color: t.faint, letterSpacing: 1.5, overflow: "hidden" }}
+                >
                   {"•".repeat(Math.min(Math.max(word.length, 3), 7))}
                 </span>
               )}
