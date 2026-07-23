@@ -236,13 +236,15 @@ export function Sparkline({
   // under a comment saying it never does.
   const pill = useRef<HTMLDivElement>(null);
   const [pillW, setPillW] = useState(60);
+  const half = pillW / 2 + 2;
+  const pillX = dot ? Math.max(half, Math.min(w - half, dot[0])) : 0;
+  const label = active && times && labelAt ? labelAt(times[Math.min(at, times.length - 1)]!) : null;
+  // measured after `label`, which is what it keys on: a shorter label must shrink
+  // the clamp again, not keep the previous one's width.
   useLayoutEffect(() => {
     const el = pill.current;
     if (el) setPillW(el.offsetWidth);
   }, [label]);
-  const half = pillW / 2 + 2;
-  const pillX = dot ? Math.max(half, Math.min(w - half, dot[0])) : 0;
-  const label = active && times && labelAt ? labelAt(times[Math.min(at, times.length - 1)]!) : null;
 
   return (
     <div

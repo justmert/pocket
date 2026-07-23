@@ -33,7 +33,7 @@ describe("a transport failure is reported in the wallet's own words", () => {
 
   it("falls back to a generic sentence rather than echoing an unknown string", async () => {
     send.mockRejectedValue(new Error("some internal chrome detail 0x8004005"));
-    const err = await call({ type: "status" }).catch((e: Error) => e);
+    const err = (await call({ type: "status" }).catch((e: unknown) => e)) as Error;
     expect(err.message).toMatch(/could not reach its background service/i);
     expect(err.message, "chrome's own text must not reach the screen").not.toContain("0x8004005");
   });
