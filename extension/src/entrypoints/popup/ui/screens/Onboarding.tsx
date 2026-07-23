@@ -5,7 +5,7 @@ import { Button, ButtonStack, Field, Notice, Screen, TextButton } from "../primi
 import { clearOnboardingUnfinished, markOnboardingUnfinished } from "../onboardingTab";
 import { Check, Eye } from "../icons";
 import { Logo } from "../Brand";
-import { COPY_HOLD_MS, fonts, radius, space, text, theme, type Theme } from "../theme";
+import { fontSizes, COPY_HOLD_MS, fonts, radius, space, text, theme, type Theme } from "../theme";
 
 type Step = "choose" | "create" | "backup" | "import" | "ready";
 
@@ -496,6 +496,12 @@ function Backup({
               key={i}
               style={{
                 ...text.body,
+                // the ONE string in the product a user copies out by hand onto
+                // paper, and it was set at the prose size (14) while an address at
+                // a confirm step is 16. D4 chose that 16 for a string read
+                // character by character before an irreversible act; a phrase
+                // transcribed wrong is a wallet that never comes back.
+                fontSize: fontSizes.body,
                 fontFamily: fonts.mono,
                 fontWeight: 500,
                 color: t.text,
@@ -611,7 +617,20 @@ function Verify({
   // phrase is already in this component's parent, so nothing crosses the trust
   // boundary and nothing is asked of the worker.
   const [asked] = useState(() => pickThree(words.length));
-  const [pool] = useState(() => shuffle(asked.map((n) => words[n]!)));
+  // The pool held ONLY the three correct words, so the step asked the user to
+  // put three chips in an order rather than to know anything: 3! = 6
+  // arrangements, unlimited retries, and the answer visible on screen. Someone
+  // who had written nothing down was through it in a few taps, and this is the
+  // only gate asserting the phrase was written down at all, and the only caller
+  // of `clearOnboardingUnfinished`.
+  //
+  // Decoys come from the SAME phrase, so every chip is plausible and no
+  // dictionary is needed. Nine chips choosing three in order is 504
+  // arrangements rather than 6, which makes guessing impractical without
+  // locking out someone who really did write it down. Retries stay unlimited
+  // for exactly that reason: a limit here would strand a user who has the paper
+  // in front of them and mistyped.
+  const [pool] = useState(() => shuffle(withDecoys(words, asked)));
   // per blank (in `asked` order), the POOL INDEX placed there, or null. indices,
   // not words, so a phrase that repeats a word still tracks each chip separately.
   const [placed, setPlaced] = useState<(number | null)[]>(() => asked.map(() => null));
@@ -664,6 +683,11 @@ function Verify({
           return (
             <div
               key={n}
+              // The browser tier drives this step, and it can only do that if it
+              // can tell WHICH position each blank is asking for. Without it the
+              // helper has to guess an order, which is how it came to type into
+              // fields that no longer existed.
+              {...(isBlank ? { "data-testid": "verify-blank", "data-position": n + 1 } : {})}
               onClick={filled != null ? () => tapBlank(blankIdx) : undefined}
               style={{
                 display: "flex",
@@ -772,6 +796,34 @@ function pickThree(n: number): number[] {
   const out = new Set<number>();
   while (out.size < 3) out.add(Math.floor(Math.random() * n));
   return [...out].sort((a, b) => a - b);
+}
+
+/** how many chips the pool offers: the three answers plus six decoys. */
+export const VERIFY_POOL_SIZE = 9;
+
+/**
+ * The three words being asked for, plus decoys from the rest of the phrase.
+ *
+ * Decoys from the SAME phrase rather than a dictionary: every chip is then a
+ * word the user has just been shown, so the step tests which word sits where
+ * instead of which words look familiar, and nothing has to be imported.
+ *
+ * A phrase repeats a word rarely but legally, and two chips reading the same
+ * word are indistinguishable to a user, so decoys are chosen by POSITION and
+ * then filtered against the answers' TEXT. A short phrase that cannot supply
+ * six distinct decoys simply yields a smaller pool rather than looping.
+ */
+export function withDecoys(words: string[], asked: number[]): string[] {
+  const answers = asked.map((n) => words[n]!);
+  const taken = new Set(answers);
+  const candidates = words.filter((w) => !taken.has(w));
+  const decoys: string[] = [];
+  for (const w of shuffle(candidates)) {
+    if (decoys.length >= VERIFY_POOL_SIZE - answers.length) break;
+    if (decoys.includes(w)) continue;
+    decoys.push(w);
+  }
+  return [...answers, ...decoys];
 }
 
 /** a shuffled copy (Fisher-Yates), so the chips do not sit in phrase order. */

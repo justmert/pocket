@@ -102,7 +102,10 @@ export function DappApproval({
           <ConfirmBody
             t={t}
             fee={formatAmount(BigInt(summary.fee))}
-            memo={{ value: summary.memo }}
+            // the KIND, not just the value: an id memo of 12345 and a text memo
+            // of "12345" are byte-identical here and an exchange asking for one
+            // and getting the other loses the deposit.
+            memo={{ value: summary.memo, type: summary.memoType }}
             effects={summary.effects}
             warning={summary.warning}
             error={error}

@@ -1,6 +1,14 @@
 /* the values below are written by WalletProvider from theme.ts. the fallbacks
  * are only for the frame between the document parsing and react mounting. */
 :root {
+  /* ONE answer to "you cannot press this".
+   *
+   * a `Button` swaps tokens, the slider faded to 0.5 and the calendar chevron to
+   * 0.35: three treatments for one state, two of them with no recorded contrast
+   * because an opacity-derived colour depends on whatever it lands over. a native
+   * `<input type=range>` cannot express a token swap the way a `<button>` can, so
+   * the shared opacity is the honest common denominator for the two that fade. */
+  --pocket-disabled: 0.45;
   --pocket-enter: cubic-bezier(0.2, 0.8, 0.2, 1);
   --pocket-exit: cubic-bezier(0.4, 0, 1, 1);
   --pocket-instant: 140ms;
@@ -177,7 +185,7 @@ a:focus-visible {
 }
 .pocket-slider:disabled {
   cursor: not-allowed;
-  opacity: 0.5;
+  opacity: var(--pocket-disabled);
 }
 /* the thumb grows a touch under an active drag, so a control moved by hand answers
  * the grab the way every other tappable answers a press. */

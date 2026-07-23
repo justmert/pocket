@@ -2,7 +2,7 @@
 // button, a field or a sheet is the same object wherever it appears.
 import { useEffect, useId, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, CSSProperties, Ref, ReactNode, UIEventHandler } from "react";
-import { FRAME, fonts, motion, radius, ROW_STAGGER_MS, space, text, type Theme } from "./theme";
+import { chipPad, FRAME, fonts, motion, radius, ROW_STAGGER_MS, space, text, type Theme } from "./theme";
 import { Back as BackIcon, Close as CloseIcon } from "./icons";
 
 /* ---------------------------------------------------------------- frame -- */
@@ -113,6 +113,54 @@ export function ScrollArea({
     >
       {children}
     </div>
+  );
+}
+
+/**
+ * a full-frame ROUTE: a header that stays put over a body that scrolls.
+ *
+ * Eight screens opened with the identical two lines, the identical header block
+ * and the identical scroll body, and `Screen` does not cover it, which is exactly
+ * why eight of them hand-rolled the three-part version. The gain is not tidiness:
+ * nothing on those eight told a user that content continued below the fold
+ * (scrollbars are hidden by design, and no screen drew any other cue), and here
+ * that is one place to add rather than eight to remember.
+ *
+ * `header` and `children` are slots and nothing is decided inside, so the prop
+ * surface cannot grow into a kitchen sink.
+ */
+export function Route({
+  t,
+  header,
+  children,
+}: {
+  t: Theme;
+  header: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Frame t={t} className="pocket-page">
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: `${space.gutter}px ${space.gutter}px ${space.sm}px` }}>{header}</div>
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowX: "hidden",
+            overflowY: "auto",
+            padding: `0 ${space.gutter}px`,
+            // the one cue that content continues. the frame hides its scrollbars
+            // (384px cannot afford the gutter), so a route that overflowed looked
+            // exactly like one that ended: the last row simply stopped at the
+            // bottom edge. a short fade at the foot says otherwise, and it is
+            // masked away as the end is reached.
+            maskImage: "linear-gradient(to bottom, #000 calc(100% - 24px), transparent 100%)",
+          }}
+        >
+          {children}
+        </div>
+      </div>
+    </Frame>
   );
 }
 
@@ -886,7 +934,7 @@ export function Chip({
         display: "inline-flex",
         alignItems: "center",
         gap: 5,
-        padding: "5px 10px",
+        padding: chipPad.badge,
         borderRadius: radius.pill,
         background: c.bg,
         color: c.fg,
@@ -1426,13 +1474,15 @@ export function Sheet({
           zIndex: 31,
           boxShadow: t.dark ? "0 -20px 50px -30px #000" : "0 -18px 46px -30px rgba(20,21,26,0.5)",
           // the entrance runs as a CSS animation; once it is done, this inline
-          // transform owns the sheet for drag and exit. the border-radius eases too,
-          // so a sheet that grows to full height (MoveSheet menu -> review) rounds
-          // its corners off over the same beat rather than squaring them in one frame.
+          // transform owns the sheet for drag and exit.
+          //
+          // the `border-radius` term is GONE: `full` is a prop, not state, so the
+          // radius never changes on a mounted sheet, and the one case the old
+          // comment named (MoveSheet menu -> review) is a case `MoveSheet` forbids
+          // in its own comment. a transition on a value that cannot change is a
+          // claim about a motion nobody can see.
           transform: `translateY(${y}px)`,
-          transition: grabbing
-            ? "none"
-            : `transform ${SHEET_MS}ms ${motion.enter}, border-radius ${SHEET_MS}ms ${motion.enter}`,
+          transition: grabbing ? "none" : `transform ${SHEET_MS}ms ${motion.enter}`,
         }}
       >
         <div

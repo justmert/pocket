@@ -24,7 +24,7 @@ import {
   SOROBAN_FEE_RESERVE_STROOPS,
 } from "../../../../core/chain/balances";
 import { NETWORKS, type NetworkId } from "../../../../core/config";
-import { radius, space, text, type Theme } from "../theme";
+import { chipPad, radius, space, text, type Theme } from "../theme";
 import type { PublicBalance, SwapQuoteView, SwapSummary } from "../../../../core/messages";
 
 /** what a swap's network fee is charged in, in stroops, for the MAX buffer on XLM. */
@@ -571,7 +571,7 @@ function ReceiveCard({
             display: "flex",
             alignItems: "center",
             gap: space.sm,
-            padding: "6px 12px",
+            padding: chipPad.pill,
             borderRadius: radius.pill,
             background: t.surface,
           }}

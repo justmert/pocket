@@ -17,7 +17,12 @@ import {
 import type { ReactNode } from "react";
 import { call } from "./rpc";
 import { stillUnresolved } from "./backgroundOps";
-import { readAddressBook, addToAddressBook, clearAddressBook } from "./addressBook";
+import {
+  readAddressBook,
+  addToAddressBook,
+  removeFromAddressBook,
+  clearAddressBook,
+} from "./addressBook";
 import { selectPrivateAsset } from "./selectAsset";
 import { COPY_HOLD_MS, motion, theme, type Pocket, type Theme } from "./theme";
 import type {
@@ -157,6 +162,8 @@ interface Wallet {
   savedAddresses: string[];
   /** remember a recipient address, offered from a receipt after a send. */
   saveAddress(address: string): void;
+  /** forget ONE saved recipient. the only removal was erasing the wallet. */
+  forgetAddress(address: string): void;
 
   /** transactions the popup started and is still watching, newest first. */
   backgroundOps: BgOp[];
@@ -340,6 +347,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [savedAddresses, setSavedAddresses] = useState<string[]>(readAddressBook);
   const saveAddress = useCallback((address: string) => {
     setSavedAddresses((prev) => addToAddressBook(prev, address));
+  }, []);
+  const forgetAddress = useCallback((address: string) => {
+    setSavedAddresses((prev) => removeFromAddressBook(prev, address));
   }, []);
   // transactions the popup is still watching. session-only: the worker owns the
   // durable record (its in-flight entry and, on success, the openings), so this
@@ -880,6 +890,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     toggleHidden,
     savedAddresses,
     saveAddress,
+    forgetAddress,
     backgroundOps,
     beginOp,
     completeOp,

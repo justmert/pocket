@@ -323,6 +323,21 @@ export const space = {
   xl: 30,
 } as const;
 
+/**
+ * the two chip paddings the product actually needs.
+ *
+ * twelve chip-shaped controls carried eight distinct paddings, none of them on
+ * the `space` scale (5px 10px, 8px 14px, 3px 8px, ...). they are NOT all one
+ * component: a pressable pill and a passive badge are different objects. they are
+ * two sizes, and these are the two.
+ */
+export const chipPad = {
+  /** a passive badge: a state word, a verified mark, a scrub label. */
+  badge: "3px 8px",
+  /** a pressable pill: a filter chip, "Use max", a segment. */
+  pill: "8px 14px",
+} as const;
+
 export const radius = {
   sm: 10,
   md: 14,

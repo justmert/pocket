@@ -20,6 +20,17 @@ export interface TxSummary {
   fee: string;
   network: string;
   memo?: string;
+  /**
+   * WHICH memo, because the value alone does not say.
+   *
+   * `String(tx.memo.value)` is lossy in two directions, checked against the
+   * repository's own installed `@stellar/stellar-sdk/base`: a `hash` or `return`
+   * memo is raw bytes and decodes to replacement characters, and an `id` memo of
+   * 12345 and a `text` memo of "12345" produce byte-identical strings. An
+   * exchange asking for one kind and being sent the other loses the deposit, and
+   * the approval screen could not tell the user which they were signing.
+   */
+  memoType?: "text" | "id" | "hash" | "return";
   /** One line per operation, in the order they will apply. */
   effects: string[];
   /** Set when something about this envelope should stop the user. */
@@ -30,6 +41,43 @@ export interface TxSummary {
 // what a decoded transaction actually carries is `Transaction["operations"]`,
 // which is what narrows correctly on `op.type`.
 type DecodedOp = Transaction["operations"][number];
+
+/**
+ * A memo's kind, in the four names Stellar uses.
+ *
+ * The SDK's `memo.type` is one of `MemoText | MemoID | MemoHash | MemoReturn |
+ * MemoNone`; anything else (including none) is simply absent.
+ */
+function memoKind(memo: { type?: string } | null | undefined): TxSummary["memoType"] {
+  switch (memo?.type) {
+    case "text":
+      return "text";
+    case "id":
+      return "id";
+    case "hash":
+      return "hash";
+    case "return":
+      return "return";
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * A memo's value as text, or hex where it is not text.
+ *
+ * `hash` and `return` memos are 32 raw bytes; `String()` on them produced
+ * replacement characters, so the one field a user is asked to check was
+ * unreadable exactly where it is a machine-matched identifier.
+ */
+function memoText(memo: { type?: string; value?: unknown } | null | undefined): string | undefined {
+  const v = memo?.value;
+  if (v === undefined || v === null || v === "") return undefined;
+  if (v instanceof Uint8Array || Buffer.isBuffer(v)) {
+    return Buffer.from(v).toString("hex");
+  }
+  return String(v);
+}
 
 function describeOperation(op: DecodedOp, index: number): string {
   const n = `${index + 1}.`;
@@ -207,7 +255,8 @@ export function describeTransaction(xdr: string, networkPassphrase: string): TxS
     source: tx.source,
     fee: tx.fee,
     network: networkPassphrase,
-    memo: tx.memo?.value ? String(tx.memo.value) : undefined,
+    memo: memoText(tx.memo),
+    memoType: memoKind(tx.memo),
     effects,
     warning: alarming
       ? "This transaction changes who controls the account. Only approve it if you are certain."

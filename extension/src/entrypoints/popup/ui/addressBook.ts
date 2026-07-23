@@ -41,6 +41,26 @@ export function addToAddressBook(current: string[], address: string): string[] {
 }
 
 /**
+ * Forget ONE recipient.
+ *
+ * The module had read, add and clear-everything, so the only way to remove a
+ * single saved address was to erase the wallet. Two near-identical addresses
+ * render as the identical chip on the send screen (the product's own hostile
+ * fixture is built on exactly that collision), and a mis-tap costs a wasted tap
+ * rather than money because the confirm shows the address in full. That is why
+ * this is small, not why it is unnecessary.
+ */
+export function removeFromAddressBook(current: string[], address: string): string[] {
+  const next = current.filter((a) => a !== address.trim());
+  try {
+    localStorage.setItem(KEY, JSON.stringify(next));
+  } catch {
+    /* storage disabled: the list stays in memory for this session. */
+  }
+  return next;
+}
+
+/**
  * Forget everyone. Called when the wallet is erased.
  *
  * Erasing has to mean erasing: a wallet that is gone must not leave the list of

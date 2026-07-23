@@ -16,7 +16,7 @@ import {
 } from "../primitives";
 import { Check, External, Lock, Trash } from "../icons";
 import { InfoTip } from "../Tooltip";
-import { COPY_HOLD_MS, fonts, radius, space, text } from "../theme";
+import { fontSizes, COPY_HOLD_MS, fonts, radius, space, text } from "../theme";
 import { privateLossAfterErase, archiveReadiness, canRebuild } from "../copy";
 import type { NetworkId } from "../../../../core/config";
 
@@ -634,6 +634,13 @@ export function PhraseSheet({ open, onClose }: { open: boolean; onClose: () => v
                 key={i}
                 style={{
                   ...text.body,
+                  // the ONE string in the product a user copies out by hand onto
+                  // paper, at the prose size (14) while an address at a confirm
+                  // step is 16. D4 set that 16 for a string read character by
+                  // character before an irreversible act, and this is the same
+                  // kind of reading with a worse failure: a phrase transcribed
+                  // wrong is a wallet that never comes back.
+                  fontSize: fontSizes.body,
                   fontFamily: fonts.mono,
                   fontWeight: 500,
                   color: t.text,

@@ -127,7 +127,11 @@ export function InFlight({
           aria-live="polite"
         >
           <Spinner size={17} color={t.accent} />
-          Checking the ledger
+          {/* `.pocket-pulse` was declared, keyframed and consumed by nothing. this
+              is the wait it suits: the spinner says work is happening and the
+              sentence breathes with it, rather than sitting dead beside a moving
+              ring on the one screen a user is asked to sit through. */}
+          <span className="pocket-pulse">Checking the ledger</span>
         </div>
       ) : (
         <ButtonStack>

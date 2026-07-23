@@ -6,6 +6,7 @@
 // signing path are untouched underneath; this only changes how the compose step
 // looks and hands off to ConfirmSheet.
 import { useEffect, useRef, useState } from "react";
+import { Close } from "../icons";
 import { Figure } from "../Amount";
 import { BASE_FEE } from "@stellar/stellar-sdk/base";
 import { useWallet } from "../WalletProvider";
@@ -25,7 +26,7 @@ import {
   formatAmount,
   composeAmount,
 } from "../../../../core/chain/balances";
-import { fonts, radius, space, text, type Theme } from "../theme";
+import { chipPad, fonts, radius, space, text, type Theme } from "../theme";
 import type { PrivateOpSummary, PublicBalance, TransferSummary } from "../../../../core/messages";
 
 /** what a payment costs, in stroops. read from the sdk so "max" matches what chain/payment.ts charges. */
@@ -376,24 +377,51 @@ export function Send({ onClose }: { onClose: () => void }) {
                       <div style={{ ...text.caption, color: t.faint, marginBottom: 6 }}>Saved</div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: space.xs }}>
                         {w.savedAddresses.slice(0, 4).map((addr) => (
-                          <button
+                          <span
                             key={addr}
-                            type="button"
-                            onClick={() => setTo(addr)}
-                            className="pk-tap"
                             style={{
-                              all: "unset",
-                              cursor: "pointer",
-                              ...text.chip,
-                              fontFamily: fonts.mono,
-                              color: t.accent,
+                              display: "inline-flex",
+                              alignItems: "center",
                               background: t.field,
                               borderRadius: radius.pill,
-                              padding: "6px 12px",
                             }}
                           >
-                            {shortAddress(addr)}
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => setTo(addr)}
+                              className="pk-tap"
+                              style={{
+                                all: "unset",
+                                cursor: "pointer",
+                                ...text.chip,
+                                fontFamily: fonts.mono,
+                                color: t.accent,
+                                borderRadius: radius.pill,
+                                padding: chipPad.pill,
+                              }}
+                            >
+                              {shortAddress(addr)}
+                            </button>
+                            {/* forget ONE. the only way to remove a saved recipient
+                                was erasing the wallet, and two near-identical
+                                addresses render as the identical chip. */}
+                            <button
+                              type="button"
+                              aria-label={`Forget ${shortAddress(addr)}`}
+                              onClick={() => w.forgetAddress(addr)}
+                              className="pk-tap"
+                              style={{
+                                all: "unset",
+                                cursor: "pointer",
+                                display: "flex",
+                                color: t.faint,
+                                padding: `0 ${space.sm}px 0 0`,
+                                borderRadius: radius.pill,
+                              }}
+                            >
+                              <Close size={14} />
+                            </button>
+                          </span>
                         ))}
                       </div>
                     </div>

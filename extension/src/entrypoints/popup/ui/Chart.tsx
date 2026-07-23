@@ -11,7 +11,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { DATE_LOCALE } from "./period";
 import type { CSSProperties } from "react";
-import { motion, radius, space, text, type Theme } from "./theme";
+import { chipPad, motion, radius, space, text, type Theme } from "./theme";
 import { Skeleton } from "./primitives";
 import type { ValueChart } from "../../../core/messages";
 
@@ -347,7 +347,7 @@ export function Sparkline({
             background: t.accentSoft,
             color: t.dark ? t.accent : t.text,
             ...text.chip,
-            padding: "3px 9px",
+            padding: chipPad.badge,
             borderRadius: radius.pill,
             whiteSpace: "nowrap",
             pointerEvents: "none",

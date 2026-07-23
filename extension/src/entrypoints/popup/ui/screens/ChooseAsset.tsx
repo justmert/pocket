@@ -7,14 +7,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
-import { Button, Frame, Header, Notice, Spinner, EmptyState } from "../primitives";
+import { Button, Header, Notice, Spinner, EmptyState, Route } from "../primitives";
 import { InfoTip } from "../Tooltip";
 import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark } from "./Home";
 import { shortAddress } from "../Address";
 import { Search } from "../icons";
 import { NETWORKS } from "../../../../core/config";
-import { fonts, radius, space, text, type Theme } from "../theme";
+import { chipPad, fonts, radius, space, text, type Theme } from "../theme";
 import type { AssetSearchResult, TrustlineSummary } from "../../../../core/messages";
 
 export function ChooseAsset({ onClose }: { onClose: () => void }) {
@@ -175,9 +175,7 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <Frame t={t} className="pocket-page">
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: `${space.gutter}px ${space.gutter}px ${space.sm}px` }}>
+      <Route t={t} header={
             <Header
               t={t}
               title="Choose asset"
@@ -193,17 +191,7 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
                 </InfoTip>
               }
             />
-          </div>
-
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              overflowX: "hidden",
-              overflowY: "auto",
-              padding: `0 ${space.gutter}px`,
-            }}
-          >
+          }>
             <div
               style={{
                 display: "flex",
@@ -297,9 +285,7 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
                 onAdd={() => void startAdd(a)}
               />
             ))}
-          </div>
-        </div>
-      </Frame>
+          </Route>
 
       <ConfirmSheet
         t={t}
@@ -395,7 +381,7 @@ function ResultRow({
               style={{
                 ...text.caption,
                 fontWeight: 700,
-                padding: "3px 8px",
+                padding: chipPad.badge,
                 borderRadius: radius.pill,
                 background: t.accentFill,
                 color: t.onAccent,
@@ -412,7 +398,7 @@ function ResultRow({
               style={{
                 ...text.caption,
                 fontWeight: 600,
-                padding: "3px 8px",
+                padding: chipPad.badge,
                 borderRadius: radius.pill,
                 background: t.field,
                 color: t.sub,

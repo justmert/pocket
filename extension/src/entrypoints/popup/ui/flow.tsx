@@ -109,7 +109,7 @@ export function ConfirmBody({
   /** network fee in decimal XLM, shown as its own row like the reference. */
   fee?: string;
   /** rendered whether present or absent: both cases matter at a confirm step. */
-  memo?: { value?: string };
+  memo?: { value?: string; type?: "text" | "id" | "hash" | "return" };
   effects: string[];
   /** what has ALREADY happened by the time this confirm is on screen. */
   alreadyDone?: string;
@@ -434,7 +434,7 @@ export function WalletReview({
   treatment?: Treatment;
   to?: string;
   fee?: string;
-  memo?: { value?: string };
+  memo?: { value?: string; type?: "text" | "id" | "hash" | "return" };
   /** a dollar figure for the amount, shown as its own "total value" row. */
   fiat?: number | null;
   effects: string[];
@@ -534,7 +534,12 @@ export function WalletReview({
               }
             >
               {memo.value ? (
-                <span style={{ fontFamily: fonts.mono }}>{memo.value}</span>
+                <span style={{ fontFamily: fonts.mono }}>
+                  {memo.value}
+                  {/* which KIND. two memos can print the same characters and mean
+                      different things to the exchange reading them. */}
+                  {memo.type && memo.type !== "text" ? ` (${memo.type})` : ""}
+                </span>
               ) : (
                 <span style={{ color: t.faint }}>None</span>
               )}
@@ -624,7 +629,7 @@ export function ReviewPanel({
   /** network fee in decimal XLM, shown as its own row like the reference. */
   fee?: string;
   /** rendered whether present or absent: both cases matter at a confirm step. */
-  memo?: { value?: string };
+  memo?: { value?: string; type?: "text" | "id" | "hash" | "return" };
   /** a dollar figure for the amount, shown under it when a price is known. */
   fiat?: number | null;
   effects: string[];
@@ -982,7 +987,7 @@ export function ConfirmSheet({
   code?: string;
   treatment?: Treatment;
   to?: string;
-  memo?: { value?: string };
+  memo?: { value?: string; type?: "text" | "id" | "hash" | "return" };
   /** network fee in decimal XLM, shown as its own row like the reference. */
   fee?: string;
   /** a dollar figure for the amount, shown under it when a price is known. */

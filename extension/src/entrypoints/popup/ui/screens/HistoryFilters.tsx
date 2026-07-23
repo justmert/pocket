@@ -500,7 +500,9 @@ export function DateRangeSheet({
               cursor: nextDisabled ? "default" : "pointer",
               display: "flex",
               padding: 4,
-              opacity: nextDisabled ? 0.35 : 1,
+              // the shared disabled fade, not a third value: this was 0.35 and
+              // the slider 0.5, for the same state.
+              opacity: nextDisabled ? "var(--pocket-disabled)" : 1,
             }}
           >
             <ChevronRight size={20} />
