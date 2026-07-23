@@ -142,9 +142,12 @@ describe("a site cannot get a signature without a person answering", () => {
       await envelope(address, "setOptions"),
       "Test SDF Network ; September 2015",
     );
-    // The user must be told what this class of operation can do, not shown
-    // "setOptions" and left to know what that means.
-    expect(summary.effects.join(" ")).toMatch(/ACCOUNT SECURITY SETTINGS/);
+    // The user must be told what this operation actually DOES, not shown
+    // "setOptions" and left to know what that means, and not shown a constant
+    // sentence either: naming the class was the old behaviour and a takeover
+    // read identically to this rename. The envelope above sets a home domain,
+    // so the effects have to say so and name the domain.
+    expect(summary.effects.join(" ")).toMatch(/home domain to evil\.example/);
     expect(summary.warning).toMatch(/who controls the account/i);
   });
 

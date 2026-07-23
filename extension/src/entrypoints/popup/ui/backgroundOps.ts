@@ -16,10 +16,21 @@ import type { InFlightRecord } from "./WalletProvider";
  * as a thrown error exactly like a real failure, and the popup cannot tell them
  * apart from the message alone.
  *
- * The worker can. It clears the durable in-flight record for every terminal
- * outcome and KEEPS it for a pending one (core/chain/submit.ts), so the record
- * still being present is the answer, and it is authoritative in a way that
- * matching on the error's wording would never be.
+ * The worker can, and the record is the signal: it survives while the outcome is
+ * unknown, so its presence is authoritative in a way that matching on the
+ * error's wording would never be.
+ *
+ * "Cleared on every terminal outcome" is NOT true and this comment used to say
+ * it was. `settles: "caller"` (core/chain/submit.ts) holds the record past
+ * SUCCESS for a submission with a local consequence still to write, which is
+ * every confidential operation: `submitStaged` clears it after the openings
+ * land. So a private op that succeeded on chain and then failed to write those
+ * openings arrives here with a record still present and is reported unresolved.
+ *
+ * That verdict is the right one, because the wrong move is still to resend. The
+ * defect was that the worker's authored sentence, which says the transaction
+ * LANDED and what the unwritten openings need, was gated on `failed` in the
+ * detail sheet and so never reached the one person who had to read it.
  *
  * Three conditions, each closing a different way this would be wrong:
  *

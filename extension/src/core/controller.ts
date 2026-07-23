@@ -2071,7 +2071,33 @@ export class WalletController {
         )
         .setTimeout(180)
         .build();
-      const burnOut = await this.signAndSubmit(burnTx, null, "cctpBurn");
+      // A simulation failure THROWS rather than returning an outcome, so the
+      // sentence below was unreachable for the commonest way the burn fails:
+      // the user saw a bare contract refusal with no mention of the approve
+      // they had already paid for. Caught here so every way the burn can fail
+      // ends in a sentence that accounts for both legs.
+      let burnOut: SubmitOutcome;
+      try {
+        burnOut = await this.signAndSubmit(burnTx, null, "cctpBurn");
+      } catch (e) {
+        throw new cctp.CctpParameterError(
+          `The approval landed and was charged for, and the burn was refused before it was ` +
+            `sent (${e instanceof Error ? e.message : "unknown reason"}). Nothing has been ` +
+            `bridged and your USDC has not moved. The approval stays valid, so fixing the ` +
+            `reason and bridging again does not pay for it twice.`,
+        );
+      }
+      if (burnOut.kind === "pending") {
+        // NOT "nothing has been bridged". `pending` means the ledger never told
+        // us either way, so the burn may well have landed, and this sentence
+        // used to end with "try the bridge again": the one instruction that
+        // turns an unresolved burn into a second one.
+        throw new SubmitOutcomeError(
+          `The approval landed, and the burn was submitted but has not confirmed. It may still ` +
+            `land, so do not bridge again yet: check ${burnOut.hash} first.`,
+          burnOut,
+        );
+      }
       if (burnOut.kind !== "succeeded") {
         // The approve landed, so the allowance is set; only the burn need retry.
         throw new cctp.CctpParameterError(

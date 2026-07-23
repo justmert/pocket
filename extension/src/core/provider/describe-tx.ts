@@ -79,6 +79,85 @@ function memoText(memo: { type?: string; value?: unknown } | null | undefined): 
   return String(v);
 }
 
+/**
+ * Every field a setOptions actually sets, named.
+ *
+ * One operation can carry all of these at once, and each is a different way to
+ * lose the account:
+ *
+ *   signer         adds, reweights or REMOVES (weight 0) a key that can sign
+ *   masterWeight   0 disables the account's own key permanently
+ *   thresholds     raise them past the available weight and the account is bricked
+ *   homeDomain     redirects federation lookups for this address
+ *   inflationDest  harmless today, still a signed change
+ *   flags          set/clearFlags govern authorisation on an issuer
+ *
+ * The signer's KEY is printed in full and never truncated: this is the field
+ * that hands the account away, and matching first-4 and last-4 is about an hour
+ * of work on a laptop.
+ */
+export function describeSetOptions(op: {
+  signer?: {
+    ed25519PublicKey?: string;
+    sha256Hash?: unknown;
+    preAuthTx?: unknown;
+    ed25519SignedPayload?: string;
+    weight?: number;
+  };
+  masterWeight?: number;
+  lowThreshold?: number;
+  medThreshold?: number;
+  highThreshold?: number;
+  homeDomain?: string;
+  inflationDest?: string;
+  setFlags?: number;
+  clearFlags?: number;
+}): string {
+  const parts: string[] = [];
+  const s = op.signer;
+  if (s) {
+    const key =
+      s.ed25519PublicKey ??
+      s.ed25519SignedPayload ??
+      (s.sha256Hash ? "a hash-x signer" : undefined) ??
+      (s.preAuthTx ? "a pre-authorised transaction signer" : undefined) ??
+      "a signer";
+    parts.push(
+      s.weight === 0
+        ? `REMOVE the signer ${key}`
+        : `ADD ${key} AS A SIGNER with weight ${s.weight ?? 0}`,
+    );
+  }
+  if (op.masterWeight !== undefined) {
+    parts.push(
+      op.masterWeight === 0
+        ? "DISABLE this account's own key permanently (master weight 0)"
+        : `Set this account's own key weight to ${op.masterWeight}`,
+    );
+  }
+  for (const [label, v] of [
+    ["low", op.lowThreshold],
+    ["medium", op.medThreshold],
+    ["high", op.highThreshold],
+  ] as const) {
+    if (v !== undefined) parts.push(`Set the ${label} threshold to ${v}`);
+  }
+  if (op.homeDomain !== undefined) {
+    parts.push(
+      op.homeDomain === "" ? "Clear the home domain" : `Set the home domain to ${op.homeDomain}`,
+    );
+  }
+  if (op.inflationDest !== undefined)
+    parts.push(`Set the inflation destination to ${op.inflationDest}`);
+  if (op.setFlags !== undefined) parts.push(`Set account flags to ${op.setFlags}`);
+  if (op.clearFlags !== undefined) parts.push(`Clear account flags ${op.clearFlags}`);
+  // An operation that sets nothing is still a signed operation, and saying
+  // "changes nothing" would be a claim this function cannot make about a shape
+  // it did not recognise.
+  if (parts.length === 0) return "CHANGE ACCOUNT SECURITY SETTINGS (no field this build can name)";
+  return parts.join("; ");
+}
+
 function describeOperation(op: DecodedOp, index: number): string {
   const n = `${index + 1}.`;
   // an operation can carry its OWN source account, which overrides the
@@ -101,9 +180,23 @@ function describeBody(op: DecodedOp, n: string): string {
         ? `${n} REMOVE the trustline for ${op.line.toString()}`
         : `${n} Trust ${op.line.toString()} up to ${op.limit ?? "the maximum"}`;
     case "setOptions":
-      // The dangerous one. Changing signers or thresholds can hand the account
-      // away permanently, so it is never summarised as "set options".
-      return `${n} CHANGE ACCOUNT SECURITY SETTINGS (signers, thresholds or home domain)`;
+      // The dangerous one, and it read no argument at all.
+      //
+      // The sentence was a CONSTANT: "CHANGE ACCOUNT SECURITY SETTINGS
+      // (signers, thresholds or home domain)". Measured side by side, adding an
+      // attacker's key at weight 255 and setting a home domain produced the
+      // IDENTICAL string, and the attacker's key appeared nowhere on screen.
+      // That is blind signing with a caption, which is the exact thing
+      // `DESCRIBED` exists to prevent: the rule is that the sentence gets
+      // written first and the allowlist entry second.
+      //
+      // So every field is named. A setOptions can carry several at once and any
+      // one of them can hand the account away, so they are listed rather than
+      // summarised, and the strongest is not allowed to hide behind the mildest.
+      // The SDK's decoded shape is wider than the fields named here (thresholds
+      // and flags are optional numbers, the signer a union), so it is passed as
+      // the reading this function does of it rather than cast wholesale.
+      return `${n} ${describeSetOptions(op as Parameters<typeof describeSetOptions>[0])}`;
     case "accountMerge":
       return `${n} DESTROY this account and send everything to ${op.destination}`;
     case "pathPaymentStrictSend":

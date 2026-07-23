@@ -1579,9 +1579,21 @@ function ProcessingDetailSheet({
             </div>
           )}
 
-          {op.status === "failed" && op.error && (
+          {/* `unresolved` carries a reason too, and it was thrown away.
+              A private operation that SUCCEEDED on chain and then failed to
+              write its openings arrives here: the worker's own sentence says
+              the transaction landed, that this device has no record of the new
+              balances, and what rebuilding would need. The row is relabelled
+              "Not confirmed yet" (right: do not resend) and this notice was
+              gated on `failed`, so the only instruction that addressed the
+              unwritten openings never appeared at all.
+
+              The TONE differs because the news does: `unresolved` is not a
+              failure, and painting it in the danger colour is what made nine
+              compose screens read as "this went wrong, try again". */}
+          {(op.status === "failed" || op.status === "unresolved") && op.error && (
             <div style={{ margin: `${space.md}px 0` }}>
-              <Notice t={t} tone="danger">
+              <Notice t={t} tone={op.status === "failed" ? "danger" : "exposed"}>
                 {op.error}
               </Notice>
             </div>
