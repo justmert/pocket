@@ -78,9 +78,18 @@ test("the yield row states the configuration it is actually in", async ({ wallet
   );
   // describeApy's exact sentence. The window is labelled because the API
   // reports different windows on different endpoints.
-  expect(y.apy ?? "", "the APY must be reported with its window and its warning").toMatch(
+  //
+  // `apy` is a PAIR now: a bare `figure` for a table cell and the full `sentence`
+  // for a tip. It used to be one string, and every caller regexed the figure back
+  // out of it and dropped the window, which is the definition of the number.
+  expect(y.apy?.sentence ?? "", "the APY must be reported with its window and its warning").toMatch(
     /^\d+\.\d{2}% over the last 7 days, variable and not guaranteed$|^Yield not reported$/,
   );
+  // and the figure has to agree with the sentence it was split from.
+  if (y.apy?.figure) {
+    expect(y.apy.figure).toMatch(/^\d+\.\d{2}%$/);
+    expect(y.apy.sentence.startsWith(y.apy.figure), "the pair must not disagree").toBe(true);
+  }
   // The share count, which is what the mapping bug erased. A digit string, not
   // undefined and not an XLM amount.
   expect(y.balance, "the position came back with no share count").toBeDefined();
@@ -88,7 +97,10 @@ test("the yield row states the configuration it is actually in", async ({ wallet
 
   await expect(page.getByText("Vault position")).toBeVisible();
   await expect(page.getByText(`${y.balance} shares`)).toBeVisible();
-  if (y.apy && y.apy !== "Yield not reported") {
-    await expect(page.getByText(`${y.apy} reported`)).toBeVisible();
+  // the RATE row draws the bare figure; "variable and not guaranteed" lives in the
+  // header tip. it used to draw the whole sentence with the word "reported"
+  // appended, producing "...variable and not guaranteed reported".
+  if (y.apy?.figure) {
+    await expect(page.getByText(y.apy.figure, { exact: false })).toBeVisible();
   }
 });
