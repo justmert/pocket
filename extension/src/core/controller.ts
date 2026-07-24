@@ -764,10 +764,21 @@ export class WalletController {
     // failure the user must fix: if the account already reads back, the funds
     // are there and this counts as success.
     if (!res.ok) {
+      // Friendbot refused. If the account already exists that is almost always
+      // WHY it refused: it funds an account once. Returning `status()` here read
+      // as success, and the Settings row then said "Testnet XLM added to your
+      // account" over a request that added nothing.
+      //
+      // Said rather than thrown-as-a-fault, because nothing is wrong: the
+      // account is funded, it just was not funded by this press.
       try {
         await readNative(this.server(), address);
-        return this.status();
-      } catch {
+        throw new FriendbotError(
+          "This account already exists on testnet, so the funding service will not fund it " +
+            "again. Your balance is unchanged.",
+        );
+      } catch (e) {
+        if (e instanceof FriendbotError) throw e;
         throw new FriendbotError(
           "The testnet funding service could not fund this account right now. Try again shortly.",
         );

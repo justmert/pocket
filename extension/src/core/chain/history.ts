@@ -108,8 +108,9 @@ interface PaymentRecord {
   address?: string;
   asset_balance_changes?: AssetBalanceChange[];
   // joined via ?join=transactions: the fee is a property of the transaction, not
-  // the payment operation, so it rides along on the record.
-  transaction?: { fee_charged?: string };
+  // the payment operation, so it rides along on the record. `source_account` is
+  // who PAID it, which is the difference between our fee and a stranger's.
+  transaction?: { fee_charged?: string; source_account?: string };
 }
 
 /**
@@ -151,8 +152,17 @@ function assetIssuer(type?: string, issuer?: string): string | undefined {
   return type === "native" ? undefined : issuer;
 }
 
-/** The transaction's network fee in decimal XLM, when the join carried it. */
-function feeOf(r: PaymentRecord): string | undefined {
+/**
+ * The network fee THIS account paid, in decimal XLM, when the join carried it.
+ *
+ * Only when this account was the transaction's source. The fee rode along on
+ * every record through `base`, so a payment RECEIVED from someone else showed
+ * that someone else's fee in a row labelled "Onchain fee", against money coming
+ * in. The reader has no way to tell it is not theirs, and it is a figure about
+ * a stranger's transaction appearing in their own history.
+ */
+function feeOf(r: PaymentRecord, me: string): string | undefined {
+  if (r.transaction?.source_account !== me) return undefined;
   const fc = r.transaction?.fee_charged;
   if (fc === undefined || fc === null) return undefined;
   try {
@@ -184,7 +194,7 @@ function mapPayment(r: PaymentRecord, me: string, exclude: ReadonlySet<string>):
   const at = Date.parse(r.created_at);
   if (!Number.isFinite(at)) return [];
   const id = `${r.transaction_hash}:${r.id}`;
-  const base = { id, pocket: "public" as const, at, hash: r.transaction_hash, fee: feeOf(r) };
+  const base = { id, pocket: "public" as const, at, hash: r.transaction_hash, fee: feeOf(r, me) };
 
   if (r.type === "create_account") {
     // Only our own creation, which is our first funding. A create_account this
