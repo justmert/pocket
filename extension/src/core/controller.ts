@@ -1397,6 +1397,28 @@ export class WalletController {
       if (asset.isNative()) {
         throw new TrustlineError("XLM is the native asset and needs no trustline.");
       }
+      // `isNative()` is FALSE for `new Asset("XLM", "G...")`: that is a
+      // credit_alphanum4 asset which merely spells its code the same way. So the
+      // guard above passed it, a trustline opened for someone else's "XLM", and
+      // it then sat in the asset list beside the real one wearing the same three
+      // letters, with only the issuer telling them apart and no screen showing it.
+      if (assetCode.toUpperCase() === "XLM") {
+        throw new TrustlineError(
+          "That asset calls itself XLM but it is not the native asset: it is a token issued by " +
+            `${issuer}. Pocket will not add it, because it would sit in your assets wearing the ` +
+            "same name as your real balance.",
+        );
+      }
+
+      // Already held? `changeTrust` on an existing line SUCCEEDS and rewrites its
+      // limit, so re-adding one silently reset a custom limit to the maximum and
+      // charged a fee to change nothing the user asked to change.
+      const existing = await readTrustline(this.server(), address, asset);
+      if (existing) {
+        throw new TrustlineError(
+          `Your account already holds ${assetCode} from this issuer, so there is nothing to add.`,
+        );
+      }
 
       // A trustline is a SUBENTRY, and every subentry raises the account's
       // minimum balance by one base reserve. This path read the native balance

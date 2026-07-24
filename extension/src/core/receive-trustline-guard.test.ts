@@ -283,3 +283,39 @@ describe("adding a trustline the account cannot afford", () => {
     });
   });
 });
+
+describe("adding an asset that is not what it looks like", () => {
+  const ISSUER = "GCY7W6TM623NI5TNN3YA6BQ2L6DMRCFJUDXZT447OLSKUJE67J7GTIU4";
+
+  it("refuses a classic asset whose code is XLM", async () => {
+    // `new Asset("XLM", "G...")` is credit_alphanum4 and isNative() is FALSE, so
+    // the native guard passed it. A trustline then opened for someone else's
+    // "XLM", which sat in the asset list beside the real balance wearing the
+    // same three letters, with only the issuer telling them apart.
+    const { c } = await worker();
+    await expect(c.buildAddTrustline("XLM", ISSUER)).rejects.toThrow(/not the native asset/i);
+  });
+
+  it("refuses the lowercase spelling too", async () => {
+    const { c } = await worker();
+    await expect(c.buildAddTrustline("xlm", ISSUER)).rejects.toThrow(/not the native asset/i);
+  });
+
+  it("refuses adding a trustline the account already holds", async () => {
+    // changeTrust on an existing line SUCCEEDS and rewrites its limit, so
+    // re-adding silently reset a custom limit to the maximum and charged a fee
+    // to change nothing the user asked to change.
+    const { c } = await worker();
+    usdcLine = { raw: 5_0000000n, sellingLiabilities: 0n, authorized: true };
+    await expect(c.buildAddTrustline("USDC", ISSUER)).rejects.toThrow(/already holds/i);
+  });
+
+  it("still adds one the account does not hold", async () => {
+    // The control, again: a guard that refuses everything is not a guard.
+    const { c } = await worker();
+    usdcLine = null;
+    await expect(c.buildAddTrustline("USDC", ISSUER)).resolves.toMatchObject({
+      handle: expect.any(String),
+    });
+  });
+});

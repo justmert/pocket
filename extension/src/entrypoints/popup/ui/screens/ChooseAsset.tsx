@@ -175,117 +175,120 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <Route t={t} header={
-            <Header
-              t={t}
-              title="Choose asset"
-              onBack={onClose}
-              // the four sibling integration screens all name their third party in
-              // the header tip and this one, which sends what the user types to an
-              // outside service, had no tip at all.
-              right={
-                <InfoTip t={t} label="About the asset directory">
-                  Search runs against StellarExpert&rsquo;s public asset directory, so what you type
-                  here is sent to them. Adding an asset opens a trustline from your own account and
-                  is signed by this wallet.
-                </InfoTip>
-              }
-            />
-          }>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: space.sm,
-                background: t.field,
-                // the SAME shape as the activity search: the two agreed on
-                // nothing but the magnifier's size (999 against 18 radius, 42
-                // against ~48 tall, two different glyph tones, 16 against 14
-                // input), one screen apart.
-                borderRadius: radius.pill,
-                padding: `10px ${space.md}px`,
-                marginBottom: space.md,
-              }}
-            >
-              <span aria-hidden style={{ color: t.sub, display: "flex", flex: "0 0 auto" }}>
-                <Search size={18} />
-              </span>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by code or domain"
-                aria-label="Search assets"
-                autoFocus
-                spellCheck={false}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                // `text.body`, the same role the activity search uses: this was
-                // `text.rowSub`, a 14px prose role, in the one field a user types
-                // an asset code into.
-                style={{ all: "unset", flex: 1, minWidth: 0, ...text.body, color: t.text }}
-              />
-              {searching && <Spinner size={16} color={t.accent} />}
-            </div>
+      <Route
+        t={t}
+        header={
+          <Header
+            t={t}
+            title="Choose asset"
+            onBack={onClose}
+            // the four sibling integration screens all name their third party in
+            // the header tip and this one, which sends what the user types to an
+            // outside service, had no tip at all.
+            right={
+              <InfoTip t={t} label="About the asset directory">
+                Search runs against StellarExpert&rsquo;s public asset directory, so what you type
+                here is sent to them. Adding an asset opens a trustline from your own account and is
+                signed by this wallet.
+              </InfoTip>
+            }
+          />
+        }
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: space.sm,
+            background: t.field,
+            // the SAME shape as the activity search: the two agreed on
+            // nothing but the magnifier's size (999 against 18 radius, 42
+            // against ~48 tall, two different glyph tones, 16 against 14
+            // input), one screen apart.
+            borderRadius: radius.pill,
+            padding: `10px ${space.md}px`,
+            marginBottom: space.md,
+          }}
+        >
+          <span aria-hidden style={{ color: t.sub, display: "flex", flex: "0 0 auto" }}>
+            <Search size={18} />
+          </span>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by code or domain"
+            aria-label="Search assets"
+            autoFocus
+            spellCheck={false}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            // `text.body`, the same role the activity search uses: this was
+            // `text.rowSub`, a 14px prose role, in the one field a user types
+            // an asset code into.
+            style={{ all: "unset", flex: 1, minWidth: 0, ...text.body, color: t.text }}
+          />
+          {searching && <Spinner size={16} color={t.accent} />}
+        </div>
 
-            {ambiguous && (
-              <Notice t={t} tone="exposed">
-                Several assets share this code. The code is not identity: check the domain, and add
-                the issuer you trust.
-              </Notice>
-            )}
+        {ambiguous && (
+          <Notice t={t} tone="exposed">
+            Several assets share this code. The code is not identity: check the domain, and add the
+            issuer you trust.
+          </Notice>
+        )}
 
-            {/* what adding actually gets you, said BEFORE the 0.5 XLM reserve is
+        {/* what adding actually gets you, said BEFORE the 0.5 XLM reserve is
                 spent. an added asset now appears on Home and in the send picker
                 (`balances()` reads the account's real trustlines), but Pocket
                 carries a price feed only for the assets it ships, so an added one
                 shows its own balance and no dollar value. saying which is better
                 than letting a blank column read as zero. */}
-            <Notice t={t} tone="exposed" bare>
-              Adding an asset lets this account receive and hold it, and it appears on your home
-              screen. Pocket has no price for assets it does not ship, so it will show its balance
-              without a dollar value.
-            </Notice>
+        <Notice t={t} tone="exposed" bare>
+          Adding an asset lets this account receive and hold it, and it appears on your home screen.
+          Pocket has no price for assets it does not ship, so it will show its balance without a
+          dollar value.
+        </Notice>
 
-            {searchError && (
-              <Notice t={t} tone="danger">
-                {searchError}
-              </Notice>
-            )}
+        {searchError && (
+          <Notice t={t} tone="danger">
+            {searchError}
+          </Notice>
+        )}
 
-            {/* a build that fails never opens the sheet, so the sheet cannot carry the
-             * message. `error` was passed ONLY to ConfirmSheet, and on this path
-             * `setConfirming(true)` is never reached: the throw happens on the awaited
-             * `buildAddTrustline`, so the sheet has never mounted and the node that would
-             * draw the reason does not exist. pressing Add on an unfunded account was
-             * silent, twice, forever. the sibling screen has always drawn the same state
-             * as a page-body notice (ManageAssets), which is why this reads as an
-             * oversight rather than a decision.
-             *
-             * gated on `!confirming` so the approve path, which DOES have the sheet open
-             * and shows the reason there, does not print it in two places at once. */}
-            {!confirming && error && (
-              <Notice t={t} tone="danger">
-                {error}
-              </Notice>
-            )}
+        {/* a build that fails never opens the sheet, so the sheet cannot carry the
+         * message. `error` was passed ONLY to ConfirmSheet, and on this path
+         * `setConfirming(true)` is never reached: the throw happens on the awaited
+         * `buildAddTrustline`, so the sheet has never mounted and the node that would
+         * draw the reason does not exist. pressing Add on an unfunded account was
+         * silent, twice, forever. the sibling screen has always drawn the same state
+         * as a page-body notice (ManageAssets), which is why this reads as an
+         * oversight rather than a decision.
+         *
+         * gated on `!confirming` so the approve path, which DOES have the sheet open
+         * and shows the reason there, does not print it in two places at once. */}
+        {!confirming && error && (
+          <Notice t={t} tone="danger">
+            {error}
+          </Notice>
+        )}
 
-            {results !== null && results.length === 0 && !searching && !searchError && (
-              <EmptyState t={t} icon={<Search size={28} />}>
-                No assets found for “{query.trim()}”.
-              </EmptyState>
-            )}
+        {results !== null && results.length === 0 && !searching && !searchError && (
+          <EmptyState t={t} icon={<Search size={28} />}>
+            No assets found for “{query.trim()}”.
+          </EmptyState>
+        )}
 
-            {shown?.map((a) => (
-              <ResultRow
-                key={`${a.code}:${a.issuer}`}
-                t={t}
-                asset={a}
-                verified={isKnown(a) ? "known" : isVerified(a) ? "domain" : null}
-                onAdd={() => void startAdd(a)}
-              />
-            ))}
-          </Route>
+        {shown?.map((a) => (
+          <ResultRow
+            key={`${a.code}:${a.issuer}`}
+            t={t}
+            asset={a}
+            verified={isKnown(a) ? "known" : isVerified(a) ? "domain" : null}
+            onAdd={() => void startAdd(a)}
+          />
+        ))}
+      </Route>
 
       <ConfirmSheet
         t={t}
@@ -297,7 +300,16 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
         // magnitude (0.5 XLM against a fee around 0.00001) and it was stated only
         // inside the effects list, behind a tap. it is locked, not spent, and the
         // row says which.
-        facts={[{ label: "Reserve locked", value: "0.5 XLM, released if removed" }]}
+        facts={[
+          // The ISSUER, on the one screen where the issuer IS the decision. A
+          // live directory search for USDC on testnet returns fourteen addable
+          // assets, and this sheet named none of them apart: the heading, the
+          // code and the effects were identical for the real one and for a
+          // stranger's. In full, never truncated, because it is the only
+          // distinguishing field.
+          ...(adding?.issuer ? [{ label: "Issued by", value: adding.issuer }] : []),
+          { label: "Reserve locked", value: "0.5 XLM, released if removed" },
+        ]}
         effects={summary?.effects ?? []}
         error={error}
         unresolved={unresolved}
@@ -360,7 +372,17 @@ function ResultRow({
           overflow: "hidden",
         }}
       >
-        <AssetMark t={t} id={`${asset.code}:${asset.issuer}`} code={asset.code} />
+        {/* the MONOGRAM in the directory, never the brand mark.
+            `tokenIcons.generated.ts` matches testnet issuers to the mainnet
+            brand icon BY CODE, off StellarExpert's Top 50, which ranks
+            popularity and does not verify anything. A live search for USDC on
+            testnet returns fourteen addable assets and eight of them hit that
+            map, so eight rows wore Circle's logo, differing only in a truncated
+            address, while exactly one was the asset this build configures.
+            A logo the user reads as a maker's mark is the strongest claim on
+            this screen and it was the one claim nothing had checked. The badge
+            beside the code is the claim Pocket can actually make. */}
+        <AssetMark t={t} id={`${asset.code}:UNVERIFIED`} code={asset.code} />
       </span>
       {/* the basis `Row` uses, not a smaller one. `primitives.tsx` records the
           clipping that produced 90px, and these are the two screens whose
