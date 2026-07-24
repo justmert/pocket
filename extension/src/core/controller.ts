@@ -1386,6 +1386,29 @@ export class WalletController {
       if (asset.isNative()) {
         throw new TrustlineError("XLM is the native asset and needs no trustline.");
       }
+
+      // A trustline is a SUBENTRY, and every subentry raises the account's
+      // minimum balance by one base reserve. This path read the native balance
+      // nowhere at all, so an account that could not afford the new reserve was
+      // taken all the way to a confirm screen and refused on chain, having paid
+      // the fee for the privilege. `assertCanSpend` already knows the whole sum
+      // (reserve, subentries, selling liabilities, fee); it is asked here for an
+      // amount of zero, because a changeTrust spends nothing and the only
+      // question is whether what stays behind still clears the new minimum.
+      const native = await readNative(this.server(), address);
+      const after = minimumBalance(
+        { ...native, subEntryCount: native.subEntryCount + 1 },
+        BASE_RESERVE_STROOPS,
+      );
+      const usable = native.raw - native.sellingLiabilities - BigInt(BASE_FEE);
+      if (usable < after) {
+        throw new TrustlineError(
+          `Adding ${assetCode} raises this account's minimum balance to ` +
+            `${formatAmount(after)} XLM and it holds ${formatAmount(native.raw)}. ` +
+            `Add about ${formatAmount(after - usable)} XLM first.`,
+        );
+      }
+
       const source = await this.server().getAccount(address);
       const tx = new TransactionBuilder(source, {
         fee: BASE_FEE,

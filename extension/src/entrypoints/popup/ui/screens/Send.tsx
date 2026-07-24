@@ -77,7 +77,14 @@ export function Send({ onClose }: { onClose: () => void }) {
   // being stuck on whichever one was last selected.
   const [pickingPrivate, setPickingPrivate] = useState(false);
   const multiPrivate = (w.status?.privateAssets?.length ?? 0) > 1;
-  const [assetId, setAssetId] = useState("native");
+  // Opens on the asset whose detail sheet sent the user here, when one did.
+  //
+  // `AssetDetailSheet`'s footer button passes the asset it is showing, and
+  // App.tsx's handler took no argument and threw it away, so tapping Send on
+  // the USDC sheet opened a form composing XLM. The amount, the spendable and
+  // the built payment all belonged to an asset the user had not chosen, and the
+  // picker showed XLM as though they had.
+  const [assetId, setAssetId] = useState(w.assetDetail?.id ?? "native");
   // the private asset this form acts on, chosen LOCALLY (null = the primary). there
   // is no global selection, so picking here changes only this form.
   const [privToken, setPrivToken] = useState<string | null>(null);

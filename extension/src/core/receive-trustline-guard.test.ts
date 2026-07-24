@@ -39,6 +39,9 @@ vi.stubGlobal("chrome", {
   },
 });
 
+/** The account's native balance, in stroops. */
+let poorNative = 1_000_000_000n;
+
 /** The USDC trustline, or null for "no trustline at all". */
 let usdcLine: { raw: bigint; sellingLiabilities: bigint; authorized: boolean } | null = null;
 
@@ -47,7 +50,7 @@ vi.mock("./chain/balances", async (orig) => {
   return {
     ...real,
     readNative: async () => ({
-      raw: 1_000_000_000n,
+      raw: poorNative,
       subEntryCount: 1,
       numSponsoring: 0,
       numSponsored: 0,
@@ -99,6 +102,7 @@ const USDC_ISSUER = NETWORKS.testnet.knownAssets?.find((a) => a.code === "USDC")
 beforeEach(() => {
   store.clear();
   usdcLine = null;
+  poorNative = 1_000_000_000n;
 });
 
 async function worker() {
@@ -242,6 +246,39 @@ describe("removing a trustline the private pocket still delivers through", () =>
     await seedPrivate(address, USDC_WRAPPER.token, 0n);
 
     await expect(c.buildRemoveTrustline("USDC", USDC_ISSUER)).resolves.toMatchObject({
+      handle: expect.any(String),
+    });
+  });
+});
+
+describe("adding a trustline the account cannot afford", () => {
+  // A trustline is a SUBENTRY and every subentry raises the minimum balance by
+  // one base reserve. This path read the native balance nowhere at all, so an
+  // account that could not afford the new reserve was taken to a confirm screen
+  // and refused on chain, having paid the fee for the privilege.
+  const ISSUER = "GCY7W6TM623NI5TNN3YA6BQ2L6DMRCFJUDXZT447OLSKUJE67J7GTIU4";
+
+  it("is refused before anything is built", async () => {
+    const { c } = await worker();
+    // 1.5 XLM covers the base 2 entries plus one existing subentry with nothing
+    // spare, so a second subentry cannot be afforded.
+    poorNative = 15_000_000n;
+    await expect(c.buildAddTrustline("EURC", ISSUER)).rejects.toThrow(/minimum balance/i);
+  });
+
+  it("says how much more the account needs", async () => {
+    const { c } = await worker();
+    poorNative = 15_000_000n;
+    const err = await c.buildAddTrustline("EURC", ISSUER).catch((e: Error) => e);
+    expect((err as Error).message).toMatch(/Add about .* XLM first/);
+    expect((err as Error).message).toMatch(/EURC/);
+  });
+
+  it("allows it when the reserve is covered", async () => {
+    // The control. A guard that refuses every trustline is not a guard.
+    const { c } = await worker();
+    poorNative = 1_000_000_000n;
+    await expect(c.buildAddTrustline("EURC", ISSUER)).resolves.toMatchObject({
       handle: expect.any(String),
     });
   });
