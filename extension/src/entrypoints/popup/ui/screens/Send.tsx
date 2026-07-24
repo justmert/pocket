@@ -11,6 +11,7 @@ import { Figure } from "../Amount";
 import { BASE_FEE } from "@stellar/stellar-sdk/base";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
+import { selectPrivateAsset } from "../selectAsset";
 import { Button, Field, Frame, Header, Notice, Sheet, Row } from "../primitives";
 import { InfoTip } from "../Tooltip";
 import { fiatOf } from "../money";
@@ -63,7 +64,6 @@ export function Send({ onClose }: { onClose: () => void }) {
   // stays down while it is true.
   const [unresolved, setUnresolved] = useState(false);
 
-
   const [building, setBuilding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -104,7 +104,13 @@ export function Send({ onClose }: { onClose: () => void }) {
   // the public send against the picked balance. its pocket carries the symbol, the
   // spendable, the state and the wrapper token the private path reads.
   const privList = w.privAssets ?? [];
-  const localPriv = privList.find((p) => p.token === privToken) ?? privList[0] ?? null;
+  // `selectPrivateAsset`, not `find(...) ?? privList[0]`. That fallback is the
+  // rule the helper exists to abolish: when the chosen asset is not in the
+  // loaded list it silently substitutes a different one, and this form then
+  // shows that asset's spendable and SENDS that asset under a choice the user
+  // did not make. Nothing chosen yet still defaults to the first, which is a
+  // default rather than a substitution, and the helper distinguishes them.
+  const localPriv = selectPrivateAsset(w.privAssets, privToken);
   const privSymbol = localPriv?.symbol ?? "XLM";
   const privMarkId = privateMarkId(privSymbol, w.status?.network);
   const code = isPrivate ? privSymbol : (asset?.code ?? "XLM");
@@ -252,9 +258,7 @@ export function Send({ onClose }: { onClose: () => void }) {
     // and its trustline could therefore never be closed: removal is refused while
     // anything is still held.
     const raw =
-      whole && !isPrivate && assetId === "native"
-        ? sendableAfterFee(part, BASE_FEE_STROOPS)
-        : part;
+      whole && !isPrivate && assetId === "native" ? sendableAfterFee(part, BASE_FEE_STROOPS) : part;
     // four fraction digits is enough on the compose screen; the extra stellar
     // places only made a long, hard-to-read number. truncated, never rounded up.
     setAmount(composeAmount(raw, 4));

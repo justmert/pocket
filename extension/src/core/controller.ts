@@ -3435,7 +3435,14 @@ export class WalletController {
    */
   private assetForSymbol(symbol: string | undefined): Asset | null {
     if (!symbol) return null;
-    if (symbol === "XLM") return Asset.native();
+    // "native" as well as "XLM". The shipped DeFindex vault reports its
+    // underlying as `symbol: "native"` (read live), and this returned null for
+    // it, so `yieldUnderlying` returned null and both yield guards are written
+    // as `if (asset) await ...`: the deposit's balance check and its
+    // post-simulation fee check were skipped entirely on the only vault this
+    // build has. A guard that silently does not run is worse than no guard,
+    // because the call site reads as though it does.
+    if (symbol === "XLM" || symbol === "native") return Asset.native();
     const known = (NETWORKS[this.network].knownAssets ?? []).find((a) => a.code === symbol);
     return known ? new Asset(known.code, known.issuer) : null;
   }

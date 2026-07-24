@@ -229,3 +229,26 @@ describe("the bridge confirm", () => {
     expect(said).toMatch(/estimate/i);
   });
 });
+
+describe("the yield deposit guard", () => {
+  it("recognises the symbol the shipped vault actually reports", async () => {
+    // `yieldUnderlying` maps the vault's reported symbol to an Asset, and both
+    // yield guards are written `if (asset) await ...`. The live DeFindex vault
+    // reports `symbol: "native"`, which this returned null for, so the deposit's
+    // balance check and its post-simulation fee check were skipped entirely on
+    // the only vault this build has. A guard that silently does not run is
+    // worse than no guard: the call site reads as though it does.
+    const { c } = await worker();
+    const forSymbol = (s: string) =>
+      (
+        c as unknown as { assetForSymbol(x: string): { isNative(): boolean } | null }
+      ).assetForSymbol(s);
+    expect(forSymbol("native"), "the shipped vault's own symbol resolved to nothing").toBeTruthy();
+    expect(forSymbol("native")?.isNative()).toBe(true);
+    // And the name the rest of the wallet uses still works.
+    expect(forSymbol("XLM")?.isNative()).toBe(true);
+    // A symbol this build genuinely does not know still yields null, so the
+    // guard is skipped honestly rather than against the wrong asset.
+    expect(forSymbol("NOPE")).toBeNull();
+  });
+});
