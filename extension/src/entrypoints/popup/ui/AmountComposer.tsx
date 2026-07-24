@@ -8,9 +8,10 @@
 // screens differ only in the props they hand it.
 import { useState, type ReactNode } from "react";
 import { Button, IconDisc } from "./primitives";
-import { Rolling } from "./Amount";
+import { Rolling, maskAmount } from "./Amount";
 import { ArrowDown } from "./icons";
 import { usd } from "./money";
+import { useHidden } from "./WalletProvider";
 import { displayAmount, parseAmount } from "../../../core/chain/balances";
 import { fontSizes, radius, space, text, type Theme } from "./theme";
 
@@ -130,6 +131,10 @@ export function AmountComposer({
   // once, so while the field holds focus the roll is suppressed and the raw input
   // drives the digits; on blur (grabbing the slider, tapping Use max) it rolls.
   const [editing, setEditing] = useState(false);
+  // Read here rather than passed in, for the reason `Amount` reads it here:
+  // every compose screen shows this caption and a prop would be five chances to
+  // forget one.
+  const hidden = useHidden();
 
   // the asset badge: an accent disc holding the mark, the code, and (when the
   // asset is pickable) a chevron. a button when it can be pressed, a plain span
@@ -193,7 +198,12 @@ export function AmountComposer({
           // same card filled 0.00009. `displayAmount` answers "<0.0001" for exactly
           // this, and its own comment names the identical bug in the history row:
           // "it is the screen asserting nothing moved when something did."
-          `${displayAmount(spendable)} ${code} available`
+          // MASKED with the rest. `hide balance` covers every figure on Home
+          // and the asset rows, and this caption printed the spendable balance
+          // as plain text on every compose screen: Send, Move, Swap, Yield and
+          // the bridge. Turning the mask on and opening Send showed the number
+          // it had just hidden.
+          `${maskAmount(displayAmount(spendable), hidden)} ${code} available`
         : " ";
 
   // the raw input has none of Amount's fit(), so a long figure ran under the code

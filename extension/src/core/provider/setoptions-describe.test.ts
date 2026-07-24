@@ -93,3 +93,51 @@ describe("a setOptions the user is asked to approve", () => {
     );
   });
 });
+
+describe("an asset named on the approval screen", () => {
+  // A CODE is not an identity. Anyone can issue an asset called USDC, and a
+  // payment of the real one and a payment of a worthless lookalike rendered as
+  // the same six characters on the screen where the user says yes.
+  it("names the issuer, so a lookalike cannot pass as the real asset", async () => {
+    const { assetName } = await import("./describe-tx");
+    const { Asset } = await import("@stellar/stellar-sdk/base");
+    const real = new Asset("USDC", "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5");
+    const fake = new Asset("USDC", "GCY7W6TM623NI5TNN3YA6BQ2L6DMRCFJUDXZT447OLSKUJE67J7GTIU4");
+    expect(assetName(real)).not.toBe(assetName(fake));
+    expect(assetName(real)).toContain("GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5");
+    // Never truncated: the issuer is the ONLY distinguishing field here.
+    expect(assetName(real)).not.toMatch(/…|\.\.\./);
+  });
+
+  it("leaves XLM alone, which has no issuer to name", async () => {
+    const { assetName } = await import("./describe-tx");
+    const { Asset } = await import("@stellar/stellar-sdk/base");
+    expect(assetName(Asset.native())).toBe("XLM");
+  });
+
+  it("reaches the payment and path-payment sentences, not just the helper", async () => {
+    // The helper can be right and unused. These are the three operations that
+    // name an asset on this screen.
+    const { describeTransaction } = await import("./describe-tx");
+    const { TransactionBuilder, Account, Operation, Asset, BASE_FEE, Networks } = await import(
+      "@stellar/stellar-sdk/base"
+    );
+    const ISSUER = "GCY7W6TM623NI5TNN3YA6BQ2L6DMRCFJUDXZT447OLSKUJE67J7GTIU4";
+    const xdr = new TransactionBuilder(new Account(ATTACKER, "1"), {
+      fee: BASE_FEE,
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(
+        Operation.payment({
+          destination: ATTACKER,
+          asset: new Asset("USDC", ISSUER),
+          amount: "1",
+        }),
+      )
+      .setTimeout(180)
+      .build()
+      .toXDR();
+    const summary = describeTransaction(xdr, Networks.TESTNET);
+    expect(summary.effects.join(" ")).toContain(ISSUER);
+  });
+});

@@ -80,6 +80,32 @@ function memoText(memo: { type?: string; value?: unknown } | null | undefined): 
 }
 
 /**
+ * An asset as something a person can tell apart from an impostor.
+ *
+ * A CODE is not an identity. Anyone can issue an asset called USDC, and on the
+ * approval screen a payment of the real one and a payment of a worthless
+ * lookalike rendered as the same six characters. The issuer is the only thing
+ * that distinguishes them, so it is printed, in full: this screen exists so a
+ * user can tell what they are agreeing to, and truncating the one distinguishing
+ * field would leave first-4-and-last-4 matching, which is about an hour of work
+ * on a laptop.
+ */
+export function assetName(asset: {
+  isNative(): boolean;
+  getCode(): string;
+  getIssuer(): string | undefined;
+}): string {
+  if (asset.isNative()) return "XLM";
+  const issuer = asset.getIssuer();
+  // A non-native asset always has an issuer, and the SDK still types it as
+  // optional. Saying so is better than printing "undefined" beside a code, and
+  // better than dropping the qualifier and reading like a known asset.
+  return issuer
+    ? `${asset.getCode()} (issued by ${issuer})`
+    : `${asset.getCode()} (issuer not stated in this envelope)`;
+}
+
+/**
  * Every field a setOptions actually sets, named.
  *
  * One operation can carry all of these at once, and each is a different way to
@@ -172,7 +198,7 @@ function describeOperation(op: DecodedOp, index: number): string {
 function describeBody(op: DecodedOp, n: string): string {
   switch (op.type) {
     case "payment":
-      return `${n} Send ${op.amount} ${op.asset.isNative() ? "XLM" : op.asset.getCode()} to ${op.destination}`;
+      return `${n} Send ${op.amount} ${assetName(op.asset)} to ${op.destination}`;
     case "createAccount":
       return `${n} Create account ${op.destination} funded with ${op.startingBalance} XLM`;
     case "changeTrust":
@@ -200,9 +226,9 @@ function describeBody(op: DecodedOp, n: string): string {
     case "accountMerge":
       return `${n} DESTROY this account and send everything to ${op.destination}`;
     case "pathPaymentStrictSend":
-      return `${n} Send ${op.sendAmount} ${op.sendAsset.getCode()} converting to at least ${op.destMin} ${op.destAsset.getCode()} for ${op.destination}`;
+      return `${n} Send ${op.sendAmount} ${assetName(op.sendAsset)} converting to at least ${op.destMin} ${assetName(op.destAsset)} for ${op.destination}`;
     case "pathPaymentStrictReceive":
-      return `${n} Send up to ${op.sendMax} ${op.sendAsset.getCode()} so ${op.destination} receives ${op.destAmount} ${op.destAsset.getCode()}`;
+      return `${n} Send up to ${op.sendMax} ${assetName(op.sendAsset)} so ${op.destination} receives ${op.destAmount} ${assetName(op.destAsset)}`;
     default:
       // unreachable while DESCRIBED and this switch agree, which `describeTx`
       // enforces before ever calling here. kept as a total function rather than
