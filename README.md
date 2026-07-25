@@ -12,11 +12,19 @@ tool and we would rather say so than let you find out later.
 | | Public | Private |
 |---|---|---|
 | Holds | ordinary XLM and USDC | the same assets inside a confidential wrapper |
-| Who sees amounts | everyone | you, your bound auditor, and anyone you disclose to |
+| Who sees amounts | everyone | you and your bound auditor |
 | Who sees addresses | everyone | **everyone, unchanged** |
 | Earns yield | yes, reported (DeFindex) | no, and this is structural |
 | Bridges | yes (Circle CCTP) | no, unshield first |
 | Connects to dApps | not in this build, see below | no, sessions are public-pocket only |
+
+**There is no disclosure feature.** This row used to end "and anyone you
+disclose to", which describes something the wallet cannot do:
+`extension/src/core/disclosure/` holds primitives (a binding hash, a sealed
+amount, a sender-disclosability predicate) and no producer, no verifier and no
+circuit, and nothing outside its own unit test imports it. So the only parties
+who can read a private amount are the holder and the auditor bound at
+registration.
 
 **What "connects to dApps" means here, precisely, and what does not work yet.**
 The provider ships and a site can discover the wallet and ask the network.
