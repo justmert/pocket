@@ -228,10 +228,24 @@ export async function recoverOpenings(
   const rebuilt = {
     spendable: state.spendable,
     receiving: state.receiving,
-    // The archive reports how far it has ingested. Null means it holds nothing
-    // for this contract, which the health check above should already have
-    // refused, so treat it as zero rather than trusting a partial replay.
-    syncedThrough: health.ingested_through ?? 0,
+    // How far this REPLAY actually got, not how far the archive had ingested
+    // when it was asked.
+    //
+    // `health` is read before `allEvents`, so an archive that ingests during
+    // the scan returns events past `ingested_through`. Those events ARE
+    // replayed into the state above, and storing the earlier number as the
+    // cursor tells the live inbound scan to resume before them: it finds them
+    // again, credits them a second time, and `creditInbound`'s all-or-nothing
+    // check against the on-chain accumulator then refuses the whole batch. The
+    // pocket wedges, and nothing on screen connects it to a rebuild that looked
+    // like it worked.
+    //
+    // This is the same defect `cursorAfter` was extracted to fix on the live
+    // path, in the one place that did not use it. The MAX of the two is right in
+    // both directions: an archive that ingested past our last event still moves
+    // the cursor forward, and a scan that saw events past the health reading
+    // still records them.
+    syncedThrough: Math.max(health.ingested_through ?? 0, highestLedger(stored)),
   };
 
   // The whole recovery rests on this. A replay that does not reproduce what
@@ -246,4 +260,17 @@ export async function recoverOpenings(
     );
   }
   return rebuilt;
+}
+
+/**
+ * The last ledger this replay actually consumed, or 0 for an empty history.
+ *
+ * The events arrive in canonical order, so the last one is the highest, and
+ * this does not rely on that: a `max` cannot be wrong about an unordered list
+ * and the ordering is not this function's to assume.
+ */
+function highestLedger(events: readonly StoredEvent[]): number {
+  let top = 0;
+  for (const e of events) if (e.ledger_seq > top) top = e.ledger_seq;
+  return top;
 }

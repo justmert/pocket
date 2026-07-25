@@ -18,8 +18,9 @@ import { describe, it, expect } from "vitest";
 import Database from "better-sqlite3";
 import { SCHEMA } from "./schema.ts";
 import { ingestRange } from "./ingest.ts";
-import { coveredRange } from "./api.ts";
+import { coveredRange, accountEvents } from "./api.ts";
 
+const ACCOUNT = "GC6JCCFWYPYIHOR7SYXEBRJ5RD32ULVXCQS2P5TDDDCR3AYT6V56CDMN";
 const CONTRACT = "CDMXZEFOM5DN2GSHQKNOOW242RJZGCEM5LOOAPGRQE35GGHB7ALDK2Y6";
 
 /** Records what it was asked for, and answers with nothing. */
@@ -90,5 +91,48 @@ describe("the ledger window the archive asks for", () => {
       const seen = windows.some(([s, e]) => n >= (s as number) && n < (e as number));
       expect(seen, `ledger ${n} was claimed but never scanned`).toBe(true);
     }
+  });
+});
+
+describe("an archive with a gap in the middle", () => {
+  // `coveredRange` answers about the FIRST contiguous block, and
+  // `accountEvents` defaulted both bounds from it. So an unbounded request was
+  // answered about the pre-gap window, `isComplete` was asked about that narrow
+  // window and said true, and the caller was told it had the whole history
+  // while every event after the gap was silently not served.
+  //
+  // A client replaying that answer builds a balance out of half its history and
+  // has been told the half is whole. The wallet refuses to spend from a state
+  // it cannot verify, so this ends as funds it will not touch.
+  const server = () => recordingServer() as never;
+
+  async function gapped() {
+    const d = db();
+    await ingestRange(d, server(), CONTRACT, 100, 199);
+    // 200..299 never ingested.
+    await ingestRange(d, server(), CONTRACT, 300, 399);
+    return d;
+  }
+
+  it("does not report an unbounded query as complete", async () => {
+    const d = await gapped();
+    const page = accountEvents(d, CONTRACT, ACCOUNT);
+    expect(page.complete, "a history with a hole in it was reported whole").toBe(false);
+  });
+
+  it("reports the window it actually spans, not just the first block", async () => {
+    const d = await gapped();
+    const page = accountEvents(d, CONTRACT, ACCOUNT);
+    expect(page.from_ledger).toBe(100);
+    expect(page.to_ledger, "the answer stopped at the gap and said nothing").toBe(399);
+  });
+
+  it("still reports complete when there is no gap", async () => {
+    // The control. A signal that is always false is one clients learn to ignore,
+    // which is the failure this whole mechanism exists to avoid.
+    const d = db();
+    await ingestRange(d, server(), CONTRACT, 100, 199);
+    await ingestRange(d, server(), CONTRACT, 200, 299);
+    expect(accountEvents(d, CONTRACT, ACCOUNT).complete).toBe(true);
   });
 });

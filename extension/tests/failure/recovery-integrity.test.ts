@@ -12,7 +12,11 @@
 // one line that makes the feature safe was not.
 import { describe, it, expect, afterEach } from "vitest";
 import { xdr, nativeToScVal } from "@stellar/stellar-sdk/base";
-import { recoverOpenings, RecoveryMismatchError, RecoveryUnavailableError } from "../../src/core/recover-openings";
+import {
+  recoverOpenings,
+  RecoveryMismatchError,
+  RecoveryUnavailableError,
+} from "../../src/core/recover-openings";
 import {
   commit,
   equals,
@@ -211,6 +215,37 @@ describe("a rebuilt balance is checked against the contract, not trusted", () =>
     } as never);
     expect(out.receiving.value).toBe(42_500_000n);
     expect(out.spendable.value).toBe(0n);
+    expect(out.syncedThrough).toBe(5_000);
+  });
+
+  it("records how far the REPLAY got, not how far the archive had ingested", async () => {
+    // `health` is read before `allEvents`, so an archive that ingests during
+    // the scan returns events past `ingested_through`. Those events ARE
+    // replayed, and storing the earlier number told the live inbound scan to
+    // resume before them: it found them again, credited them a second time, and
+    // creditInbound's all-or-nothing check against the on-chain accumulator
+    // refused the whole batch. The pocket wedges, after a rebuild that looked
+    // like it worked.
+    //
+    // The archive here says it has ingested through 100 and then serves an
+    // event at 900, which is exactly that race.
+    const url = await archiveServing([depositEvent(ACCOUNT, 42_500_000n, 900)], 100);
+    const out = await recoverOpenings(url, TOKEN, ACCOUNT, VK, {
+      spendableCommitment: IDENTITY,
+      receivingCommitment: receivingCommitmentFor(42_500_000n),
+    } as never);
+    expect(out.syncedThrough, "the cursor was left behind an event already replayed").toBe(900);
+  });
+
+  it("still takes the archive's position when it is ahead of the last event", async () => {
+    // The other direction: no events since ledger 100, and the archive has
+    // scanned to 5000. Resuming from 101 would re-scan 4,899 ledgers of nothing
+    // on every read.
+    const url = await archiveServing([depositEvent(ACCOUNT, 42_500_000n, 100)], 5_000);
+    const out = await recoverOpenings(url, TOKEN, ACCOUNT, VK, {
+      spendableCommitment: IDENTITY,
+      receivingCommitment: receivingCommitmentFor(42_500_000n),
+    } as never);
     expect(out.syncedThrough).toBe(5_000);
   });
 

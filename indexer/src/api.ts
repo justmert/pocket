@@ -68,7 +68,16 @@ export function accountEvents(
   // Defaulting to zero would make every unbounded query report incomplete
   // forever, since no archive holds the genesis ledger, and a permanently
   // false completeness signal is worse than none: clients learn to ignore it.
-  const bounds = coveredRange(db, contractId);
+  // The whole SPAN this archive holds, not its first contiguous block.
+  //
+  // `coveredRange` answers `ORDER BY from_ledger LIMIT 1`, so with a gap in the
+  // middle an unbounded request defaulted its upper bound to the end of the
+  // PRE-GAP block. `isComplete` was then asked about that narrow window, said
+  // true, and the caller was told it had the whole history while every event
+  // after the gap was silently not served. Defaulting to the span means the
+  // completeness check spans the gap and answers false, which is the honest
+  // reply and the one a replaying client can act on.
+  const bounds = coveredSpan(db, contractId);
   const from = opts.fromLedger ?? bounds.from;
   // Report the window that was REQUESTED, not the one we happen to hold.
   // Clamping to what we hold and then reporting `complete: true` about the
@@ -137,6 +146,28 @@ export function accountEvents(
     // Gap-free across the ENTIRE range reported above, nothing weaker.
     complete: isComplete(db, contractId, from, to),
   };
+}
+
+/**
+ * The FULL span this archive holds: earliest ledger to latest, gaps included.
+ *
+ * Deliberately not the same question as `coveredRange`, which answers about the
+ * first contiguous block and is what the health signal reports. This one is the
+ * right default for a query's bounds, because a caller asking for "everything"
+ * means everything, and narrowing silently to the part before a gap is how a
+ * partial answer came to be labelled complete.
+ */
+export function coveredSpan(
+  db: Database.Database,
+  contractId: string,
+): { from: number; to: number } {
+  const row = db
+    .prepare(
+      `SELECT MIN(from_ledger) AS lo, MAX(to_ledger) AS hi FROM ranges WHERE contract_id = ?`,
+    )
+    .get(contractId) as { lo: number | null; hi: number | null } | undefined;
+  // No ingestion yet: an empty window, so any query over it is incomplete.
+  return row && row.lo !== null && row.hi !== null ? { from: row.lo, to: row.hi } : { from: 1, to: 0 };
 }
 
 /** The contiguous window this archive can speak for. */
