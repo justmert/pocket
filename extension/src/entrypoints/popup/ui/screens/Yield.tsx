@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { Figure } from "../Amount";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
+import { findHeld, holdingAmount } from "../holdings";
 import { Button, Frame, Header, Notice } from "../primitives";
 import { InfoTip } from "../Tooltip";
 import { fiatOf, usdOf } from "../money";
@@ -70,11 +71,15 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
   // the underlying's mark and held balance. XLM is the native row; a classic
   // underlying (USDC) is matched by code so its own logo and spendable are used.
   const markId = code === "XLM" ? "native" : (balances.find((b) => b.code === code)?.id ?? code);
-  const held = balances.find((b) => b.id === markId) ?? null;
+  // FOUR answers, not two, as Swap and the bridge already read it. `?? []`
+  // collapses "not loaded", "could not read" and "you hold none" into one empty
+  // array, and a deposit screen drawn over that looks like an account with
+  // nothing in it.
+  const holding = findHeld(w.balances, w.balanceError, (b) => b.id === markId);
   // deposit spends the held wallet balance; withdraw draws from the vault, up to
   // what the held shares are worth in the underlying (underlyingBalance), when the
   // vault reports it. either way `spendable` drives MAX and the over-amount guard.
-  const spendable = kind === "deposit" ? (held?.amount ?? null) : (y?.underlyingBalance ?? null);
+  const spendable = kind === "deposit" ? holdingAmount(holding) : (y?.underlyingBalance ?? null);
 
   useEffect(() => {
     let live = true;
@@ -297,7 +302,12 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
                   >
                     <span style={{ ...text.rowSub, color: t.sub }}>In the vault</span>
                     <span
-                      style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "flex-end",
+                        gap: 2,
+                      }}
                     >
                       <span style={{ ...text.rowTitle, color: t.text }}>
                         {y.underlyingBalance ? (

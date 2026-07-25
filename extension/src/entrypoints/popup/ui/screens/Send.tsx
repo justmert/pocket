@@ -11,6 +11,7 @@ import { Figure } from "../Amount";
 import { BASE_FEE } from "@stellar/stellar-sdk/base";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
+import { findHeld, holdingAmount } from "../holdings";
 import { selectPrivateAsset } from "../selectAsset";
 import { Button, Field, Frame, Header, Notice, Sheet, Row } from "../primitives";
 import { InfoTip } from "../Tooltip";
@@ -97,6 +98,12 @@ export function Send({ onClose }: { onClose: () => void }) {
 
   const balances = w.balances ?? [];
   const asset = balances.find((b) => b.id === assetId) ?? balances[0] ?? null;
+  // FOUR answers, not two, the same read Swap and the bridge already make.
+  // `w.balances ?? []` collapses "not loaded", "could not read" and "you hold
+  // none of it" into one empty array, and only the last is about the user. With
+  // the read failed this screen drew a composer over a blank balance and a
+  // Continue that would not press, and said nothing about why.
+  const held = findHeld(w.balances, w.balanceError, (b) => b.id === (asset?.id ?? assetId));
   // a build error describes the inputs that produced it, so it must not outlive
   // them. it was cleared in the amount handler alone, which meant every OTHER
   // input latched the primary action off for good: correct a mistyped address and
@@ -124,7 +131,9 @@ export function Send({ onClose }: { onClose: () => void }) {
 
   // what can actually leave, which is not the same as what is held. the public
   // pocket's spendable already excludes the network reserve.
-  const spendable = isPrivate ? (localPriv?.spendable ?? null) : (asset?.amount ?? null);
+  // `holdingAmount` is null for every answer but "held", so a stale or unread
+  // balance drives no MAX, no slider and no ceiling.
+  const spendable = isPrivate ? (localPriv?.spendable ?? null) : holdingAmount(held);
 
   // a price, for the fiat readout under the amount. absent leaves the wallet in
   // its own unit, which is always true, rather than a dollar it cannot source.
@@ -340,6 +349,19 @@ export function Send({ onClose }: { onClose: () => void }) {
                 </Notice>
               ) : (
                 <>
+                  {/* the worker's own sentence, ABOVE the composer, because the
+                      reason the amount is blank and Continue will not press is
+                      the first thing to read rather than something to infer from
+                      a screen that looks like an empty account. the private
+                      branch above already does this; the public one drew the
+                      composer over nothing and said why nowhere. */}
+                  {!isPrivate && held.kind === "unreadable" && (
+                    <div style={{ marginBottom: space.md }}>
+                      <Notice t={t} tone="danger" bare>
+                        {held.message}
+                      </Notice>
+                    </div>
+                  )}
                   <AmountComposer
                     t={t}
                     code={code}

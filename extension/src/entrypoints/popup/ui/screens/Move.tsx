@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
+import { findHeld, holdingAmount } from "../holdings";
 import { selectPrivateAsset } from "../selectAsset";
 import { Button, Frame, Header, Notice } from "../primitives";
 import { InfoTip } from "../Tooltip";
@@ -136,11 +137,14 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
   // pocket. shielding USDC spends public USDC, not native, so the source follows
   // the asset. both are spendable figures the worker has already netted of what
   // cannot leave.
-  const nativeBalance = (w.balances ?? []).find((b) => b.id === "native");
-  const publicForAsset = isNativeAsset
-    ? nativeBalance
-    : ((w.balances ?? []).find((b) => b.code === symbol && b.authorized) ?? null);
-  const spendable = movingIn ? (publicForAsset?.amount ?? null) : (localPriv?.spendable ?? null);
+  // FOUR answers, not two, as Swap and the bridge already read it. `?? []`
+  // collapses "not loaded", "could not read" and "you hold none" into one empty
+  // array, and a shield screen drawn over that looks like an account with
+  // nothing to shield.
+  const publicHolding = findHeld(w.balances, w.balanceError, (b) =>
+    isNativeAsset ? b.id === "native" : b.code === symbol && b.authorized,
+  );
+  const spendable = movingIn ? holdingAmount(publicHolding) : (localPriv?.spendable ?? null);
 
   // the private account must exist for either direction: you cannot deposit into
   // a pocket that is not open, and there is nothing to withdraw from one either.
