@@ -56,3 +56,34 @@ describe("looking one asset up in the balance list", () => {
     expect(findHeld(null, null, isUsdc).kind).not.toBe("absent");
   });
 });
+
+describe("a refresh that failed with a list already on screen", () => {
+  // The state a failed refresh ACTUALLY produces. The provider deliberately
+  // keeps the previous list and sets `balanceError` beside it, and the guard
+  // read `balanceError && !balances`, which is the one shape that never
+  // happens. So the screens got "held" with a stale figure they were about to
+  // let the user spend from, or "absent" and an instruction to go and acquire
+  // an asset they may well already hold.
+  it("is unreadable, not held, even though a stale figure is available", () => {
+    expect(findHeld([USDC], "Could not read your balances.", isUsdc)).toEqual({
+      kind: "unreadable",
+      message: "Could not read your balances.",
+    });
+  });
+
+  it("is unreadable rather than absent for an asset missing from the stale list", () => {
+    // The worse half: a negative comes with instructions, and acting on a
+    // negative the wallet cannot vouch for is wasted work at best.
+    expect(findHeld([], "Could not read your balances.", isUsdc).kind).toBe("unreadable");
+  });
+
+  it("offers no amount to spend from", () => {
+    expect(holdingAmount(findHeld([USDC], "nope", isUsdc))).toBeNull();
+  });
+
+  it("still reports a real holding when the read succeeded", () => {
+    // The control. A rule that answers "unreadable" for everything tells the
+    // user less than the bug did.
+    expect(findHeld([USDC], null, isUsdc)).toEqual({ kind: "held", balance: USDC });
+  });
+});

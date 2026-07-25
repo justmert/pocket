@@ -32,9 +32,15 @@ export function findHeld(
   balanceError: string | null,
   match: (b: PublicBalance) => boolean,
 ): Holding {
-  // The error first. A stale list beside a failed refresh is still a list we
-  // cannot vouch for, and the screens using this are about to spend from it.
-  if (balanceError && !balances) return { kind: "unreadable", message: balanceError };
+  // The error first, and it used to say `&& !balances`, which is the one shape a
+  // failed refresh never produces. The provider deliberately KEEPS the previous
+  // list and sets `balanceError` beside it, so the real state is list + error,
+  // and this returned "held" with a figure nobody could vouch for. The comment
+  // above already said the error wins; only the condition disagreed.
+  //
+  // A stale list beside a failed refresh is still a list we cannot vouch for,
+  // and the screens using this are about to spend from it.
+  if (balanceError) return { kind: "unreadable", message: balanceError };
   if (!balances) return { kind: "loading" };
   const balance = balances.find(match);
   return balance ? { kind: "held", balance } : { kind: "absent" };
