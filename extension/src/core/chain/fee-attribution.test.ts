@@ -75,3 +75,150 @@ describe("the fee shown beside a movement", () => {
     expect(page.entries[0]?.fee).toBeUndefined();
   });
 });
+
+describe("movements the history used to lose", () => {
+  /** A path payment where this account is both ends: a classic-DEX swap. */
+  function selfSwap() {
+    return {
+      id: "9",
+      paging_token: "9",
+      type: "path_payment_strict_send",
+      transaction_hash: "b".repeat(64),
+      created_at: "2026-08-09T00:00:00Z",
+      from: ME,
+      to: ME,
+      amount: "50.0000000",
+      asset_type: "credit_alphanum4",
+      asset_code: "USDC",
+      asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+      source_amount: "10.0000000",
+      source_asset_type: "native",
+      transaction: { fee_charged: "100", source_account: ME },
+    };
+  }
+
+  it("shows both legs of a swap the account made with itself", async () => {
+    // `toMe` was tested first and returned immediately, so the row said only
+    // what arrived and the asset that LEFT was invisible: a swap rendered as a
+    // gift.
+    const page = await historyOf([selfSwap()]);
+    expect(page.entries).toHaveLength(2);
+    expect(page.entries.map((e) => e.direction).sort()).toEqual(["in", "out"]);
+    expect(page.entries.find((e) => e.direction === "out")?.code).toBe("XLM");
+    expect(page.entries.find((e) => e.direction === "in")?.code).toBe("USDC");
+  });
+
+  it("stops before a swap that will not fit, rather than keeping half of it", async () => {
+    // The case that actually distinguishes the two behaviours: the page is
+    // already part full when the swap arrives. Without the fix the limit is
+    // checked BETWEEN the swap's two halves, so the page ends
+    // [payment, swap-in] and the swap-out is dropped; the next page resumes
+    // from the swap record's paging token, which is now behind the cursor, so
+    // that half is never fetched again.
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        _embedded: { records: [record({ from: THEM, to: ME, payer: THEM }), selfSwap()] },
+      }),
+    })) as unknown as typeof fetch;
+    try {
+      const { publicHistory } = await import("./history");
+      const page = await publicHistory({
+        horizonUrl: "https://horizon.invalid",
+        account: ME,
+        excludeCounterparties: [],
+        before: null,
+        limit: 2,
+      });
+      const swapLegs = page.entries.filter((e) => e.kind === "swap");
+      expect(
+        swapLegs.length === 0 || swapLegs.length === 2,
+        `half a swap was served: ${swapLegs.length} leg(s)`,
+      ).toBe(true);
+      expect(page.more).toBe(true);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("never splits one record across a page boundary", async () => {
+    // The limit was checked BETWEEN a swap's two halves, so a boundary landing
+    // there kept one and dropped the other. The next page resumes from the
+    // record's paging token, which is now behind the cursor, so the dropped
+    // half is never fetched again: one of the two rows disappeared for good and
+    // the balance stopped agreeing with the list explaining it.
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ _embedded: { records: [selfSwap()] } }),
+    })) as unknown as typeof fetch;
+    try {
+      const { publicHistory } = await import("./history");
+      const page = await publicHistory({
+        horizonUrl: "https://horizon.invalid",
+        account: ME,
+        excludeCounterparties: [],
+        before: null,
+        limit: 1,
+      });
+      // Served whole and over the limit, rather than half a swap.
+      expect(page.entries).toHaveLength(2);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  it("records an account merge paid INTO this account", async () => {
+    // The largest single credit an account can receive. It fell off the end of
+    // mapPayment, so the balance jumped and Activity said nothing happened.
+    const page = await historyOf([
+      {
+        id: "7",
+        paging_token: "7",
+        type: "account_merge",
+        transaction_hash: "c".repeat(64),
+        created_at: "2026-08-09T00:00:00Z",
+        account: THEM,
+        into: ME,
+        transaction: { fee_charged: "100", source_account: THEM },
+      },
+    ]);
+    expect(page.entries).toHaveLength(1);
+    expect(page.entries[0]).toMatchObject({ direction: "in", code: "XLM", counterparty: THEM });
+  });
+
+  it("records an account merge paid OUT of this account", async () => {
+    const page = await historyOf([
+      {
+        id: "8",
+        paging_token: "8",
+        type: "account_merge",
+        transaction_hash: "d".repeat(64),
+        created_at: "2026-08-09T00:00:00Z",
+        account: ME,
+        into: THEM,
+        transaction: { fee_charged: "100", source_account: ME },
+      },
+    ]);
+    expect(page.entries[0]).toMatchObject({ direction: "out", counterparty: THEM });
+  });
+
+  it("ignores a merge between two other accounts", async () => {
+    const page = await historyOf([
+      {
+        id: "6",
+        paging_token: "6",
+        type: "account_merge",
+        transaction_hash: "e".repeat(64),
+        created_at: "2026-08-09T00:00:00Z",
+        account: THEM,
+        into: THEM,
+        transaction: { fee_charged: "100", source_account: THEM },
+      },
+    ]);
+    expect(page.entries).toEqual([]);
+  });
+});

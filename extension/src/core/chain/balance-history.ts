@@ -174,7 +174,15 @@ async function deltasFor(
   if (assetId !== "native") return { deltas, createdAt };
 
   // Fees, which no effect reports.
-  let txUrl = `${horizonUrl}/accounts/${account}/transactions?order=desc&limit=${PAGE}`;
+  //
+  // `include_failed=true`, because a FAILED transaction still charges its fee
+  // and still moves the native balance. Horizon omits failed transactions by
+  // default, so the walk reconstructed a balance that never subtracted them and
+  // drifted from the ledger by the sum of every failure. On a real account with
+  // any failed transaction the reconstruction cannot close, `balanceHistory`
+  // returns null, and `valueSeries` withholds the whole chart: 1M, 6M and 1Y
+  // simply do not draw.
+  let txUrl = `${horizonUrl}/accounts/${account}/transactions?order=desc&include_failed=true&limit=${PAGE}`;
   for (let p = 0; p < MAX_PAGES; p++) {
     const records = await page<TxRecord & { paging_token?: string }>(txUrl);
     if (records.length === 0) break;

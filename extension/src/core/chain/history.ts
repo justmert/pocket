@@ -100,6 +100,9 @@ interface PaymentRecord {
   // create_account
   account?: string;
   funder?: string;
+  // account_merge: `account` above is the one being destroyed, `into` receives
+  // its whole XLM balance.
+  into?: string;
   starting_balance?: string;
   // invoke_host_function: a Soroban call. It carries NO top-level from/to/amount,
   // which is why every one of them used to fall off the end of `mapPayment` and
@@ -302,6 +305,36 @@ function mapPayment(r: PaymentRecord, me: string, exclude: ReadonlySet<string>):
     // are excluded, not just the first.
     if ((r.to && exclude.has(r.to)) || (r.from && exclude.has(r.from))) return [];
 
+    // BOTH ends when this account is both, which for a path payment is a
+    // classic-DEX swap: the account sends one asset and receives another in the
+    // same operation. `toMe` was tested first and returned immediately, so the
+    // row said only what arrived and the asset that LEFT was invisible. A swap
+    // rendered as a gift.
+    if (toMe && fromMe && r.type !== "payment") {
+      return [
+        {
+          ...base,
+          id: `${base.id}:in`,
+          kind: "swap",
+          direction: "in",
+          code: assetCode(r.asset_type, r.asset_code),
+          issuer: assetIssuer(r.asset_type, r.asset_issuer),
+          amount: r.amount ?? null,
+          counterparty: r.from,
+        },
+        {
+          ...base,
+          id: `${base.id}:out`,
+          kind: "swap",
+          direction: "out",
+          code: assetCode(r.source_asset_type, r.source_asset_code),
+          issuer: assetIssuer(r.source_asset_type, r.source_asset_issuer),
+          amount: r.source_amount ?? null,
+          counterparty: r.to,
+        },
+      ];
+    }
+
     if (toMe) {
       return [
         {
@@ -333,6 +366,44 @@ function mapPayment(r: PaymentRecord, me: string, exclude: ReadonlySet<string>):
         counterparty: r.to,
       },
     ];
+  }
+
+  // An ACCOUNT MERGE moves the whole XLM balance of one account into another and
+  // deletes the source. Horizon serves it on the /payments endpoint like any
+  // other movement, and this fell off the end and returned nothing, so the
+  // largest single credit an account can receive left no row at all: the
+  // balance jumped and Activity said nothing had happened.
+  //
+  // `into` is the recipient and `account` the one being destroyed. The amount is
+  // NOT on the record (Horizon reports it as an effect), so it is left null
+  // rather than invented; `null` is the shape every other unknown amount uses
+  // and the row still says who and when.
+  if (r.type === "account_merge") {
+    if (r.into === me) {
+      return [
+        {
+          ...base,
+          kind: "receive",
+          direction: "in",
+          code: "XLM",
+          amount: null,
+          counterparty: r.account,
+        },
+      ];
+    }
+    if (r.account === me) {
+      return [
+        {
+          ...base,
+          kind: "send",
+          direction: "out",
+          code: "XLM",
+          amount: null,
+          counterparty: r.into,
+        },
+      ];
+    }
+    return [];
   }
 
   return [];
@@ -385,16 +456,35 @@ export async function publicHistory(opts: {
     for (const r of records) {
       // One record can carry more than one entry: a swap moves value out and in
       // within a single invocation, and both movements are this account's.
-      for (const entry of mapPayment(r, account, exclude)) {
-        if (!beforeCursor(entry.at, entry.id, before)) continue;
-        if (entries.length >= limit) {
-          more = true;
-          break;
-        }
+      const fromRecord = mapPayment(r, account, exclude).filter((e) =>
+        beforeCursor(e.at, e.id, before),
+      );
+      if (fromRecord.length === 0) continue;
+      // A RECORD is the unit, not an entry. The limit was checked between the
+      // two halves of a swap, so a page boundary landing there kept the "out"
+      // leg and dropped the "in": the next page resumes from the record's
+      // paging token, which is now behind the cursor, so the dropped half is
+      // never fetched again. One of a swap's two rows disappeared permanently,
+      // and the balance no longer agreed with the list that explained it.
+      //
+      // Stopping BEFORE a record that will not fit keeps the page at or under
+      // the limit and leaves the whole record for the next one.
+      if (entries.length > 0 && entries.length + fromRecord.length > limit) {
+        more = true;
+        break;
+      }
+      for (const entry of fromRecord) {
         entries.push(entry);
         if (r.paging_token) tokenOf[entry.id] = r.paging_token;
       }
-      if (more) break;
+      // A single record wider than the whole page is served whole rather than
+      // split, because splitting it is the defect above. The page then runs one
+      // or two entries over the limit, which is a page-size question; losing
+      // half a swap is a correctness one.
+      if (entries.length >= limit) {
+        more = true;
+        break;
+      }
     }
     if (more) break;
     if (records.length < PAGE) break; // Horizon exhausted.
