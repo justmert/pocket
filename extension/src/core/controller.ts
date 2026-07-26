@@ -4770,7 +4770,25 @@ export class WalletController {
           "so it will not bind one it cannot verify. Try again.",
       );
     }
-    await writeLocal(key, allocated);
+    // The id is allocated ON CHAIN and read back from the invocation result, so
+    // this write is the only record that it belongs to this account. A failed
+    // write (quota, a dying worker) loses it, and the next attempt registers
+    // AGAIN: another fee, another id, and the first one orphaned. Measured
+    // before the retry guard above, four registrations landed and zero were
+    // recorded.
+    //
+    // So a failure here is reported rather than swallowed, and it says what
+    // actually happened: the registration is on chain and paid for, and the id
+    // is in the sentence so it is not lost with the exception.
+    try {
+      await writeLocal(key, allocated);
+    } catch {
+      throw new PrivatePocketError(
+        `Your auditor key was registered as #${allocated} and Pocket could not save that id on ` +
+          `this device, so it will not bind one it cannot record. The registration is on chain ` +
+          `and does not need paying for again. Free some space and try once more.`,
+      );
+    }
     await this.assertRegisteredKeyMatches(allocated, cfg, publicKey);
     return allocated;
   }
