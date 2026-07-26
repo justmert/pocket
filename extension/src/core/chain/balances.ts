@@ -41,8 +41,22 @@ export interface AssetBalance {
 
 /** Account not yet created on chain. Distinct from an account with zero balance. */
 export class AccountNotFoundError extends Error {
-  constructor(public readonly accountId: string) {
-    super(`account ${accountId} does not exist on this network`);
+  /**
+   * `accountId` is an ADDRESS, and the default message interpolates it.
+   *
+   * Four call sites passed a whole sentence as the id, which produced
+   * "account Could not read this account's assets. Try again. does not exist on
+   * this network" and put it in front of a user, because this name is on
+   * `describeError`'s allowlist and its message is passed through verbatim.
+   *
+   * So a caller with something better to say now says it explicitly, and the
+   * default stays what it was for the caller that really does have an address.
+   */
+  constructor(
+    public readonly accountId: string,
+    message?: string,
+  ) {
+    super(message ?? `account ${accountId} does not exist on this network`);
     this.name = "AccountNotFoundError";
   }
 }

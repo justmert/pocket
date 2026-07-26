@@ -853,12 +853,14 @@ function shuffle<T>(arr: T[]): T[] {
 function Import({ t, onDone, onCancel }: { t: Theme; onDone: () => void; onCancel: () => void }) {
   const [phrase, setPhrase] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const words = phrase.trim() ? phrase.trim().split(/\s+/).length : 0;
   const short = password.length > 0 && password.length < 8;
-  const ready = password.length >= 8 && words > 0;
+  const mismatch = confirm.length > 0 && password !== confirm;
+  const ready = password.length >= 8 && password === confirm && words > 0;
 
   const submit = async () => {
     if (!ready || busy) return;
@@ -896,6 +898,23 @@ function Import({ t, onDone, onCancel }: { t: Theme; onDone: () => void; onCance
         placeholder="At least 8 characters"
         invalid={short}
         hint={short ? "Use at least eight characters." : undefined}
+      />
+      {/* CONFIRMED, as the other two password doors already do. Create and
+          Recover both gate on `password === confirm`; this one took a single
+          masked field and set the vault password from it. A typo here is not
+          recoverable by the phrase: the phrase reinstalls over a vault that
+          already exists, so the wallet is locked behind a password nobody
+          knows, and this is the screen reached by someone who has already lost
+          access once. */}
+      <Field
+        t={t}
+        label="Confirm new password"
+        type="password"
+        value={confirm}
+        onChange={setConfirm}
+        placeholder="Type it again"
+        invalid={mismatch}
+        hint={mismatch ? "The two passwords do not match." : undefined}
         onSubmit={() => void submit()}
       />
       <Notice t={t}>This password unlocks this device. It is not a backup.</Notice>

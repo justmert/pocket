@@ -1528,11 +1528,11 @@ export class WalletController {
         headers: { accept: "application/json" },
       });
     } catch {
-      throw new AccountNotFoundError("Could not read this account's assets. Try again.");
+      throw new AccountNotFoundError(address, "Could not read this account's assets. Try again.");
     }
     // A brand-new account that has never been funded has no trustlines yet.
     if (res.status === 404) return [];
-    if (!res.ok) throw new AccountNotFoundError("Could not read this account's assets.");
+    if (!res.ok) throw new AccountNotFoundError(address, "Could not read this account's assets.");
     const body = (await res.json()) as {
       balances?: {
         balance: string;
@@ -3705,6 +3705,7 @@ export class WalletController {
     if (createDestination) {
       if (!asset.isNative()) {
         throw new AccountNotFoundError(
+          to.value,
           `That account does not exist yet, so it cannot hold ${asset.getCode()}. ` +
             `Send it XLM first to create it, then send ${asset.getCode()}.`,
         );
@@ -3714,6 +3715,7 @@ export class WalletController {
       const minimum = 2n * BASE_RESERVE_STROOPS;
       if (amount < minimum) {
         throw new AccountNotFoundError(
+          to.value,
           `That account does not exist yet, so this payment would create it, and a new account ` +
             `needs at least ${formatAmount(minimum)} XLM. Send at least that much.`,
         );
