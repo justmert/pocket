@@ -205,7 +205,14 @@ describe("the write phases cannot interleave, which is the property rather than 
   // does not depend on the schedule at all. `installSeed` writes exactly three
   // keys, always in this order:
   //
-  //     pocket.address -> pocket.vault -> pocket.state
+  //     pocket.address -> pocket.state -> pocket.vault
+  //
+  // The HEADER is last, and that is the commit point: `status().initialised` is
+  // `header !== undefined` and `import` refuses when a vault exists, so once
+  // the header lands the wallet claims to exist and everything needed to open
+  // it must already be on disk. Written second, a failed third write left a
+  // vault whose seed was never stored, which no password opens and no import
+  // replaces.
   //
   // and the dangerous interleaving is a header from one install beside state
   // from another: that header's DEK cannot decrypt that state, so no password
@@ -219,7 +226,7 @@ describe("the write phases cannot interleave, which is the property rather than 
   //
   // The hook only records. It returns undefined, so it adds no microtask and
   // does not move the schedule it is measuring.
-  const INSTALL_KEYS: string[] = [KEYS.publicAddress, KEYS.vaultHeader, KEYS.state];
+  const INSTALL_KEYS: string[] = [KEYS.publicAddress, KEYS.state, KEYS.vaultHeader];
 
   function recordInstallWrites(): string[] {
     const order: string[] = [];
@@ -230,7 +237,7 @@ describe("the write phases cannot interleave, which is the property rather than 
   }
 
   /** The three writes of one install, in order, and nothing woven through them. */
-  const ONE_INSTALL = [KEYS.publicAddress, KEYS.vaultHeader, KEYS.state];
+  const ONE_INSTALL = [KEYS.publicAddress, KEYS.state, KEYS.vaultHeader];
 
   it("two imports of different phrases produce one uninterrupted install", async () => {
     const order = recordInstallWrites();

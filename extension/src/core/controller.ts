@@ -2680,8 +2680,22 @@ export class WalletController {
     // The address is public the moment the account is funded, so writing it
     // ahead of the vault reveals nothing.
     await writeLocal(KEYS.publicAddress, kp.publicKey());
-    await writeLocal(KEYS.vaultHeader, header);
+    // The SEALED SEED before the header, and the header LAST.
+    //
+    // `status().initialised` is `header !== undefined`, and `import` refuses
+    // outright when a vault already exists. So the header is the commit point:
+    // once it lands the wallet claims to exist, and everything it needs must
+    // already be on disk. Written second, a failed third write left a vault
+    // whose seed was never stored: unlock finds a header and no state, and
+    // import refuses because a vault exists. There is no way back except erase,
+    // which is the one door a user in that state has no reason to trust.
+    //
+    // Reordered, every partial write leaves `initialised` false, and the next
+    // create or import simply overwrites the strays. The address stays first
+    // for the reason above: `recoverFromMnemonic` authorises against it, and it
+    // is public the moment the account is funded.
     await writeLocal(KEYS.state, await this.sealState(dek, { mnemonic }));
+    await writeLocal(KEYS.vaultHeader, header);
 
     this.beginSession(dek, seed, kp.publicKey());
     return kp.publicKey();

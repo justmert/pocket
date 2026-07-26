@@ -12,6 +12,10 @@ import "../lib/polyfill";
 const store = new Map<string, unknown>();
 /** Milliseconds a write takes. Zero for ordinary tests, nonzero to force a race. */
 let writeDelay = 0;
+/** When set, the Nth write and every one after it throws (N is 1-based). */
+let failWriteFrom = 0;
+/** Keys written, in order, for the ordering assertion. */
+const writeLog: string[] = [];
 vi.stubGlobal("chrome", {
   storage: {
     local: {
@@ -24,6 +28,10 @@ vi.stubGlobal("chrome", {
         // the race is wide open. This is the smallest delay that lets another
         // caller's read observe a half-written state.
         if (writeDelay > 0) await new Promise((r) => setTimeout(r, writeDelay));
+        for (const k of Object.keys(o)) writeLog.push(k);
+        if (failWriteFrom > 0 && writeLog.length >= failWriteFrom) {
+          throw new Error("quota exceeded");
+        }
         for (const [k, v] of Object.entries(o)) store.set(k, v);
       },
       remove: async (k: string | string[]) => {
@@ -248,5 +256,42 @@ describe("recovery leaves a coherent wallet, however it interleaves", () => {
       ["password a", "password b"].map((p) => opened.unlock(p)),
     );
     expect(worked.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+  });
+});
+
+describe("a create whose storage writes do not all land", () => {
+  // `status().initialised` is `header !== undefined`, and `import` refuses
+  // outright when a vault already exists. So the header is the commit point:
+  // once it lands the wallet claims to exist and everything it needs must
+  // already be on disk.
+  //
+  // Written second of three, a failed third write left a vault whose seed was
+  // never stored: unlock finds a header and no state, and import refuses
+  // because a vault exists. The only way out is erase, which is the one door a
+  // user in that state has no reason to trust.
+  it("never leaves a header behind without the seed it opens", async () => {
+    store.clear();
+    writeLog.length = 0;
+    failWriteFrom = 3;
+    try {
+      const c = new WalletController();
+      await c.init();
+      await c.create("a-strong-password").catch(() => undefined);
+    } finally {
+      failWriteFrom = 0;
+    }
+
+    const c2 = new WalletController();
+    await c2.init();
+    const st = await c2.status();
+    // Either it does not claim to exist, or the seed that opens it is there.
+    // A header with no state is the unopenable vault.
+    expect(
+      !st.initialised || store.has("pocket.state"),
+      "a vault exists whose seed was never written",
+    ).toBe(true);
+    // And the ordering itself, so the property holds for any failing write:
+    // the header is last, so it is never the survivor of a partial create.
+    expect(writeLog.indexOf("pocket.vault")).toBeGreaterThan(writeLog.indexOf("pocket.state"));
   });
 });
