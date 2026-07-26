@@ -85,8 +85,10 @@ function resample(arr: number[], n: number): number[] {
 export function rangeLabel(range: RangeId): (ms: number) => string {
   return (ms) => {
     const d = new Date(ms);
-    if (range === "1D") return d.toLocaleTimeString(DATE_LOCALE, { hour: "2-digit", minute: "2-digit" });
-    if (range === "1Y") return d.toLocaleDateString(DATE_LOCALE, { month: "short", year: "numeric" });
+    if (range === "1D")
+      return d.toLocaleTimeString(DATE_LOCALE, { hour: "2-digit", minute: "2-digit" });
+    if (range === "1Y")
+      return d.toLocaleDateString(DATE_LOCALE, { month: "short", year: "numeric" });
     return d.toLocaleDateString(DATE_LOCALE, { month: "short", day: "numeric" });
   };
 }
@@ -363,6 +365,9 @@ export function Sparkline({
 }
 
 /** the range tabs. */
+/** the range the chart opens on, and the one whose emptiness hides the block. */
+export const DEFAULT_RANGE: RangeId = "1W";
+
 export function RangeTabs({
   t,
   value,
@@ -497,7 +502,14 @@ export function ValueChartBlock({
   // for any range, and "No price history to chart yet." was the first thing a new
   // user saw under their balance, reading as a fault. the wallet works without a
   // chart; when there is a curve it appears, and until then the space is not taken.
-  if (!drawable && !loading) return null;
+  // ...unless the user has NAVIGATED to this range, in which case the tabs are
+  // the only way back. `RangeTabs` lives inside this block, so returning null
+  // took them with it: a range with nothing to draw (1M and 1Y on a young
+  // account, or a range whose price read failed) removed the control that would
+  // have returned the user to one that works, and the chart could not come back
+  // without leaving Home. The argument above is about a FRESH account's default
+  // view, where there is no other range to get back to.
+  if (!drawable && !loading && range === DEFAULT_RANGE) return null;
 
   // the tabs stay while a range is loading, so switching does not collapse the
   // block and shove everything below it up the screen.
@@ -524,12 +536,28 @@ export function ValueChartBlock({
             onScrub={onScrub}
             labelAt={rangeLabel(range)}
           />
-        ) : (
+        ) : loading ? (
           // a shimmer, not an empty box. the chart reserves its height whatever
           // happens, and left blank that gap reads as a rendering fault rather
-          // than as work in progress. only reached while loading now: the empty
-          // case returns null above rather than drawing a placeholder.
+          // than as work in progress.
           <Skeleton width="100%" height={HEIGHT - 24} />
+        ) : (
+          // NOT a shimmer once the read is done. this branch is reached only for
+          // a range the user chose that has nothing to draw, and a placeholder
+          // that never resolves is the "Reading the ledger" forever state: it
+          // claims work is happening when the answer has already arrived. the
+          // tabs below stay live, which is the point of rendering at all here.
+          <div
+            style={{
+              ...text.body,
+              color: t.sub,
+              width: "100%",
+              textAlign: "center",
+              lineHeight: 1.5,
+            }}
+          >
+            Nothing to chart over this period.
+          </div>
         )}
       </div>
       <div style={{ marginTop: space.sm }}>
@@ -556,7 +584,7 @@ export function useValueChart(
   range: RangeId;
   setRange: (r: RangeId) => void;
 } {
-  const [range, setRange] = useState<RangeId>("1W");
+  const [range, setRange] = useState<RangeId>(DEFAULT_RANGE);
   const [chart, setChart] = useState<ValueChart | null>(null);
   const [loading, setLoading] = useState(true);
   // held in a ref so a caller passing an inline arrow does not restart the
