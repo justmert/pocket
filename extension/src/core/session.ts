@@ -9,7 +9,10 @@
 // storage, the encrypted vault on disk, re-unlock on restart); see
 // MetaMask/metamask-extension#17950.
 //
-// The mirror is gated by a deadline (`lockAt`). Two enforcers converge on it:
+// The mirror is gated by a deadline (`lockAt`). THREE enforcers converge on it:
+//   - `isUnlocked` refuses once the deadline has passed, which is the only one
+//     that runs on the REQUEST path and so the only one that cannot be missed
+//     by a throttled alarm;
 //   - `readPersistedUnlock` refuses and purges an expired record, so it is
 //     authoritative on every worker start regardless of alarm timing; and
 //   - the `chrome.alarms` auto-lock in background.ts fires while a worker is
@@ -95,8 +98,23 @@ export function requireSession(): UnlockedSession {
   return current;
 }
 
-export function isUnlocked(): boolean {
-  return current !== null;
+export function isUnlocked(now = Date.now()): boolean {
+  if (current === null) return false;
+  // The DEADLINE, checked here rather than trusted to fire.
+  //
+  // Two enforcers were named above and neither runs on the request path:
+  // `readPersistedUnlock` is authoritative on worker START, and the alarm fires
+  // while a worker is alive. Chrome throttles and coalesces alarms, and a
+  // worker that stays alive through a throttled alarm answered every request
+  // past its own auto-lock deadline with the keys still in memory. The window
+  // is the one thing standing in front of a wallet left open on a shared
+  // machine, so the check belongs where every request already passes.
+  //
+  // Here rather than in `background.ts` because `requireSession` and every
+  // other reader would otherwise still see an expired session as live: one
+  // predicate, one answer.
+  if (current.lockAt > 0 && now > current.lockAt) return false;
+  return true;
 }
 
 /** The deadline the idle lock is due at, or null when locked. */
