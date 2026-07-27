@@ -4525,6 +4525,19 @@ export class WalletController {
     resolve: StagedResolution | null = null,
     kind?: string,
     token?: string,
+    /**
+     * Called with the SIGNED envelope's hash and last valid moment, after the
+     * in-flight backstop has agreed and before anything is sent.
+     *
+     * Exists for the auditor registration, which is the one submission whose
+     * result carries a value that cannot be recomputed: the registry ALLOCATES
+     * the id. `pocket.inflight` holds the hash, but ordinary reconciliation
+     * clears that record once the chain answers, and for a chain-settled
+     * invocation it applies nothing, so the allocated id went with it. Given
+     * the hash before submission the caller can persist its own marker and read
+     * the id back later instead of paying for a second registration.
+     */
+    onPrepared?: (e: { hash: string; maxTime: number }) => Promise<void>,
   ): Promise<SubmitOutcome> {
     // A Soroban invocation needs its footprint and auth entries populated, and
     // simulation is the only thing that can do it. Signing before this would
@@ -4558,6 +4571,13 @@ export class WalletController {
     // that runs immediately before the envelope leaves.
     const preparedHash = prepared.hash().toString("hex");
     await this.assertNotHoldingAnother(preparedHash);
+
+    if (onPrepared) {
+      await onPrepared({
+        hash: preparedHash,
+        maxTime: Number(prepared.timeBounds?.maxTime ?? 0),
+      });
+    }
 
     if (resolve) {
       // Simulation rewrites the envelope, so the hash to stage against is the
@@ -4753,6 +4773,22 @@ export class WalletController {
       return recorded;
     }
 
+    // A registration this device already paid for, before paying for another.
+    //
+    // The id is allocated ON CHAIN and returned by the invocation, so a
+    // submission whose outcome we never learned may have allocated one that
+    // nothing on this device names. `pocket.inflight` is not that record:
+    // reconciliation clears it as soon as the chain answers, and for a
+    // chain-settled invocation it applies nothing, so the id went with it.
+    // Registering again would allocate a SECOND id, orphan the first along with
+    // its fee, and leave the registry holding two entries for one account.
+    const pendingKey = `${key}.pending`;
+    const marker = await readLocal<{ hash: string; maxTime: number }>(pendingKey);
+    if (marker) {
+      const settled = await this.settlePendingRegistration(pendingKey, marker, cfg, publicKey);
+      if (settled !== null) return settled;
+    }
+
     // Registration contends. The id comes from a monotonic counter in the
     // registry's INSTANCE storage, so two accounts registering at once touch
     // the same ledger entry and Soroban fails the loser rather than serialising
@@ -4770,11 +4806,46 @@ export class WalletController {
     // overwrote `pocket.inflight`, so three of the four hashes were off disk
     // permanently and nothing could ever reconcile them.
     const CONSUMED_NOTHING = new Set(["failed", "rejected", "notAccepted", "expired"]);
-    let outcome = await this.signAndSubmit(await ops.buildRegisterAuditor(ctx));
+    // Remember the envelope before it is sent, so an outcome we never learn is
+    // recoverable rather than repaid. Cleared on every terminal answer below.
+    const remember = async (e: { hash: string; maxTime: number }) => {
+      await writeLocal(pendingKey, e);
+    };
+    let outcome = await this.signAndSubmit(
+      await ops.buildRegisterAuditor(ctx),
+      null,
+      undefined,
+      undefined,
+      remember,
+    );
     for (let attempt = 1; attempt < 4 && CONSUMED_NOTHING.has(outcome.kind); attempt++) {
-      outcome = await this.signAndSubmit(await ops.buildRegisterAuditor(ctx));
+      outcome = await this.signAndSubmit(
+        await ops.buildRegisterAuditor(ctx),
+        null,
+        undefined,
+        undefined,
+        remember,
+      );
+    }
+    if (outcome.kind === "pending") {
+      // "Nothing was bound" is FALSE here, and it is the exact sentence the
+      // measured incident above produced: four registrations landed, four ids
+      // allocated, and the user was told none of it had happened. A `pending`
+      // outcome means the RPC never told us either way, so the honest report is
+      // that Pocket does not know. The marker stays on disk, so the next open
+      // asks the chain rather than paying again.
+      throw new PrivatePocketError(
+        `Pocket sent the transaction that registers your auditor key and did not learn whether ` +
+          `it landed, so it will not send another one: that would register a second key and pay ` +
+          `for it twice. Pocket has recorded this attempt (${outcome.hash}). Reopen the private ` +
+          `pocket and it will check with the network and carry on from whatever it finds.`,
+      );
     }
     if (outcome.kind !== "succeeded") {
+      // Every remaining kind is one the network refused, so nothing was spent
+      // and nothing was allocated. The marker would only make the next open ask
+      // about an envelope that is known never to have applied.
+      await removeLocal(pendingKey);
       throw new PrivatePocketError(
         `Registering your auditor key did not succeed after several attempts, so Pocket will ` +
           `not set up the private pocket. Nothing was bound. ${describeOutcome(outcome)}`,
@@ -4806,8 +4877,90 @@ export class WalletController {
           `and does not need paying for again. Free some space and try once more.`,
       );
     }
+    // The id is on disk, so the marker has done its job. Left behind, the next
+    // open would poll a hash whose consequence is already recorded.
+    await removeLocal(pendingKey);
     await this.assertRegisteredKeyMatches(allocated, cfg, publicKey);
     return allocated;
+  }
+
+  /**
+   * Ask the chain what became of a registration this device sent and lost track
+   * of, before sending another one.
+   *
+   * Returns the id when the envelope applied and it could be read back, null
+   * when the envelope is known never to have applied (so registering afresh is
+   * correct and costs nothing extra), and throws when the answer is still
+   * unknown, because that is the one case where sending another envelope is a
+   * second registration and a second fee.
+   */
+  private async settlePendingRegistration(
+    pendingKey: string,
+    marker: { hash: string; maxTime: number },
+    cfg: { auditor: string; token: string },
+    publicKey: Point,
+  ): Promise<number | null> {
+    const idKey = pendingKey.replace(/\.pending$/, "");
+    // One attempt, not the fifteen a live submission polls for: this envelope
+    // was sent in some earlier session and the ledger has long since decided.
+    // `maxTime` rides along so a NOT_FOUND from an RPC that has aged the whole
+    // window out is not read as "it never landed"; see `forgotten` in submit.ts.
+    const { pollToTerminal, chainNow } = await import("./chain/submit");
+    const outcome = await pollToTerminal(this.server(), marker.hash, {
+      attempts: 1,
+      maxTime: marker.maxTime,
+    });
+    // Against the LEDGER's clock, learned from the reply above, because
+    // timeBounds is enforced against that one and not against this machine's.
+    const windowPassed = marker.maxTime > 0 && chainNow() > marker.maxTime;
+
+    if (outcome.kind === "succeeded") {
+      const allocated = readAllocatedId(outcome);
+      if (allocated === null) {
+        // The envelope applied, so an id exists and was paid for. Registering
+        // again would allocate a second one, so this refuses instead. The
+        // marker stays: the result is on chain and a later read can still find
+        // the value this one could not.
+        throw new PrivatePocketError(
+          `Your auditor key was registered (${outcome.hash}) but Pocket could not read back the ` +
+            `id it was given, so it will not bind one it cannot verify. The registration is on ` +
+            `chain and does not need paying for again. Try once more.`,
+        );
+      }
+      await writeLocal(idKey, allocated);
+      await removeLocal(pendingKey);
+      await this.assertRegisteredKeyMatches(allocated, cfg, publicKey);
+      return allocated;
+    }
+
+    if (outcome.kind === "pending" && !windowPassed) {
+      // Still inside its own validity window, so it may yet be included.
+      // Sending another now is the double registration this marker exists to
+      // prevent.
+      throw new PrivatePocketError(
+        `Pocket is still waiting to hear whether the transaction that registers your auditor key ` +
+          `landed (${marker.hash}). It will not send another one meanwhile, because that would ` +
+          `register a second key and pay for it twice. Try again in a minute.`,
+      );
+    }
+
+    if (outcome.kind === "pending" && !outcome.answered) {
+      // The window has passed, but no poll ever reached the RPC, so nothing at
+      // all is known. `answered` exists precisely so this is not read as
+      // "expired, safe to rebuild": that reading is how a landed transaction
+      // gets sent a second time.
+      throw new PrivatePocketError(
+        `Pocket could not reach the network to find out whether your auditor key was already ` +
+          `registered (${marker.hash}), and it will not register a second one on a guess. ` +
+          `Check your connection and try again.`,
+      );
+    }
+
+    // Failed, or expired with the RPC answering NOT_FOUND throughout: the
+    // envelope did not apply, no id was allocated, and registering afresh is
+    // both correct and the only way forward.
+    await removeLocal(pendingKey);
+    return null;
   }
 
   /** The registry must hold OUR key under this id, or we refuse to bind it. */

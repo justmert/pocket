@@ -1493,6 +1493,10 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     fragment: "const now = Math.floor(Date.now() / 1000);",
     why: "epoch seconds, to set a transaction's own expiry window",
   },
+  {
+    fragment: "maxTime: Number(prepared.timeBounds?.maxTime ?? 0),",
+    why: "the envelope's own last valid moment, epoch seconds, handed to the auditor-registration marker so a lost outcome can be settled later; the SDK types timeBounds as string|number and every consumer of it compares seconds",
+  },
 ];
 
 describe("the source of the value path, read rather than assumed", () => {
