@@ -6,6 +6,7 @@ import {
   Asset,
   Keypair,
   BASE_FEE,
+  scValToBigInt,
   type Transaction,
   type xdr,
 } from "@stellar/stellar-sdk/base";
@@ -42,6 +43,7 @@ import {
   minimumBalance,
   AccountNotFoundError,
   CCTP_BURN_FEE_RESERVE_STROOPS,
+  SOROBAN_FEE_RESERVE_STROOPS,
 } from "./chain/balances";
 // aliased: the controller exposes methods of the same names, and an unqualified
 // call inside the class would silently resolve to the module function.
@@ -1245,7 +1247,10 @@ export class WalletController {
       // reason a spend that would have worked does not happen.
       if (kind === "deposit") {
         const asset = await this.yieldUnderlying(client, cfg.vault);
-        if (asset) await this.assertCanSpend(asset, amount);
+        // `null` for the same reason as the swap: a vault deposit is a Soroban
+        // invocation, and its fee is not known until the envelope below is
+        // simulated.
+        if (asset) await this.assertCanSpend(asset, amount, null);
       }
 
       const built =
@@ -1706,18 +1711,53 @@ export class WalletController {
     if (amount <= 0n) throw new AquariusError("Enter an amount greater than zero.");
     const inA = this.assetSac(assetIn);
     const outA = this.assetSac(assetOut);
-    const path = await new AquariusClient({ apiUrl: cfg.apiUrl }).findPath(
-      inA.sac,
-      outA.sac,
-      amount,
-    );
+    const client = new AquariusClient({ apiUrl: cfg.apiUrl });
+    const path = await client.findPath(inA.sac, outA.sac, amount);
     return {
       assetIn: inA.code,
       assetOut: outA.code,
       amountIn: formatAmount(amount),
       estOut: formatAmount(path.amount),
       route: path.tokens,
+      impactBps: await this.swapImpact(client, inA.sac, outA.sac, amount, path.amount),
     };
+  }
+
+  /**
+   * How far this quote's rate sits below the pool's near-spot rate, in basis
+   * points. Null when it could not be measured.
+   *
+   * A SECOND find-path at one unit, which is the router's own answer about the
+   * same pair rather than a model of the pool. It costs one extra request per
+   * quote, and the quote is already debounced.
+   *
+   * A probe that fails returns null, and the screen says the impact could not
+   * be measured rather than showing nothing: an unmeasured impact must not look
+   * like a measured small one. The quote itself is unaffected either way, which
+   * is why a failure here does not fail the quote.
+   */
+  private async swapImpact(
+    client: { findPath(a: string, b: string, amount: bigint): Promise<{ amount: bigint }> },
+    inSac: string,
+    outSac: string,
+    amount: bigint,
+    out: bigint,
+  ): Promise<number | null> {
+    const { impactBps, IMPACT_PROBE_STROOPS } = await import("./integrations/aquarius");
+    if (amount <= IMPACT_PROBE_STROOPS) return null;
+    try {
+      const probe = await client.findPath(inSac, outSac, IMPACT_PROBE_STROOPS);
+      return impactBps({
+        amountIn: amount,
+        amountOut: out,
+        probeIn: IMPACT_PROBE_STROOPS,
+        probeOut: probe.amount,
+      });
+    } catch {
+      // No route at one unit, or the API refused this one request. Neither says
+      // anything about the quote above, and neither is a measurement.
+      return null;
+    }
   }
 
   /**
@@ -1757,7 +1797,11 @@ export class WalletController {
       // OUT trustline were all checked and the one quantity actually being
       // spent was not, so a swap for more XLM than the account holds was
       // routed, priced, reviewed, signed, submitted and refused by the network.
-      await this.assertCanSpend(inA.asset, amount);
+      //
+      // `null`, not the default: a swap is a Soroban invocation and its fee is
+      // not known until `prepareForReview` below simulates it. See the
+      // parameter's own note for the numbers.
+      await this.assertCanSpend(inA.asset, amount, null);
 
       // Receiving a classic asset needs a trustline, or the swap reverts at
       // submit with an opaque error. This was the ONLY path that checked, and
@@ -1765,11 +1809,13 @@ export class WalletController {
       // not. One method now, so there is one rule to keep right.
       await this.assertCanReceive(outA.asset, address, "swap");
 
-      const path = await new AquariusClient({ apiUrl: cfg.apiUrl }).findPath(
-        inA.sac,
-        outA.sac,
-        amount,
-      );
+      const client = new AquariusClient({ apiUrl: cfg.apiUrl });
+      const path = await client.findPath(inA.sac, outA.sac, amount);
+      // The same measurement the compose screen made, taken again against the
+      // route actually being signed. Re-measured rather than passed in: the
+      // quote on screen may be seconds old and the confirm is the last screen
+      // before a signature.
+      const impact = await this.swapImpact(client, inA.sac, outA.sac, amount, path.amount);
 
       // The route decides what the user RECEIVES, and nothing else does.
       //
@@ -1835,6 +1881,7 @@ export class WalletController {
       const handle = tx.hash().toString("hex");
       this.pending.set(handle, { xdr: tx.toXDR(), at: Date.now(), kind: "swap" });
       this.prunePending();
+      const { IMPACT_WARN_BPS } = await import("./integrations/aquarius");
       return {
         handle,
         summary: {
@@ -1845,6 +1892,19 @@ export class WalletController {
           minOut: formatAmount(outMin),
           fee: formatAmount(BigInt(tx.fee)),
           route: path.tokens,
+          impactBps: impact,
+          // A rate far below the pool's own near-spot rate is not something a
+          // slippage floor protects against: the floor bounds movement AFTER
+          // the quote, and this is a cost the quote already carries. Measured
+          // live at 62% and later 81% on a routable pair, with nothing on
+          // either screen saying so.
+          warning:
+            impact !== null && impact >= IMPACT_WARN_BPS
+              ? `This swap's rate is about ${(impact / 100).toFixed(1)}% worse than the price ` +
+                `the pool quotes for one ${inA.code}. That cost is in the estimate above and ` +
+                `it is not what the slippage setting protects. It usually means the pool is ` +
+                `thin for a trade this size.`
+              : undefined,
           effects: [
             `Swap ${formatAmount(amount)} ${inA.code} for about ${formatAmount(path.amount)} ${outA.code}`,
             `You receive at least ${formatAmount(outMin)} ${outA.code}, or the swap reverts`,
@@ -1857,7 +1917,7 @@ export class WalletController {
   }
 
   /** Sign and submit a swap this controller built and staged. */
-  async confirmSwap(handle: string): Promise<{ hash: string; ledger: number }> {
+  async confirmSwap(handle: string): Promise<{ hash: string; ledger: number; delivered?: string }> {
     return this.exclusive(async () => {
       this.prunePending();
       const entry = this.pending.get(handle);
@@ -1869,11 +1929,28 @@ export class WalletController {
       }
       this.pending.delete(handle);
       const decoded = await this.decodeOwnEnvelope(entry.xdr, requireSession().address);
-      const outcome = await this.signAndSubmit(decoded, null, "swap");
+      const outcome = await this.signAndSubmit(decoded, null, "swap").catch(async (e: unknown) => {
+        throw await explainSwapRefusal(e);
+      });
       if (outcome.kind !== "succeeded") {
         throw new SubmitOutcomeError(describeOutcome(outcome), outcome);
       }
-      return { hash: outcome.hash, ledger: outcome.ledger };
+      // What the swap ACTUALLY delivered.
+      //
+      // `swap_chained` returns the out amount, and it rides on the same
+      // `getTransaction` reply the confirmation poll already read. The wallet
+      // held that number and dropped it, so the receipt for a swap said
+      // "Transaction successful" and named no figure at all: the only amounts
+      // the user ever saw were an estimate and a floor, both from before the
+      // trade. The delivered amount is the one fact a swap receipt is for.
+      //
+      // Optional, because it is read from the RPC's reply: a reply missing it
+      // means the receipt says less, never that it says something wrong.
+      return {
+        hash: outcome.hash,
+        ledger: outcome.ledger,
+        delivered: readDeliveredAmount(outcome) ?? undefined,
+      };
     });
   }
 
@@ -3606,9 +3683,30 @@ export class WalletController {
     }
   }
 
-  private async assertCanSpend(asset: Asset, amount: bigint, feeStroops = BigInt(BASE_FEE)) {
+  private async assertCanSpend(
+    asset: Asset,
+    amount: bigint,
+    /**
+     * The fee this spend will pay, in stroops, or `null` when it is a Soroban
+     * invocation that has not been simulated yet.
+     *
+     * `BASE_FEE` is right for a classic payment and wrong by three orders of
+     * magnitude for an invocation: measured on this deployment a swap's fee
+     * came back at 165,852 / 93,298 / 59,475 stroops for 10 / 1,000 / 20,000
+     * XLM in. Defaulting to 100 there did not merely under-count, it put a
+     * false figure in front of the user: the refusal said "0.0000100 XLM pays
+     * the network fee, leaving 9998.4999900 XLM", and 9998.4999900 is an amount
+     * the very next guard in the same build refuses once simulation produces
+     * the real fee. Two refusals, two different numbers, one of them invented.
+     */
+    feeStroops: bigint | null = BigInt(BASE_FEE),
+  ) {
     const { address } = requireSession();
-    const fee = feeStroops;
+    // Unknown means RESERVE, not guess: hold back the same figure "use max"
+    // holds back, which is rounded well past the largest fee measured, and say
+    // below that it is a reserve rather than the fee.
+    const estimated = feeStroops === null;
+    const fee = feeStroops ?? SOROBAN_FEE_RESERVE_STROOPS;
     if (asset.isNative()) {
       const native = await readNative(this.server(), address);
       const reserve = minimumBalance(native, BASE_RESERVE_STROOPS);
@@ -3626,7 +3724,10 @@ export class WalletController {
         throw new InsufficientBalanceError(
           `That is more than you can send. Your balance is ${formatAmount(native.raw)} XLM, ` +
             `of which ${formatAmount(reserve)} XLM is locked by the network as a reserve and ` +
-            `${formatAmount(fee)} XLM pays the network fee, leaving ${formatAmount(sendable)} XLM.`,
+            (estimated
+              ? `up to ${formatAmount(fee)} XLM is held back for the network fee, which is ` +
+                `only known once the network has priced it, leaving ${formatAmount(sendable)} XLM.`
+              : `${formatAmount(fee)} XLM pays the network fee, leaving ${formatAmount(sendable)} XLM.`),
         );
       }
     } else {
@@ -5447,6 +5548,65 @@ export { WrongPasswordError, readTrustline };
  * somebody else's auditor key, permanently, so "could not read it" must be a
  * refusal and never a default.
  */
+/**
+ * A router refusal at CONFIRM time, said in swap terms.
+ *
+ * A swap is quoted, reviewed and only then signed, and the price can move in
+ * between: that is the ordinary case, not an exotic one. `this.simulate` turns
+ * the SDK's bare `Error` into a `ContractRefusedError`, which stops it reading
+ * as "Something went wrong. Try again, and check your connection.", but the
+ * sentence it produces comes from the CONFIDENTIAL token's error table, and the
+ * router numbers its own errors independently: 2006 is not in that table, so
+ * the user got "The contract rejected this (error 2006)".
+ *
+ * Measured against the deployed router: simulating the real `swap_chained` with
+ * an `out_min` above what the pool can deliver, which is exactly the state a
+ * price move produces, returns `Error(Contract, #2006)`.
+ *
+ * The remedy is what matters and it is the same for every router refusal: the
+ * envelope was built against a quote that no longer holds, and this one is
+ * already discarded, so the next step is a fresh quote and not a retry. Said
+ * without naming a cause we did not observe.
+ */
+async function explainSwapRefusal(e: unknown): Promise<unknown> {
+  if (!(e instanceof Error) || e.name !== "ContractRefusedError") return e;
+  const { AquariusError } = await import("./integrations/aquarius");
+  return new AquariusError(
+    "The swap could not be completed at the price it was quoted at, so nothing was signed or " +
+      "sent. This usually means the price moved past the slippage you set while the review was " +
+      "open. Get a fresh quote and review it again.",
+  );
+}
+
+/**
+ * The amount a swap delivered, as a decimal string, read out of the invocation
+ * result.
+ *
+ * `swap_chained` returns a u128 in the OUT token's own stroops. Measured on two
+ * landed swaps: 4410137248 and 815568297493, i.e. 441.0137248 and
+ * 81556.8297493 USDC.
+ *
+ * Returns null rather than guessing, and every caller treats null as "say
+ * nothing about the amount". A wrong figure on a receipt is worse than no
+ * figure, because the receipt is what the user reconciles against.
+ */
+function readDeliveredAmount(outcome: SubmitOutcome): string | null {
+  if (outcome.kind !== "succeeded" || !outcome.returnValue) return null;
+  const v = outcome.returnValue;
+  // Only the two integer shapes the contract can return. `scValToBigInt`
+  // throws on anything else, and a throw here would turn a successful swap
+  // into a failed one on the screen.
+  const name = v.switch().name;
+  if (name !== "scvU128" && name !== "scvI128" && name !== "scvU64" && name !== "scvI64") {
+    return null;
+  }
+  try {
+    return formatAmount(scValToBigInt(v));
+  } catch {
+    return null;
+  }
+}
+
 function readAllocatedId(outcome: SubmitOutcome): number | null {
   if (outcome.kind !== "succeeded" || !outcome.returnValue) return null;
   const v = outcome.returnValue;

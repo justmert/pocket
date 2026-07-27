@@ -26,6 +26,10 @@ import {
 import { NETWORKS, type NetworkId } from "../../../../core/config";
 import { chipPad, radius, space, text, type Theme } from "../theme";
 import type { PublicBalance, SwapQuoteView, SwapSummary } from "../../../../core/messages";
+// the one threshold, shared with the worker that writes the confirm warning, so
+// the figure the compose screen paints red and the sentence the confirm shows
+// cannot disagree about what counts as bad.
+import { IMPACT_WARN_BPS } from "../../../../core/integrations/aquarius";
 
 /** what a swap's network fee is charged in, in stroops, for the MAX buffer on XLM. */
 
@@ -94,7 +98,15 @@ export function Swap({ onClose }: { onClose: () => void }) {
   const [confirming, setConfirming] = useState(false);
   const [handle, setHandle] = useState<string | null>(null);
   const [summary, setSummary] = useState<SwapSummary | null>(null);
-  const [result, setResult] = useState<{ hash: string; ledger: number } | null>(null);
+  // `delivered` is what the swap actually paid out, read from the contract's
+  // own return value. the receipt used to name no amount at all: the only
+  // figures the user ever saw were the estimate and the floor, both from before
+  // the trade, and neither is what they got.
+  const [result, setResult] = useState<{
+    hash: string;
+    ledger: number;
+    delivered?: string;
+  } | null>(null);
   const [picking, setPicking] = useState<null | "in" | "out">(null);
   const once = useOnce();
   const opId = useRef<string | null>(null);
@@ -244,7 +256,7 @@ export function Swap({ onClose }: { onClose: () => void }) {
     try {
       const r = await call({ type: "confirmSwap", handle });
       w.completeOp(id, { hash: r.hash, ledger: r.ledger });
-      setResult({ hash: r.hash, ledger: r.ledger });
+      setResult({ hash: r.hash, ledger: r.ledger, delivered: r.delivered });
       setBusy(false);
     } catch (e) {
       const reason = e instanceof Error ? e.message : String(e);
@@ -520,12 +532,35 @@ export function Swap({ onClose }: { onClose: () => void }) {
           ...(summary?.minOut
             ? [{ label: "Minimum received", value: `${summary.minOut} ${summary.assetOut}` }]
             : []),
+          // a VISIBLE row, not an effects line: this file's own rule is that a
+          // fact behind a hover is a blind signature, and the rate is the whole
+          // decision. stated as "not measured" rather than omitted, so an
+          // unmeasured impact cannot read as a measured small one.
+          ...(summary
+            ? [
+                {
+                  label: "Price impact",
+                  value:
+                    summary.impactBps === null
+                      ? "could not be measured"
+                      : `${(summary.impactBps / 100).toFixed(2)}%`,
+                },
+              ]
+            : []),
         ]}
+        warning={summary?.warning}
         effects={summary?.effects ?? []}
         error={error}
         unresolved={unresolved}
         busy={busy}
         result={result}
+        // the delivered figure, on the receipt. an absent one says nothing
+        // rather than repeating the estimate, which is not what happened.
+        note={
+          result?.delivered
+            ? `You received ${result.delivered} ${summary?.assetOut ?? outAsset.code}.`
+            : undefined
+        }
         network={w.status?.network}
         onApprove={() => void approve()}
         onCancel={closeConfirm}
@@ -611,6 +646,32 @@ function ReceiveCard({
           {quoteAge < 5
             ? "Live estimate"
             : `Estimate from ${quoteAge}s ago. The exact amount is set when you review.`}
+        </div>
+      )}
+      {/* the price you are actually getting, against the price the pool quotes
+          for one unit. an estimate and a slippage floor say nothing about this:
+          slippage bounds movement AFTER the quote, and this is a cost the quote
+          already carries. a routable pair on this deployment measured 62% and
+          later 81%, and neither screen said a word. */}
+      {est && !quoting && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            ...text.caption,
+            color:
+              quote?.impactBps !== null && quote?.impactBps !== undefined
+                ? quote.impactBps >= IMPACT_WARN_BPS
+                  ? t.danger
+                  : t.faint
+                : t.faint,
+            textAlign: "center",
+            marginTop: 4,
+          }}
+        >
+          {quote?.impactBps === null || quote?.impactBps === undefined
+            ? "Price impact could not be measured"
+            : `Price impact ${(quote.impactBps / 100).toFixed(2)}%`}
         </div>
       )}
     </div>

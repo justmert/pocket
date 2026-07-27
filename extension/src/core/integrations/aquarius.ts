@@ -40,6 +40,65 @@ export interface SwapPath {
   tokens: string[];
 }
 
+/**
+ * The trade size the near-spot rate is measured at, in stroops.
+ *
+ * One whole unit of the input asset. Every classic Stellar asset and its SAC
+ * carry 7 decimals, so this is 1 XLM, 1 USDC, and so on. Small enough on any
+ * pool that matters to move the price by a rounding error, large enough that
+ * integer division does not swallow the answer.
+ */
+export const IMPACT_PROBE_STROOPS = 10_000_000n;
+
+/** Impact at or above this is stated as a plain warning, not just a figure. */
+export const IMPACT_WARN_BPS = 500;
+
+/**
+ * How far the price you get is from the price the pool is quoting, in basis
+ * points. Null when it could not be measured.
+ *
+ * A constant-product pool charges more per unit the more you buy, and on a thin
+ * pool that is not a rounding difference: measured live on this deployment, a
+ * routable swap came back at 62% and later 81% below the near-spot rate. The
+ * wallet quoted, built, signed and landed it with no impact figure and no
+ * warning anywhere, because an estimate and a slippage floor say nothing about
+ * whether the rate is any good: slippage bounds how far the price may move
+ * BETWEEN quote and execution, and this is about the price the quote itself
+ * already carries.
+ *
+ * Measured, not modelled: the near-spot rate comes from a second find-path at
+ * one unit, so it is the router's own answer about the same pair rather than an
+ * assumption about pool shape. Comparing routes of different sizes can also
+ * catch a routing difference, which is a real part of what the user receives.
+ *
+ * Returns null rather than zero when it cannot be measured, because "no impact"
+ * and "not measured" are different facts and the screen says which.
+ */
+export function impactBps(args: {
+  /** What is being sold, in stroops. */
+  amountIn: bigint;
+  /** What the route says will be received for it, in stroops. */
+  amountOut: bigint;
+  /** The probe trade's input, in stroops. */
+  probeIn: bigint;
+  /** What the route says the probe would receive, in stroops. */
+  probeOut: bigint;
+}): number | null {
+  const { amountIn, amountOut, probeIn, probeOut } = args;
+  if (amountIn <= 0n || probeIn <= 0n || probeOut <= 0n) return null;
+  // The probe has to be strictly smaller, or there is no reference: comparing a
+  // trade with itself always answers zero, which would read as "no impact".
+  if (probeIn >= amountIn) return null;
+  // bps = 10000 * (1 - (out/in) / (probeOut/probeIn)), as one integer division.
+  const ratio = (amountOut * probeIn * 10_000n) / (amountIn * probeOut);
+  const bps = 10_000n - ratio;
+  // Negative means the larger trade got a BETTER rate than one unit, which
+  // happens on rounding and on a route change. Reported as zero: a bonus is not
+  // a warning, and claiming one would be as invented as hiding a cost.
+  if (bps <= 0n) return 0;
+  return Number(bps);
+}
+
 export class AquariusError extends Error {
   constructor(
     message: string,
@@ -127,7 +186,9 @@ export function readRouteEndpoints(swapChainXdr: string): RouteEndpoints {
 function badRoute(why: string): AquariusError {
   // The reason is authored here and interpolates nothing from the wire, so this
   // is safe to surface through describeError's allowlist.
-  return new AquariusError(`Pocket could not read the swap route (${why}), so it will not sign it.`);
+  return new AquariusError(
+    `Pocket could not read the swap route (${why}), so it will not sign it.`,
+  );
 }
 
 interface FindPathResponse {

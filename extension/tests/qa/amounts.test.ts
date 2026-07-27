@@ -1493,6 +1493,23 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     fragment: "const now = Math.floor(Date.now() / 1000);",
     why: "epoch seconds, to set a transaction's own expiry window",
   },
+  // the swap's price impact, in three places. basis points are an integer the
+  // worker computed in bigint arithmetic on stroops (`impactBps` in
+  // integrations/aquarius.ts); these divide that integer by 100 to print it as
+  // a percentage. a RATE being displayed, never an amount, and the amount the
+  // swap moves is untouched by all three.
+  {
+    fragment: "? `This swap's rate is about ${(impact / 100).toFixed(1)}% worse than the price `",
+    why: "the confirm screen's impact warning; bps to a percentage for display",
+  },
+  {
+    fragment: ": `${(summary.impactBps / 100).toFixed(2)}%`,",
+    why: "the same percentage as a confirm-sheet fact row",
+  },
+  {
+    fragment: ": `Price impact ${(quote.impactBps / 100).toFixed(2)}%`}",
+    why: "the same percentage under the live quote on the compose screen",
+  },
   {
     fragment: "maxTime: Number(prepared.timeBounds?.maxTime ?? 0),",
     why: "the envelope's own last valid moment, epoch seconds, handed to the auditor-registration marker so a lost outcome can be settled later; the SDK types timeBounds as string|number and every consumer of it compares seconds",

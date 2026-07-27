@@ -248,7 +248,15 @@ export interface ResponseMap {
   confirmYieldMove: { hash: string; ledger: number };
   swapQuote: SwapQuoteView;
   buildSwap: { handle: string; summary: SwapSummary };
-  confirmSwap: { hash: string; ledger: number };
+  /**
+   * `delivered` is what the swap actually paid out, a decimal string in the
+   * OUT asset, read from `swap_chained`'s return value on the confirmation
+   * reply. Optional because it comes from the RPC's response: absent means the
+   * receipt says less, never that it says something wrong. Before this the
+   * wallet had the number in hand and dropped it, and a swap's receipt named no
+   * amount at all.
+   */
+  confirmSwap: { hash: string; ledger: number; delivered?: string };
   buildAddTrustline: { handle: string; summary: TrustlineSummary };
   confirmAddTrustline: { hash: string; ledger: number };
   trustlines: Trustline[];
@@ -474,6 +482,20 @@ export interface SwapQuoteView {
   estOut: string;
   /** Tokens on the route, for display. */
   route: string[];
+  /**
+   * How far this rate sits below the pool's near-spot rate, in basis points.
+   *
+   * Null means it could NOT be measured, which is a different fact from zero
+   * and the screen says which. Measured by a second route lookup at one unit of
+   * the input asset, so it is the router's own answer rather than a model.
+   *
+   * It exists because a slippage floor does not cover this: slippage bounds how
+   * far the price may move between quote and execution, and this is a cost the
+   * quote already carries. Measured live on this deployment, a routable swap
+   * came back 62% and later 81% below the near-spot rate with no figure and no
+   * warning anywhere in the flow.
+   */
+  impactBps: number | null;
 }
 
 /** What the approval screen renders before a swap is signed. */
@@ -487,6 +509,22 @@ export interface SwapSummary {
   /** Network fee in decimal XLM. */
   fee: string;
   route: string[];
+  /**
+   * How far this rate sits below the pool's near-spot rate, in basis points.
+   *
+   * Null means it could NOT be measured, which is a different fact from zero
+   * and the screen says which. Measured by a second route lookup at one unit of
+   * the input asset, so it is the router's own answer rather than a model.
+   *
+   * It exists because a slippage floor does not cover this: slippage bounds how
+   * far the price may move between quote and execution, and this is a cost the
+   * quote already carries. Measured live on this deployment, a routable swap
+   * came back 62% and later 81% below the near-spot rate with no figure and no
+   * warning anywhere in the flow.
+   */
+  impactBps: number | null;
+  /** Stated above the effects when the impact is large enough to warn about. */
+  warning?: string;
   effects: string[];
 }
 
