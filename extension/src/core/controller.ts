@@ -2379,10 +2379,27 @@ export class WalletController {
   }
 
   /** What the popup should be asking about, if anything. */
-  pendingDappRequest(): { id: string; origin: string; summary: DappTxSummary } | null {
+  pendingDappRequest(): {
+    id: string;
+    origin: string;
+    summary: DappTxSummary;
+    /** How many are parked in total, including this one. */
+    waiting: number;
+  } | null {
     const first = [...this.dappPending.entries()][0];
     if (!first) return null;
-    return { id: first[0], origin: first[1].origin, summary: first[1].summary };
+    // The COUNT, because the map holds up to MAX_PARKED_APPROVALS and this
+    // returns only its head. The popup reads this on mount and on a lock
+    // change, so a second site's request was invisible: answering the first one
+    // left the screen with no indication that another was waiting, and the
+    // second site sat there until its own timeout with the user believing they
+    // had dealt with everything.
+    return {
+      id: first[0],
+      origin: first[1].origin,
+      summary: first[1].summary,
+      waiting: this.dappPending.size,
+    };
   }
 
   /** The user's answer. Anything other than an explicit yes is a refusal. */

@@ -261,7 +261,20 @@ export interface ResponseMap {
   buildCctpClaim: { handle: string; summary: CctpSummary };
   confirmCctpClaim: { hash: string; ledger: number };
   currentPhase: string | null;
-  pendingDappRequest: { id: string; origin: string; summary: TxSummary } | null;
+  pendingDappRequest: {
+    id: string;
+    origin: string;
+    summary: TxSummary;
+    /**
+     * How many approvals are parked, including this one.
+     *
+     * The worker holds up to MAX_PARKED_APPROVALS and hands back only the head,
+     * and the popup reads this on mount and on a lock change. Without the count
+     * a second site's request was invisible: answering the first left no
+     * indication another was waiting.
+     */
+    waiting: number;
+  } | null;
   /** false when the id was no longer parked: the request had already expired. */
   resolveDappRequest: boolean;
   /** `handle` is opaque, exactly as buildPayment's is. */

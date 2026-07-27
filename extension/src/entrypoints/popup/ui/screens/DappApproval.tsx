@@ -5,7 +5,7 @@ import { OriginBlock } from "../Address";
 import { Button, ButtonRow, ButtonStack, Header, Label, Notice, Screen } from "../primitives";
 import { ConfirmBody, useOnce } from "../flow";
 import { formatAmount } from "../../../../core/chain/balances";
-import { space, type Theme } from "../theme";
+import { space, text, type Theme } from "../theme";
 import type { TxSummary } from "../../../../core/provider/describe-tx";
 
 export function DappApproval({
@@ -14,7 +14,7 @@ export function DappApproval({
   onDone,
 }: {
   t: Theme;
-  request: { id: string; origin: string; summary: TxSummary };
+  request: { id: string; origin: string; summary: TxSummary; waiting?: number };
   onDone: () => void;
 }) {
   const w = useWallet();
@@ -63,6 +63,17 @@ export function DappApproval({
   return (
     <Screen t={t} still>
       <Header t={t} title="Signature request" />
+
+      {/* how many are parked, when it is more than this one. the worker holds up
+          to four and hands back only the head, so answering this one used to
+          leave no sign that another site was still waiting: it sat there until
+          its own timeout while the user believed they had dealt with
+          everything. */}
+      {(request.waiting ?? 1) > 1 && (
+        <div style={{ ...text.body, color: t.sub, marginBottom: space.sm }}>
+          {`1 of ${request.waiting} requests waiting. The next one appears after you answer this.`}
+        </div>
+      )}
 
       <Label t={t}>This site is asking</Label>
       <OriginBlock t={t} origin={request.origin} />
