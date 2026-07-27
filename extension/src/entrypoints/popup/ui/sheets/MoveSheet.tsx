@@ -263,7 +263,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
             // the prop exists.
             cancelLabel={summary.kind === "register" ? "Leave this for now" : "Back"}
             error={error}
-        unresolved={unresolved}
+            unresolved={unresolved}
             busy={busy}
             approveLabel="Approve"
             onApprove={() => void approve()}
@@ -276,6 +276,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
           <Receipt
             t={t}
             hash={result.hash}
+            also={result.followed ? { label: "Made spendable", hash: result.followed } : undefined}
             note={result.followed ? "Made spendable in a second transaction." : undefined}
             network={w.status?.network}
             onDone={close}
@@ -369,7 +370,9 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
                   {priv.message}
                 </p>
               )}
-              <p style={{ ...text.body, color: t.sub, margin: `0 0 ${space.md}px`, lineHeight: 1.5 }}>
+              <p
+                style={{ ...text.body, color: t.sub, margin: `0 0 ${space.md}px`, lineHeight: 1.5 }}
+              >
                 {registerStarted
                   ? "The first transaction is already sent: your auditor key is registered and paid for. This finishes by creating the confidential account."
                   : "This takes two transactions. The button below sends the first now (it registers your auditor key and pays a fee); you review the second before it signs."}

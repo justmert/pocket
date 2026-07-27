@@ -797,9 +797,65 @@ function ReceiptRow({ t, label, children }: { t: Theme; label: string; children:
   );
 }
 
+/**
+ * copy and explorer for a receipt's SECOND transaction, in one row.
+ *
+ * its own component because the copied/not-copied flag has to be its own: the
+ * receipt's flag belongs to the primary hash, and sharing it would make tapping
+ * one hash report the other as copied.
+ */
+function SecondHash({
+  t,
+  hash,
+  label,
+  network,
+}: {
+  t: Theme;
+  hash: string;
+  label: string;
+  network?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const id = setTimeout(() => setCopied(false), COPY_HOLD_MS);
+    return () => clearTimeout(id);
+  }, [copied]);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: space.sm }}>
+      <button
+        type="button"
+        aria-label={copied ? "Copied" : `Copy ${label.toLowerCase()} transaction ID`}
+        onClick={() =>
+          void navigator.clipboard.writeText(hash).then(
+            () => setCopied(true),
+            () => undefined,
+          )
+        }
+        style={{ all: "unset", cursor: "pointer", display: "flex", color: t.accent }}
+      >
+        {copied ? <Check size={18} sw={2.4} /> : <Copy size={18} />}
+        <span style={HIDDEN}>{hash}</span>
+      </button>
+      {network && (
+        <a
+          href={explorerUrl(network, "tx", hash)}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Open ${label.toLowerCase()} on stellar.expert`}
+          style={{ color: t.accent, display: "flex" }}
+        >
+          <External size={18} />
+        </a>
+      )}
+    </div>
+  );
+}
+
 export function Receipt({
   t,
   hash,
+  also,
   note,
   network,
   to,
@@ -808,6 +864,16 @@ export function Receipt({
 }: {
   t: Theme;
   hash: string;
+  /**
+   * a SECOND transaction the same operation signed and paid for.
+   *
+   * a shield is two: a deposit, then a merge that makes the deposit spendable.
+   * both are signed, both cost a fee, and both are on the ledger under the
+   * user's own address, so printing one and dropping the other leaves a
+   * transaction they cannot account for beside a fee they cannot explain. the
+   * label names which is which rather than numbering them.
+   */
+  also?: { label: string; hash: string };
   note?: string;
   /** the network, for the "view on stellar.expert" link. */
   network?: string;
@@ -895,6 +961,14 @@ export function Receipt({
             >
               <External size={18} />
             </a>
+          </ReceiptRow>
+        )}
+        {/* the second transaction, when the operation signed two. one row
+            rather than the pair above, so a one-transaction receipt is drawn
+            exactly as it always was. */}
+        {also && (
+          <ReceiptRow t={t} label={also.label}>
+            <SecondHash t={t} hash={also.hash} label={also.label} network={network} />
           </ReceiptRow>
         )}
       </div>
@@ -1012,8 +1086,15 @@ export function ConfirmSheet({
   unresolved?: boolean;
   busy: boolean;
   approveLabel?: string;
-  /** set once the transaction has landed; the popup then shows the receipt. */
-  result?: { hash: string; ledger: number } | null;
+  /**
+   * set once the transaction has landed; the popup then shows the receipt.
+   *
+   * `followed` is a SECOND transaction the same confirm signed and paid for: a
+   * shield's merge. The worker has always returned it and every screen dropped
+   * it, so the receipt named one of the two transactions the user had just
+   * authorised and accounted for one of the two fees.
+   */
+  result?: { hash: string; ledger: number; followed?: string } | null;
   /** a line under the receipt's outcome, e.g. a cross-chain follow-up status. */
   note?: string;
   /** the wallet's network, threaded to the receipt for its explorer link. */
@@ -1079,6 +1160,7 @@ export function ConfirmSheet({
           <Receipt
             t={t}
             hash={result.hash}
+            also={result.followed ? { label: "Made spendable", hash: result.followed } : undefined}
             note={note}
             network={network}
             to={to}

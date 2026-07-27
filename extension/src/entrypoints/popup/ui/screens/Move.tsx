@@ -102,7 +102,15 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
   const [confirming, setConfirming] = useState(false);
   const [handle, setHandle] = useState<string | null>(null);
   const [summary, setSummary] = useState<PrivateOpSummary | null>(null);
-  const [result, setResult] = useState<{ hash: string; ledger: number } | null>(null);
+  // `followed` is the shield's SECOND transaction, the merge that makes the
+  // deposit spendable. the worker has always returned it and this screen threw
+  // it away, so the receipt for a two-transaction operation named one hash and
+  // said nothing about the other, which is also the other half of the fee.
+  const [result, setResult] = useState<{
+    hash: string;
+    ledger: number;
+    followed?: string;
+  } | null>(null);
   const [price, setPrice] = useState<number | null>(null);
   const once = useOnce();
   // id of the background-op record for the move in flight, so the confirm's
@@ -185,7 +193,7 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
     try {
       const r = await call({ type: "confirmPrivateOp", handle });
       w.completeOp(id, { hash: r.hash, ledger: r.ledger });
-      setResult({ hash: r.hash, ledger: r.ledger });
+      setResult({ hash: r.hash, ledger: r.ledger, followed: r.followed });
       setBusy(false);
     } catch (e) {
       const reason = e instanceof Error ? e.message : String(e);
@@ -412,6 +420,10 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
         busy={busy}
         approveLabel="Approve"
         result={result}
+        // said on the receipt as well as listed as a row, because "why are
+        // there two transactions and two fees" is the question the row raises
+        // and the sentence answers.
+        note={result?.followed ? "Made spendable in a second transaction." : undefined}
         network={w.status?.network}
         onApprove={() => void approve()}
         onCancel={closeConfirm}
