@@ -74,6 +74,33 @@ export interface NetworkConfig {
   aquarius?: { apiUrl: string; router: string };
 }
 
+/**
+ * Is there a build-time env at all?
+ *
+ * The bundler REPLACES the exact text `import.meta.env.VITE_X` with a literal,
+ * so in the shipped popup and worker the three reads below are constants and
+ * nothing is looked up at runtime. Outside a bundle there is no replacement,
+ * `import.meta.env` is undefined, and reading a property off it throws at
+ * MODULE LOAD: not "the feature is unconfigured" but a TypeError before a line
+ * of the importing file runs.
+ *
+ * That is reachable and it was not hypothetical. One Playwright spec imports
+ * `popup/ui/copy.ts` for a pure helper, `copy.ts` imports this module, and
+ * Playwright's runner is plain node. The entire browser tier died during
+ * COLLECTION with "Cannot read properties of undefined (reading
+ * VITE_ARCHIVE_URL)", which is to say gate 7 could not run one browser test:
+ * the precise failure gate 7 exists to prevent.
+ *
+ * Written as a guard rather than as a helper taking the name as a string,
+ * because Vite's replacement is a TEXTUAL match on `import.meta.env.VITE_X`
+ * and its own documentation says a dynamic key is not substituted. A
+ * `buildEnv("VITE_ARCHIVE_URL")` would therefore have compiled cleanly, passed
+ * every test, and shipped a package with no archive and no yield configured.
+ * The reads below stay exactly as the bundler expects to find them; only
+ * whether they are evaluated changes.
+ */
+const HAS_BUILD_ENV = typeof import.meta.env !== "undefined";
+
 export const NETWORKS: Record<NetworkId, NetworkConfig> = {
   testnet: {
     id: "testnet",
@@ -85,7 +112,9 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
     // Circle testnet USDC issuer. Its SAC (CBIELTK6...) is what the confidential
     // USDC wrapper wraps and what CCTP/Aquarius use, so the whole USDC story is
     // one asset end to end.
-    knownAssets: [{ code: "USDC", issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5" }],
+    knownAssets: [
+      { code: "USDC", issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5" },
+    ],
     // Our own deployment. The upstream demo's testnet instance is deliberately
     // not used: it holds PRE-AUDIT verification keys, so building against it
     // would mean implementing five known audit findings including a register
@@ -95,13 +124,13 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
     // a shipped package points every user at their own machine, where nothing
     // is listening, and the release gate refuses it for exactly that reason.
     // Absent, the wallet says recovery is unavailable rather than pretending.
-    archiveUrl: import.meta.env.VITE_ARCHIVE_URL,
+    archiveUrl: HAS_BUILD_ENV ? import.meta.env.VITE_ARCHIVE_URL : undefined,
     // The API key is supplied at build time, never committed. Without it the
     // wallet reports yield as unconfigured instead of failing at a fetch.
     defindex: {
       baseUrl: "https://api.defindex.io",
-      apiKey: import.meta.env.VITE_DEFINDEX_API_KEY,
-      vault: import.meta.env.VITE_DEFINDEX_VAULT,
+      apiKey: HAS_BUILD_ENV ? import.meta.env.VITE_DEFINDEX_API_KEY : undefined,
+      vault: HAS_BUILD_ENV ? import.meta.env.VITE_DEFINDEX_VAULT : undefined,
     },
     // Aquarius AMM. Keyless. Router id verified against the deployed testnet
     // contract (D10) and documented as stable across testnet resets. 144 live
@@ -146,7 +175,9 @@ export const NETWORKS: Record<NetworkId, NetworkConfig> = {
     horizonUrl: "https://horizon.stellar.org",
     nativeSac: "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
     // Circle mainnet USDC issuer. Inert in this testnet-only build.
-    knownAssets: [{ code: "USDC", issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN" }],
+    knownAssets: [
+      { code: "USDC", issuer: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN" },
+    ],
     // No friendbot on mainnet, by design: the field is optional so that the
     // absence is a type-level fact rather than a URL that would fail at runtime.
     //

@@ -100,6 +100,34 @@ export function moveBody(
   };
 }
 
+/**
+ * The `errorCode` values this wallet can actually hit, in words a user can act
+ * on. Keyed by number, an ALLOWLIST: an unmapped code falls through to the
+ * generic sentence below rather than to whatever string the service sent.
+ *
+ * Each was produced against the live testnet API through the shipped client,
+ * not read off a document:
+ *
+ *   10  TokenErrors.InsufficientBalance    deposit over the account's balance
+ *   13  TokenErrors.MissingTrustline       no trustline on the vault's asset
+ *   124 VaultErrors.AmountOverTotalSupply  withdraw over the shares held
+ *
+ * Only 13 was mapped before, and 10 and 124 are the two an ordinary user
+ * reaches by typing a number that is slightly too big. Both arrived as "The
+ * yield service returned 400.", which names no cause, suggests no remedy, and
+ * reads as an outage for a mistake the user could have corrected in one keystroke.
+ *
+ * The two amount errors deliberately do NOT quote a figure: the service does
+ * not send one, and inventing a limit here would be worse than naming none.
+ */
+const DEFINDEX_ERRORS: Record<number, string> = {
+  10: "That is more than this account holds, so the deposit cannot be made. Try a smaller amount.",
+  13: "You need a trustline for this vault's asset before you can deposit or withdraw.",
+  124:
+    "That is more than you have in the vault, so the withdrawal cannot be made. " +
+    "Try a smaller amount, or use the maximum.",
+};
+
 export class DefindexError extends Error {
   constructor(
     message: string,
@@ -227,21 +255,16 @@ export class DefindexClient {
     }
     if (!res.ok) {
       // Map a KNOWN, actionable failure to an authored message, without leaking
-      // an arbitrary service string. DeFindex reports a deposit/withdraw that
-      // the account cannot make for lack of a trustline on the vault's asset as
-      // errorCode 13 ("TokenErrors.MissingTrustline"). Verified live on testnet.
+      // an arbitrary service string. See DEFINDEX_ERRORS for what is mapped and
+      // how each one was measured.
       let code: unknown;
       try {
         code = (await res.json())?.errorCode;
       } catch {
         /* no readable body; fall through to the generic message */
       }
-      if (code === 13) {
-        throw new DefindexError(
-          "You need a trustline for this vault's asset before you can deposit or withdraw.",
-          res.status,
-        );
-      }
+      const named = DEFINDEX_ERRORS[code as number];
+      if (named) throw new DefindexError(named, res.status);
       // An HTTP status is not a sentence. This is the MOST LIKELY message a user
       // sees from this module: only errorCode 13 is mapped above, and the API
       // returns 10 and 124 for ordinary mistakes, all of which arrived as "The

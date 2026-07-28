@@ -361,14 +361,14 @@ describe("actionable errors from the live API", () => {
   it("tells a refusal from an outage, because the remedies differ", async () => {
     // 4xx is "that request was wrong", which the user can act on; 5xx is "the
     // service is down", which they can only wait out. Both used to be one
-    // sentence with a number in it, and 4xx is the commoner one: only errorCode
-    // 13 is mapped, and the API returns 10 and 124 for ordinary mistakes.
+    // sentence with a number in it. The code here is deliberately one that is
+    // NOT in the table, so this stays a test of the fallback.
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
         ok: false,
         status: 400,
-        json: async () => ({ errorCode: 124 }),
+        json: async () => ({ errorCode: 4242 }),
       })) as unknown as typeof fetch,
     );
     const err = (await new DefindexClient(cfg)
@@ -378,6 +378,66 @@ describe("actionable errors from the live API", () => {
     expect(err.message).toMatch(/refused that request/i);
     expect(err.message).not.toMatch(/not answering/i);
     expect(err.status, "the status is still carried, just not shown").toBe(400);
+  });
+
+  // The two an ordinary user actually reaches, by typing a number slightly too
+  // big. Measured against the live API through the shipped client: a deposit
+  // over balance returns { errorCode: 10, message: "TokenErrors.InsufficientBalance" }
+  // and a withdraw over shares returns
+  // { errorCode: 124, message: "VaultErrors.AmountOverTotalSupply" }. Both used
+  // to arrive as "The yield service returned 400.", which names no cause and
+  // reads as an outage for a one-keystroke mistake.
+  it("says a deposit is over the balance (code 10) rather than blaming the service", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 400,
+        json: async () => ({ errorCode: 10, message: "TokenErrors.InsufficientBalance" }),
+      })) as unknown as typeof fetch,
+    );
+    const err = (await new DefindexClient(cfg)
+      .buildDeposit("CVAULT", { caller: "GUSER", amounts: [1n] })
+      .catch((e: unknown) => e)) as Error;
+    expect(err.message).toMatch(/more than this account holds/i);
+    expect(err.message, "blamed the service for the user's amount").not.toMatch(
+      /refused that request|not answering/i,
+    );
+  });
+
+  it("says a withdrawal is over what is in the vault (code 124)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 400,
+        json: async () => ({ errorCode: 124, message: "VaultErrors.AmountOverTotalSupply" }),
+      })) as unknown as typeof fetch,
+    );
+    const err = (await new DefindexClient(cfg)
+      .buildWithdraw("CVAULT", { caller: "GUSER", amounts: [1n] })
+      .catch((e: unknown) => e)) as Error;
+    expect(err.message).toMatch(/more than you have in the vault/i);
+  });
+
+  it("never repeats the service's own message back to the user", async () => {
+    // The service's string can carry anything. Only codes we have named cross,
+    // and only into sentences this repo wrote.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          errorCode: 10,
+          message: "TokenErrors.InsufficientBalance at https://internal.example/trace/abc",
+        }),
+      })) as unknown as typeof fetch,
+    );
+    const err = (await new DefindexClient(cfg)
+      .buildDeposit("CVAULT", { caller: "GUSER", amounts: [1n] })
+      .catch((e: unknown) => e)) as Error;
+    expect(err.message).not.toMatch(/TokenErrors|internal\.example/);
   });
 });
 
