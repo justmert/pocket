@@ -2,8 +2,19 @@
 // button, a field or a sheet is the same object wherever it appears.
 import { useEffect, useId, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, CSSProperties, Ref, ReactNode, UIEventHandler } from "react";
-import { chipPad, FRAME, fonts, motion, radius, ROW_STAGGER_MS, space, text, type Theme } from "./theme";
+import {
+  chipPad,
+  FRAME,
+  fonts,
+  motion,
+  radius,
+  ROW_STAGGER_MS,
+  space,
+  text,
+  type Theme,
+} from "./theme";
 import { Back as BackIcon, Close as CloseIcon } from "./icons";
+import { escapeClaimed } from "./escapeLayers";
 
 /* ---------------------------------------------------------------- frame -- */
 
@@ -901,7 +912,9 @@ export function Overline({ t, children }: { t: Theme; children: ReactNode }) {
   // and nothing in the tree said they WERE: Home's whole heading outline was the
   // wordmark, so a screen reader jumping by heading found one item on the busiest
   // screen in the product.
-  return <h2 style={{ ...text.heading, color: t.text, margin: `0 0 ${space.sm}px` }}>{children}</h2>;
+  return (
+    <h2 style={{ ...text.heading, color: t.text, margin: `0 0 ${space.sm}px` }}>{children}</h2>
+  );
 }
 
 /** a field or section label inside a screen. sentence case: a review is read,
@@ -1304,6 +1317,11 @@ export function Sheet({
   const enterTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const startY = useRef<number | null>(null);
   const panel = useRef<HTMLElement>(null);
+  // the drag-dismiss backstop below reads `open` from a timer, after the render
+  // that scheduled it; a ref is the only copy that is current when it fires.
+  const openRef = useRef(open);
+  openRef.current = open;
+  const stuck = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     if (open) {
@@ -1331,6 +1349,7 @@ export function Sheet({
     return () => {
       clearTimeout(timer.current);
       clearTimeout(enterTimer.current);
+      clearTimeout(stuck.current);
     };
   }, [open, mounted]);
 
@@ -1367,8 +1386,28 @@ export function Sheet({
     const dismiss = y > 90;
     startY.current = null;
     setGrabbing(false);
-    if (dismiss) onClose();
-    else setY(0);
+    if (!dismiss) {
+      setY(0);
+      return;
+    }
+    onClose();
+    // ...and check that it actually closed.
+    //
+    // `dismissible` above stops the known case (a confirm sheet mid-flight),
+    // but it puts the invariant in the CALLER's hands: any sheet whose
+    // `onClose` declines, or whose parent ignores it, leaves the panel parked
+    // at the drag offset with nothing to reset it, because the mount effect
+    // keys on `[open, mounted]` and neither changed. Inside a 384x600 frame
+    // with `overflow: hidden` that pushes the sheet's own buttons off the
+    // bottom of the screen.
+    //
+    // A snap back is the thing this one-transform design exists to avoid, so
+    // it happens only when the sheet is demonstrably still open a frame later,
+    // which is to say only when the alternative is a stranded panel.
+    clearTimeout(stuck.current);
+    stuck.current = setTimeout(() => {
+      if (openRef.current) setY(0);
+    }, SHEET_MS);
   };
 
   // focus goes to the sheet's first field when it has one, so the next
@@ -1418,7 +1457,13 @@ export function Sheet({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      // ...but only if this sheet IS the top. an InfoTip inside a confirm
+      // sheet is above it and claims Escape while it is open; both listened on
+      // `window`, so one keypress aimed at the tip also cancelled the confirm
+      // and discarded the staged transaction behind it.
+      if (escapeClaimed()) return;
+      onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1516,7 +1561,11 @@ export function Sheet({
               ...grabHandle(t),
               ...(hasTitle
                 ? {}
-                : { height: 4 + space.md * 2, paddingBlock: space.md, backgroundClip: "content-box" }),
+                : {
+                    height: 4 + space.md * 2,
+                    paddingBlock: space.md,
+                    backgroundClip: "content-box",
+                  }),
             }}
           />
           {hasTitle && (

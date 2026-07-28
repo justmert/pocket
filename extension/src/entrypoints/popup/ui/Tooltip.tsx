@@ -7,6 +7,7 @@
 // on hover and on focus, dismissed on leave and on escape.
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useLeave } from "./primitives";
+import { claimEscape } from "./escapeLayers";
 import { createPortal } from "react-dom";
 import type { CSSProperties, ReactNode } from "react";
 import { FRAME, radius, space, text, type Theme } from "./theme";
@@ -70,9 +71,16 @@ export function InfoTip({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
+    // escape belongs to the topmost thing, and while this tip is open that is
+    // this tip. without the claim the Sheet underneath answered the same
+    // keypress and cancelled the confirm the tip was explaining, throwing away
+    // the staged transaction. see escapeLayers.ts for why ordering cannot fix
+    // it.
+    const release = claimEscape();
     document.addEventListener("pointerdown", onDown);
     window.addEventListener("keydown", onKey);
     return () => {
+      release();
       document.removeEventListener("pointerdown", onDown);
       window.removeEventListener("keydown", onKey);
     };
@@ -167,43 +175,43 @@ export function InfoTip({
             className={leaving ? "pocket-fade-out" : "pocket-fade-in"}
             onPointerEnter={cancelClose}
             onPointerLeave={(e) => {
-        if (e.pointerType !== "mouse") return;
-        scheduleClose();
-      }}
+              if (e.pointerType !== "mouse") return;
+              scheduleClose();
+            }}
             style={{
-            // its own tone, OFF the surface/sheet it opens over, so the explanation
-            // reads as a layer rather than the card: a touch darker than the light
-            // page, a touch lighter than the dark surface (see `tip` in theme).
-            background: t.tip,
-            color: t.text,
-            border: `1px solid ${t.line}`,
-            ...text.caption,
-            // the tooltip reads at 13, one up from the caption's 12, for comfortable
-            // body reading in the bubble.
-            fontSize: 13,
-            lineHeight: 1.45,
-            padding: `${space.sm}px ${space.md}px`,
-            borderRadius: radius.md,
-            // the canonical raised-surface shadow, per pocket, rather than a
-            // hand-written rgba that had drifted from every other raised surface.
-            boxShadow: t.shadow,
-            // portaled to body, above every sheet/backdrop/menu (which top out at 41).
-            zIndex: 2000,
-            // scroll inside the bubble when its content is taller than the room it
-            // was capped to (maxHeight, from `pos`): a long "what this does" in a
-            // small/zoomed popup then fits and scrolls instead of being cut off.
-            // `auto` (not `none`) so a tapped-open tip can actually be scrolled.
-            pointerEvents: "auto",
-            overflowY: "auto",
-            overscrollBehavior: "contain",
-            textAlign: "left",
-            // measured on open; until then it is placed off the flow so its first
-            // paint (used to read its own height) does not flash at the corner.
-            ...(pos ?? { position: "fixed", top: -9999, left: -9999, width: TIP_W }),
-          }}
-        >
-          {children}
-        </span>,
+              // its own tone, OFF the surface/sheet it opens over, so the explanation
+              // reads as a layer rather than the card: a touch darker than the light
+              // page, a touch lighter than the dark surface (see `tip` in theme).
+              background: t.tip,
+              color: t.text,
+              border: `1px solid ${t.line}`,
+              ...text.caption,
+              // the tooltip reads at 13, one up from the caption's 12, for comfortable
+              // body reading in the bubble.
+              fontSize: 13,
+              lineHeight: 1.45,
+              padding: `${space.sm}px ${space.md}px`,
+              borderRadius: radius.md,
+              // the canonical raised-surface shadow, per pocket, rather than a
+              // hand-written rgba that had drifted from every other raised surface.
+              boxShadow: t.shadow,
+              // portaled to body, above every sheet/backdrop/menu (which top out at 41).
+              zIndex: 2000,
+              // scroll inside the bubble when its content is taller than the room it
+              // was capped to (maxHeight, from `pos`): a long "what this does" in a
+              // small/zoomed popup then fits and scrolls instead of being cut off.
+              // `auto` (not `none`) so a tapped-open tip can actually be scrolled.
+              pointerEvents: "auto",
+              overflowY: "auto",
+              overscrollBehavior: "contain",
+              textAlign: "left",
+              // measured on open; until then it is placed off the flow so its first
+              // paint (used to read its own height) does not flash at the corner.
+              ...(pos ?? { position: "fixed", top: -9999, left: -9999, width: TIP_W }),
+            }}
+          >
+            {children}
+          </span>,
           document.body,
         )}
     </span>

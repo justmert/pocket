@@ -70,8 +70,36 @@ export class Wallet {
     const phrase = await this.readBackupPhrase();
     await this.page.getByRole("button", { name: "I have written it down" }).click();
     await this.answerBackupCheck(phrase);
+    await this.passOnboardingReady();
     await this.waitForHome();
     return phrase;
+  }
+
+  /**
+   * Leave the "Your wallet is ready!" screen, when onboarding shows one.
+   *
+   * Onboarding takes a `fullPage` branch whenever it is not the ephemeral
+   * (in-popup) placement, and that branch now ends on a completion screen whose
+   * Done button closes the TAB rather than routing to home: a real user closes
+   * the onboarding tab and reopens the toolbar popup. The harness drives
+   * `popup.html` in an ordinary page, which is the fullPage branch, so every
+   * spec that calls `createWallet` sat on that screen until it timed out. The
+   * whole browser tier went red on one cause with no product defect behind any
+   * of it, which is the exact failure mode gate 7 exists to catch and the
+   * reason this helper carries its own note.
+   *
+   * Reopening is modelled as a reload, which is what the harness's `reopen`
+   * does and what a user does with the toolbar icon: the vault exists and the
+   * session mirror is live, so the popup comes back on home.
+   */
+  async passOnboardingReady(): Promise<void> {
+    // Whichever arrives first. A bare `count()` is a question about this
+    // instant, and the vault is still being sealed when it is asked, so it
+    // always answered zero and the helper returned before the screen it exists
+    // to handle had rendered.
+    const ready = this.page.getByRole("heading", { name: "Your wallet is ready!" });
+    await expect(ready.or(this.homeMarker()).first()).toBeVisible({ timeout: WAITS.onboarding });
+    if ((await ready.count()) > 0) await this.reopen();
   }
 
   /** The words start hidden so the user chooses the moment they appear. */
@@ -126,6 +154,7 @@ export class Wallet {
     await this.page.getByLabel(/Recovery phrase/).fill(phrase);
     await this.page.getByLabel("New password", { exact: true }).fill(password);
     await this.page.getByRole("button", { name: "Import wallet" }).click();
+    await this.passOnboardingReady();
     await this.waitForHome();
   }
 
