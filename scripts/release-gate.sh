@@ -6,6 +6,18 @@
 # protocol bug rather than a build mistake.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# The repo root, ABSOLUTE, resolved once here where the cd above has just put
+# us. Gate 7 recomputed it with `$(dirname "$0")` from INSIDE a subshell that
+# had already `cd extension`, so `$0` (a relative `./scripts/release-gate.sh`
+# when invoked from the root, which is how the README says to invoke it)
+# resolved against the wrong directory: the substitution failed with
+# `cd: ./scripts/..: No such file or directory`, expanded to empty, and
+# POCKET_EXT_PATH became the literal `/extension/.output/chrome-mv3`. Running
+# the script by ABSOLUTE path happened to work, which is why it went unnoticed.
+#
+# `set -e` does not catch it: the failing substitution is an assignment PREFIX
+# to a command, not a standalone assignment, so the shell does not abort.
+ROOT="$PWD"
 fail=0
 note() { printf '\n=== %s ===\n' "$1"; }
 ok()   { printf '  PASS  %s\n' "$1"; }
@@ -407,7 +419,7 @@ note "Gate 7: the browser suite runs against the package that was just built"
 # check: the browser tests then run against the artifact the other gates
 # inspected, not against a fresh build that might differ.
 if [ -f "$OUT/manifest.json" ]; then
-  if (cd extension && POCKET_EXT_PATH="$(cd "$(dirname "$0")/.." && pwd)/$OUT" \
+  if (cd extension && POCKET_EXT_PATH="$ROOT/$OUT" \
         npx playwright test -c playwright.tests.config.ts --reporter=line \
         >/tmp/pocket-playwright.log 2>&1); then
     ok "browser suite passes against the shipping package"
