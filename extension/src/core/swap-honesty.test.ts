@@ -79,6 +79,8 @@ const ROUTE_XDR = "AAAAEAAAAAEAAAAA"; // scvVec, empty
 let asked: bigint[] = [];
 /** When set, find-path throws for this exact input, to kill only the probe. */
 let failFor: bigint | null = null;
+/** What the route decodes to. Reset per test; overridden to forge a bad route. */
+let route: { firstPair: string[]; terminal: string; hops: number };
 
 vi.mock("./integrations/aquarius", async (orig) => {
   const real = (await orig()) as Record<string, unknown>;
@@ -96,9 +98,10 @@ vi.mock("./integrations/aquarius", async (orig) => {
         };
       }
     },
-    // The route check is a separate property with its own coverage; here the
-    // route is always the one that was asked for.
-    readRouteEndpoints: () => ({ firstPair: [IN_SAC, OUT_SAC], terminal: OUT_SAC, hops: 1 }),
+    // The endpoints a route COMMITS to, which is a third party's answer and
+    // the only thing tying the delivered asset to the one the screen names.
+    // Settable so a test can hand back a route that ends somewhere else.
+    readRouteEndpoints: () => route,
   };
 });
 
@@ -149,6 +152,7 @@ beforeEach(() => {
   depth = 10_000_000_000n;
   asked = [];
   failFor = null;
+  route = { firstPair: [IN_SAC, OUT_SAC], terminal: OUT_SAC, hops: 1 };
   prepare = (tx) => withFee(tx, SIM_FEE);
   reply = { status: "SUCCESS", ledger: 9, applicationOrder: 1 };
 });
@@ -313,5 +317,82 @@ describe("the receipt", () => {
       returnValue: xdr.ScVal.scvSymbol("nonsense"),
     };
     await expect(c.confirmSwap(handle)).resolves.toMatchObject({ delivered: undefined });
+  });
+});
+
+/**
+ * Two properties round one found UNPINNED: with `if (route.terminal !== outA.sac)`
+ * turned into `if (false)` AND `outMin` forced to `0n`, both at once, every
+ * test file in the tree that constructs a WalletController stayed green.
+ *
+ * They are the two things that decide what the user actually receives. `out_min`
+ * is the floor the contract enforces; at zero the swap cannot revert however bad
+ * the price gets, and the "you receive at least" line on the confirm screen
+ * becomes a sentence with nothing behind it. The route check is the only thing
+ * tying the delivered asset to the one the screen names: `swap_chained` has no
+ * token_out argument, and `out_min` is a bare scalar in whatever token the last
+ * hop happens to deliver, so it bounds quantity and cannot bind identity.
+ */
+describe("what the envelope actually commits to", () => {
+  /** The five `swap_chained` arguments, decoded out of the staged envelope. */
+  function swapArgs(c: unknown, handle: string) {
+    const entry = (c as { pending: Map<string, { xdr: string }> }).pending.get(handle)!;
+    const tx = TransactionBuilder.fromXDR(entry.xdr, PASS) as unknown as {
+      operations: { func: { invokeContract(): (typeof xdr.ScVal.prototype)[] } }[];
+    };
+    return tx.operations[0]!.func.invokeContract().args();
+  }
+
+  it("signs an out_min that is the estimate less the slippage, not zero", async () => {
+    const c = await worker();
+    // 100 units in, 1% slippage (the default).
+    const { handle, summary } = await c.buildSwap("native", USDC, "100");
+
+    const args = swapArgs(c, handle);
+    expect(args).toHaveLength(5);
+    const outMin = base.scValToBigInt(args[4]!);
+    expect(outMin, "the swap's floor is zero, so it can never revert").toBeGreaterThan(0n);
+    // Exactly the number the confirm screen promised, in stroops.
+    expect(outMin).toBe(BigInt(summary.minOut.replace(".", "")));
+    // ...and exactly estimate * 99%.
+    const est = BigInt(summary.estOut.replace(".", ""));
+    expect(outMin).toBe((est * 9_900n) / 10_000n);
+  });
+
+  it("tightens the floor as the slippage setting tightens", async () => {
+    const c = await worker();
+    const loose = await c.buildSwap("native", USDC, "100", 500);
+    const tight = await c.buildSwap("native", USDC, "100", 10);
+    expect(base.scValToBigInt(swapArgs(c, tight.handle)[4]!)).toBeGreaterThan(
+      base.scValToBigInt(swapArgs(c, loose.handle)[4]!),
+    );
+  });
+
+  it("refuses a route that ends in a different asset from the one on screen", async () => {
+    const c = await worker();
+    // A route answering with AQUA where the screen says USDC. Nothing else in
+    // the envelope can catch this: out_min is denominated in whatever arrives.
+    const other = new Asset("AQUA", USDC_ISSUER).contractId(PASS);
+    route = { firstPair: [IN_SAC, other], terminal: other, hops: 1 };
+
+    await expect(c.buildSwap("native", USDC, "100")).rejects.toThrow(/does not end in USDC/);
+  });
+
+  it("refuses a route that starts from a different asset", async () => {
+    const c = await worker();
+    const other = new Asset("AQUA", USDC_ISSUER).contractId(PASS);
+    route = { firstPair: [other, OUT_SAC], terminal: OUT_SAC, hops: 1 };
+
+    await expect(c.buildSwap("native", USDC, "100")).rejects.toThrow(/does not start from XLM/);
+  });
+
+  it("stages nothing when the route is refused", async () => {
+    // A refusal that still leaves a signable envelope behind is not a refusal.
+    const c = await worker();
+    const other = new Asset("AQUA", USDC_ISSUER).contractId(PASS);
+    route = { firstPair: [IN_SAC, other], terminal: other, hops: 1 };
+    await c.buildSwap("native", USDC, "100").catch(() => undefined);
+
+    expect((c as unknown as { pending: Map<string, unknown> }).pending.size).toBe(0);
   });
 });
