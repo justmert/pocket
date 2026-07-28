@@ -16,6 +16,7 @@
 //   4. The receipt named no amount at all, though the delivered figure rides on
 //      the very reply the confirmation poll already reads.
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { xdr as XdrNs } from "@stellar/stellar-sdk/base";
 import "../lib/polyfill";
 
 const store = new Map<string, unknown>();
@@ -338,7 +339,7 @@ describe("what the envelope actually commits to", () => {
   function swapArgs(c: unknown, handle: string) {
     const entry = (c as { pending: Map<string, { xdr: string }> }).pending.get(handle)!;
     const tx = TransactionBuilder.fromXDR(entry.xdr, PASS) as unknown as {
-      operations: { func: { invokeContract(): (typeof xdr.ScVal.prototype)[] } }[];
+      operations: { func: { invokeContract(): { args(): XdrNs.ScVal[] } } }[];
     };
     return tx.operations[0]!.func.invokeContract().args();
   }
