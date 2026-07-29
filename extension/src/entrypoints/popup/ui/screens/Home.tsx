@@ -397,8 +397,9 @@ export function Home() {
     // figure in its own unit, which is what `multiAssetHero` does in the same
     // situation, rather than to a dollar figure that is missing an asset.
     const shown = scrubbed ?? publicUsd;
-    if (shown === null && native) {
-      return <HeroAmount t={t} value={native.amount} code="XLM" hidden={w.hidden} />;
+    const fallback = ledgerFallback(shown, native?.amount ?? null);
+    if (fallback) {
+      return <HeroAmount t={t} value={fallback.value} code={fallback.code} hidden={w.hidden} />;
     }
 
     return (
@@ -660,9 +661,7 @@ export function Home() {
           priv &&
           priv.state !== "ready" &&
           !privAssets?.some((p) => p.state === "ready") &&
-          !needsFunding && (
-            <div style={{ marginTop: space.gutter }}>{privatePrompt(priv)}</div>
-          )}
+          !needsFunding && <div style={{ marginTop: space.gutter }}>{privatePrompt(priv)}</div>}
 
         <div style={{ marginTop: space.xl }}>
           <Overline t={t}>Assets</Overline>
@@ -773,7 +772,6 @@ export function Home() {
             </Notice>
           </div>
         )}
-
       </>
     );
   }
@@ -971,7 +969,9 @@ export function Home() {
         )}
         {/* Deposit / Withdraw ride the section header row, beside the "Yield" heading
             they belong to, rather than sitting below the position line. */}
-        <div style={{ display: "flex", alignItems: "center", gap: space.sm, marginBottom: space.sm }}>
+        <div
+          style={{ display: "flex", alignItems: "center", gap: space.sm, marginBottom: space.sm }}
+        >
           <div style={{ ...text.heading, color: t.text }}>Yield</div>
           <div style={{ flex: 1 }} />
           {y.available && (
@@ -1457,7 +1457,9 @@ export function PrivateAssetRow({
   // only outcome is the worker refusing it. the prompt card two hundred lines up
   // was gated for exactly this and this map was left behind.
   const label =
-    NEEDS_ARCHIVE.includes(p.state) && !canRebuild(network) ? "Needs rebuilding" : ROW_STATE_LABEL[p.state];
+    NEEDS_ARCHIVE.includes(p.state) && !canRebuild(network)
+      ? "Needs rebuilding"
+      : ROW_STATE_LABEL[p.state];
   const value = !ready ? (
     <span style={{ ...text.value, color: t.exposed }}>{label}</span>
   ) : p.spendable ? (
@@ -1554,4 +1556,31 @@ function headerVeil(t: Theme, opacity: number, snapping: boolean): CSSProperties
     WebkitBackdropFilter: "blur(18px) saturate(1.6)",
     pointerEvents: "none",
   };
+}
+
+/**
+ * What the public headline shows when no dollar figure can be computed.
+ *
+ * `publicUsd` is null the moment ANY held asset's price is missing, which is
+ * the right rule: a total that silently omits an asset is worse than no total.
+ * Rendering that null as a shimmer was not: an unreachable mainnet price host
+ * left a funded wallet showing no balance at all on the first screen, with the
+ * ledger's own figure sitting in memory unused. The comment above the hero has
+ * always promised "the one that can go missing is never the one that carries
+ * the balance"; this is that promise.
+ *
+ * Null when a dollar figure IS available (the caller renders it) and null when
+ * there is no ledger figure either, because inventing one would be worse than
+ * the shimmer.
+ *
+ * A named function rather than three lines inline so it can be tested: Home
+ * needs the whole provider to render, and this decision does not.
+ */
+export function ledgerFallback(
+  usdValue: number | null,
+  nativeAmount: string | null,
+): { value: string; code: string } | null {
+  if (usdValue !== null) return null;
+  if (nativeAmount === null) return null;
+  return { value: nativeAmount, code: "XLM" };
 }

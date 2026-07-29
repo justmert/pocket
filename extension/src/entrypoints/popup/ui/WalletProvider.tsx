@@ -149,7 +149,8 @@ export interface BgOp {
   at: number;
 }
 
-interface Wallet {
+/** Exported alongside `Ctx` so a test can build a fixed wallet state. */
+export interface Wallet {
   t: Theme;
   pocket: Pocket;
   setPocket(p: Pocket): void;
@@ -267,7 +268,10 @@ interface Wallet {
   showToast(message: string, tone?: "neutral" | "positive"): void;
 }
 
-const Ctx = createContext<Wallet | null>(null);
+// Exported for tests ONLY, so a screen can be rendered against a fixed wallet
+// state without standing up the rpc channel and a worker. Nothing in the app
+// consumes it directly; every screen goes through `useWallet`.
+export const Ctx = createContext<Wallet | null>(null);
 
 export function useWallet(): Wallet {
   const w = useContext(Ctx);
@@ -710,7 +714,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setPocketState(p);
   }, []);
 
-
   const lock = useCallback(async () => {
     try {
       await call({ type: "lock" });
@@ -732,10 +735,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // consistent, not just the inline styles. once unlocked, the theme follows the
   // pocket toggle again.
   const loggedOut = !status || !status.initialised || status.locked === true;
-  const t = useMemo(
-    () => theme(loggedOut ? "private" : pocket),
-    [loggedOut, pocket],
-  );
+  const t = useMemo(() => theme(loggedOut ? "private" : pocket), [loggedOut, pocket]);
 
   useEffect(() => {
     document.body.style.margin = "0";

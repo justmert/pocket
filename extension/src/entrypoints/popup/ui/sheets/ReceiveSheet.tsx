@@ -18,6 +18,13 @@ export function ReceiveSheet({ open, onClose }: { open: boolean; onClose: () => 
   const t = w.t;
   const address = w.status?.address;
 
+  // The assets this account can actually hold, read off what the worker
+  // reported. XLM is native and needs no trustline, so it is always there;
+  // every other entry IS a trustline, because `balances()` omits an asset that
+  // has none. Null while the read is still out: "we do not know yet" must not
+  // render as "only XLM", which is a claim.
+  const receivable = w.balances === null ? null : listOf(w.balances.map((b) => b.code));
+
   return (
     <Sheet t={t} open={open} onClose={onClose} title="Receive">
       {/* the QR, the address and the copy button all live in ONE W-wide column,
@@ -72,8 +79,8 @@ export function ReceiveSheet({ open, onClose }: { open: boolean; onClose: () => 
             {w.pocket === "private" && (
               <div style={{ marginTop: space.sm }}>
                 <Notice t={t} tone="exposed" bare>
-                  This is your public address. Payments to it arrive in the public pocket, visible on
-                  the ledger. Move them across afterwards to hide the amounts.
+                  This is your public address. Payments to it arrive in the public pocket, visible
+                  on the ledger. Move them across afterwards to hide the amounts.
                 </Notice>
               </div>
             )}
@@ -90,6 +97,28 @@ export function ReceiveSheet({ open, onClose }: { open: boolean; onClose: () => 
                 </Notice>
               </div>
             )}
+            {/* WHAT can arrive here, which is not the same question as where.
+                a Stellar account can only hold an asset it has a trustline for,
+                and a payment in anything else is rejected by the network with
+                `op_no_trust`: the sender loses the fee, the money never moves,
+                and the recipient is told nothing at all because no payment
+                happened. the wallet knew this and could not say it, because
+                `balances()` OMITS an asset with no trustline rather than
+                showing it at zero, so a fresh account has no USDC row anywhere
+                and no cue that USDC cannot arrive.
+
+                stated as what CAN arrive rather than as a list of what cannot,
+                because the second list is every asset on Stellar. */}
+            {receivable !== null && (
+              <div style={{ marginTop: space.sm }}>
+                <Notice t={t} bare>
+                  {`This address can receive ${receivable}. Anything else has to be added first, ` +
+                    `in Settings, Your assets, or the payment is rejected by the network and ` +
+                    `nothing arrives.`}
+                </Notice>
+              </div>
+            )}
+
             <ButtonStack>
               <Button t={t} onClick={() => w.copy(address)}>
                 {w.copied ? "Copied" : "Copy address"}
@@ -104,4 +133,11 @@ export function ReceiveSheet({ open, onClose }: { open: boolean; onClose: () => 
       </div>
     </Sheet>
   );
+}
+
+/** "XLM", "XLM and USDC", "XLM, USDC and EURC". Plain English, not a CSV. */
+function listOf(codes: string[]): string {
+  const seen = [...new Set(codes)];
+  if (seen.length <= 1) return seen[0] ?? "nothing yet";
+  return `${seen.slice(0, -1).join(", ")} and ${seen[seen.length - 1]}`;
 }
