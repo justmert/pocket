@@ -223,7 +223,12 @@ export function AssetDetailSheet({
             <div style={{ ...text.screenTitle, color: t.text, lineHeight: 1.1, minWidth: 0 }}>
               {code}
             </div>
-            <ChangeChip t={t} pct={scrubAt === null ? (market?.change24h ?? null) : null} />
+            <ChangeChip
+              t={t}
+              pct={scrubAt === null ? (market?.change24h ?? null) : null}
+              label="24h"
+              describedAs="Market price change over the last 24 hours"
+            />
           </div>
           <div style={{ marginTop: 3 }}>
             {price !== null ? (

@@ -417,7 +417,14 @@ export function Home() {
               hidden={w.hidden}
             />
           </div>
-          <ChangeChip t={t} pct={scrubAt === null ? (chart?.changePct ?? null) : null} />
+          <ChangeChip
+            t={t}
+            pct={scrubAt === null ? (chart?.changePct ?? null) : null}
+            // the POCKET's value, not the market's. it counts money arriving
+            // and leaving, so it can be up on a day the market fell.
+            label="Value"
+            describedAs={`Value change over ${range}, including money moved in and out`}
+          />
         </div>
         {/* the two figures measure DIFFERENT things and the hero swaps between
             them silently: at rest it is the sum of what is spendable, priced at

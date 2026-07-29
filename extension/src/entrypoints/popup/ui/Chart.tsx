@@ -428,7 +428,30 @@ export function RangeTabs({
 }
 
 /** the percentage chip beside the figure. */
-export function ChangeChip({ t, pct }: { t: Theme; pct: number | null }) {
+export function ChangeChip({
+  t,
+  pct,
+  /**
+   * WHAT moved, in one or two characters, drawn before the arrow.
+   *
+   * The same component draws two different measurements and drew them
+   * identically. On Home it is the PORTFOLIO's value over the selected range,
+   * which counts money arriving and leaving: measured live, it read "▲ 105.05%"
+   * on a day the market moved +3.14%, and stayed green through a week the
+   * market fell 2.52%. On the asset sheet it is the asset's own 24h price
+   * change. Both are correct figures; neither said which one it was, and the
+   * shape of the thing (an arrow and a percentage beside a balance) reads as
+   * the market to anyone who has seen a price chart.
+   */
+  label,
+  /** the whole sentence, for a screen reader and a hover. */
+  describedAs,
+}: {
+  t: Theme;
+  pct: number | null;
+  label?: string;
+  describedAs?: string;
+}) {
   // null is not zero. a range that starts before the wallet was funded has no
   // percentage to report, and "0.00%" would claim it held steady at nothing.
   //
@@ -457,7 +480,14 @@ export function ChangeChip({ t, pct }: { t: Theme; pct: number | null }) {
         opacity: live ? 1 : 0,
         transition: `opacity var(--pocket-instant) var(--pocket-enter)`,
       }}
+      aria-label={
+        describedAs
+          ? `${describedAs}: ${shown >= 0 ? "up" : "down"} ${Math.abs(shown).toFixed(2)} percent`
+          : undefined
+      }
+      title={describedAs}
     >
+      {label ? `${label} ` : ""}
       {up ? "▲" : "▼"} {Math.abs(shown).toFixed(2)}%
     </span>
   );
