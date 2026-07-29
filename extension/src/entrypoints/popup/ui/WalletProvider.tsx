@@ -23,7 +23,7 @@ import {
   removeFromAddressBook,
   clearAddressBook,
 } from "./addressBook";
-import { selectPrivateAsset } from "./selectAsset";
+import { selectPrivateAsset, liveDetail } from "./selectAsset";
 import { COPY_HOLD_MS, motion, theme, type Pocket, type Theme } from "./theme";
 import type {
   PrivatePocket,
@@ -882,6 +882,25 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const primaryToken = status?.privateAssets?.map((a) => a.token)[0] ?? null;
   const priv = selectPrivateAsset(privAssets, primaryToken);
 
+  // The tapped asset, resolved AGAINST THE LOADED SET on every render rather
+  // than handed back as the object the row was drawn from.
+  //
+  // `setPrivateDetail` has two writers and both are "a row was tapped";
+  // `refresh` writes `privAssets` and nothing reconciled the two. So the sheet
+  // showed the pocket as it was at the moment of the tap, for as long as it was
+  // open: a balance that refreshed under it, or a receive that landed, changed
+  // nothing on screen. Its own header comment claims the opposite in words
+  // ("it reads the live pocket off `priv` ... so a balance that refreshes, or a
+  // receive that lands, updates the open sheet in place"), and MoveSheet reads
+  // the same field to decide which asset it is acting on.
+  //
+  // While `privAssets` is null the read has not landed, and the snapshot is
+  // still the best-known truth, so it stands. Once the set IS loaded the answer
+  // comes from it, including when that answer is "this asset is no longer
+  // there": `selectPrivateAsset` refuses to substitute a different asset, which
+  // is what stops a USDC sheet quietly becoming an XLM one.
+  const privateDetailLive = liveDetail(privateDetail, privAssets);
+
   const value: Wallet = {
     t,
     pocket,
@@ -902,7 +921,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     balanceError,
     privAssets,
     priv,
-    privateDetail,
+    privateDetail: privateDetailLive,
     privError,
     yieldPosition,
     yieldError,

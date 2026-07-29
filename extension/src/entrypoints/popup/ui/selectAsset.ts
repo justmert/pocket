@@ -45,3 +45,35 @@ export function selectPrivateAsset(
   // Selected, present in neither: say so.
   return null;
 }
+
+/**
+ * The asset a private detail sheet is showing, resolved against the loaded set.
+ *
+ * `snapshot` is the object the tapped row was rendered from, and on its own it
+ * never changes again: `setPrivateDetail` has two writers and both are "a row
+ * was tapped", while `refresh` writes the loaded set. So a sheet showed the
+ * pocket as it was at the moment of the tap for as long as it stayed open, and
+ * a balance that refreshed under it, or a receive that landed, changed nothing
+ * on screen. `PrivateAssetSheet`'s own header comment claims the opposite.
+ *
+ * Three cases that are NOT "look it up":
+ *
+ *   - nothing tapped: nothing to show.
+ *   - the set has not loaded: the snapshot is the best-known truth, and
+ *     blanking the open sheet on every refresh would be a flicker.
+ *   - the snapshot carries no token (the legacy single-pocket shape): resolving
+ *     that would go through `selectPrivateAsset`'s "nothing selected yet" path
+ *     and hand back the FIRST asset, which on a two-asset wallet turns a USDC
+ *     sheet into an XLM one.
+ *
+ * Otherwise the loaded set answers, including when the answer is null: an asset
+ * that is no longer there must stop being drawn as present, and it must never
+ * be replaced by a different one.
+ */
+export function liveDetail(
+  snapshot: PrivatePocket | null,
+  loaded: PrivatePocket[] | null,
+): PrivatePocket | null {
+  if (snapshot === null || loaded === null || snapshot.token === undefined) return snapshot;
+  return selectPrivateAsset(loaded, snapshot.token);
+}
