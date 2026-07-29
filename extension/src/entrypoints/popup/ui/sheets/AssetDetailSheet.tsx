@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
-import { Amount, Rolling, Figure } from "../Amount";
+import { Amount, RollingFigure, Figure } from "../Amount";
 import { Button, IconDisc, Sheet, Skeleton, useRetained } from "../primitives";
 import { ChangeChip, ValueChartBlock, useValueChart } from "../Chart";
 import { AssetMark } from "../screens/Home";
@@ -230,8 +230,17 @@ export function AssetDetailSheet({
               <span style={{ ...text.heading, color: t.text, fontVariantNumeric: "tabular-nums" }}>
                 {/* rolls its digits on a scrub, the same as the home hero. the
                     per-unit price keeps six sub-dollar places via money.price;
-                    the holding VALUE below goes through money.usdOf (four). */}
-                <Rolling value={priceUsd(price)} />
+                    the holding VALUE below goes through money.usdOf (four).
+
+                    the SPLIT is the accessibility of it, and this was the one
+                    Rolling in the tree without it. `Rolling` renders a full
+                    0..9 column per digit and clips nine of the ten with
+                    `overflow: hidden`, which hides them from the eye and not
+                    from the accessibility tree: unwrapped, this row announced
+                    every column of every digit as one long run of numerals.
+                    every other call site wraps it, so the guard is the wrapper
+                    and there was exactly one place missing it. */}
+                <RollingFigure value={priceUsd(price)} />
               </span>
             ) : marketLoaded ? (
               <span style={{ ...text.heading, color: t.faint }}>Price unavailable</span>

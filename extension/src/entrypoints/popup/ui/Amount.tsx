@@ -127,6 +127,30 @@ export function maskAmount(text: string, hidden: boolean): string {
  * out the asterisks. Here the run is `aria-hidden` decoration and the sentence
  * is what is announced, the same idiom `Amount` uses.
  */
+/**
+ * A rolling figure that announces itself as one string.
+ *
+ * `Rolling` renders a full 0..9 column per digit and clips nine of the ten with
+ * `overflow: hidden`. That hides them from the EYE and not from the
+ * accessibility tree, so a bare `<Rolling>` is announced as every column of
+ * every digit: a 70-character run of numerals where a price should be.
+ *
+ * Every other call site wrapped it by hand, which meant the guard lived at the
+ * call site and one site had simply not been given it. This is the pairing,
+ * once, so a new caller gets it by using the component rather than by
+ * remembering.
+ */
+export function RollingFigure({ value }: { value: string }) {
+  return (
+    <>
+      <span style={EXACT}>{value}</span>
+      <span aria-hidden style={{ display: "inline-flex", alignItems: "baseline" }}>
+        <Rolling value={value} />
+      </span>
+    </>
+  );
+}
+
 export function Figure({
   value,
   hidden,
