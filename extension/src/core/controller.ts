@@ -1433,6 +1433,21 @@ export class WalletController {
       // (reserve, subentries, selling liabilities, fee); it is asked here for an
       // amount of zero, because a changeTrust spends nothing and the only
       // question is whether what stays behind still clears the new minimum.
+      // An account that is not on the ledger yet cannot hold a trustline,
+      // because it does not exist to hold one. The door here is ungated:
+      // Settings offers "Your assets" on a wallet that has never been funded,
+      // `trustlines()` maps Horizon's 404 to an empty list, and the screen
+      // invites the user to add one over that emptiness. The refusal they then
+      // got came from `getAccount`, which throws a bare `Error("Account not
+      // found: G...")`: not on the allowlist, so "Something went wrong. Try
+      // again, and check your connection." A connection that is working fine,
+      // and a retry that can never succeed.
+      if (!(await this.accountExists(address))) {
+        throw new TrustlineError(
+          `This account is not on the Stellar network yet, so it cannot hold ${assetCode} or ` +
+            `anything else. Receive some XLM first: the first payment creates the account.`,
+        );
+      }
       const native = await readNative(this.server(), address);
       const after = minimumBalance(
         { ...native, subEntryCount: native.subEntryCount + 1 },

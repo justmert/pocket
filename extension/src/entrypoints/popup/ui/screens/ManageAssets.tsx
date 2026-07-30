@@ -6,7 +6,7 @@
 // not shown: it is always held and has no trustline to manage.
 import { useEffect, useRef, useState } from "react";
 import { displayAmount } from "../../../../core/chain/balances";
-import { useWallet } from "../WalletProvider";
+import { useWallet, nativeOf } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Frame, Header, Notice, Skeleton } from "../primitives";
 import { ConfirmSheet, useOnce } from "../flow";
@@ -20,6 +20,18 @@ import type { Trustline, TrustlineSummary } from "../../../../core/messages";
 export function ManageAssets({ onClose }: { onClose: () => void }) {
   const w = useWallet();
   const t = w.t;
+
+  // is this account ON THE LEDGER? an unfunded account has no reserve to
+  // report, which is the same sentinel Home reads. `trustlines()` maps
+  // Horizon's 404 to an empty list, so an account that does not exist is
+  // indistinguishable here from one that simply holds nothing, and this screen
+  // invited the user to add an asset over that emptiness. `buildAddTrustline`
+  // then refused, and the refusal came from `getAccount` as "Something went
+  // wrong. Try again, and check your connection." Undefined while the balances
+  // are still being read, which counts as on-ledger: a not-yet-known account
+  // must not be announced as missing.
+  const native = nativeOf(w.balances);
+  const onLedger = w.balances === null || native === undefined || native.total !== undefined;
 
   const [lines, setLines] = useState<Trustline[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -174,7 +186,10 @@ export function ManageAssets({ onClose }: { onClose: () => void }) {
                   padding: `${space.xl}px ${space.md}px`,
                 }}
               >
-                You have no assets added. Get started by adding an asset.
+                {onLedger
+                  ? "You have no assets added. Get started by adding an asset."
+                  : "This account is not on the Stellar network yet, so it cannot hold any asset. " +
+                    "Receive some XLM first: the first payment creates the account."}
               </div>
             )}
 
@@ -272,9 +287,7 @@ function AssetLine({
         {/* the MONO face the theme reserves for verbatim data, as Home and the
             asset directory already set the same value. this screen's whole job is
             checking an issuer and it was the one setting it in the prose face. */}
-        <span
-          style={{ ...text.rowSub, fontFamily: fonts.mono, color: t.sub, display: "block" }}
-        >
+        <span style={{ ...text.rowSub, fontFamily: fonts.mono, color: t.sub, display: "block" }}>
           {shortAddress(tl.issuer)}
         </span>
       </span>
