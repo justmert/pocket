@@ -1494,6 +1494,10 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "epoch seconds, to set a transaction's own expiry window",
   },
   {
+    fragment: "const amount = Number(y.underlyingBalance);",
+    why: "what is in the yield vault, turned into a float to be PRICED into the home total, exactly as every balance on that screen is. it is a dollar estimate and never an amount that gets signed: the vault's own deposit and withdraw send the decimal string, parsed to bigint stroops in the worker",
+  },
+  {
     fragment: '? `${describedAs}: ${shown >= 0 ? "up" : "down"} ${Math.abs(shown).toFixed(2)} percent`',
     why: "the change chip's own percentage, spelled out for a screen reader; the same number the visible chip already prints, and a rate rather than an amount",
   },

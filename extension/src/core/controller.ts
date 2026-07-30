@@ -4607,7 +4607,43 @@ export class WalletController {
    * bytes that get signed.
    */
   private async prepareForReview(tx: Transaction): Promise<Transaction> {
-    return this.simulate(tx);
+    const prepared = await this.simulate(tx);
+    await this.assertCanPayFee(prepared);
+    return prepared;
+  }
+
+  /**
+   * Can this account pay the fee at all?
+   *
+   * Distinct from `assertCanAffordFee`, which asks whether an AMOUNT plus its
+   * fee fit. Seven build paths spend nothing but the fee (add and remove a
+   * trustline, claim from a bridge, withdraw from the vault, and the private
+   * merge, register and unshield), so they reached no fee guard of any kind: a
+   * wallet with no spare XLM built, simulated, reviewed and signed them, and
+   * the network refused with `txINSUFFICIENT_BALANCE` having taken the
+   * sequence number.
+   *
+   * Here rather than at seven call sites because `prepareForReview` is the one
+   * choke point every build passes through, and because the last audit's
+   * recurring shape was a check added to one surface and missing from the
+   * others. It runs AFTER simulation, which is the first moment the real fee
+   * exists: on a Soroban invocation that is three to four orders of magnitude
+   * above `BASE_FEE`.
+   *
+   * A path that also checks an amount keeps doing so; this is the weaker of the
+   * two questions and cannot make a stronger check pass.
+   */
+  private async assertCanPayFee(tx: Transaction): Promise<void> {
+    const { address } = requireSession();
+    const fee = BigInt(tx.fee);
+    const native = await readNative(this.server(), address);
+    const reserve = minimumBalance(native, BASE_RESERVE_STROOPS);
+    const spare = availableToSend({ ...native, reserve });
+    if (spare >= fee) return;
+    throw new InsufficientBalanceError(
+      `This transaction's network fee is ${formatAmount(fee)} XLM and only ` +
+        `${formatAmount(spare)} XLM is free after the network's reserve. Add a little XLM first.`,
+    );
   }
 
   /**
