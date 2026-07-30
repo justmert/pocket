@@ -29,7 +29,7 @@ test("creating a wallet shows 24 words once, then opens the home screen", async 
   await wallet.page.getByLabel("Confirm password").fill(PASSWORD);
   await wallet.page.getByRole("button", { name: "Create wallet" }).click();
 
-  await expect(wallet.page.getByText("Write this down")).toBeVisible({
+  await expect(wallet.page.getByText("Save your recovery phrase")).toBeVisible({
     timeout: WAITS.onboarding,
   });
 

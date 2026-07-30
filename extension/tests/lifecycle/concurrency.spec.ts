@@ -38,7 +38,7 @@ test("every recovery phrase Pocket shows must control the wallet it wrote", asyn
 
     // Settle: each tab has either the backup screen or a visible refusal.
     const settled = async (p: Page) =>
-      (await p.getByText("Write this down").count()) +
+      (await p.getByText("Save your recovery phrase").count()) +
       (await p.getByText(/already exists|went wrong|malformed/i).count());
     await expect
       .poll(async () => (await settled(a)) && (await settled(b)), { timeout: 90_000 })
@@ -46,7 +46,7 @@ test("every recovery phrase Pocket shows must control the wallet it wrote", asyn
 
     const phrases: string[] = [];
     for (const p of [a, b]) {
-      if ((await p.getByText("Write this down").count()) > 0) phrases.push(await shownPhrase(p));
+      if ((await p.getByText("Save your recovery phrase").count()) > 0) phrases.push(await shownPhrase(p));
     }
 
     // The backup screen says these words are the only way to recover the wallet

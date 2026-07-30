@@ -90,7 +90,7 @@ test("a wallet whose worker died before the backup was acknowledged is not orpha
     await page.getByRole("textbox", { name: "Password", exact: true }).fill(PASSWORD);
     await page.getByRole("textbox", { name: "Confirm password" }).fill(PASSWORD);
     await page.getByRole("button", { name: "Create wallet" }).click();
-    await expect(page.getByText("Write this down")).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: 60_000 });
   await page.getByRole("button", { name: "Show the phrase" }).click();
     const phrase = (
       await page
@@ -117,7 +117,11 @@ test("a wallet whose worker died before the backup was acknowledged is not orpha
     await p2.getByRole("button", { name: /recovery phrase/i }).click();
     await p2.getByRole("textbox", { name: /Recovery phrase/i }).fill(phrase);
     await p2.getByRole("textbox", { name: "New password", exact: true }).fill(PASSWORD);
-    await p2.getByRole("button", { name: "Import wallet" }).click();
+    // The restore screen asks twice; one field leaves the submit disabled.
+    await p2
+      .getByRole("textbox", { name: "Confirm new password", exact: true })
+      .fill(PASSWORD);
+    await p2.getByRole("button", { name: "Restore wallet" }).click();
     await expect(p2.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
     expect(await addressOf(p2)).toBe(address);
   } finally {

@@ -81,7 +81,7 @@ async function onboard(page: Page): Promise<void> {
   await page.getByRole("textbox", { name: "Password", exact: true }).fill(PASSWORD);
   await page.getByRole("textbox", { name: "Confirm password" }).fill(PASSWORD);
   await page.getByRole("button", { name: "Create wallet" }).click();
-  await expect(page.getByText("Write this down")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: 60_000 });
   await page.getByRole("button", { name: "Show the phrase" }).click();
     const shownWords = await page
     .locator("span")

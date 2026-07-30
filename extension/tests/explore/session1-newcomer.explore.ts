@@ -72,7 +72,7 @@ test("session 1: a newcomer sets up a wallet reading nothing but the screen", as
   await page.getByRole("button", { name: "Create wallet" }).click();
 
   // 4. The phrase. This is the screen the whole product turns on.
-  await page.getByText("Write this down").waitFor({ timeout: WAITS.onboarding });
+  await page.getByText("Save your recovery phrase").waitFor({ timeout: WAITS.onboarding });
   await look(page, "05 phrase screen, words still hidden");
 
   await page.getByRole("button", { name: "Show the phrase" }).click();

@@ -216,7 +216,7 @@ export async function onboard(page: Page, password = PASSWORD): Promise<string> 
   await page.getByRole("textbox", { name: "Password", exact: true }).fill(password);
   await page.getByRole("textbox", { name: "Confirm password" }).fill(password);
   await page.getByRole("button", { name: "Create wallet" }).click();
-  await expect(page.getByText("Write this down")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: 60_000 });
   await page.getByRole("button", { name: "Show the phrase" }).click();
   const cells = await page
     .locator("span")

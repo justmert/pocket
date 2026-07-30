@@ -39,7 +39,7 @@ export async function onboard(page: Page, password = PASSWORD): Promise<string> 
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByLabel("Confirm password").fill(password);
   await page.getByRole("button", { name: "Create wallet" }).click();
-  await expect(page.getByText("Write this down")).toBeVisible({ timeout: SLOW });
+  await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: SLOW });
   await page.getByRole("button", { name: "Show the phrase" }).click();
   const cells = await page
     .locator("span")

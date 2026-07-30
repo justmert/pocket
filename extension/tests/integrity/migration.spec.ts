@@ -78,7 +78,7 @@ async function createWalletOnOldUi(page: Page, password: string): Promise<string
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByLabel("Confirm password").fill(password);
   await page.getByRole("button", { name: "Create wallet" }).click();
-  await expect(page.getByText("Write this down")).toBeVisible({ timeout: WAITS.onboarding });
+  await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: WAITS.onboarding });
   const cells = await page
     .locator("span")
     .filter({ hasText: /^\d+\.\s\w+\s*$/ })

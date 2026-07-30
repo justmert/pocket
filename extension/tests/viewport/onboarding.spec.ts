@@ -108,7 +108,7 @@ test("all 24 backup words and both buttons are reachable at every viewport", asy
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByLabel("Confirm password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create wallet" }).click();
-  await expect(page.getByText("Write this down")).toBeVisible({ timeout: WAITS.onboarding });
+  await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: WAITS.onboarding });
   await page.getByRole("button", { name: "Show the phrase" }).click();
 
   for (const vp of VIEWPORTS) {
@@ -140,7 +140,7 @@ test("the import form holds a full 24-word phrase without spilling sideways", as
   await expect(page.getByText("Use at least eight characters.")).toBeVisible();
 
   await atEveryViewport(page, "onboarding/import (24 long words typed)", async () => {
-    await expect(page.getByRole("button", { name: "Import wallet" })).toBeAttached();
+    await expect(page.getByRole("button", { name: "Restore wallet" })).toBeAttached();
   });
 });
 

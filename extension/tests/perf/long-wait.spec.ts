@@ -143,7 +143,7 @@ test("the short wait the wallet already has does not leave the screen unchanged 
   await installProbe(wallet.page, {
     ...WATCH,
     creating: "Creating",
-    backup: "Write this down",
+    backup: "Save your recovery phrase",
   });
   await wallet.page.bringToFront();
   await wallet.page.reload();
@@ -154,7 +154,7 @@ test("the short wait the wallet already has does not leave the screen unchanged 
   await wallet.page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await wallet.page.getByLabel("Confirm password").fill(PASSWORD);
   await wallet.page.getByRole("button", { name: "Create wallet" }).click();
-  await expect(wallet.page.getByText("Write this down")).toBeVisible({ timeout: WAITS.onboarding });
+  await expect(wallet.page.getByText("Save your recovery phrase")).toBeVisible({ timeout: WAITS.onboarding });
   const p = await read(wallet.page);
   await disarm(wallet.page);
 

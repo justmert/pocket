@@ -371,7 +371,7 @@ test("the recovery phrase is real text, not an image or a canvas", async ({ wall
   await wallet.page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await wallet.page.getByLabel("Confirm password").fill(PASSWORD);
   await wallet.page.getByRole("button", { name: "Create wallet" }).click();
-  await expect(wallet.page.getByText("Write this down")).toBeVisible({
+  await expect(wallet.page.getByText("Save your recovery phrase")).toBeVisible({
     timeout: WAITS.onboarding,
   });
 

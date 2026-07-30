@@ -57,7 +57,7 @@ test("creating a wallet twice in one gesture leaves one wallet, and the phrase o
   // an improvement being reported as a regression.
   expect(clicks.dispatched, `second click landed on a live button: ${clicks.secondLanded}`).toBe(2);
 
-  await expect(page.getByText("Write this down")).toBeVisible({ timeout: SLOW });
+  await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: SLOW });
   await page.getByRole("button", { name: "Show the phrase" }).click();
   const cells = page.locator("span").filter({ hasText: /^\d+\.\s\w+\s*$/ });
   // Not 48, and not 12: two creations racing could leave either.
@@ -87,7 +87,7 @@ test("creating a wallet twice in one gesture leaves one wallet, and the phrase o
     await other.getByRole("button", { name: "I have a recovery phrase" }).click();
     await other.getByLabel("Recovery phrase").fill(phrase);
     await other.getByLabel("New password", { exact: true }).fill(PASSWORD);
-    await other.getByRole("button", { name: "Import wallet" }).click();
+    await other.getByRole("button", { name: "Restore wallet" }).click();
     await expect(other.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
     expect(
       await receiveAddress(other),
@@ -141,7 +141,7 @@ test("importing twice in one gesture leaves one wallet, not an existing-wallet e
   await page.getByLabel("Recovery phrase").fill(phrase);
   await page.getByLabel("New password", { exact: true }).fill(PASSWORD);
 
-  await clickTwiceInOneTask(page, "Import wallet");
+  await clickTwiceInOneTask(page, "Restore wallet");
 
   await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
   // The second import is refused by design (`WalletExistsError`), and being

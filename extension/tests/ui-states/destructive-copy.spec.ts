@@ -38,7 +38,9 @@ test("every screen that sets a password says what the password is not", async ({
   // 3. erase and restore, which is reached from the locked screen.
   await page.getByRole("textbox", { name: /Recovery phrase/i }).fill(PHRASE);
   await page.getByRole("textbox", { name: "New password", exact: true }).fill(PASSWORD);
-  await page.getByRole("button", { name: "Import wallet" }).click();
+  // The restore screen asks twice; one field leaves the submit disabled.
+  await page.getByRole("textbox", { name: "Confirm new password", exact: true }).fill(PASSWORD);
+  await page.getByRole("button", { name: "Restore wallet" }).click();
   await wallet.waitForHome(WAITS.ledgerRead);
   await page.getByRole("button", { name: "Lock wallet" }).click();
   await page.getByRole("button", { name: "Forgot your password?" }).click();

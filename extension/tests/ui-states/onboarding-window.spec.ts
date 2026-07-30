@@ -147,7 +147,7 @@ test("a popup that could not hand off says so on the phrase screen", async ({ wa
   await page.getByLabel("Password", { exact: true }).fill("a-strong-test-password");
   await page.getByLabel("Confirm password").fill("a-strong-test-password");
   await page.getByRole("button", { name: "Create wallet" }).click();
-  await expect(page.getByText("Write this down")).toBeVisible({ timeout: WAITS.onboarding });
+  await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: WAITS.onboarding });
 
   await expect(
     page.getByText(/this window closes the moment you click anything outside it/i),

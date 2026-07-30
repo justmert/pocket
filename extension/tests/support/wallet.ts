@@ -153,7 +153,13 @@ export class Wallet {
     await this.page.getByRole("button", { name: "I have a recovery phrase" }).click();
     await this.page.getByLabel(/Recovery phrase/).fill(phrase);
     await this.page.getByLabel("New password", { exact: true }).fill(password);
-    await this.page.getByRole("button", { name: "Import wallet" }).click();
+    // The screen asks twice. It did not always, and a helper that fills one
+    // field leaves the submit disabled, so every spec that restores a wallet
+    // waited out its timeout on a button that was never going to enable.
+    await this.page.getByLabel("Confirm new password", { exact: true }).fill(password);
+    // "Restore wallet", not "Import wallet". The screen is titled Restore and
+    // the button follows it.
+    await this.page.getByRole("button", { name: "Restore wallet" }).click();
     await this.passOnboardingReady();
     await this.waitForHome();
   }

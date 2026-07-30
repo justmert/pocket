@@ -30,7 +30,7 @@ test("a second window does not present the wallet while a phrase is unconfirmed"
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByLabel("Confirm password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create wallet" }).click();
-  await expect(page.getByText("Write this down")).toBeVisible({ timeout: WAITS.onboarding });
+  await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: WAITS.onboarding });
 
   // The wallet really is complete on disk by now — that is the premise, not an
   // assumption. If this ever stops being true the defect is gone and so is the
@@ -68,7 +68,7 @@ test("a second window does not present the wallet while a phrase is unconfirmed"
 
   // It also does not start a second copy of the flow: two windows both showing
   // a phrase step would be its own defect.
-  await expect(second.getByText("Write this down")).toHaveCount(0);
+  await expect(second.getByText("Save your recovery phrase")).toHaveCount(0);
   await expect(second.getByRole("button", { name: "Create a new wallet" })).toHaveCount(0);
 
   await second.close();

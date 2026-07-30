@@ -78,7 +78,7 @@ for (const reduced of [false, true] as const) {
     await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
     await page.getByLabel("Confirm password").fill(PASSWORD);
     await page.getByRole("button", { name: "Create wallet" }).click();
-    await expect(page.getByText("Write this down")).toBeVisible({ timeout: WAITS.onboarding });
+    await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: WAITS.onboarding });
     expect(await film(page, `phrase-reveal${suffix}`, async () => {
       await page.getByRole("button", { name: "Show the phrase" }).click();
     })).toBeGreaterThan(0);

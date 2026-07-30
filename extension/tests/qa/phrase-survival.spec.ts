@@ -49,7 +49,7 @@ test("the phrase screen holds the window against an accidental close", async ({ 
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByLabel("Confirm password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create wallet" }).click();
-  await expect(page.getByText("Write this down")).toBeVisible({ timeout: WAITS.onboarding });
+  await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: WAITS.onboarding });
 
   expect(
     await page.evaluate(() => (window as unknown as { __unloadGuards: number }).__unloadGuards),
@@ -105,7 +105,7 @@ test("the phrase screen says what not to do, rather than promising the page will
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByLabel("Confirm password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create wallet" }).click();
-  await expect(page.getByText("Write this down")).toBeVisible({ timeout: WAITS.onboarding });
+  await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: WAITS.onboarding });
 
   // "This page stays open while you write them down" was true of a blur and of
   // nothing else. A user who reads it as "the words are safe while I find a pen"

@@ -41,7 +41,7 @@ test("a wallet can be created with the keyboard alone", async ({ wallet }) => {
 
   expect(await tabTo(wallet.page, "Create wallet")).toBe(true);
   await wallet.page.keyboard.press("Enter");
-  await expect(wallet.page.getByText("Write this down")).toBeVisible({
+  await expect(wallet.page.getByText("Save your recovery phrase")).toBeVisible({
     timeout: WAITS.onboarding,
   });
 

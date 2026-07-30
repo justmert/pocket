@@ -36,7 +36,7 @@ const CHROME = new Set([
   "Enter your recovery phrase.",
   "Recovery phrase",
   "New password",
-  "Import wallet",
+  "Restore wallet",
   "Importing",
   "Back",
   "Use at least eight characters.",
@@ -55,7 +55,7 @@ async function openImport(page: Page): Promise<void> {
 async function tryImport(page: Page, phrase: string): Promise<string> {
   await page.getByLabel(/Recovery phrase/).fill(phrase);
   await page.getByLabel("New password", { exact: true }).fill(PASSWORD);
-  const button = page.getByRole("button", { name: "Import wallet" });
+  const button = page.getByRole("button", { name: "Restore wallet" });
   if (await button.isDisabled()) return "BUTTON DISABLED";
   await button.click();
   // Either the home screen arrives or a notice does. Wait on whichever comes,
@@ -141,7 +141,7 @@ test("an unusable phrase is named as the phrase, not as a network problem", asyn
 test("an empty phrase keeps the button disabled rather than failing later", async ({ wallet }) => {
   const page = wallet.page;
   await openImport(page);
-  const button = page.getByRole("button", { name: "Import wallet" });
+  const button = page.getByRole("button", { name: "Restore wallet" });
 
   await page.getByLabel("New password", { exact: true }).fill(PASSWORD);
   await page.getByLabel("Recovery phrase").fill("");
