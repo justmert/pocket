@@ -39,7 +39,7 @@ import {
 import { usd, usdOf } from "../money";
 import { NETWORKS, type NetworkId } from "../../../../core/config";
 import { capDecimals, displayAmount } from "../../../../core/chain/balances";
-import type { PrivatePocket, PrivatePocketState } from "../../../../core/messages";
+import type { PrivatePocket, PrivatePocketState, PublicBalance } from "../../../../core/messages";
 
 /** the issuer out of a canonical `CODE:ISSUER` id; undefined for native XLM. */
 function issuerOf(id: string): string | undefined {
@@ -230,16 +230,7 @@ export function Home() {
   // cents (holding only XLM, the hero and the XLM row differed by ~$1). null until
   // every held asset is priced, exactly as the rows abandon a total they cannot fully
   // value. the chart stays the trend line; this is the number.
-  const publicUsd = (() => {
-    if (!w.balances) return null;
-    let total = 0;
-    for (const b of w.balances) {
-      const price = prices[b.code];
-      if (price == null) return null;
-      total += Number(b.amount) * price;
-    }
-    return total;
-  })();
+  const publicUsd = publicTotalUsd(w.balances, prices, vaultUnderlying());
   // the collapsed header echoes the HERO, so it falls back the same way the hero
   // does: to the ledger's own XLM figure, never to the chart's latest point. the
   // two disagreeing is the whole reason the hero was rebuilt off per-asset prices
@@ -485,6 +476,17 @@ export function Home() {
           bleed={space.gutter}
           style={{ marginTop: space.sm }}
         />
+        {/* the chart is built from the ACCOUNT's own history and knows nothing
+            about the vault: a deposit leaves the account, so the line steps
+            down by the amount deposited while the headline above, which counts
+            the vault, does not. two figures on one screen that disagree by a
+            known quantity, with nothing saying so, is the thing this line
+            exists to prevent. it appears only when there IS a position. */}
+        {vaultUnderlying() !== null && (
+          <div style={{ ...text.caption, color: t.faint, marginTop: space.xs }}>
+            This chart follows the account itself, so it does not include what is in the vault.
+          </div>
+        )}
       </>
     );
   }
@@ -936,8 +938,28 @@ export function Home() {
     );
   }
 
+  /**
+   * What is sitting in the yield vault, in its underlying asset. Null when
+   * there is no position, or none the vault has valued.
+   *
+   * The vault reports SHARES (`balance`) and, when it can, what they are worth
+   * in the underlying (`underlyingBalance`). Only the second is money in a unit
+   * anything else on this screen can price, so a position the vault has not
+   * valued is reported as no position here rather than guessed at.
+   */
+  function vaultUnderlying(): { code: string; amount: number } | null {
+    const y = w.yieldPosition;
+    if (!y?.available || !y.underlyingBalance || !y.underlying) return null;
+    const amount = Number(y.underlyingBalance);
+    if (!Number.isFinite(amount) || amount === 0) return null;
+    return { code: y.underlying, amount };
+  }
+
   function yieldRow() {
     const y = w.yieldPosition;
+    const held = vaultUnderlying();
+    const vaultValue =
+      held === null || prices[held.code] == null ? null : held.amount * prices[held.code]!;
     // A read that FAILED is not a build without a vault. Returning null for
     // both removed the whole section, so "the service is down" and "this
     // feature does not exist" looked identical, and the second one is not
@@ -1034,7 +1056,15 @@ export function Home() {
                   a formatted string, so "0.0000000" is truthy and "None
                   deposited" was dead code. that predicate is declared five lines
                   above this and was not used here. */}
-              <span style={{ ...text.rowTitle, color: t.text }}>
+              <span
+                style={{
+                  ...text.rowTitle,
+                  color: t.text,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                }}
+              >
                 {hasPosition ? (
                   <Figure
                     value={
@@ -1045,6 +1075,15 @@ export function Home() {
                   />
                 ) : (
                   "None deposited"
+                )}
+                {/* the same holding in dollars, because the headline above now
+                    counts it and a figure that is inside a total has to be
+                    readable in the total's own unit. every other holding on
+                    this screen carries one. */}
+                {vaultValue !== null && (
+                  <span style={{ ...text.rowSub, color: t.sub }}>
+                    {w.hidden ? MASK : usd(vaultValue)}
+                  </span>
                 )}
               </span>
             </div>
@@ -1590,4 +1629,39 @@ export function ledgerFallback(
   if (usdValue !== null) return null;
   if (nativeAmount === null) return null;
   return { value: nativeAmount, code: "XLM" };
+}
+
+/**
+ * The public pocket's whole value in dollars, or null.
+ *
+ * Summed from the SAME per-asset prices the rows use, so the headline can never
+ * disagree with the sum of what is on screen, and null until everything held
+ * can be priced: a partial sum has no shape that distinguishes it from a
+ * complete one, so a pocket that cannot be fully valued has no dollar total.
+ *
+ * `vault` is what is sitting in the yield vault, in its underlying asset. It is
+ * public-pocket money that has been deposited, not money that has left, and
+ * leaving it out made a deposit read as a loss: the headline dropped by the
+ * amount deposited and nothing on the screen accounted for the difference in
+ * money terms, because the vault section reports its position in the underlying
+ * and never in dollars.
+ */
+export function publicTotalUsd(
+  balances: PublicBalance[] | null,
+  prices: Record<string, number | null>,
+  vault: { code: string; amount: number } | null,
+): number | null {
+  if (!balances) return null;
+  let total = 0;
+  for (const b of balances) {
+    const price = prices[b.code];
+    if (price == null) return null;
+    total += Number(b.amount) * price;
+  }
+  if (vault !== null) {
+    const price = prices[vault.code];
+    if (price == null) return null;
+    total += vault.amount * price;
+  }
+  return total;
 }
