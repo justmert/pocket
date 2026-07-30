@@ -282,6 +282,31 @@ export function AssetDetailSheet({
           {/* market rows shimmer while the fetch is in flight instead of popping
               in a beat late. once loaded, a row we could not source is simply
               absent. */}
+          {/* the RESERVE, on the one sheet that shows a single asset's whole
+              story and did not mention it. "Your holdings" is the SPENDABLE
+              figure, so on native XLM an explorer shows 10 where this shows
+              8.5, and the difference is a protocol rule rather than a
+              discrepancy. The worker has published `reserved` on every native
+              balance from the start and Home's row names it; this sheet, which
+              is where someone goes to understand one asset, did not.
+
+              Only when there is one: a zero reserve row would be noise, and a
+              non-native asset has none. */}
+          {shown.reserved && /[1-9]/.test(shown.reserved) && (
+            <MarketRow
+              t={t}
+              icon={<RowIcon t={t}>~</RowIcon>}
+              label="Held as network reserve"
+              labelTip={
+                "Stellar locks a small amount of XLM per account and per asset you hold. " +
+                "It stays yours and is released if you remove the asset, but it cannot be spent " +
+                "or sent while it is locked."
+              }
+            >
+              <Amount t={t} value={shown.reserved} code={code} size="row" />
+            </MarketRow>
+          )}
+
           <MarketRow t={t} icon={<RowIcon t={t}>$</RowIcon>} label="Holdings value">
             {holdingsValue !== null ? (
               <Figure value={holdingsValue} />
