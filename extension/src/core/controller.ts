@@ -1353,9 +1353,7 @@ export class WalletController {
       const entry = this.pending.get(handle);
       if (!entry || !entry.kind?.startsWith("yield:")) {
         const { DefindexError } = await import("./integrations/defindex");
-        throw new DefindexError(
-          "That yield operation is no longer pending confirmation. Build it again and review it.",
-        );
+        throw new DefindexError(await this.staleHandleMessage("That yield operation"));
       }
       this.pending.delete(handle);
       const decoded = await this.decodeOwnEnvelope(entry.xdr, requireSession().address);
@@ -1504,9 +1502,7 @@ export class WalletController {
       this.prunePending();
       const entry = this.pending.get(handle);
       if (!entry || entry.kind !== "trustline") {
-        throw new TrustlineError(
-          "That trustline is no longer pending confirmation. Build it again and review it.",
-        );
+        throw new TrustlineError(await this.staleHandleMessage("That trustline"));
       }
       this.pending.delete(handle);
       const decoded = await this.decodeOwnEnvelope(entry.xdr, requireSession().address);
@@ -2180,9 +2176,7 @@ export class WalletController {
       const entry = this.pending.get(handle);
       const cctp = await import("./integrations/cctp");
       if (!entry || entry.kind !== "cctpSend" || !entry.cctpBurn) {
-        throw new cctp.CctpParameterError(
-          "That bridge is no longer pending confirmation. Build it again and review it.",
-        );
+        throw new cctp.CctpParameterError(await this.staleHandleMessage("That bridge"));
       }
       this.pending.delete(handle);
       const { address } = requireSession();
@@ -2371,7 +2365,7 @@ export class WalletController {
       const entry = this.pending.get(handle);
       if (!entry || entry.kind !== "cctpClaim") {
         const { IrisError } = await import("./integrations/iris");
-        throw new IrisError("That claim is no longer pending confirmation. Build it again.");
+        throw new IrisError(await this.staleHandleMessage("That claim"));
       }
       this.pending.delete(handle);
       const decoded = await this.decodeOwnEnvelope(entry.xdr, requireSession().address);
@@ -4481,9 +4475,7 @@ export class WalletController {
     this.prunePending();
     const entry = this.pending.get(handle);
     if (!entry?.private) {
-      throw new PrivatePocketError(
-        "That operation is no longer pending confirmation. Build it again and review it.",
-      );
+      throw new PrivatePocketError(await this.staleHandleMessage("That operation"));
     }
     this.pending.delete(handle);
 
@@ -5302,6 +5294,34 @@ export class WalletController {
    * buildPayment returned, never raw XDR, so the bytes signed are exactly the
    * bytes summarised on the approval screen.
    */
+  /**
+   * What to say about a handle that is no longer pending, given what else the
+   * wallet is holding.
+   *
+   * "Build it again and review it" is right for an ordinary expired handle and
+   * WRONG one press after an unresolved submission, which is exactly when it
+   * used to be said. The measured sequence on the most dangerous screen in the
+   * product: the first Confirm answers "It has not confirmed yet. It may still
+   * land, so do not resend: check the hash <64 hex> before trying again." The
+   * second press answers "Build it again and review it", which contradicts it,
+   * and the build the user is then told to do is itself refused with a third
+   * sentence ("A transaction submitted earlier has not resolved yet").
+   *
+   * A record that is decidably EXPIRED is not unresolved: the envelope can
+   * never be included, so rebuilding is both safe and the right advice.
+   */
+  private async staleHandleMessage(what: string): Promise<string> {
+    const held = await this.inFlight();
+    if (held && !held.expired) {
+      return (
+        `${what} is no longer pending confirmation, and Pocket is still waiting to hear whether ` +
+        `the transaction it already submitted landed. Do not send another one. Reopen Pocket: ` +
+        `it will check with the network and tell you where things stand.`
+      );
+    }
+    return `${what} is no longer pending confirmation. Build it again and review it.`;
+  }
+
   async confirmPayment(handle: string): Promise<{ hash: string; ledger: number }> {
     return this.exclusive(() => this.doConfirmPayment(handle));
   }
@@ -5319,9 +5339,7 @@ export class WalletController {
       // prevent, one moment after the payment may actually have succeeded.
       // The private path already throws a named error; these two disagreeing
       // was a slip, not a decision.
-      throw new StaleHandleError(
-        "That transaction is no longer pending confirmation. Build it again and review it.",
-      );
+      throw new StaleHandleError(await this.staleHandleMessage("That transaction"));
     }
     this.pending.delete(handle);
 

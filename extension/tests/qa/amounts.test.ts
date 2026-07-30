@@ -1493,6 +1493,10 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     fragment: "const now = Math.floor(Date.now() / 1000);",
     why: "epoch seconds, to set a transaction's own expiry window",
   },
+  {
+    fragment: '? `${describedAs}: ${shown >= 0 ? "up" : "down"} ${Math.abs(shown).toFixed(2)} percent`',
+    why: "the change chip's own percentage, spelled out for a screen reader; the same number the visible chip already prints, and a rate rather than an amount",
+  },
   // the swap's price impact, in three places. basis points are an integer the
   // worker computed in bigint arithmetic on stroops (`impactBps` in
   // integrations/aquarius.ts); these divide that integer by 100 to print it as
