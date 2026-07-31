@@ -114,6 +114,15 @@ interface PaymentRecord {
   // the payment operation, so it rides along on the record. `source_account` is
   // who PAID it, which is the difference between our fee and a stranger's.
   transaction?: { fee_charged?: string; source_account?: string };
+  /**
+   * Whether the TRANSACTION this operation belonged to succeeded.
+   *
+   * Horizon puts this on every operation record and it is only ever false once
+   * `include_failed=true` is asked for, which this module now does. A failed
+   * transaction charged its fee and consumed a sequence number, so it is part
+   * of the account's history whether or not it moved anything.
+   */
+  transaction_successful?: boolean;
 }
 
 /**
@@ -197,7 +206,22 @@ function mapPayment(r: PaymentRecord, me: string, exclude: ReadonlySet<string>):
   const at = Date.parse(r.created_at);
   if (!Number.isFinite(at)) return [];
   const id = `${r.transaction_hash}:${r.id}`;
-  const base = { id, pocket: "public" as const, at, hash: r.transaction_hash, fee: feeOf(r, me) };
+  // A FAILED transaction is included now (`include_failed=true` above), so
+  // every entry carries whether it landed. Horizon reports `false` only for a
+  // transaction that was included and reverted: it charged its fee and took the
+  // sequence number, and it moved nothing. The row says so rather than sitting
+  // in the list looking like a payment that went through.
+  const failed = r.transaction_successful === false;
+  const base = {
+    id,
+    pocket: "public" as const,
+    at,
+    hash: r.transaction_hash,
+    fee: feeOf(r, me),
+    ...(failed
+      ? { failed: true, failureReason: "This transaction failed on the network. Nothing moved." }
+      : {}),
+  };
 
   if (r.type === "create_account") {
     // Only our own creation, which is our first funding. A create_account this
@@ -440,7 +464,21 @@ export async function publicHistory(opts: {
 }): Promise<{ entries: HistoryEntry[]; more: boolean; tokenOf: Record<string, string> }> {
   const { horizonUrl, account, excludeCounterparties, before, limit } = opts;
   const exclude = new Set(excludeCounterparties ?? []);
-  const base = `${horizonUrl}/accounts/${encodeURIComponent(account)}/payments?order=desc&limit=${PAGE}&join=transactions`;
+  // `include_failed=true`, because a failed transaction is a thing that
+  // happened.
+  //
+  // Horizon defaults this to false, so the only history URL the wallet has
+  // returned successful operations ONLY: a payment that was included and failed
+  // charged its fee, consumed the sequence number, and then appeared nowhere in
+  // Activity at all. Measured on a live account: the exact URL this line used
+  // to build returned 50 records with 0 failed; the same URL with this flag
+  // returned 50 records, all 50 of them failed.
+  //
+  // The wallet's whole answer to "did that go through" is this list, and an
+  // absence read as "it never happened" is the one reading that invites the
+  // resend. The rows are LABELLED as failed below; showing them unmarked would
+  // be worse than hiding them.
+  const base = `${horizonUrl}/accounts/${encodeURIComponent(account)}/payments?order=desc&limit=${PAGE}&join=transactions&include_failed=true`;
   const entries: HistoryEntry[] = [];
   const tokenOf: Record<string, string> = {};
   // Resume where the last page left off. Horizon's `cursor` is exclusive and

@@ -424,10 +424,16 @@ export interface HistoryEntry {
   /** Network fee in decimal XLM, when known. Public entries carry it from the
    *  transaction the payment belongs to. */
   fee?: string;
-  /** True for a transaction that landed on chain but FAILED. Only ever set on a
-   *  CLIENT-SIDE watched op turned into a row (opEntry.ts): Horizon excludes failed
-   *  transactions from history, so a settled entry from the worker is never failed.
-   *  Rendered as a failed row so a failed send does not hang under "In progress". */
+  /**
+   * True for a transaction that landed on chain but FAILED: it charged its fee,
+   * consumed a sequence number, and moved nothing.
+   *
+   * Set from two places now. A CLIENT-SIDE watched op turned into a row
+   * (opEntry.ts), and the worker's own history read, which asks Horizon for
+   * `include_failed=true`. It did not: Horizon defaults that to false, so a
+   * failed payment appeared nowhere in Activity at all and the list's silence
+   * read as "it never happened", which is the reading that invites the resend.
+   */
   failed?: boolean;
   /** The plain failure reason, when `failed`. */
   failureReason?: string;
