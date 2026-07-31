@@ -184,7 +184,7 @@ test("the erase-and-restore screen states the word count rule before the attempt
 }) => {
   const page = wallet.page;
   await onboard(page);
-  await page.getByRole("button", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
   await page.getByRole("button", { name: "Forgot your password?" }).click();
   await page.getByRole("button", { name: "I understand, continue" }).click();
 
@@ -216,7 +216,7 @@ test("a phrase for a different wallet is refused, and this wallet survives", asy
   const page = wallet.page;
   const mine = await onboard(page);
   expect(words(mine)).toHaveLength(24);
-  await page.getByRole("button", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
   await page.getByRole("button", { name: "Forgot your password?" }).click();
   await page.getByRole("button", { name: "I understand, continue" }).click();
 

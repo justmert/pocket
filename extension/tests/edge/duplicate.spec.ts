@@ -104,7 +104,7 @@ test("unlocking twice in one gesture unlocks once and reports nothing wrong", as
   test.slow();
   const page = wallet.page;
   await onboard(page);
-  await page.getByRole("button", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
   await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
 
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
@@ -123,7 +123,7 @@ test("unlocking twice in one gesture unlocks once and reports nothing wrong", as
   await expect(page.getByLabel("To", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
 
-  await page.getByRole("button", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
   await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Unlock" }).click();
@@ -236,7 +236,7 @@ test("erasing and restoring twice in one gesture restores once", async ({ wallet
   const phrase = await onboard(page);
   const address = await receiveAddress(page);
 
-  await page.getByRole("button", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
   await page.getByRole("button", { name: "Forgot your password?" }).click();
   await page.getByRole("button", { name: "I understand, continue" }).click();
   await page.getByLabel(/Recovery phrase/).fill(phrase);
@@ -250,7 +250,7 @@ test("erasing and restoring twice in one gesture restores once", async ({ wallet
   // the first restore would leave a vault the new password does not match, or
   // no vault at all.
   expect(await receiveAddress(page)).toBe(address);
-  await page.getByRole("button", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
   await page.getByLabel("Password", { exact: true }).fill("a-different-password");
   await page.getByRole("button", { name: "Unlock" }).click();
   await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });

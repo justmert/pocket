@@ -182,7 +182,11 @@ export class Wallet {
     // "Lock wallet" lives in the header's overflow (the ⋮ "More" menu), not on
     // the home screen directly, so the menu has to be opened first.
     await this.page.getByRole("button", { name: "More" }).click();
-    await this.page.getByRole("button", { name: "Lock wallet" }).click();
+    // MENUITEM, not button. The items live inside `role="menu"`, and the ARIA
+    // owned-element rules map a <button> in that context to `menuitem`, so a
+    // `getByRole("button")` for one of them matches nothing at all. Every spec
+    // that locked a wallet waited out a 60s timeout on it.
+    await this.page.getByRole("menuitem", { name: "Lock wallet" }).click();
     await expect(this.lockedNotice()).toBeVisible();
   }
 

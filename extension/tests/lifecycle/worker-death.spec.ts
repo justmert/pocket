@@ -161,7 +161,7 @@ test("a second tab left on Home after the first locked cannot spend", async () =
     await expect(b.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
 
     await a.getByRole("button", { name: "More" }).click();
-    await a.getByRole("button", { name: "Lock wallet" }).click();
+    await a.getByRole("menuitem", { name: "Lock wallet" }).click();
     await expect(a.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
 
     // Tab B still renders Home. That is stale UI, which is survivable; what is

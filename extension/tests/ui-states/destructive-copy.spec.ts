@@ -42,7 +42,7 @@ test("every screen that sets a password says what the password is not", async ({
   await page.getByRole("textbox", { name: "Confirm new password", exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Restore wallet" }).click();
   await wallet.waitForHome(WAITS.ledgerRead);
-  await page.getByRole("button", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
   await page.getByRole("button", { name: "Forgot your password?" }).click();
   await page.getByRole("button", { name: "I understand, continue" }).click();
   await expect(
@@ -70,7 +70,7 @@ test("both doors to erasing this wallet describe the same loss", async ({ wallet
   await page.keyboard.press("Escape");
   await expect(page.locator("[role='dialog']")).toHaveCount(0);
   await page.getByRole("button", { name: "Home", exact: true }).click();
-  await page.getByRole("button", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
   await page.getByRole("button", { name: "Forgot your password?" }).click();
   const fromLocked = await page
     .getByText(/private balances are opened by keys held only here/i)

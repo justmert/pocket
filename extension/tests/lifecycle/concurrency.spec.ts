@@ -121,7 +121,7 @@ test("repeated unlock clicks leave one unlocked wallet, not several sessions", a
     const page = await w.popup();
     await onboard(page);
     const address = await addressOf(page);
-    await page.getByRole("button", { name: "Lock wallet" }).click();
+    await page.getByRole("menuitem", { name: "Lock wallet" }).click();
     await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
 
     // Five at once, which is what an impatient user's double-tap plus a slow
@@ -161,7 +161,7 @@ test("a wrong password mixed in with right ones never unlocks, and never locks o
     const page = await w.popup();
     await onboard(page);
     const address = await addressOf(page);
-    await page.getByRole("button", { name: "Lock wallet" }).click();
+    await page.getByRole("menuitem", { name: "Lock wallet" }).click();
     await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
 
     const replies = await Promise.all([
@@ -189,7 +189,7 @@ test("two erase-and-restore submissions at once leave one wallet on the same add
     const page = await w.popup();
     const phrase = await onboard(page);
     const address = await addressOf(page);
-    await page.getByRole("button", { name: "Lock wallet" }).click();
+    await page.getByRole("menuitem", { name: "Lock wallet" }).click();
     await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
 
     const a = await w.popup();
@@ -215,7 +215,7 @@ test("two erase-and-restore submissions at once leave one wallet on the same add
     const reopened = await w.popup();
     await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
     expect(await addressOf(reopened), "the restored wallet must be the same account").toBe(address);
-    await reopened.getByRole("button", { name: "Lock wallet" }).click();
+    await reopened.getByRole("menuitem", { name: "Lock wallet" }).click();
     await expect(reopened.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
     await reopened.getByRole("textbox", { name: "Password", exact: true }).fill("second-password");
     await reopened.getByRole("button", { name: "Unlock" }).click();
@@ -237,7 +237,7 @@ test("erase-and-restore refuses a phrase belonging to a different wallet", async
     await onboard(page);
     const address = await addressOf(page);
     const keysBefore = await storageKeys(page);
-    await page.getByRole("button", { name: "Lock wallet" }).click();
+    await page.getByRole("menuitem", { name: "Lock wallet" }).click();
 
     const stranger = "legal winner thank year wave sausage worth useful legal winner thank yellow";
     const r = await send(page, {

@@ -52,7 +52,7 @@ test.describe("reduced motion", () => {
     expect(px(anim, "animation-duration")).toBeLessThan(5);
 
     // Everything else really does stop.
-    const button = await computed(wallet.page.getByRole("button", { name: "Lock wallet" }), [
+    const button = await computed(wallet.page.getByRole("menuitem", { name: "Lock wallet" }), [
       "transition-duration",
     ]);
     expect(px(button, "transition-duration")).toBeLessThan(0.01);
@@ -88,7 +88,7 @@ test.describe("reduced motion", () => {
     // 140ms, from the press transition `style.css` puts on the element
     // selector so that every button answers a press, not only the ones built
     // out of the Button primitive.
-    const button = await computed(wallet.page.getByRole("button", { name: "Lock wallet" }), [
+    const button = await computed(wallet.page.getByRole("menuitem", { name: "Lock wallet" }), [
       "transition-duration",
     ]);
     expect(px(button, "transition-duration")).toBeCloseTo(0.14, 2);
