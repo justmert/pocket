@@ -46,7 +46,10 @@ export class Wallet {
 
   /** The splash the very first run shows. */
   splash(): Locator {
-    return this.page.getByText("Two pockets on Stellar");
+    // The front door's own words. "Two pockets on Stellar" is what the COMPACT
+    // header says, and the full-page first run leads with the brand line
+    // instead, so the old marker matched nothing on the screen it named.
+    return this.page.getByText("Your balance is nobody's business.");
   }
 
   /**

@@ -53,13 +53,20 @@ test("creating a wallet shows 24 words once, then opens the home screen", async 
   // The two facts a user has to be told at the only moment the phrase is ever
   // on screen.
   await expect(wallet.page.getByText(/only way to recover/i)).toBeVisible();
-  await expect(wallet.page.getByText(/cannot show them to you again/i)).toBeVisible();
+  // ...and who owns the funds if they leak, which is the other half of the
+  // same fact. This screen used to promise "we cannot show them to you again",
+  // which stopped being true when Settings grew a phrase door behind the
+  // password: a wallet that CAN show them again must not say it cannot, so the
+  // sentence went and the ownership one carries the weight.
+  await expect(wallet.page.getByText(/anyone who has them owns your funds/i)).toBeVisible();
   // The lifecycle fact, which the flow now answers rather than warns about:
   // onboarding moves itself to a tab before it paints, and a tab survives the
   // user switching to a password manager to record the words. The screen may
   // only make this promise where it is true, so the warning it replaced must be
   // gone from the same screen.
-  await expect(wallet.page.getByText(/do not close this tab until you have confirmed the words/i)).toBeVisible();
+  await expect(
+    wallet.page.getByText(/do not close this tab until you have confirmed the words/i),
+  ).toBeVisible();
   await expect(
     wallet.page.getByText(/this window closes the moment/i),
     "a tab told the user it was about to close",
@@ -70,18 +77,39 @@ test("creating a wallet shows 24 words once, then opens the home screen", async 
 
   // The acknowledgement is a question, not a press. A wrong answer does not
   // open the wallet, because the whole point is that the phrase was recorded.
-  await expect(wallet.page.getByText("Check what you wrote")).toBeVisible();
-  const fields = wallet.page.getByLabel(/^Word \d+$/);
-  await expect(fields, "three words, chosen at random from the phrase").toHaveCount(3);
-  await fields.first().fill("wrong");
+  //
+  // The step is TAP CHIPS now, not typed fields: three blanks in the phrase,
+  // filled in order from a pool. The property is unchanged and the mechanics
+  // are not, so this drives the mechanics that exist.
+  await expect(wallet.page.getByText("Confirm your recovery phrase")).toBeVisible();
+  const blanks = wallet.page.getByTestId("verify-blank");
+  await expect(blanks, "three words, chosen at random from the phrase").toHaveCount(3);
+
+  // Answer it WRONG on purpose: fill the blanks in reverse, which is a real
+  // arrangement of real chips and is the mistake the pool of decoys exists to
+  // make possible.
+  const words = phrase.split(" ");
+  const asked: number[] = [];
+  for (let i = 0; i < 3; i++) {
+    asked.push(Number((await blanks.nth(i).getAttribute("data-position")) ?? "0"));
+  }
+  for (const n of [...asked].reverse()) {
+    await wallet.page.getByRole("button", { name: words[n - 1]!, exact: true }).click();
+  }
   await wallet.page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(
-    wallet.page.getByText(/does not match what Pocket generated/i),
+    wallet.page.getByText(/not the right order/i),
     "a wrong answer must be refused, or the check is decoration",
   ).toBeVisible();
   await expect(wallet.homeMarker()).toHaveCount(0);
 
+  // Clear the three wrong placements before answering properly.
+  for (let i = 0; i < 3; i++) await blanks.nth(i).click();
+
   await wallet.answerBackupCheck(phrase);
+  // The full-page flow ends on its own completion screen and leaves the wallet
+  // to the toolbar popup; the helper does what a user does with it.
+  await wallet.passOnboardingReady();
   await wallet.waitForHome();
 
   const address = await wallet.revealAddress();

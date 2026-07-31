@@ -67,6 +67,19 @@ export function Onboarding({
             <p style={{ ...text.heading, color: t.sub, margin: 0, fontWeight: 500 }}>
               So we built one that keeps quiet.
             </p>
+            {/* WHAT IT DOES NOT HIDE, on the first screen a user ever sees.
+                The brand line above is a promise about amounts, and read alone
+                it claims more privacy than this wallet delivers: confidential
+                transfers hide amounts, and both addresses stay on the public
+                ledger permanently. The redesign moved the honest line off this
+                screen and nothing else on the way in says it. The project's own
+                rule is that the product states this rather than softening it,
+                so it belongs here, under the promise it qualifies, and not in a
+                settings page nobody opens. */}
+            <p style={{ ...text.body, color: t.sub, margin: `${space.md}px 0 0`, lineHeight: 1.5 }}>
+              Pocket hides amounts, not addresses. Who you pay stays public on the Stellar ledger,
+              permanently.
+            </p>
           </>
         ) : (
           <>

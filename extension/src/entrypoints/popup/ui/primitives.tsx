@@ -1476,7 +1476,7 @@ export function Sheet({
   return (
     <>
       <div
-        onClick={onClose}
+        onClick={() => onClose()}
         className={open ? "pocket-fade-in" : "pocket-fade-out"}
         style={{
           position: "absolute",
@@ -1589,8 +1589,16 @@ export function Sheet({
                 {title}
                 {info}
               </h2>
+              {/* `() => onClose()`, never `onClose` itself. React hands a click
+                  handler the EVENT as its first argument, and every sheet in
+                  the app is mounted with `onClose={w.closeSheet}`, whose
+                  signature is `(id?: SheetId)`. Passed bare, the X called
+                  `closeSheet(mouseEvent)`, the "is this still the sheet on top"
+                  guard compared an event to a string, decided no, and returned
+                  the stack unchanged: the close button on every titled sheet in
+                  the wallet did nothing at all. */}
               {!hideClose && (
-                <IconButton t={t} size={30} label="Close" onClick={onClose}>
+                <IconButton t={t} size={30} label="Close" onClick={() => onClose()}>
                   <CloseIcon size={17} />
                 </IconButton>
               )}
@@ -1610,7 +1618,7 @@ export function Sheet({
               flex: "0 0 auto",
             }}
           >
-            <IconButton t={t} size={30} label="Close" onClick={onClose}>
+            <IconButton t={t} size={30} label="Close" onClick={() => onClose()}>
               <CloseIcon size={17} />
             </IconButton>
           </div>

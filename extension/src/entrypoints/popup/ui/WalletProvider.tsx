@@ -841,7 +841,25 @@ export function WalletProvider({ children }: { children: ReactNode }) {
    * on top" keep working unchanged.
    */
   const closeSheet = useCallback(
-    (id?: SheetId) => setSheets((s) => (id && s[s.length - 1] !== id ? s : s.slice(0, -1))),
+    (id?: SheetId) =>
+      setSheets((s) => {
+        // A NON-STRING argument is a caller mistake, not an id.
+        //
+        // This is a `(id?: SheetId)` function, and React hands a click handler
+        // the event as its first argument, so every `onClick={w.closeSheet}` in
+        // the tree called it with a MouseEvent. The guard below then compared an
+        // event to a string, decided this was not the sheet on top, and returned
+        // the stack unchanged: the control did nothing. It was the X on every
+        // titled sheet, and nothing caught it because the browser tier could not
+        // run at all.
+        //
+        // The call sites are fixed too. This is here because the signature
+        // invites the mistake and the failure is silent, and a wallet whose
+        // close button quietly does nothing is not a thing to leave to
+        // discipline.
+        const wanted = typeof id === "string" ? id : undefined;
+        return wanted && s[s.length - 1] !== wanted ? s : s.slice(0, -1);
+      }),
     [],
   );
   // actually go home, from anywhere, whatever is stacked over it.

@@ -2073,6 +2073,31 @@ export class WalletController {
         "@stellar/stellar-sdk/base"
       );
       const source = await this.server().getAccount(address);
+
+      // Is the approve leg needed at all?
+      //
+      // Only the burn moves money; the approve exists so the messenger may take
+      // it. A burn that failed therefore leaves a LIVE allowance behind, paid
+      // for, and "try the bridge again" used to rebuild both legs: a second
+      // approve and a second fee for permission the account already had. The
+      // comment on that failure path claimed "only the burn need retry" and
+      // there was no path that did.
+      //
+      // Null (unreadable) is treated as "no allowance", which is what the
+      // wallet did before this read existed: building an approve that turns out
+      // to be unnecessary costs a fee, and skipping one that was necessary
+      // costs a failed burn after the money has been committed.
+      const { readAllowance } = await import("./chain/cctp-allowance");
+      const allowance = await readAllowance(
+        this.server(),
+        usdcSac,
+        address,
+        chain.tokenMessengerMinter,
+        source,
+        net.passphrase,
+      );
+      const approveNeeded = allowance === null || allowance < bridged;
+
       const latest = await this.server().getLatestLedger();
       const expiration = latest.sequence + 6 * 3600; // generous window; burn follows now
       const rawApprove = new TransactionBuilder(source, {
@@ -2092,8 +2117,25 @@ export class WalletController {
         )
         .setTimeout(180)
         .build();
+      // The BURN, built now when there is already an allowance to spend.
+      //
+      // Ordinarily the burn cannot be built at build time: it needs the
+      // sequence the approve consumed and the allowance it created. With a live
+      // allowance neither is true, so the single leg is the burn, and it can be
+      // simulated like any other envelope: the fee below stops being an
+      // estimate and the sheet stops promising two signatures.
+      const rawBurn = approveNeeded
+        ? null
+        : await this.buildBurnLeg(source, chain.tokenMessengerMinter, net.passphrase, {
+            destinationDomain,
+            mintRecipient: Buffer.from(mintRecipient).toString("hex"),
+            amount: bridged.toString(),
+            maxFee: maxFee.toString(),
+            minFinality,
+            burnToken: usdcSac,
+          });
       // Simulated now, so the fee the sheet states is the fee that gets signed.
-      const approveTx = await this.prepareForReview(rawApprove);
+      const approveTx = await this.prepareForReview(rawBurn ?? rawApprove);
       // The real fee for this leg, finally known: a Soroban invocation costs
       // orders of magnitude more than the base fee the guard above had to
       // assume, and an approve the account cannot pay for must not be signed.
@@ -2109,14 +2151,21 @@ export class WalletController {
       // without it an account holding exactly the approve's fee was allowed
       // through, charged for the approve, and then lost the burn for want of a
       // fee, leaving a standing allowance and nothing to resume.
-      const twoLegFee = BigInt(approveTx.fee) + CCTP_BURN_FEE_RESERVE_STROOPS;
+      // One leg or two. With the approve already standing there is nothing to
+      // reserve for: the burn IS this envelope and its fee is the simulated
+      // one, so the sheet quotes rather than estimates.
+      const twoLegFee = approveNeeded
+        ? BigInt(approveTx.fee) + CCTP_BURN_FEE_RESERVE_STROOPS
+        : BigInt(approveTx.fee);
       if (usdcIssuer) await this.assertCanSpend(new Asset("USDC", usdcIssuer), bridged, twoLegFee);
 
       const handle = approveTx.hash().toString("hex");
       this.pending.set(handle, {
         xdr: approveTx.toXDR(),
         at: Date.now(),
-        kind: "cctpSend",
+        // `cctpBurnOnly` says the staged envelope IS the burn, so `confirm`
+        // submits it alone instead of treating it as leg one.
+        kind: approveNeeded ? "cctpSend" : "cctpBurnOnly",
         cctpBurn: {
           destinationDomain,
           mintRecipient: Buffer.from(mintRecipient).toString("hex"),
@@ -2158,13 +2207,64 @@ export class WalletController {
               : []),
             `It is minted on ${chainName} by a separate transaction THERE, which this wallet ` +
               "cannot make: you need gas on that chain, or a relayer, to finish it",
-            "Two Stellar signatures: approve, then burn",
-            `The network fee shown covers both, and the burn's share is an estimate: ` +
-              `it cannot be priced until the approve has landed`,
+            ...(approveNeeded
+              ? [
+                  "Two Stellar signatures: approve, then burn",
+                  `The network fee shown covers both, and the burn's share is an estimate: ` +
+                    `it cannot be priced until the approve has landed`,
+                ]
+              : [
+                  "One Stellar signature: this account has already approved the token " +
+                    "messenger for this amount, so only the burn is left",
+                ]),
           ],
         },
       };
     });
+  }
+
+  /**
+   * The burn leg, `deposit_for_burn` on the token messenger.
+   *
+   * One builder, used at CONFIRM time (after the approve consumed a sequence
+   * number) and at BUILD time when a live allowance means there is no approve.
+   * Two copies of an eight-argument contract call in a money path is how the
+   * two drift, and the arguments here were read off the deployed contract.
+   */
+  private async buildBurnLeg(
+    source: Account,
+    tokenMessengerMinter: string,
+    networkPassphrase: string,
+    spec: {
+      destinationDomain: number;
+      mintRecipient: string;
+      amount: string;
+      maxFee: string;
+      minFinality: number;
+      burnToken: string;
+    },
+  ): Promise<Transaction> {
+    const { address } = requireSession();
+    const { TransactionBuilder, Contract, Address, nativeToScVal, xdr, BASE_FEE } = await import(
+      "@stellar/stellar-sdk/base"
+    );
+    const { zeroBytes32 } = await import("./integrations/cctp");
+    return new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase })
+      .addOperation(
+        new Contract(tokenMessengerMinter).call(
+          "deposit_for_burn",
+          nativeToScVal(Address.fromString(address)),
+          nativeToScVal(BigInt(spec.amount), { type: "i128" }),
+          nativeToScVal(spec.destinationDomain, { type: "u32" }),
+          xdr.ScVal.scvBytes(Buffer.from(spec.mintRecipient, "hex")),
+          nativeToScVal(Address.fromString(spec.burnToken)),
+          xdr.ScVal.scvBytes(Buffer.from(zeroBytes32())),
+          nativeToScVal(BigInt(spec.maxFee), { type: "i128" }),
+          nativeToScVal(spec.minFinality, { type: "u32" }),
+        ),
+      )
+      .setTimeout(180)
+      .build();
   }
 
   /** Sign and submit a CCTP outbound bridge: approve, then burn. */
@@ -2175,13 +2275,47 @@ export class WalletController {
       this.prunePending();
       const entry = this.pending.get(handle);
       const cctp = await import("./integrations/cctp");
-      if (!entry || entry.kind !== "cctpSend" || !entry.cctpBurn) {
+      const burnOnly = entry?.kind === "cctpBurnOnly";
+      if (!entry || (entry.kind !== "cctpSend" && !burnOnly) || !entry.cctpBurn) {
         throw new cctp.CctpParameterError(await this.staleHandleMessage("That bridge"));
       }
       this.pending.delete(handle);
       const { address } = requireSession();
       const net = NETWORKS[this.network];
       const chain = cctp.CCTP[this.network];
+
+      // With a live allowance the STAGED envelope is the burn, so there is no
+      // approve to send: the messenger already has permission and paying for a
+      // second grant of it is the cost this branch exists to avoid.
+      if (burnOnly) {
+        const staged = await this.decodeOwnEnvelope(entry.xdr, address);
+        const only = await this.signAndSubmit(staged, null, "cctpBurn").catch(
+          async (e: unknown) => {
+            throw new cctp.CctpParameterError(
+              `The burn was refused before it was sent (${
+                e instanceof Error ? e.message : "unknown reason"
+              }). Nothing has been bridged and your USDC has not moved.`,
+            );
+          },
+        );
+        if (only.kind === "pending") {
+          throw new SubmitOutcomeError(
+            `The burn was submitted but has not confirmed. It may still land, so do not bridge ` +
+              `again yet: check ${only.hash} first.`,
+            only,
+          );
+        }
+        if (only.kind !== "succeeded") {
+          throw new cctp.CctpParameterError(
+            `The burn did not go through (${describeOutcome(only)}). Nothing has been bridged. ` +
+              `The approval this account already had is untouched, so trying again costs one ` +
+              `transaction, not two.`,
+          );
+        }
+        // No approve was sent, so there is no second hash to report. The burn's
+        // is the one the attestation service tracks and the one the claim needs.
+        return { approveHash: only.hash, hash: only.hash, ledger: only.ledger };
+      }
 
       const approve = await this.decodeOwnEnvelope(entry.xdr, address);
       const approveOut = await this.signAndSubmit(approve, null, "cctpApprove");
@@ -2190,29 +2324,13 @@ export class WalletController {
       }
 
       const spec = entry.cctpBurn;
-      const { TransactionBuilder, Contract, Address, nativeToScVal, xdr, BASE_FEE } = await import(
-        "@stellar/stellar-sdk/base"
-      );
       const source = await this.server().getAccount(address);
-      const burnTx = new TransactionBuilder(source, {
-        fee: BASE_FEE,
-        networkPassphrase: net.passphrase,
-      })
-        .addOperation(
-          new Contract(chain.tokenMessengerMinter).call(
-            "deposit_for_burn",
-            nativeToScVal(Address.fromString(address)),
-            nativeToScVal(BigInt(spec.amount), { type: "i128" }),
-            nativeToScVal(spec.destinationDomain, { type: "u32" }),
-            xdr.ScVal.scvBytes(Buffer.from(spec.mintRecipient, "hex")),
-            nativeToScVal(Address.fromString(spec.burnToken)),
-            xdr.ScVal.scvBytes(Buffer.from(cctp.zeroBytes32())),
-            nativeToScVal(BigInt(spec.maxFee), { type: "i128" }),
-            nativeToScVal(spec.minFinality, { type: "u32" }),
-          ),
-        )
-        .setTimeout(180)
-        .build();
+      const burnTx = await this.buildBurnLeg(
+        source,
+        chain.tokenMessengerMinter,
+        net.passphrase,
+        spec,
+      );
       // A simulation failure THROWS rather than returning an outcome, so the
       // sentence below was unreachable for the commonest way the burn fails:
       // the user saw a bare contract refusal with no mention of the approve
@@ -2241,10 +2359,16 @@ export class WalletController {
         );
       }
       if (burnOut.kind !== "succeeded") {
-        // The approve landed, so the allowance is set; only the burn need retry.
+        // The approve landed, so the allowance stands. That used to be stated
+        // as "only the burn need retry" in a comment above a sentence that sent
+        // the user back to a flow with no burn-only path in it: the retry
+        // rebuilt both legs and paid for a second approve. `buildCctpSend` now
+        // reads the allowance and stages the burn alone when one is standing,
+        // so the sentence below is true of what actually happens.
         throw new cctp.CctpParameterError(
           `The approval landed but the burn did not (${describeOutcome(burnOut)}). ` +
-            "Nothing has been bridged; try the bridge again.",
+            "Nothing has been bridged. The approval stays valid, so bridging the same amount " +
+            "again is one transaction rather than two.",
         );
       }
       return { approveHash: approveOut.hash, hash: burnOut.hash, ledger: burnOut.ledger };
