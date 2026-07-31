@@ -565,12 +565,15 @@ export class WalletController {
     expired: boolean;
     /** when it was submitted. absent on a record from an earlier build. */
     at?: number;
+    /** what kind of operation it was, so the screen can say whose it is. */
+    kind?: string;
   } | null> {
     const e = await readLocal<{
       hash: string;
       maxTime: number;
       answered?: boolean;
       at?: number;
+      kind?: string;
     }>(KEYS.inFlight);
     if (!e) return null;
     // The LEDGER's clock, not this machine's. timeBounds is enforced against
@@ -4990,7 +4993,13 @@ export class WalletController {
       // points at a post-state nothing writes. This is the wrapper that writes
       // the consequence FIRST and clears the in-flight record second, and it is
       // the path every other private submission already takes.
-      const outcome = await this.submitStaged(tx, { kind: "merge" }, "merge", cfg.token);
+      // `keepalive`, not `merge`. The CONSEQUENCE is a merge and stays one; the
+      // in-flight kind is about who asked for it. A keep-alive stranded by
+      // worker eviction put the blocking "Unfinished transaction" screen in
+      // front of the whole wallet, reading exactly like a payment the user had
+      // made and lost track of, and there was nothing on the record to say
+      // otherwise: the user had pressed nothing.
+      const outcome = await this.submitStaged(tx, { kind: "merge" }, "keepalive", cfg.token);
       // PER TOKEN, and that is the whole fix. This was one shared timestamp
       // assigned inside this loop, and `recentlyActive` is tested at the top of
       // every later iteration, so the first asset to need a bump told every

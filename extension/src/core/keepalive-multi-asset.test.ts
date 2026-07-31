@@ -25,7 +25,14 @@ vi.stubGlobal("chrome", {
       get: async (k: string | null) =>
         k === null ? Object.fromEntries(store) : store.has(k) ? { [k]: store.get(k) } : {},
       set: async (o: Record<string, unknown>) => {
-        for (const [k, v] of Object.entries(o)) store.set(k, v);
+        for (const [k, v] of Object.entries(o)) {
+          // The in-flight record is written before the send and cleared on the
+          // outcome, so by the end of a run it is gone. Recorded on the way
+          // past, because its `kind` is what tells the popup whose transaction
+          // this was.
+          if (k === "pocket.inflight") inflightWrites.push(v as { kind?: string });
+          store.set(k, v);
+        }
       },
       remove: async (k: string | string[]) => {
         for (const key of Array.isArray(k) ? k : [k]) store.delete(key);
@@ -33,6 +40,9 @@ vi.stubGlobal("chrome", {
     },
   },
 });
+
+/** Every `pocket.inflight` record written during a run, in order. */
+const inflightWrites: { kind?: string }[] = [];
 
 /** Days of headroom per wrapper token, set per test. */
 let headroom: Record<string, number> = {};
@@ -108,6 +118,7 @@ const USDC = LIST[1]!.token;
 beforeEach(() => {
   store.clear();
   bumped.length = 0;
+  inflightWrites.length = 0;
   headroom = {};
   onChain = { spendableCommitment: IDENTITY, receivingCommitment: IDENTITY };
 });
@@ -188,6 +199,7 @@ describe("two wrappers, two TTLs", () => {
     headroom = { [XLM]: 5, [USDC]: 5 };
     await c.runKeepAlive();
     bumped.length = 0;
+    inflightWrites.length = 0;
 
     await c.runKeepAlive();
     expect(bumped).toEqual([]);
@@ -349,5 +361,33 @@ describe("two wrappers, two TTLs", () => {
     expect(plan.nextCheckMs).toBeGreaterThan(0);
     expect(plan.nextCheckMs).toBeLessThanOrEqual(2 * DAY);
     expect(bumped).toEqual([]);
+  });
+});
+
+/**
+ * The in-flight record has to say WHOSE transaction it is.
+ *
+ * A keep-alive is sent on an alarm; the user pressed nothing. Stranded by
+ * worker eviction its record put the full-screen "Unfinished transaction"
+ * blocker in front of the whole wallet, reading exactly like a payment they had
+ * made and lost track of, and there was nothing on the record to say otherwise.
+ * `blockingInFlight` keys on this string.
+ */
+describe("what a keep-alive leaves on the in-flight record", () => {
+  it("marks it as a keep-alive, not as a merge the user asked for", async () => {
+    const c = await worker();
+    headroom = { [XLM]: 5 };
+
+    await c.runKeepAlive();
+
+    expect(
+      inflightWrites.length,
+      "nothing was submitted, so there is nothing to check",
+    ).toBeGreaterThan(0);
+    for (const rec of inflightWrites) {
+      expect(rec.kind, "a background bump is indistinguishable from a user's transaction").toBe(
+        "keepalive",
+      );
+    }
   });
 });

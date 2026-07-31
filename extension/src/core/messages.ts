@@ -309,6 +309,16 @@ export interface ResponseMap {
      * earlier build, which reads as "old", the safe answer.
      */
     at?: number;
+    /**
+     * What kind of operation it was.
+     *
+     * `keepalive` is the one the screen has to treat differently: it is a
+     * background upkeep transaction the wallet sends on an alarm, and stranded
+     * by worker eviction it put the full-screen "Unfinished transaction"
+     * blocker in front of the wallet, reading like a payment the user had made
+     * and lost. They had pressed nothing, and nothing on the record said so.
+     */
+    kind?: string;
   } | null;
   reconcileInFlight: SubmitOutcome | null;
   recoverFromMnemonic: string;

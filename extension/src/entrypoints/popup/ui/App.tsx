@@ -256,7 +256,22 @@ function FinishOnboarding({ t, onContinue }: { t: Theme; onContinue: () => void 
 const IN_FLIGHT_GRACE_MS = 210_000;
 
 /** whether an unresolved submission should take the whole screen. */
-export function blockingInFlight(r: { expired: boolean; at?: number }): boolean {
+export function blockingInFlight(r: { expired: boolean; at?: number; kind?: string }): boolean {
+  // A KEEP-ALIVE never takes the whole screen.
+  //
+  // It is a background upkeep transaction the wallet sends on an alarm: the
+  // user pressed nothing, and it moves nothing they would notice. Stranded by
+  // worker eviction it put "Pocket submitted a transaction and did not see
+  // whether it confirmed. Do not send it again until this is resolved." in
+  // front of the entire wallet, with every other control removed, about
+  // something they never did. The instruction is meaningless too, since there
+  // is nothing for them to resend.
+  //
+  // The record is NOT ignored: `reconcileInFlight` still resolves it on mount,
+  // and a user operation submitted while it is outstanding is still refused by
+  // `assertNothingUnresolved` in the worker, which is where that guard belongs.
+  // What changes is only whether the wallet is taken away from them for it.
+  if (r.kind === "keepalive") return false;
   // Expired means it can never apply now, which is worth blocking on whenever it
   // happened. An `at` absent (a record from an earlier build) reads as old, which
   // is the same answer this screen gave before and the safe one.
