@@ -1122,12 +1122,23 @@ export class WalletController {
       const { vk } = await deriveConfidentialKeys(ctx);
       const { recoverOpenings } = await import("./recover-openings");
 
+      // The chain's own position, so a mismatch caused by an archive that is
+      // merely BEHIND can say so instead of blaming the history for being
+      // wrong. Best effort: unreadable, and the refusal falls back to the
+      // sentence it always gave.
+      let chainLedger: number | null = null;
+      try {
+        chainLedger = (await this.server().getLatestLedger()).sequence;
+      } catch {
+        /* the mismatch is still a mismatch; only the explanation is poorer. */
+      }
       const rebuilt = await recoverOpenings(
         NETWORKS[this.network].archiveUrl,
         cfg.token,
         address,
         vk,
         account,
+        chainLedger,
       );
       await this.writeOpenings(address, cfg.token, rebuilt);
       this.lastInboundFailure = null;

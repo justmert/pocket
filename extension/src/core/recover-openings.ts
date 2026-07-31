@@ -154,6 +154,18 @@ export async function recoverOpenings(
   account: string,
   vk: bigint,
   onChain: ConfidentialAccount,
+  /**
+   * The chain's own latest ledger, when the caller could read it.
+   *
+   * Only used to explain a MISMATCH. An archive that is behind the chain has a
+   * history that is complete as far as it goes and short of what the contract
+   * holds, and the refusal used to blame the history for being "incomplete or
+   * wrong": measured live, the archive was 3,781 ledgers (about five hours)
+   * behind the tip, which is the ordinary state of a catching-up indexer and
+   * not a corrupt one. The remedy differs too. Wrong history is a reason to
+   * stop; behind is a reason to wait.
+   */
+  chainLedger?: number | null,
 ): Promise<{ spendable: Opening; receiving: Opening; syncedThrough: number }> {
   if (!archiveUrl) {
     throw new RecoveryUnavailableError(
@@ -253,10 +265,27 @@ export async function recoverOpenings(
   // looks right and cannot be spent.
   const check = verifyAgainstChain(rebuilt, onChain);
   if (!check.ok) {
+    // BEHIND is not WRONG.
+    //
+    // An archive still catching up has a history that is correct as far as it
+    // goes and short of what the contract holds, which produces exactly this
+    // mismatch. Measured live: the archive reported ingested_through 4,033,277
+    // against a chain tip of 4,037,058, five hours behind, which is the
+    // ordinary state of an indexer and not a corrupt one. Blaming the history
+    // sent the user looking for a problem that was not there, and the remedies
+    // are opposites: wrong history is a reason to stop, behind is a reason to
+    // wait a few minutes.
+    const through = health.ingested_through ?? null;
+    const behind =
+      chainLedger != null && through != null && chainLedger > through ? chainLedger - through : 0;
     throw new RecoveryMismatchError(
       `The rebuilt ${check.which} balance does not match what the contract holds, so Pocket ` +
-        `will not use it. Your funds are safe on chain. This means the history it was given ` +
-        `is incomplete or wrong.`,
+        `will not use it. Your funds are safe on chain. ` +
+        (behind > 0
+          ? `The archive has recorded up to ledger ${through} and the network is at ` +
+            `${chainLedger}, so it is ${behind} ledgers behind and has not seen everything yet. ` +
+            `Wait for it to catch up and try again.`
+          : `This means the history it was given is incomplete or wrong.`),
     );
   }
   return rebuilt;

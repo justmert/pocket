@@ -386,3 +386,82 @@ describe("a rebuilt balance is checked against the contract, not trusted", () =>
     expect(out.receiving.value).toBe(0n);
   });
 });
+
+/**
+ * A mismatch has two very different causes and the remedies are opposites.
+ *
+ * A history that is WRONG is a reason to stop. An archive that is merely BEHIND
+ * has a history that is correct as far as it goes and short of what the
+ * contract holds, which produces the identical mismatch and needs nothing but
+ * time. Measured live: the archive reported ingested_through 4,033,277 against
+ * a chain tip of 4,037,058, five hours behind, which is the ordinary state of a
+ * catching-up indexer. The refusal called it "incomplete or wrong" either way.
+ */
+describe("why the rebuilt balance did not match", () => {
+  it("says the archive is behind when it is behind", async () => {
+    // Ingested through 100, chain at 900. The archive serves one deposit, the
+    // contract holds more, and the difference is the events it has not seen.
+    const url = await archiveServing([depositEvent(ACCOUNT, 10_000_000n, 100)], 100);
+    const err = await recoverOpenings(
+      url,
+      TOKEN,
+      ACCOUNT,
+      VK,
+      {
+        spendableCommitment: IDENTITY,
+        receivingCommitment: receivingCommitmentFor(42_500_000n),
+      } as never,
+      900,
+    ).catch((e: unknown) => e);
+
+    const said = (err as Error).message;
+    expect(said, "blamed the history for a lag").not.toMatch(/incomplete or wrong/i);
+    expect(said).toMatch(/800 ledgers behind/);
+    expect(said).toMatch(/wait for it to catch up/i);
+  });
+
+  it("still says the history is wrong when the archive is current", async () => {
+    // Ingested through 900, chain at 900: nothing outstanding, so the replay
+    // really does disagree with the contract and that is worth stopping for.
+    const url = await archiveServing([depositEvent(ACCOUNT, 10_000_000n, 100)], 900);
+    const err = await recoverOpenings(
+      url,
+      TOKEN,
+      ACCOUNT,
+      VK,
+      {
+        spendableCommitment: IDENTITY,
+        receivingCommitment: receivingCommitmentFor(42_500_000n),
+      } as never,
+      900,
+    ).catch((e: unknown) => e);
+    expect((err as Error).message).toMatch(/incomplete or wrong/i);
+  });
+
+  it("falls back to the old sentence when the chain's position is unknown", async () => {
+    // The caller could not read the tip. Claiming a lag it cannot measure would
+    // be an invention; the older, vaguer sentence is the honest one.
+    const url = await archiveServing([depositEvent(ACCOUNT, 10_000_000n, 100)], 100);
+    const err = await recoverOpenings(url, TOKEN, ACCOUNT, VK, {
+      spendableCommitment: IDENTITY,
+      receivingCommitment: receivingCommitmentFor(42_500_000n),
+    } as never).catch((e: unknown) => e);
+    expect((err as Error).message).toMatch(/incomplete or wrong/i);
+  });
+
+  it("never claims the funds are at risk, whichever cause it names", async () => {
+    const url = await archiveServing([depositEvent(ACCOUNT, 10_000_000n, 100)], 100);
+    const err = await recoverOpenings(
+      url,
+      TOKEN,
+      ACCOUNT,
+      VK,
+      {
+        spendableCommitment: IDENTITY,
+        receivingCommitment: receivingCommitmentFor(42_500_000n),
+      } as never,
+      900,
+    ).catch((e: unknown) => e);
+    expect((err as Error).message).toMatch(/funds are safe on chain/i);
+  });
+});
