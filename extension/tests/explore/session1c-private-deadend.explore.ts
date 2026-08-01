@@ -34,7 +34,7 @@ test("session 1c: pressing Review on a private pocket that does not exist", asyn
   writeFileSync(join(OUT, "C-filled-form.png"), await page.screenshot());
 
   const before = Date.now();
-  await page.getByRole("button", { name: "Review" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
 
   // Watch for up to thirty seconds and record everything it says, in order.
   const seen: string[] = [];

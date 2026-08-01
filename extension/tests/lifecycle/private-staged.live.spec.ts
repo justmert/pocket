@@ -264,7 +264,7 @@ test("a shield killed after the deposit puts the money in receiving and says so"
 
     await page.getByRole("button", { name: "Shield" }).click();
     await page.getByRole("textbox", { name: "Amount" }).fill("25");
-    await page.getByRole("button", { name: "Review" }).click();
+    await page.getByRole("button", { name: "Continue" }).click();
     await waitForReview(page);
     void page.getByRole("button", { name: "Approve" }).click();
 
@@ -381,7 +381,7 @@ test("a shield whose merge never reaches the network says where the money is, an
 
     await page.getByRole("button", { name: "Shield" }).click();
     await page.getByRole("textbox", { name: "Amount" }).fill("25");
-    await page.getByRole("button", { name: "Review" }).click();
+    await page.getByRole("button", { name: "Continue" }).click();
     await waitForReview(page);
     submissions = 0;
     stopMerge = true;

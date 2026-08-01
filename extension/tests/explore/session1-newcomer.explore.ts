@@ -101,7 +101,7 @@ test("session 1: a newcomer sets up a wallet reading nothing but the screen", as
   await look(page, "10 send, empty form on an empty wallet");
 
   // What does it do if a newcomer just presses the primary button?
-  const review = page.getByRole("button", { name: "Review" });
+  const review = page.getByRole("button", { name: "Continue" });
   if (await review.isEnabled().catch(() => false)) {
     await review.click();
     await look(page, "11 review pressed with nothing typed");

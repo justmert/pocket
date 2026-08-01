@@ -305,6 +305,10 @@ export class Wallet {
     await this.page.getByLabel("To", { exact: true }).fill(p.to);
     await this.page.getByLabel("Amount (XLM)").fill(p.amount);
     if (p.memo !== undefined) await this.page.getByLabel("Memo (optional)").fill(p.memo);
+    // "Continue", not "Review": the compose screens were rebuilt and the submit
+    // took the word every other step uses. This helper is the shared entry to
+    // most of the sending specs, so the old name cost each of them a 60s
+    // timeout with no product defect behind any of it.
     await this.page.getByRole("button", { name: "Continue" }).click();
   }
 
@@ -475,7 +479,7 @@ export class Wallet {
   async submitOp(fields: { amount: string; to?: string }): Promise<void> {
     if (fields.to !== undefined) await this.page.getByLabel("To", { exact: true }).fill(fields.to);
     await this.page.getByLabel("Amount (XLM)").fill(fields.amount);
-    await this.page.getByRole("button", { name: "Review" }).click();
+    await this.page.getByRole("button", { name: "Continue" }).click();
   }
 
   /**
@@ -570,16 +574,38 @@ export async function openMoveAction(page: Page, name: string): Promise<void> {
  * pass by luck.
  */
 export async function answerBackupCheck(page: Page, phrase: string): Promise<void> {
+  // TAP CHIPS, not typed fields. The step used to render inputs labelled
+  // "Word N" and this filled them; the Onboarding rewrite replaced that with a
+  // pool of word chips placed into three blanks, in order. Against the new
+  // screen this found zero fields, filled nothing, and then waited sixty
+  // seconds on a Confirm that is disabled until all three blanks hold a word.
+  //
+  // The `Wallet` class carries the same walk; this is the standalone form, for
+  // a spec driving a bare `Page`. Both read the ordinals off the blanks rather
+  // than assuming them, because they are chosen at random per run.
   const words = phrase.split(" ");
-  const fields = page.getByLabel(/^Word \d+$/);
-  const n = await fields.count();
+  const blanks = page.getByTestId("verify-blank");
+  const n = await blanks.count();
   for (let i = 0; i < n; i++) {
-    const field = fields.nth(i);
-    const label = await field.evaluate((el) => {
-      const id = el.getAttribute("id");
-      return id ? (document.querySelector(`label[for="${id}"]`)?.textContent ?? "") : "";
-    });
-    await field.fill(words[Number(label.replace(/\D+/g, "")) - 1] ?? "");
+    const ordinal = Number((await blanks.nth(i).getAttribute("data-position")) ?? "0");
+    const word = words[ordinal - 1] ?? "";
+    await page.getByRole("button", { name: word, exact: true }).click();
   }
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
+}
+
+/**
+ * Leave the "Your wallet is ready!" screen, for a spec driving a bare `Page`.
+ *
+ * The full-page onboarding flow ends on a completion screen whose Done button
+ * closes the TAB: a real user closes it and reopens the toolbar popup, which a
+ * reload stands in for. Waits for either that screen or home, because a bare
+ * `count()` is a question about this instant and the vault is still being
+ * sealed when it is asked.
+ */
+export async function passOnboardingReady(page: Page): Promise<void> {
+  const ready = page.getByRole("heading", { name: "Your wallet is ready!" });
+  const home = page.getByRole("button", { name: "Public Pocket" });
+  await expect(ready.or(home).first()).toBeVisible({ timeout: WAITS.onboarding });
+  if ((await ready.count()) > 0) await page.reload();
 }

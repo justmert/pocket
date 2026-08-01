@@ -12,7 +12,7 @@
 // and hands it back verbatim. That is how three inherited tests turned out to
 // be red for a real reason rather than green for a comfortable one.
 import { expect, type Page } from "@playwright/test";
-import { answerBackupCheck } from "../support/wallet";
+import { answerBackupCheck, passOnboardingReady } from "../support/wallet";
 
 export { test, expect, Wallet } from "../support/fixtures";
 export { fund, account, nativeBalance, payments, transactions, waitFor } from "../support/testnet";
@@ -48,7 +48,8 @@ export async function onboard(page: Page, password = PASSWORD): Promise<string> 
   const phrase = cells.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
   await answerBackupCheck(page, phrase);
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
+  await passOnboardingReady(page);
+  await expect(page.getByRole("button", { name: "Public Pocket" })).toBeVisible({ timeout: SLOW });
   return phrase;
 }
 
@@ -148,7 +149,7 @@ export type ReviewOutcome =
  * Waits on the real end condition, a verdict being on screen, never on a clock.
  */
 export async function review(page: Page): Promise<ReviewOutcome> {
-  await page.getByRole("button", { name: "Review" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
   let out: ReviewOutcome | null = null;
   await expect
     .poll(
@@ -205,7 +206,13 @@ export async function settled(page: Page): Promise<void> {
 
 /** Back to home from wherever a verdict left us. */
 export async function closeSend(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Close" }).click();
+  // Send is a full-frame ROUTE now, so the way out is the header's Back arrow,
+  // not a sheet's X. A confirm SHEET may be over it, which does have a Close;
+  // put that away first, then leave the route.
+  const close = page.getByRole("button", { name: "Close" });
+  if ((await close.count()) > 0) await close.last().click();
+  const back = page.getByRole("button", { name: "Back" });
+  if ((await back.count()) > 0) await back.last().click();
   // waits for the sheet to be GONE, not merely for home to be behind it: home
   // is behind it the whole time.
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -272,4 +279,30 @@ export async function clickTwiceInOneTask(page: Page, label: string): Promise<Do
     `"${label}" had to be clickable twice for this test to mean anything`,
   ).toBe(2);
   return result;
+}
+
+/**
+ * Wait until the POPUP has seen the money, not just the ledger.
+ *
+ * `fund` waits on the account existing on chain, which is the right end
+ * condition for the ledger and the wrong one for the screen: the provider
+ * refreshes on its own cadence, so a compose form opened straight afterwards
+ * reads "0 XLM available" and correctly refuses to enable Continue. Every spec
+ * that funded and then immediately tried to send waited out a 60s timeout on a
+ * button that was right to be disabled.
+ *
+ * Presses the wallet's own Refresh, then waits for a non-zero balance.
+ */
+export async function awaitFunded(page: Page): Promise<void> {
+  const refresh = page.getByRole("button", { name: "Refresh" });
+  await expect
+    .poll(
+      async () => {
+        if ((await refresh.count()) > 0) await refresh.click().catch(() => undefined);
+        const text = await page.locator("body").innerText();
+        return /[1-9]\d*\.\d{7}/.test(text);
+      },
+      { timeout: SLOW, message: "the popup never saw the funded balance" },
+    )
+    .toBe(true);
 }

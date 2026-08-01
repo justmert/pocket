@@ -283,7 +283,7 @@ test("a ready pocket, its three op forms and the transfer review all fit the pop
           await page.setViewportSize({ width: vp.width, height: vp.height });
           await expectLayoutHolds(page, `private/form ${op} @ ${vp.name}`);
           await expectReachable(
-            page.getByRole("button", { name: "Review" }),
+            page.getByRole("button", { name: "Continue" }),
             `private/form ${op} @ ${vp.name}: Review`,
           );
           await expectReachable(

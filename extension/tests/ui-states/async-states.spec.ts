@@ -202,7 +202,7 @@ test.describe("send", () => {
     await expect(sheet.getByText("Checking")).toBeVisible();
     // Review is replaced by the spinner rather than sitting there clickable, so
     // a second press cannot build a second envelope.
-    await expect(sheet.getByRole("button", { name: "Review", exact: true })).toHaveCount(0);
+    await expect(sheet.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0);
   });
 
   test("error: a refusal the user can act on, and the form is still there", async ({ wallet }) => {
@@ -218,7 +218,7 @@ test.describe("send", () => {
     // Still on compose, with what was typed intact: an error that clears the
     // form makes the user retype an address they were told was wrong.
     await expect(sheet.getByLabel("To", { exact: true })).toHaveValue("not-an-address");
-    await expect(sheet.getByRole("button", { name: "Review" })).toBeVisible();
+    await expect(sheet.getByRole("button", { name: "Continue" })).toBeVisible();
   });
 
   test("success: the confirm screen states everything about to be signed", async ({ wallet }) => {

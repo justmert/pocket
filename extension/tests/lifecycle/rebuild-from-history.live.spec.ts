@@ -81,7 +81,7 @@ test("a wallet that lost its openings gets them back from the archive", async ()
 
     await page.getByRole("button", { name: "Shield" }).click();
     await page.getByRole("textbox", { name: "Amount" }).fill("25");
-    await page.getByRole("button", { name: "Review" }).click();
+    await page.getByRole("button", { name: "Continue" }).click();
     await waitForReview(page);
     await page.getByRole("button", { name: "Approve" }).click();
     await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 600_000 });
@@ -151,7 +151,7 @@ test("a wallet that lost its openings gets them back from the archive", async ()
 
       await payer.page.getByRole("button", { name: "Shield" }).click();
       await payer.page.getByRole("textbox", { name: "Amount" }).fill("30");
-      await payer.page.getByRole("button", { name: "Review" }).click();
+      await payer.page.getByRole("button", { name: "Continue" }).click();
       await waitForReview(payer.page);
       await payer.page.getByRole("button", { name: "Approve" }).click();
       await expect(payer.page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 600_000 });
@@ -167,7 +167,7 @@ test("a wallet that lost its openings gets them back from the archive", async ()
       await payer.page.getByRole("button", { name: "Send privately" }).click();
       await payer.page.getByRole("textbox", { name: "To" }).fill(address);
       await payer.page.getByRole("textbox", { name: "Amount" }).fill("12");
-      await payer.page.getByRole("button", { name: "Review" }).click();
+      await payer.page.getByRole("button", { name: "Continue" }).click();
       await waitForReview(payer.page);
       await payer.page.getByRole("button", { name: "Approve" }).click();
       await expect(payer.page.getByText("Transaction successful")).toBeVisible({

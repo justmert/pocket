@@ -66,7 +66,7 @@ test("the move review does not repeat the sheet's own title", async ({ wallet })
   await wallet.openMove();
   await page.getByRole("button", { name: /Shield/ }).click();
   await page.getByRole("textbox", { name: /Amount/ }).fill("3");
-  await page.getByRole("button", { name: "Review" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
 
   // The operation is named once on the screen, by the sheet that contains it.
@@ -87,7 +87,7 @@ test("leaving the move review returns to the form, not past it", async ({ wallet
   await page.getByRole("button", { name: /Shield/ }).click();
   const amount = page.getByRole("textbox", { name: /Amount/ });
   await amount.fill("3");
-  await page.getByRole("button", { name: "Review" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
 
   await page.getByRole("button", { name: "Back" }).click();

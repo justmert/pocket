@@ -43,7 +43,7 @@ async function review(page: Page, to: string, amount = AMOUNT): Promise<void> {
   await page.getByRole("menuitem", { name: "Send", exact: true }).click();
   await page.getByRole("textbox", { name: "To", exact: true }).fill(to);
   await page.getByRole("textbox", { name: "Amount (XLM)" }).fill(amount);
-  await page.getByRole("button", { name: "Review" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("button", { name: "Confirm" })).toBeVisible({
     timeout: 60_000,
   });

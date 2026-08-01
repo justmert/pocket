@@ -103,7 +103,7 @@ test("a sheet keeps focus inside itself when it swaps what it is showing", async
 
   await wallet.page.getByLabel("To", { exact: true }).fill("not-an-address");
   await wallet.page.getByLabel("Amount (XLM)").fill("1");
-  await wallet.page.getByRole("button", { name: "Review" }).click();
+  await wallet.page.getByRole("button", { name: "Continue" }).click();
 
   // Whatever the wallet decides, the panel has been re-rendered. Focus must not
   // have fallen to the document body, or a keyboard user arriving at a signing

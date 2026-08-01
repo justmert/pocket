@@ -240,7 +240,7 @@ test("a 400-character paste in the recipient field breaks no layout and is not e
   const RUBBISH = "G".repeat(400);
   await page.getByLabel("To", { exact: true }).fill(RUBBISH);
   await page.getByLabel("Amount (XLM)").fill("1");
-  await page.getByRole("button", { name: "Review" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
 
   const notice = page.getByText(/does not look like a Stellar address/);
   await expect(notice).toBeVisible({ timeout: WAITS.ledgerRead });

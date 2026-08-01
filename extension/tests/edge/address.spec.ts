@@ -12,6 +12,7 @@ import {
   onboard,
   receiveAddress,
   fund,
+  awaitFunded,
   compose,
   review,
   closeSend,
@@ -47,6 +48,14 @@ function flipOne(address: string): string {
 test("each kind of bad recipient is named for what is wrong with it", async ({ wallet }) => {
   const page = wallet.page;
   await onboard(page);
+  // The refusals under test are the WORKER'''s, and they are reached by pressing
+  // Continue, which the compose screen now also gates on having a balance to
+  // send. That gate is right: an unfunded account cannot send to any address,
+  // good or bad. So the account is funded first, which is the only way to get
+  // at the property this test is about. `fund` is the same friendbot helper the
+  // two funded cases further down already use.
+  await fund(await receiveAddress(page));
+  await awaitFunded(page);
 
   const good = valid();
   const cases: { name: string; to: string; expect: RegExp }[] = [
@@ -141,7 +150,7 @@ test("a muxed address is either accepted or refused for a stated reason", async 
 test("Review stays disabled until both a recipient and an amount exist", async ({ wallet }) => {
   const page = wallet.page;
   await onboard(page);
-  const button = page.getByRole("button", { name: "Review" });
+  const button = page.getByRole("button", { name: "Continue" });
 
   await compose(page, {});
   await expect(button).toBeDisabled();
