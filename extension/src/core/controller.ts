@@ -5403,10 +5403,25 @@ export class WalletController {
       // screen. `writeOpenings` and `creditInbound` both throw from in here.
       return await this.exclusive(async () => {
         const fresh = (await this.readOpenings(address, cfg.token)) ?? stored;
+        // ...and the CHAIN as it is now, not as it was before the scan.
+        //
+        // `account` was read before a scan that pages the RPC's whole retained
+        // window, which takes as long as it takes. A transfer landing inside
+        // that window moves the receiving accumulator, and `creditInbound` is
+        // all-or-nothing against it: the sum of what we found no longer
+        // reproduces the commitment, so the WHOLE batch is refused, including
+        // the transfers the scan did see. The comment above `resumeFrom` makes
+        // exactly this argument about the cursor; the accumulator had the same
+        // problem and kept the pre-scan value.
+        //
+        // Best effort: a re-read that fails leaves the pre-scan account, which
+        // is what this used unconditionally before, so the worst case is the
+        // old behaviour rather than a refusal to credit at all.
+        const now = await this.readOwnAccount(address, cfg).catch(() => account);
         // Someone else may have credited or merged while we scanned. Their
         // result is newer than ours; ours is now about a state that is gone.
-        if (verifyAgainstChain(fresh, account).ok) return fresh;
-        const receiving = creditInbound(fresh.receiving, found, account.receivingCommitment);
+        if (verifyAgainstChain(fresh, now).ok) return fresh;
+        const receiving = creditInbound(fresh.receiving, found, now.receivingCommitment);
         // Anchored on the events actually credited, NOT on the chain tip, which
         // was read before a scan that pages the whole retained window and so
         // could point behind a transfer this very call had just credited. The
