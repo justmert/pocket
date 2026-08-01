@@ -3660,6 +3660,28 @@ export class WalletController {
     // archive outage rendered as a positive claim that the account has no
     // private history at all.
     const failed: string[] = [];
+    // How far BEHIND the archive is, per asset, so a list that cannot yet
+    // contain the transaction the user just made says so.
+    //
+    // The private list comes only from the archive: nothing else has the events
+    // to replay. An indexer is always some way behind the chain, and until it
+    // catches up a private transfer that has confirmed on chain, with its
+    // openings already written locally, is simply absent from Activity. The
+    // list showed no sign of it, so the screen's silence read as "that did not
+    // happen" about something that had.
+    let behindBy = 0;
+    try {
+      const tip = (await this.server().getLatestLedger()).sequence;
+      for (const cfg of assets) {
+        const health = await client.health(cfg.token);
+        const through = health.ingested_through ?? 0;
+        if (tip > through) behindBy = Math.max(behindBy, tip - through);
+      }
+    } catch {
+      // Unreadable on either side. A lag that cannot be measured is not
+      // announced: the list is what it is, and inventing a figure would be
+      // worse than the silence this exists to fix.
+    }
     for (const cfg of assets) {
       try {
         const ctx = await this.opContext(cfg.token);
@@ -3676,12 +3698,24 @@ export class WalletController {
         failed.push(cfg.symbol);
       }
     }
-    if (failed.length === 0) return { entries: all };
+    // A lag worth mentioning. Under a handful of ledgers is the archive keeping
+    // up, and saying so on every read would be noise that teaches the user to
+    // ignore the line. Twelve ledgers is about a minute on Stellar's five-second
+    // close, which is the point at which "it should be there by now" becomes a
+    // reasonable thing for someone to think.
+    const lagging =
+      behindBy > 12
+        ? `The event archive is about ${behindBy} ledgers behind the network, so a private ` +
+          `transaction from the last few minutes may not be listed yet. It has still happened ` +
+          `and your balances already include it.`
+        : undefined;
+    if (failed.length === 0) return { entries: all, ...(lagging ? { unreadable: lagging } : {}) };
     return {
       entries: all,
       unreadable:
         `Pocket could not read the private activity for ${listOf(failed)}. ` +
-        `Anything shown below is incomplete. Your balances are unaffected.`,
+        `Anything shown below is incomplete. Your balances are unaffected.` +
+        (lagging ? ` ${lagging}` : ""),
     };
   }
 
