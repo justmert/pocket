@@ -1494,6 +1494,10 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "epoch seconds, to set a transaction's own expiry window",
   },
   {
+    fragment: "if (tip > through) behindBy = Math.max(behindBy, tip - through);",
+    why: "how far the event archive is behind the chain, in LEDGER SEQUENCE NUMBERS: two integers the network counts, compared so the private list can say it may be missing the last few minutes. no asset, no amount",
+  },
+  {
     fragment: "const amount = Number(y.underlyingBalance);",
     why: "what is in the yield vault, turned into a float to be PRICED into the home total, exactly as every balance on that screen is. it is a dollar estimate and never an amount that gets signed: the vault's own deposit and withdraw send the decimal string, parsed to bigint stroops in the worker",
   },
