@@ -63,6 +63,23 @@ function vaultEnvelope(opts: {
   return tx.toXDR();
 }
 
+/** ~0.0044 XLM. A yield move measured on chain came back at 43,505 stroops. */
+const SIM_FEE = "43505";
+
+/**
+ * The envelope simulation hands back: same bytes, resource fee added.
+ *
+ * Patched at the XDR level and re-parsed, because a built `Transaction` is
+ * immutable and re-adding decoded operations to a builder does not round-trip
+ * an `invokeHostFunction`.
+ */
+function withFee(tx: unknown, fee: string): unknown {
+  const t = tx as { toXDR(): string; networkPassphrase: string };
+  const env = xdr.TransactionEnvelope.fromXDR(t.toXDR(), "base64");
+  env.v1().tx().fee(Number(fee));
+  return TransactionBuilder.fromXDR(env.toXDR("base64"), t.networkPassphrase);
+}
+
 /** A wallet whose DeFindex client returns exactly the envelope a test supplies. */
 async function walletWith(envelope: (address: string) => string) {
   const c = new WalletController();
@@ -70,7 +87,10 @@ async function walletWith(envelope: (address: string) => string) {
   const { address } = await c.create(PASSWORD);
   (c as unknown as { servers: Map<string, unknown> }).servers.set("testnet", {
     getAccount: async () => new Account(address, "100"),
-    prepareTransaction: async (tx: unknown) => tx,
+    // What simulation really does to a Soroban envelope: it fills in the
+    // resource fee. Returning it unchanged made every fee assertion vacuous,
+    // and the fee is the whole subject of the test below.
+    prepareTransaction: async (tx: unknown) => withFee(tx, SIM_FEE),
     getLedgerEntries: async () => fundedAccountResult(address, 100_0000000n),
     _getLedgerEntries: async () => fundedAccountResult(address, 100_0000000n),
   });
@@ -268,5 +288,44 @@ describe("the expiry check sits on the submit path, not only the build path", ()
       _getLedgerEntries: async () => fundedAccountResult(address, 100_0000000n),
     });
     await expect(c.confirmYieldMove(handle)).rejects.toThrow(/no expiry|cannot time out/i);
+  });
+});
+
+/**
+ * The fee on the yield review is the fee that gets charged.
+ *
+ * `withOwnDeadline` rebuilds a third-party envelope through `cloneFrom`, which
+ * DROPS the Soroban resource data DeFindex had put on it, and nothing put it
+ * back before the sheet was drawn. So the review quoted the bare 105 stroops
+ * the clone carried, 0.0000105 XLM, for a transaction that lands at around
+ * 43,505: two orders of magnitude out, on the one figure a confirm screen
+ * exists to state.
+ */
+describe("what the yield review says the fee is", () => {
+  it("quotes the simulated fee, not the one the clone was left with", async () => {
+    const { c } = await walletWith((address) => vaultEnvelope({ source: address }));
+    const { summary } = await c.buildYieldMove("deposit", "10");
+
+    expect(summary.fee, "the review quoted the base fee for a Soroban invocation").not.toBe(
+      "0.0000105",
+    );
+    expect(summary.fee).toBe("0.0043505");
+  });
+
+  it("says the same figure in the effects list, which is what is signed", async () => {
+    const { c } = await walletWith((address) => vaultEnvelope({ source: address }));
+    const { summary } = await c.buildYieldMove("deposit", "10");
+    expect(summary.effects.join(" ")).toContain("0.0043505");
+  });
+
+  it("stages the SIMULATED envelope, so the reviewed bytes are the signed bytes", async () => {
+    // The handle is the prepared envelope's hash. Staging the pre-simulation
+    // one would mean the fee on the sheet belonged to a transaction that was
+    // never sent.
+    const { c } = await walletWith((address) => vaultEnvelope({ source: address }));
+    const { handle } = await c.buildYieldMove("deposit", "10");
+    const entry = (c as unknown as { pending: Map<string, { xdr: string }> }).pending.get(handle)!;
+    const staged = TransactionBuilder.fromXDR(entry.xdr, PASSPHRASE) as { fee: string };
+    expect(staged.fee).toBe(SIM_FEE);
   });
 });

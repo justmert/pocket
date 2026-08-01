@@ -1331,29 +1331,43 @@ export class WalletController {
         );
       }
 
-      // The real fee, from DeFindex's own composed envelope. The guard before
-      // the build could only assume the base fee, and a vault deposit is a
-      // Soroban invocation costing orders of magnitude more.
+      // SIMULATED, and only now, after the envelope has been read and pinned.
+      //
+      // `withOwnDeadline` rebuilds through `cloneFrom`, which drops the Soroban
+      // resource data DeFindex had put on it, and nothing put it back before
+      // the sheet was drawn: `decoded.fee` was the bare 105 stroops the clone
+      // carried, so every yield review quoted 0.0000105 XLM for a transaction
+      // that lands at around 43,505. Two orders of magnitude, on the one figure
+      // a confirm screen exists to state.
+      //
+      // Simulating here also makes the reviewed bytes the SIGNED bytes, which
+      // is what every other build path does, and it is why the staged envelope
+      // below is the prepared one.
+      const prepared = await this.prepareForReview(decoded);
+
+      // The real fee, now that one exists. The guard before the build could
+      // only assume, and a vault deposit is a Soroban invocation costing orders
+      // of magnitude more.
       if (kind === "deposit") {
         const asset = await this.yieldUnderlying(client, cfg.vault);
-        if (asset) await this.assertCanAffordFee(decoded, asset, amount);
+        if (asset) await this.assertCanAffordFee(prepared, asset, amount);
       }
 
-      const handle = decoded.hash().toString("hex");
-      this.pending.set(handle, { xdr: decoded.toXDR(), at: Date.now(), kind: `yield:${kind}` });
+      const handle = prepared.hash().toString("hex");
+      this.pending.set(handle, { xdr: prepared.toXDR(), at: Date.now(), kind: `yield:${kind}` });
       this.prunePending();
       return {
         handle,
         summary: {
           kind,
           amount: formatAmount(amount),
-          fee: formatAmount(BigInt(decoded.fee)),
+          fee: formatAmount(BigInt(prepared.fee)),
           effects: [
             kind === "deposit"
               ? `Deposit ${formatAmount(amount)} into the yield vault`
               : `Withdraw ${formatAmount(amount)} from the yield vault`,
             "This is in the PUBLIC pocket and is visible on the ledger",
-            `Pay a network fee of ${formatAmount(BigInt(decoded.fee))} XLM`,
+            `Pay a network fee of ${formatAmount(BigInt(prepared.fee))} XLM`,
           ],
         },
       };
