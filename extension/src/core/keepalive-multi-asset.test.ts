@@ -47,6 +47,28 @@ const inflightWrites: { kind?: string }[] = [];
 /** Days of headroom per wrapper token, set per test. */
 let headroom: Record<string, number> = {};
 
+/** The account's spare XLM, in stroops. Plenty by default. */
+let nativeStroops = 100_000_000n;
+/** When true, the balance read fails, as an RPC outage makes it. */
+let nativeUnreadable = false;
+
+vi.mock("./chain/balances", async (orig) => {
+  const real = (await orig()) as Record<string, unknown>;
+  return {
+    ...real,
+    readNative: async () => {
+      if (nativeUnreadable) throw new Error("rpc down");
+      return {
+        raw: nativeStroops,
+        subEntryCount: 0,
+        numSponsoring: 0,
+        numSponsored: 0,
+        sellingLiabilities: 0n,
+      };
+    },
+  };
+});
+
 vi.mock("./chain/ttl", async (orig) => {
   const real = (await orig()) as Record<string, unknown>;
   return {
@@ -119,6 +141,8 @@ beforeEach(() => {
   store.clear();
   bumped.length = 0;
   inflightWrites.length = 0;
+  nativeStroops = 100_000_000n;
+  nativeUnreadable = false;
   headroom = {};
   onChain = { spendableCommitment: IDENTITY, receivingCommitment: IDENTITY };
 });
@@ -200,6 +224,8 @@ describe("two wrappers, two TTLs", () => {
     await c.runKeepAlive();
     bumped.length = 0;
     inflightWrites.length = 0;
+    nativeStroops = 100_000_000n;
+    nativeUnreadable = false;
 
     await c.runKeepAlive();
     expect(bumped).toEqual([]);
@@ -389,5 +415,59 @@ describe("what a keep-alive leaves on the in-flight record", () => {
         "keepalive",
       );
     }
+  });
+});
+
+/**
+ * A keep-alive costs money, and nothing checked whether the account had it.
+ *
+ * The bump is a real Soroban invocation: measured at 96,770 stroops on this
+ * deployment. It is signed and paid for by an alarm with no screen in front of
+ * it, and none of the wallet's eight balance guards sits on this path, because
+ * every one of them belongs to a flow a user pressed a button in.
+ */
+describe("a keep-alive on an account with no spare XLM", () => {
+  it("is skipped rather than submitted", async () => {
+    const c = await worker();
+    headroom = { [XLM]: 5, [USDC]: 5 };
+    // One base reserve for the account itself, and a hundred stroops over it.
+    nativeStroops = 10_000_100n;
+
+    await c.runKeepAlive();
+
+    expect(bumped, "signed a transaction the account cannot pay for").toEqual([]);
+  });
+
+  it("says why, rather than failing silently", async () => {
+    const c = await worker();
+    headroom = { [XLM]: 5 };
+    nativeStroops = 10_000_100n;
+
+    const plan = await c.runKeepAlive();
+    expect(plan.notice ?? "").toMatch(/spare XLM/i);
+  });
+
+  it("does not refuse the bump when there IS spare", async () => {
+    // The guard must not become the reason a healthy wallet stops keeping its
+    // account alive.
+    const c = await worker();
+    headroom = { [XLM]: 5 };
+    nativeStroops = 100_000_000n;
+    nativeUnreadable = false;
+
+    await c.runKeepAlive();
+    expect(bumped).toContain(XLM);
+  });
+
+  it("bumps anyway when the balance cannot be read", async () => {
+    // Refusing to keep an account alive because a balance read timed out is a
+    // worse trade than letting the bump fail on its own terms, which is what
+    // happened before the guard existed.
+    const c = await worker();
+    headroom = { [XLM]: 5 };
+    nativeUnreadable = true;
+
+    await c.runKeepAlive();
+    expect(bumped).toContain(XLM);
   });
 });

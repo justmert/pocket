@@ -4976,6 +4976,29 @@ export class WalletController {
     return this.exclusive(() => this.doRunKeepAlive());
   }
 
+  /**
+   * Is there enough spare XLM for a keep-alive's fee?
+   *
+   * Asked with a RESERVE rather than a simulated fee: simulating costs a round
+   * trip on every alarm for every asset, and the answer only has to be good
+   * enough to skip a bump that cannot be paid for. `SOROBAN_FEE_RESERVE_STROOPS`
+   * is rounded well past the largest fee measured on this deployment.
+   *
+   * A read that fails answers TRUE: the bump then proceeds and fails on its own
+   * terms, which is what happened before this existed. Refusing to keep an
+   * account alive because a balance read timed out would be a worse trade.
+   */
+  private async canAffordKeepAlive(): Promise<boolean> {
+    const { address } = requireSession();
+    try {
+      const native = await readNative(this.server(), address);
+      const reserve = minimumBalance(native, BASE_RESERVE_STROOPS);
+      return availableToSend({ ...native, reserve }) >= SOROBAN_FEE_RESERVE_STROOPS;
+    } catch {
+      return true;
+    }
+  }
+
   private async doRunKeepAlive(): Promise<KeepAlivePlan> {
     const session = getSession();
     const list = NETWORKS[this.network].confidential;
@@ -5041,12 +5064,36 @@ export class WalletController {
       // Fetched per bump: two bumps from one stale source object would collide
       // on the sequence number.
       const source = await this.server().getAccount(session.address);
+      // A keep-alive is a real Soroban invocation with a real fee, measured at
+      // 96,770 stroops on this deployment, and it is signed and paid for by an
+      // alarm with no screen in front of it. Nothing checked whether the
+      // account could afford it: none of the eight balance guards sits on this
+      // path, because every one of them belongs to a flow a user pressed a
+      // button in.
+      //
+      // Asked BEFORE the envelope is built, so nothing is composed for a
+      // transaction that cannot be sent. Skipped rather than thrown: a wallet
+      // with nothing spare has a problem the keep-alive cannot solve, and
+      // failing the alarm would put an error where the user asked no question.
+      // Letting the entry archive is the lesser harm on this deployment,
+      // exactly as the no-openings case above argues, because protocol 27
+      // auto-restores an archived persistent entry.
+      if (!(await this.canAffordKeepAlive())) {
+        // Assigned, not `??=`. A per-asset TTL notice may already be here, and
+        // "your entry could not be kept alive and here is why" is the more
+        // actionable of the two.
+        notice =
+          "Pocket could not keep your private pocket's entry alive because this account has no " +
+          "spare XLM for the network fee. Add a little XLM.";
+        continue;
+      }
       const tx = buildKeepAlive(
         source,
         cfg.token,
         session.address,
         NETWORKS[this.network].passphrase,
       );
+
       // `submitStaged`, not `signAndSubmit`: staging a consequence and never
       // applying it is worse than not staging one, because the record then
       // points at a post-state nothing writes. This is the wrapper that writes
