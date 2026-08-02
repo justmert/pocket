@@ -30,7 +30,9 @@ test("a second window does not present the wallet while a phrase is unconfirmed"
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByLabel("Confirm password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create wallet" }).click();
-  await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: WAITS.onboarding });
+  await expect(page.getByText("Save your recovery phrase")).toBeVisible({
+    timeout: WAITS.onboarding,
+  });
 
   // The wallet really is complete on disk by now — that is the premise, not an
   // assumption. If this ever stops being true the defect is gone and so is the
@@ -38,12 +40,15 @@ test("a second window does not present the wallet while a phrase is unconfirmed"
   const status = await page.evaluate(
     () =>
       new Promise<{ initialised: boolean; locked: boolean }>((res) => {
-        chrome.runtime.sendMessage({ type: "status" }, (r: { data: { initialised: boolean; locked: boolean } }) =>
-          res(r.data),
+        chrome.runtime.sendMessage(
+          { type: "status" },
+          (r: { data: { initialised: boolean; locked: boolean } }) => res(r.data),
         );
       }),
   );
-  expect(status.initialised, "premise: create installs the vault before the phrase is shown").toBe(true);
+  expect(status.initialised, "premise: create installs the vault before the phrase is shown").toBe(
+    true,
+  );
   expect(status.locked).toBe(false);
 
   // Now the second window, opened the way the toolbar opens one.
@@ -91,5 +96,66 @@ test("once the phrase is confirmed, a second window shows the wallet again", asy
     timeout: WAITS.ledgerRead,
   });
   await expect(second.getByText(/still open in another tab/i)).toHaveCount(0);
+  await second.close();
+});
+
+/**
+ * The tab is GONE, and the wallet must not be locked behind a button that
+ * cannot do anything.
+ *
+ * A closed onboarding tab leaves the "unfinished" flag in session storage with
+ * nothing to raise. The one control on the blocking screen is "Go back to it",
+ * and if that were the whole screen the only exit would be quitting Chrome:
+ * every window, in every profile session, showing a notice about a tab that no
+ * longer exists.
+ */
+test("a closed onboarding tab still leaves a way into the wallet", async ({ wallet, harness }) => {
+  test.setTimeout(5 * 60_000);
+  const page = wallet.page;
+
+  await page.getByRole("button", { name: "Create a new wallet" }).click();
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
+  await page.getByLabel("Confirm password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Create wallet" }).click();
+  await expect(page.getByText("Save your recovery phrase")).toBeVisible({
+    timeout: WAITS.onboarding,
+  });
+
+  const second = await harness.openPopup();
+  await second.waitForLoadState("domcontentloaded");
+  await expect(second.getByRole("button", { name: "Go back to it" })).toBeVisible({
+    timeout: WAITS.ledgerRead,
+  });
+
+  // The tab holding the words goes away, as a middle-click on the tab strip or
+  // a "close tabs to the right" does. `beforeunload` makes it deliberate, not
+  // impossible.
+  await page.close({ runBeforeUnload: false });
+
+  await second.getByRole("button", { name: "Go back to it" }).click();
+
+  // The screen has to admit the tab is gone AND offer a way on. Either half
+  // alone is a dead end: silence leaves the button looking broken, and a
+  // sentence with no control leaves the wallet unreachable until Chrome quits.
+  await expect(
+    second.getByText(/that tab is gone/i),
+    "pressing the only control said nothing at all",
+  ).toBeVisible({ timeout: WAITS.ledgerRead });
+  const on = second.getByRole("button", { name: "Continue to the wallet" });
+  await expect(on, "no way into the wallet from the blocking screen").toBeVisible();
+
+  await on.click();
+  await expect(second.getByRole("button", { name: "Public Pocket" })).toBeVisible({
+    timeout: WAITS.ledgerRead,
+  });
+
+  // ...and the wallet says the phrase was never confirmed, because it was not.
+  // Continuing past a dead tab is not the user telling anyone they wrote the
+  // words down.
+  await expect(
+    second.getByText(/recovery phrase was never confirmed/i),
+    "the wallet forgot that the backup check had been skipped",
+  ).toBeVisible({ timeout: WAITS.ledgerRead });
+
   await second.close();
 });
