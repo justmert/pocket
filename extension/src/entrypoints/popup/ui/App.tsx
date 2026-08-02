@@ -35,7 +35,7 @@ import {
   RebuildSheet,
 } from "./sheets/SettingsSheets";
 import {
-  clearOnboardingUnfinished,
+  dismissUnfinishedTab,
   onboardingUnfinished,
   placeOnboarding,
   raiseOnboardingTab,
@@ -197,7 +197,11 @@ function FinishOnboarding({ t, onContinue }: { t: Theme; onContinue: () => void 
   };
 
   const leave = async () => {
-    await clearOnboardingUnfinished();
+    // The TAB is gone; the fact that the phrase was never confirmed is not.
+    // Clearing both here is how the one gate that asserts the phrase was
+    // recorded came to be skipped silently: Home carries a notice about it
+    // until the words have actually been seen again.
+    await dismissUnfinishedTab();
     onContinue();
   };
 

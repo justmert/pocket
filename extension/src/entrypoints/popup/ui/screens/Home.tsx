@@ -9,6 +9,7 @@ import { Amount, HeroAmount, Figure, MASK } from "../Amount";
 import { shortAddress } from "../Address";
 import { Avatar, useAvatarReaction } from "../Avatar";
 import { AssetLogo, tokenIconFile } from "../AssetIcon";
+import { phraseNeverConfirmed, clearPhraseNeverConfirmed } from "../onboardingTab";
 import { InfoTip } from "../Tooltip";
 import { FundTestnetCard } from "../FundTestnet";
 import {
@@ -85,6 +86,19 @@ export function Home() {
     setRange,
   } = useValueChart(status?.address ?? "none", (r) => call({ type: "valueSeries", range: r }));
   const [scrubAt, setScrubAt] = useState<number | null>(null);
+  // whether the backup check was ever completed. read once on mount; the flag
+  // lives in local storage so it survives the browser closing, which is the
+  // whole point of it.
+  const [phraseUnconfirmed, setPhraseUnconfirmed] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void phraseNeverConfirmed().then((yes) => {
+      if (live) setPhraseUnconfirmed(yes);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
   // the header overflow menu, a dropdown anchored under the ⋯ button rather than a
   // bottom sheet. escape closes it, matching every other dismissable surface.
   const [menuOpen, setMenuOpen] = useState(false);
@@ -648,6 +662,42 @@ export function Home() {
   function publicBody() {
     return (
       <>
+        {/* the backup check was never completed, and the browser has been closed
+            since, so there is no tab to send anyone back to.
+
+            The vault is installed before the words are ever drawn, so quitting
+            at the phrase step leaves a complete, working wallet whose recovery
+            phrase was never confirmed and, on the evidence available to the
+            wallet, never written down. Reopening showed Home with an address
+            and a balance, no notice, and no confirm step ever again: the one
+            gate that asserts the phrase was recorded, skipped permanently by an
+            action as ordinary as closing a laptop.
+
+            NOT a blocking screen. There is nothing to return to and the wallet
+            works; what is owed is the fact and the door, once. It goes away
+            when the words have actually been seen again. */}
+        {phraseUnconfirmed && (
+          <div style={{ marginTop: space.gutter }}>
+            <Notice t={t} tone="exposed">
+              Your recovery phrase was never confirmed, so Pocket cannot tell whether it was written
+              down. It is the only way to recover this wallet. Open Settings, then Recovery phrase,
+              to see the words again.
+            </Notice>
+            <div style={{ marginTop: space.sm }}>
+              <Button
+                t={t}
+                onClick={() => {
+                  w.closeAllSheets();
+                  w.setTab("settings");
+                  void clearPhraseNeverConfirmed().then(() => setPhraseUnconfirmed(false));
+                }}
+              >
+                Show my recovery phrase
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* a fresh, unfunded account gets nothing else moving until it exists on the
             ledger, so this sits above everything. it removes itself once the funds
             land: `needsFunding` reads false the moment the account has a reserve. */}

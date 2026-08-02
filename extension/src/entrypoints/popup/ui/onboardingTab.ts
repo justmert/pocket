@@ -150,6 +150,23 @@ async function raise(id: number): Promise<boolean> {
  */
 const UNFINISHED_KEY = "pocket:onboarding-unfinished";
 
+/**
+ * ...and the same fact in LOCAL storage, which survives the browser closing.
+ *
+ * The session key above dies with the browser exactly as the tab does, and that
+ * is right for "a phrase is on a screen somewhere right now". It is wrong for
+ * the thing underneath it: the vault is installed before the words are ever
+ * drawn, so quitting Chrome at the phrase step leaves a complete, working
+ * wallet whose recovery phrase was never confirmed and, worse, never written
+ * down. Reopening showed Home with an address and a balance, no notice, and no
+ * confirm step ever again. The one gate that asserts the phrase was recorded
+ * was skipped permanently, by an action as ordinary as closing a laptop.
+ *
+ * Not a secret: a boolean saying the backup check was not completed. The phrase
+ * itself lives only in the vault, behind the password, exactly as before.
+ */
+const NEVER_CONFIRMED_KEY = "pocket:phrase-never-confirmed";
+
 export async function markOnboardingUnfinished(): Promise<void> {
   try {
     await chrome.storage.session.set({ [UNFINISHED_KEY]: true });
@@ -158,13 +175,62 @@ export async function markOnboardingUnfinished(): Promise<void> {
     // shows the wallet, which is the behaviour this replaces. not worth failing
     // the flow the user is in the middle of.
   }
+  try {
+    await chrome.storage.local.set({ [NEVER_CONFIRMED_KEY]: true });
+  } catch {
+    // same reasoning: a storage that refuses this leaves the pre-existing
+    // behaviour, which is silence.
+  }
 }
 
 export async function clearOnboardingUnfinished(): Promise<void> {
+  await dismissUnfinishedTab();
+  try {
+    await chrome.storage.local.remove(NEVER_CONFIRMED_KEY);
+  } catch {
+    /* the notice stays up, which is the safe direction to be wrong in. */
+  }
+}
+
+/**
+ * forget the OPEN TAB, and nothing else.
+ *
+ * For the "that tab is gone, continue to the wallet" door. There is nothing to
+ * send the user back to, so the blocking screen has to go; the phrase still was
+ * never confirmed, so the fact underneath it must not go with it. Clearing both
+ * here is how the one gate that asserts the phrase was recorded got skipped
+ * silently and permanently.
+ */
+export async function dismissUnfinishedTab(): Promise<void> {
   try {
     await chrome.storage.session.remove(UNFINISHED_KEY);
   } catch {
     // nothing reads it once the wallet is initialised and verified.
+  }
+}
+
+/**
+ * true when the backup check was never completed, across restarts.
+ *
+ * Separate from `onboardingUnfinished`, and deliberately NOT a blocking state:
+ * by the time this is the only thing set, the tab holding the words is gone and
+ * there is nothing to send the user back to. What is left is a fact worth
+ * stating and a door worth naming, once, without taking the wallet away.
+ */
+export async function phraseNeverConfirmed(): Promise<boolean> {
+  try {
+    return Boolean((await chrome.storage.local.get(NEVER_CONFIRMED_KEY))[NEVER_CONFIRMED_KEY]);
+  } catch {
+    return false;
+  }
+}
+
+/** the user has been told and has acted, or has chosen to dismiss it. */
+export async function clearPhraseNeverConfirmed(): Promise<void> {
+  try {
+    await chrome.storage.local.remove(NEVER_CONFIRMED_KEY);
+  } catch {
+    /* nothing to do; it will be offered again next time. */
   }
 }
 
