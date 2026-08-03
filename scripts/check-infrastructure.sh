@@ -65,6 +65,23 @@ fail=0
 # own icon loop: `fail` has to be set in THIS shell, and a `while` on the right of
 # a pipe runs in a subshell that exits a moment later, so the script would print a
 # failure and then exit 0.
+# WHAT THIS WATCHES, and what it does not.
+#
+# `stellar contract extend --id X` reads and extends a contract's INSTANCE
+# entry. Its `--wasm-hash` form does the same for the CODE entry, and this loop
+# passes only `--id`, so code entries are neither read nor extended here.
+#
+# That is a deliberate gap rather than an oversight, and the measurement is why.
+# At latestLedger 4036999 the instances sat at 21.10 days (token, verifier,
+# auditor) and 5.80 days (the USDC wrapper), while the code entries sat far
+# beyond them, because uploading wasm buys a long TTL and nothing here shortens
+# it. An archived code entry is also auto-restored on protocol 27, exactly as an
+# instance is. So the entries that actually approach their deadline are the ones
+# this loop covers, and adding a second CLI call per contract to watch entries
+# with months of headroom would slow every run for nothing.
+#
+# If a code entry ever does approach its deadline, the command is the same one
+# below with `--wasm-hash <hash>` in place of `--id`.
 IDS=$(./scripts/deployment-ids.sh "$DEPLOYMENT")
 while read -r key id; do
   [ -n "$key" ] || continue

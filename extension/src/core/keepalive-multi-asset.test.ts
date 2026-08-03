@@ -559,3 +559,43 @@ describe("a keep-alive that did not land", () => {
     expect(plan.nextCheckMs).toBeGreaterThan(24 * 60 * 60 * 1000);
   });
 });
+
+/**
+ * The keep-alive's notice has to reach a screen.
+ *
+ * `KeepAlivePlan.notice` is documented as "what to tell the user" and its only
+ * consumer was `background.ts`, which has no screen: the alarm runs whether or
+ * not a popup exists, so the one place the sentence could be spoken never saw
+ * it. The most useful thing it says is the newest: that the bump could not be
+ * paid for.
+ */
+describe("what the keep-alive tells the user", () => {
+  it("reaches the private pocket's own message", async () => {
+    const c = await worker();
+    headroom = { [XLM]: 5 };
+    nativeStroops = 10_000_100n; // nothing spare
+
+    const plan = await c.runKeepAlive();
+    expect(plan.notice, "premise: the run produced something to say").toMatch(/spare XLM/i);
+
+    const pocket = await c.privatePocket(XLM);
+    expect(pocket.message ?? "", "the notice was written for a reader that cannot exist").toMatch(
+      /spare XLM/i,
+    );
+  });
+
+  it("stops saying it once the run has nothing to report", async () => {
+    // A stale warning is its own defect: the user adds XLM, the next check
+    // succeeds, and the sentence must go.
+    const c = await worker();
+    headroom = { [XLM]: 5 };
+    nativeStroops = 10_000_100n;
+    await c.runKeepAlive();
+
+    nativeStroops = 100_000_000n;
+    await c.runKeepAlive();
+
+    const pocket = await c.privatePocket(XLM);
+    expect(pocket.message ?? "").not.toMatch(/spare XLM/i);
+  });
+});

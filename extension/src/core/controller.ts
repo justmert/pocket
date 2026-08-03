@@ -995,14 +995,19 @@ export class WalletController {
       mergeAvailable: b.mergeAvailable,
       auditorId: account.auditorId,
       ...ttlFields(ttl),
-      ...(restored
-        ? {
-            message:
-              "This private pocket went dormant and the network restored it to read it. " +
-              "Your balances are correct and still spendable. The next operation you make " +
-              "will restore the entry as part of itself and cost a little more in fees.",
-          }
-        : {}),
+      // Two things the pocket may have to say, and both matter. The dormancy
+      // one is about what the ledger did; the keep-alive one is about what
+      // Pocket could not do, which until now was said to nobody: the alarm runs
+      // with no popup in existence, so `KeepAlivePlan.notice` was written for a
+      // reader that cannot be there.
+      ...messageOf([
+        restored
+          ? "This private pocket went dormant and the network restored it to read it. " +
+            "Your balances are correct and still spendable. The next operation you make " +
+            "will restore the entry as part of itself and cost a little more in fees."
+          : null,
+        this.lastKeepAliveNotice,
+      ]),
     };
   }
 
@@ -4999,6 +5004,14 @@ export class WalletController {
     }
   }
 
+  /**
+   * The last thing the keep-alive had to say, or null.
+   *
+   * In memory only, and that is right: it describes what the alarm found this
+   * session, and a worker restart re-runs the check.
+   */
+  private lastKeepAliveNotice: string | null = null;
+
   private async doRunKeepAlive(): Promise<KeepAlivePlan> {
     const session = getSession();
     const list = NETWORKS[this.network].confidential;
@@ -5146,6 +5159,12 @@ export class WalletController {
         soonest = Math.min(soonest, jitteredHourMs());
       }
     }
+    // Kept, so the popup can say it. `KeepAlivePlan.notice` is documented as
+    // "what to tell the user" and its only consumer was `background.ts`, which
+    // has no screen: the alarm runs whether or not a popup exists, so the one
+    // place the sentence could be spoken never sees it. Held here and folded
+    // into `privatePocket`'s message, which the private asset sheet renders.
+    this.lastKeepAliveNotice = notice ?? null;
     return { due: false, nextCheckMs: soonest, ...(notice ? { notice } : {}) };
   }
 
@@ -5973,4 +5992,10 @@ function ttlFields(t: TtlStatus): { expiresAt?: string; daysRemaining?: number }
     return { expiresAt: t.expiresAt.toISOString(), daysRemaining: Math.round(t.daysRemaining) };
   }
   return {};
+}
+
+/** Join whatever a pocket has to say into one `message`, or say nothing. */
+function messageOf(parts: (string | null | undefined)[]): { message?: string } {
+  const said = parts.filter((p): p is string => Boolean(p));
+  return said.length ? { message: said.join(" ") } : {};
 }
