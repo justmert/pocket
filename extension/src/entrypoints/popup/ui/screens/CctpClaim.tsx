@@ -37,6 +37,17 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
   const [picking, setPicking] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
+
+  // any input changing clears the last refusal, because the refusal was about
+  // the inputs that produced it. Continue is disabled while an error stands, so
+  // an error that outlives its cause latches the primary action off for good:
+  // correct the chain after "not ready to claim yet" and the button stays grey
+  // with nothing on screen saying why. Keyed on the inputs rather than repeated
+  // in each setter, so an input added later cannot forget to do it. The same
+  // defect and the same shape as CctpSend's.
+  useEffect(() => {
+    setError(null);
+  }, [domain, txHash]);
   // set only when `failOp` says the worker still holds an in-flight record for
   // this submission. it is not an error, so it is not drawn as one, and Approve
   // stays down while it is true.
@@ -224,8 +235,7 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
                   onChange={(v) => {
                     setTxHash(v);
                     // clear a prior build error so Continue re-enables on a new hash
-                    // (without this, disabling Continue on error would deadlock here).
-                    setError(null);
+                    // (the input-keyed effect above does the clearing now).
                   }}
                   // the SHAPE follows the chain, exactly as the validator beside it
                   // does. `isTxId` branches on the domain because Solana signs in
@@ -265,12 +275,7 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
                * latching it off left the wallet giving an instruction and removing
                * the means to follow it. `review` clears the error on entry, so a
                * retry that fails the same way simply says so again. */}
-              <Button
-                t={t}
-                disabled={!ready}
-                busy={building}
-                onClick={() => void review()}
-              >
+              <Button t={t} disabled={!ready} busy={building} onClick={() => void review()}>
                 {building ? "Checking" : "Continue"}
               </Button>
             </div>
