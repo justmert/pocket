@@ -519,3 +519,43 @@ describe("a keep-alive while something is staged", () => {
     expect(bumped).toContain(XLM);
   });
 });
+
+/**
+ * A bump that did not land is tried again within the hour.
+ *
+ * `soonest` is the planner's answer for a healthy schedule, and on an asset
+ * that is not yet urgent that is six or seven days: longer than the whole
+ * margin `KEEPALIVE_THRESHOLD_DAYS` exists to give. So one failed submission,
+ * for any reason at all, silently spent most of it, and the planner cannot know
+ * it happened because only this loop sees the outcome.
+ */
+describe("a keep-alive that did not land", () => {
+  it("comes back within the hour, not in a week", async () => {
+    const c = await worker();
+    headroom = { [XLM]: 5 };
+    // What an RPC that will not queue it looks like from here.
+    (c as unknown as { servers: Map<string, unknown> }).servers.set("testnet", {
+      getAccount: async () => new Account((await c.status()).address!, "100"),
+      prepareTransaction: async (tx: unknown) => tx,
+      sendTransaction: async () => ({ status: "ERROR", errorResult: {} }),
+      getTransaction: async () => ({ status: "NOT_FOUND" }),
+      getLedgerEntries: async () => ({ entries: [] }),
+    });
+
+    const plan = await c.runKeepAlive();
+
+    expect(plan.nextCheckMs, "a failed bump waited out the whole margin").toBeLessThanOrEqual(
+      60 * 60 * 1000,
+    );
+    expect(plan.nextCheckMs, "and not a hot loop either").toBeGreaterThan(60_000);
+  });
+
+  it("keeps the ordinary schedule when the bump succeeded", async () => {
+    // The control: a healthy run must not be dragged down to hourly polling.
+    const c = await worker();
+    headroom = { [XLM]: 5 };
+
+    const plan = await c.runKeepAlive();
+    expect(plan.nextCheckMs).toBeGreaterThan(24 * 60 * 60 * 1000);
+  });
+});

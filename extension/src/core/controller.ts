@@ -89,7 +89,7 @@ import {
   explainSimulationFailure,
 } from "./chain/confidential";
 import { assertVerificationKey, type CircuitName } from "./chain/verification-key";
-import { readAccountTtl, jitteredDelayMs, type TtlStatus } from "./chain/ttl";
+import { readAccountTtl, jitteredDelayMs, jitteredHourMs, type TtlStatus } from "./chain/ttl";
 import { buildKeepAlive, planKeepAlive, type KeepAlivePlan } from "./chain/keepalive";
 import { balancesOf, verifyAgainstChain, applyMerge, credit, ZERO_OPENING } from "./private";
 import type { Opening, ConfidentialAccount } from "./witness/types";
@@ -5130,7 +5130,21 @@ export class WalletController {
       // nothing for another. On the live deployment that is exactly backwards
       // from what is needed, because the wrapper that comes first has 22 days
       // of headroom and the one it silences has 6.8.
-      if (outcome.kind === "succeeded") this.lastKeepAlive.set(cfg.token, Date.now());
+      if (outcome.kind === "succeeded") {
+        this.lastKeepAlive.set(cfg.token, Date.now());
+      } else {
+        // A bump that did NOT land must be tried again soon.
+        //
+        // `soonest` is the planner's answer for a healthy schedule, and on an
+        // asset that is not yet urgent it is six or seven days: longer than the
+        // window the threshold exists to give. So one failed submission, for
+        // any reason at all, silently spent most of the margin. The planner
+        // cannot know this happened; only this loop can.
+        //
+        // An hour, jittered like everything else here so a fixed retry cadence
+        // cannot identify Pocket users by timing.
+        soonest = Math.min(soonest, jitteredHourMs());
+      }
     }
     return { due: false, nextCheckMs: soonest, ...(notice ? { notice } : {}) };
   }

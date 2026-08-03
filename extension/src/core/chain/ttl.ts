@@ -113,9 +113,14 @@ export async function readAccountTtl(
   const res = await entriesOrRefuse(server, key);
   const entry = res.entries[0];
   if (!entry) {
-    // getLedgerEntries omits archived entries entirely, so absent and archived
-    // look identical here. The caller distinguishes them by whether it has ever
-    // seen a Register event for this account.
+    // No entry at all: this account has no confidential state on this wrapper.
+    //
+    // This used to say "getLedgerEntries omits archived entries entirely, so
+    // absent and archived look identical here". Measured against the live chain
+    // at latestLedger 4036999, it does NOT omit them: an archived entry is
+    // returned with `liveUntilLedgerSeq: 0`, and the branch below catches it.
+    // So a missing entry really does mean missing, and the caller no longer has
+    // to infer the difference from whether it has seen a Register event.
     return { kind: "absent" };
   }
 
@@ -173,6 +178,22 @@ export function jitteredDelayMs(baseDays: number): number {
 }
 
 /**
+ * The same idea at an hour's scale, for a RETRY.
+ *
+ * A bump that did not land has to be tried again long before the next scheduled
+ * check, which on an asset that is not yet urgent is six or seven days: longer
+ * than the whole margin the threshold exists to provide, so one failed
+ * submission silently spent most of it. Jittered for the same reason as above,
+ * because a fixed retry cadence is as identifying as a fixed one.
+ *
+ * Returns 30 to 60 minutes.
+ */
+export function jitteredHourMs(): number {
+  const hour = 60 * 60 * 1000;
+  return hour / 2 + Math.random() * (hour / 2);
+}
+
+/**
  * The TTL of a CONTRACT's own instance entry.
  *
  * This is the systemic hazard and it is easy to overlook. The verifier holds
@@ -199,8 +220,20 @@ export async function readInstanceTtl(
 
   const res = await entriesOrRefuse(server, key);
   const entry = res.entries[0];
-  if (!entry?.liveUntilLedgerSeq) return { kind: "absent" };
-  if (entry.liveUntilLedgerSeq <= res.latestLedger) return { kind: "archived" };
+  // NO ENTRY is absent. An entry that IS returned with a `liveUntilLedgerSeq`
+  // of 0 is ARCHIVED, and `!entry?.liveUntilLedgerSeq` collapsed the two: zero
+  // is falsy, so the one state this function exists to detect was reported as
+  // "there is no such contract".
+  //
+  // Measured against the live chain at latestLedger 4036999: an archived
+  // instance entry comes back from `getLedgerEntries` with
+  // `liveUntilLedgerSeq: 0`, not omitted. The wrong answer here is the one that
+  // matters most, because "absent" reads as a misconfiguration and "archived"
+  // reads as a thing to restore.
+  if (!entry) return { kind: "absent" };
+  const liveUntil = entry.liveUntilLedgerSeq;
+  if (liveUntil === undefined) return { kind: "absent" };
+  if (liveUntil <= res.latestLedger) return { kind: "archived" };
 
-  return classifyRemaining(entry.liveUntilLedgerSeq - res.latestLedger, network);
+  return classifyRemaining(liveUntil - res.latestLedger, network);
 }
