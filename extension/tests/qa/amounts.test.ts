@@ -47,7 +47,7 @@ import {
 } from "../../src/core/chain/address";
 import { buildPayment, MEMO_TEXT_MAX_BYTES, MemoTooLongError } from "../../src/core/chain/payment";
 import { moveBody, DefindexError } from "../../src/core/integrations/defindex";
-import { outgoingNative } from "../../src/core/provider/describe-tx";
+import { describeTransaction } from "../../src/core/provider/describe-tx";
 import { splitAmount } from "../../src/entrypoints/popup/ui/Amount";
 
 /* ------------------------------------------------------------------ seeded */
@@ -455,17 +455,30 @@ describe("precision across the whole representable range", () => {
     expect(parseAmount(formatAmount(total))).toBe(total);
   });
 
-  it("sums a dApp envelope's payments exactly, not through the headline's float", () => {
-    // outgoingNative is the headline figure on the approval screen and it adds
-    // several operations together. the amounts are decoded from XDR, so this is
-    // the one place a hostile site chooses the numbers, and it picks three that
-    // straddle 2^53 stroops on purpose.
+  it("states a dApp envelope's payments exactly, one operation at a time", () => {
+    // This used to drive `outgoingNative`, described here as "the headline
+    // figure on the approval screen". It was not: nothing in the popup ever
+    // called it, and the approval screen has no headline figure at all. It
+    // lists one line per operation, which is the stronger shape anyway, because
+    // a total cannot say WHO each payment goes to.
+    //
+    // So the function is gone and the property moves to the path that is
+    // actually rendered. The amounts are decoded from XDR, which is the one
+    // place a hostile site chooses the numbers, and these three straddle 2^53
+    // stroops on purpose.
     const source = Keypair.random().publicKey();
     const parts = ["0.0000001", "900719925.4740993", "1.0000001"];
-    const xdr = buildEnvelope(source, Keypair.random().publicKey(), parts);
+    const to = Keypair.random().publicKey();
+    const xdr = buildEnvelope(source, to, parts);
+
+    const { effects } = describeTransaction(xdr, Networks.TESTNET);
+    for (const p of parts) {
+      expect(effects.join(" "), `${p} did not survive the round trip verbatim`).toContain(p);
+    }
+
+    // And the sum a reader would take from those lines is exact in bigint.
     const total = parts.reduce((a, p) => a + parseAmount(p), 0n);
     expect(total).toBe(9007199264740995n);
-    expect(outgoingNative(xdr, Networks.TESTNET, source)).toBe(formatAmount(total));
     // the float answer, for contrast: one stroop too many, from three
     // additions of entirely ordinary-looking numbers.
     const viaFloat = BigInt(Math.trunc(parts.reduce((a, p) => a + Number(p), 0) * 1e7));
@@ -1244,7 +1257,7 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
   },
   {
     fragment: 'return `<0.${"0".repeat(Math.max(0, places - 1))}1`;',
-    why: "builds the string \"<0.0001\" for a DISPLAY row. `places` is a count of fraction digits, so the arithmetic sizes a run of zero CHARACTERS and never touches the amount, which stays the untouched decimal string the worker parses. it exists because truncating to four places rendered any real amount below 0.0001 as \"0\", so the row asserted that nothing moved when something did",
+    why: 'builds the string "<0.0001" for a DISPLAY row. `places` is a count of fraction digits, so the arithmetic sizes a run of zero CHARACTERS and never touches the amount, which stays the untouched decimal string the worker parses. it exists because truncating to four places rendered any real amount below 0.0001 as "0", so the row asserted that nothing moved when something did',
   },
   { fragment: "Math.max(fontSizes.small, Math.min(px,", why: "type size in pixels" },
   { fragment: "gap: Math.round(px * GAP_EM)", why: "layout" },
@@ -1420,7 +1433,7 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
   // and slider math; none of it is signed, submitted or stored.
   {
     fragment: "const n = Number(amount);",
-    why: "money.fiatOf, the one place the compose screens turn a typed amount into a DOLLAR CAPTION. it is a float on purpose because the caption is an estimate, and the result is guarded by Number.isFinite so a field holding \"-\" or \"1,5\" yields null rather than \"$NaN\". the value that is sent is the untouched string, parsed to stroops by the worker; this number never reaches a transaction",
+    why: 'money.fiatOf, the one place the compose screens turn a typed amount into a DOLLAR CAPTION. it is a float on purpose because the caption is an estimate, and the result is guarded by Number.isFinite so a field holding "-" or "1,5" yields null rather than "$NaN". the value that is sent is the untouched string, parsed to stroops by the worker; this number never reaches a transaction',
   },
   {
     fragment: "total += Number(p.spendable) * price;",
@@ -1443,7 +1456,8 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "the slider percentage 0..100; the amount it sets is computed in bigint by fractionOf",
   },
   {
-    fragment: "const fitPx = Math.floor(COMPOSER_COLUMN / (Math.max(1, amount.length) * DIGIT_EM));",
+    fragment:
+      "const fitPx = Math.floor(COMPOSER_COLUMN / (Math.max(1, amount.length) * DIGIT_EM));",
     why: "the compose amount's font size in pixels, scaled down so a long figure fits the card; a layout measure, not the value (which stays the string)",
   },
   {
@@ -1494,6 +1508,10 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "epoch seconds, to set a transaction's own expiry window",
   },
   {
+    fragment: "soonest = Math.min(soonest, jitteredHourMs());",
+    why: "milliseconds until the next keep-alive check after a bump that did not land; a schedule, not an amount, and it never touches money",
+  },
+  {
     fragment: "if (tip > through) behindBy = Math.max(behindBy, tip - through);",
     why: "how far the event archive is behind the chain, in LEDGER SEQUENCE NUMBERS: two integers the network counts, compared so the private list can say it may be missing the last few minutes. no asset, no amount",
   },
@@ -1502,7 +1520,8 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "what is in the yield vault, turned into a float to be PRICED into the home total, exactly as every balance on that screen is. it is a dollar estimate and never an amount that gets signed: the vault's own deposit and withdraw send the decimal string, parsed to bigint stroops in the worker",
   },
   {
-    fragment: '? `${describedAs}: ${shown >= 0 ? "up" : "down"} ${Math.abs(shown).toFixed(2)} percent`',
+    fragment:
+      '? `${describedAs}: ${shown >= 0 ? "up" : "down"} ${Math.abs(shown).toFixed(2)} percent`',
     why: "the change chip's own percentage, spelled out for a screen reader; the same number the visible chip already prints, and a rate rather than an amount",
   },
   // the swap's price impact, in three places. basis points are an integer the

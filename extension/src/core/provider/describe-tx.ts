@@ -10,7 +10,7 @@
 // the current ledger, which is useful and not what consent is about: the user
 // is agreeing to the operations in the envelope, and those are in the bytes.
 import { TransactionBuilder, Transaction, FeeBumpTransaction } from "@stellar/stellar-sdk/base";
-import { formatAmount, parseAmount } from "../chain/balances";
+import { formatAmount } from "../chain/balances";
 
 export interface TxSummary {
   /** False when the envelope could not be decoded. The UI must refuse. */
@@ -74,6 +74,15 @@ function memoText(memo: { type?: string; value?: unknown } | null | undefined): 
   const v = memo?.value;
   if (v === undefined || v === null || v === "") return undefined;
   if (v instanceof Uint8Array || Buffer.isBuffer(v)) {
+    // BY KIND, not by JavaScript type. The SDK stores a TEXT memo's value as a
+    // Buffer as well, so hex-encoding every byte value turned "invoice 42" into
+    // "696e766f696365203432" on the approval screen: the one field an exchange
+    // tells you to match, rendered as something the user cannot compare.
+    //
+    // `hash` and `return` really are 32 opaque bytes and hex is their only
+    // readable form; `String()` on them produced 32 replacement characters,
+    // which is what this branch was written for.
+    if (memo?.type === "text") return Buffer.from(v).toString("utf8");
     return Buffer.from(v).toString("hex");
   }
   return String(v);
@@ -195,6 +204,20 @@ function describeOperation(op: DecodedOp, index: number): string {
   return describeBody(op, n) + from;
 }
 
+/**
+ * Is a changeTrust limit zero, whatever shape it arrived in?
+ *
+ * A limit is a decimal string, and a round trip through XDR renders zero as
+ * "0.0000000" rather than "0". Comparing against the literal made the removal
+ * branch dead code and described a removal as its opposite. Parsed rather than
+ * string-matched, so "0", "0.0", "0.0000000" and "00" all read as zero and
+ * nothing else does.
+ */
+function isZeroLimit(limit: string | undefined): boolean {
+  if (limit === undefined) return false;
+  return /^0*(\.0*)?$/.test(limit.trim());
+}
+
 function describeBody(op: DecodedOp, n: string): string {
   switch (op.type) {
     case "payment":
@@ -202,7 +225,12 @@ function describeBody(op: DecodedOp, n: string): string {
     case "createAccount":
       return `${n} Create account ${op.destination} funded with ${op.startingBalance} XLM`;
     case "changeTrust":
-      return op.limit === "0"
+      // A limit of ZERO is a trustline REMOVAL, and this compared against the
+      // string "0". After an XDR round trip the SDK hands back "0.0000000", so
+      // the removal branch was unreachable and a removal was described as
+      // "Trust USDC:G... up to 0.0000000": the opposite operation, on the
+      // anti-blind-signing surface.
+      return isZeroLimit(op.limit)
         ? `${n} REMOVE the trustline for ${op.line.toString()}`
         : `${n} Trust ${op.line.toString()} up to ${op.limit ?? "the maximum"}`;
     case "setOptions":
@@ -368,6 +396,14 @@ export function describeTransaction(xdr: string, networkPassphrase: string): TxS
 
   const effects = tx.operations.map(describeOperation);
   const alarming = tx.operations.some((o) => ALARMING.has(o.type));
+  // The FEE is the site's choice and nothing looked at it.
+  //
+  // A dApp composes the whole envelope, fee included, and the confirm screen
+  // rendered it as an ordinary quiet fee row. A 100 XLM fee on a 1 XLM payment
+  // is a real way to lose money to a site, it needs no unusual operation to
+  // arrange, and it looked exactly like any other transaction. Measured: fee
+  // 1,000,000,000 stroops, warning `undefined`.
+  const steep = steepFee(tx.fee, tx.operations.length);
 
   return {
     decoded: true,
@@ -377,26 +413,47 @@ export function describeTransaction(xdr: string, networkPassphrase: string): TxS
     memo: memoText(tx.memo),
     memoType: memoKind(tx.memo),
     effects,
-    warning: alarming
-      ? "This transaction changes who controls the account. Only approve it if you are certain."
-      : undefined,
+    // Both can be true. The security one leads, because losing the account is
+    // worse than overpaying, and the fee one still has to be said.
+    warning:
+      [
+        alarming
+          ? "This transaction changes who controls the account. Only approve it if you are certain."
+          : null,
+        steep,
+      ]
+        .filter(Boolean)
+        .join(" ") || undefined,
   };
 }
 
-/** Total XLM leaving the account, for the headline figure. Native payments only. */
-export function outgoingNative(xdr: string, networkPassphrase: string, source: string): string {
+/**
+ * A fee far above anything this wallet's own operations cost, said plainly.
+ *
+ * Not a refusal: a legitimately expensive Soroban invocation exists, and a
+ * wallet that refuses to describe one is a wallet that cannot be used. What
+ * must not happen is a 100 XLM fee rendering as a quiet row beside a 1 XLM
+ * payment.
+ *
+ * The threshold is measured, not guessed. The largest fee anything in this
+ * product produces is a native shield at 350,412 stroops, and a classic payment
+ * is 100. One XLM is 10,000,000 stroops: about 28x the largest real one, so a
+ * legitimate envelope does not trip it and a punitive one cannot hide under it.
+ */
+function steepFee(fee: string, ops: number): string | null {
+  const STEEP_STROOPS = 10_000_000n;
+  let stroops: bigint;
   try {
-    const tx = TransactionBuilder.fromXDR(xdr, networkPassphrase);
-    if (tx instanceof FeeBumpTransaction) return "0";
-    let total = 0n;
-    for (const op of tx.operations) {
-      if (op.type === "payment" && op.asset.isNative() && tx.source === source) {
-        total += parseAmount(op.amount);
-      }
-      if (op.type === "createAccount") total += parseAmount(op.startingBalance);
-    }
-    return formatAmount(total);
+    stroops = BigInt(fee);
   } catch {
-    return "0";
+    // An unreadable fee is worth saying so about: it is a field the user is
+    // being asked to accept.
+    return "Pocket could not read this transaction's network fee.";
   }
+  if (stroops <= STEEP_STROOPS) return null;
+  const each = ops > 0 ? ` across ${ops} operations` : "";
+  return (
+    `The network fee on this transaction is ${formatAmount(stroops)} XLM${each}, which is far ` +
+    `more than a transaction normally costs. The site chose it, not Pocket.`
+  );
 }
