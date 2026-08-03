@@ -201,9 +201,19 @@ export function jitteredHourMs(): number {
  * states plainly that instance-TTL management is the contract developer's
  * responsibility and that the module never calls extend_ttl on it.
  *
- * If the verifier's instance entry archives, EVERY confidential operation on
- * EVERY token pointing at it fails. One expiry breaks the whole deployment.
- * Since we deployed our own verifier, that is ours to watch.
+ * If the verifier's instance entry archives, the NEXT confidential operation on
+ * any token pointing at it pays to restore it. This used to say "EVERY
+ * confidential operation on EVERY token fails. One expiry breaks the whole
+ * deployment", which was true before protocol 27 and is not now: soroban-rpc
+ * auto-restores an archived persistent entry into the readWrite footprint
+ * rather than failing the transaction.
+ *
+ * Measured on this deployment: restoring an archived instance costs
+ * minResourceFee 606,654 stroops against 14,363 for a live one, so the real
+ * consequence is a 40x fee landing on whichever user happens to be next, and
+ * the operator never sees it. Worth preventing, and worth stating correctly:
+ * a claim that overstates the stakes is one nobody can calibrate against.
+ * Since we deployed our own verifier, it is ours to watch.
  */
 export async function readInstanceTtl(
   server: rpc.Server,

@@ -2,9 +2,27 @@
 # Infrastructure health. Run on a schedule.
 #
 # The verifier holds every verification key in INSTANCE storage and the library
-# never extends it. If that entry archives, EVERY confidential operation on
-# EVERY token pointing at it fails. It is a single point of failure for the
-# whole deployment and it is ours because we deployed it.
+# never extends it, so nothing keeps that entry alive except this script.
+#
+# It used to say "if that entry archives, EVERY confidential operation on EVERY
+# token pointing at it fails", and on protocol 27 that is no longer true:
+# soroban-rpc auto-restores an archived persistent entry into the readWrite
+# footprint rather than failing the transaction. Measured on this deployment,
+# restoring an archived instance costs minResourceFee 606,654 stroops against
+# 14,363 for a live one. So the real consequence is a 40x fee on the first
+# operation after archival, paid by whichever user happens to be next, not a
+# dead deployment. Still worth preventing, and worth stating correctly: a claim
+# that overstates the stakes is one nobody can calibrate against.
+#
+# NOTHING SCHEDULES THIS. There is no CI workflow and no cron entry in the
+# repo; it is run by hand. To schedule it, and the point of the file is that
+# somebody should:
+#
+#   crontab -e
+#   0 9 * * * cd /path/to/pocket && ./scripts/check-infrastructure.sh >> /tmp/pocket-infra.log 2>&1
+#
+# It needs the `pocket-deploy` key configured in the stellar CLI, so it runs
+# where that key is, which is why it is not a CI job.
 #
 # Testnet caps a fresh instance at min_persistent_ttl = 120,960 ledgers, about
 # SEVEN DAYS. Our own deployment sat at exactly that until this script's check
@@ -50,12 +68,31 @@ fail=0
 IDS=$(./scripts/deployment-ids.sh "$DEPLOYMENT")
 while read -r key id; do
   [ -n "$key" ] || continue
-  ttl=$(stellar contract extend --id "$id" --source "$SOURCE" --network "$NETWORK" \
-          --ledgers-to-extend 0 --durability persistent 2>&1 \
-          | grep -oE '[0-9]+' | tail -1 || true)
-  if [ -z "$ttl" ]; then
+  # STDOUT only, and the whole line has to be one integer.
+  #
+  # This used to take the last integer out of stdout AND stderr combined, which
+  # is a parse of whatever the CLI last happened to print: a warning carrying a
+  # number, a retry count, an error mentioning a ledger, any of them would be
+  # read as the TTL and compared against the threshold. The failure is silent
+  # and it is in the direction of saying everything is fine.
+  #
+  # Diagnostics still reach the operator; they simply do not reach the parse.
+  raw=$(stellar contract extend --id "$id" --source "$SOURCE" --network "$NETWORK" \
+          --ledgers-to-extend 0 --durability persistent 2>/tmp/pocket-ttl-err || true)
+  ttl=$(printf '%s\n' "$raw" | tr -d '[:space:]')
+  if ! printf '%s' "$ttl" | grep -qE '^[0-9]+$'; then
     echo "  UNKNOWN  $key ($id): could not read TTL"
+    sed 's/^/           /' /tmp/pocket-ttl-err 2>/dev/null | head -3
     fail=1
+    continue
+  fi
+  # A TTL behind the chain's own head is an ARCHIVED entry, not a low one, and
+  # the arithmetic below would report it as a large negative number of days.
+  if [ "$ttl" -le "$latest" ]; then
+    echo "  ARCHIVED $key ($id): liveUntil $ttl is behind ledger $latest, restoring"
+    stellar contract restore --id "$id" --source "$SOURCE" --network "$NETWORK" \
+      --durability persistent >/dev/null 2>&1 \
+      && echo "  RESTORED $key" || { echo "  FAILED   $key restore"; fail=1; }
     continue
   fi
   days=$(( (ttl - latest) / per_day ))
