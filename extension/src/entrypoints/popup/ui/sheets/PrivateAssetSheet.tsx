@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import { useWallet, type SheetId } from "../WalletProvider";
 import { call } from "../rpc";
 import { canRebuild } from "../copy";
+import { KEEPALIVE_THRESHOLD_DAYS } from "../../../../core/chain/ttl";
 import { Amount } from "../Amount";
 import { Button, IconDisc, Notice, Sheet, Skeleton } from "../primitives";
 import { Held } from "../Held";
@@ -73,6 +74,21 @@ export function PrivateAssetSheet({ open, onClose }: { open: boolean; onClose: (
   }, [open, symbol]);
 
   const ready = priv?.state === "ready";
+  // The archive date, as a date. `expiresAt` crosses the wire as an ISO string
+  // and `daysRemaining` beside it; both were read by nothing at all.
+  //
+  // `soon` uses the same threshold the keep-alive planner bumps at, imported
+  // rather than repeated: a warning that appears before the wallet considers a
+  // bump due tells the user to worry about something the wallet has not yet
+  // decided to act on, and the two drifting apart is how that happened.
+  const expiresOn = priv?.expiresAt
+    ? new Date(priv.expiresAt).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : null;
+  const soon = priv?.daysRemaining !== undefined && priv.daysRemaining <= KEEPALIVE_THRESHOLD_DAYS;
   const receiving =
     ready && priv?.receiving && /[1-9]/.test(priv.receiving) ? priv.receiving : null;
 
@@ -166,6 +182,28 @@ export function PrivateAssetSheet({ open, onClose }: { open: boolean; onClose: (
                   <Notice t={t} tone="exposed">
                     {priv.message}
                   </Notice>
+                </div>
+              )}
+
+              {/* WHEN this account's ledger entry archives, which the worker
+                  has always computed and no screen has ever drawn.
+
+                  A confidential account archives after 30 idle days, and the
+                  wallet bumps it on an alarm while it is unlocked. Both facts
+                  matter to someone who is about to leave money here and close
+                  the browser for a month, and neither was anywhere in the
+                  product: `expiresAt` and `daysRemaining` were computed,
+                  converted per network, sent across the message contract and
+                  read by nothing.
+
+                  Stated as a date rather than a ledger number, and paired with
+                  what the wallet does about it, so the fact is not a worry with
+                  no answer attached. */}
+              {expiresOn && (
+                <div style={{ ...text.rowSub, color: t.sub, marginBottom: space.md }}>
+                  {soon
+                    ? `This account goes dormant on ${expiresOn} if nothing uses it. Pocket keeps it awake by itself while the wallet is unlocked, and a dormant account is woken by the next thing you do with it.`
+                    : `Active until ${expiresOn}. Pocket keeps it awake by itself while the wallet is unlocked.`}
                 </div>
               )}
 

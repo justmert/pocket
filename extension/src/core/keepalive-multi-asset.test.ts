@@ -471,3 +471,51 @@ describe("a keep-alive on an account with no spare XLM", () => {
     expect(bumped).toContain(XLM);
   });
 });
+
+/**
+ * A keep-alive must not take the sequence number of an envelope the user is
+ * still looking at.
+ *
+ * `inFlight` covers what has been SENT. A built-and-staged envelope has not
+ * been sent and already holds a sequence number, taken from the account when it
+ * was built, while the user reads the confirm screen about it. A bump submitted
+ * in that window consumes the number, and the Confirm they then press fails
+ * with `txBadSeq` for a transaction they composed correctly, because of an
+ * alarm they never saw. Proving a private operation can take over two minutes,
+ * so the window is not narrow.
+ */
+describe("a keep-alive while something is staged", () => {
+  it("waits, rather than consuming the sequence number", async () => {
+    const c = await worker();
+    headroom = { [XLM]: 5, [USDC]: 5 };
+    // What a build leaves behind: a handle with an envelope and a timestamp.
+    (c as unknown as { pending: Map<string, unknown> }).pending.set("deadbeef", {
+      xdr: "AAAA",
+      at: Date.now(),
+      kind: "payment",
+    });
+
+    const plan = await c.runKeepAlive();
+
+    expect(bumped, "bumped over an envelope the user is reviewing").toEqual([]);
+    expect(plan.due).toBe(false);
+    // Soon, not in a week: the review will be over in a minute or two.
+    expect(plan.nextCheckMs).toBeLessThan(2 * 24 * 60 * 60 * 1000);
+  });
+
+  it("does not wait forever on a handle that has aged out", async () => {
+    // An abandoned confirm must not hold the bump off for the rest of the
+    // wallet's life. `prunePending` drops a handle past its envelope's own
+    // deadline, and this runs after that.
+    const c = await worker();
+    headroom = { [XLM]: 5 };
+    (c as unknown as { pending: Map<string, unknown> }).pending.set("stale", {
+      xdr: "AAAA",
+      at: Date.now() - 10 * 60_000,
+      kind: "payment",
+    });
+
+    await c.runKeepAlive();
+    expect(bumped).toContain(XLM);
+  });
+});

@@ -5010,6 +5010,22 @@ export class WalletController {
     const unresolved = await this.inFlight();
     if (unresolved && !unresolved.expired) return { due: false, nextCheckMs: jitteredDelayMs(1) };
 
+    // ...and an envelope the user is still LOOKING at.
+    //
+    // `inFlight` covers what has been sent. A built-and-staged envelope has not
+    // been sent and already holds a sequence number, taken from the account
+    // when it was built, and the user is reading a confirm screen about it.
+    // A keep-alive submitted now consumes that number, so the Confirm they are
+    // about to press fails with `txBadSeq` for a transaction they composed
+    // correctly, because of an alarm they never saw. The reviewing window is
+    // exactly where this is likeliest: proving a private operation can take
+    // over two minutes.
+    //
+    // `prunePending` first, so an abandoned handle that has already aged out
+    // does not hold the bump off for the rest of its life.
+    this.prunePending();
+    if (this.pending.size > 0) return { due: false, nextCheckMs: jitteredDelayMs(1) };
+
     // Each configured wrapper is its OWN confidential account with its OWN TTL.
     // Bumping only the first would let every other asset's account archive
     // silently. They run one at a time (each awaits its own confirmation), so
