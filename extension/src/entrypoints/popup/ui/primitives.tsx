@@ -1431,6 +1431,35 @@ export function Sheet({
     (field ?? root).focus({ preventScroll: true });
   }, [open, mounted, focusKey]);
 
+  // ...and give it BACK on close.
+  //
+  // A modal takes focus on open, which is right, and every dismissal dropped it
+  // on the floor: with the sheet gone the focused node is gone with it, so the
+  // browser falls back to `document.body` and the next Tab starts from the top
+  // of the page. A keyboard user who opened a sheet from the fourth control on
+  // a screen had to walk back to it every time, and a screen-reader user was
+  // returned to nothing at all with no announcement.
+  //
+  // Remembered on the way IN, restored on the way OUT, and only if the element
+  // is still in the document: a sheet opened from a row that has since been
+  // re-rendered has nothing to go back to, and focusing a detached node is
+  // worse than leaving it.
+  const returnTo = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (open) {
+      const active = document.activeElement;
+      // Not something inside the sheet itself: on a re-entrant open that would
+      // remember the sheet's own control and restore focus into a dead tree.
+      if (active instanceof HTMLElement && !panel.current?.contains(active)) {
+        returnTo.current = active;
+      }
+      return;
+    }
+    const back = returnTo.current;
+    returnTo.current = null;
+    if (back && back.isConnected) back.focus({ preventScroll: true });
+  }, [open]);
+
   const keepFocusInside = (e: React.KeyboardEvent) => {
     if (e.key !== "Tab") return;
     const root = panel.current;
