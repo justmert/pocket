@@ -132,7 +132,7 @@ DB_PATH=archive.db PORT=8787 node --experimental-strip-types indexer/src/server.
 # HORIZON_URL defaults to testnet. The backfill reads transfer payloads from it,
 # and without them received payments cannot be rebuilt.
 
-./scripts/release-gate.sh                  # the six gates
+./scripts/release-gate.sh                  # the seven gates
 ```
 
 The proving toolchain is pinned to **nargo 1.0.0-beta.11 + bb 0.87.0**. That is

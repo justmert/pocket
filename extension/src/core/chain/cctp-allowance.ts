@@ -13,7 +13,15 @@
 // the SAC's SEP-41 surface and returns an i128 in the token's own stroops; it
 // answers 0 for an allowance that has expired, so an expired one is correctly
 // read as "no allowance" rather than as a stale number.
-import { Account, Address, BASE_FEE, Contract, TransactionBuilder, nativeToScVal, scValToBigInt } from "@stellar/stellar-sdk/base";
+import {
+  Account,
+  Address,
+  BASE_FEE,
+  Contract,
+  TransactionBuilder,
+  nativeToScVal,
+  scValToBigInt,
+} from "@stellar/stellar-sdk/base";
 import type { rpc } from "@stellar/stellar-sdk";
 
 /**

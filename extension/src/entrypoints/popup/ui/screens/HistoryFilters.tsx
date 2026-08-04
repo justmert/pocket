@@ -180,7 +180,9 @@ export function TypeFilterSheet({
             list then drives the auto-pager through up to twenty pages while the
             screen reads "Still reading older history". a filter that cannot match
             is not a filter. */}
-        {CATS.filter((c) => pocket === "private" || (c.key !== "movedIn" && c.key !== "movedOut")).map((c) => {
+        {CATS.filter(
+          (c) => pocket === "private" || (c.key !== "movedIn" && c.key !== "movedOut"),
+        ).map((c) => {
           const on = sel.has(c.key);
           return (
             <button

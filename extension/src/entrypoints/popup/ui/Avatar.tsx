@@ -76,7 +76,9 @@ function eyeShape(cx: number, shape: EyeShape, ink: string): ReactNode {
         />
       );
     case "line":
-      return <path d={`M${cx - 2} 22 H${cx + 2}`} stroke={ink} strokeWidth={1.9} strokeLinecap="round" />;
+      return (
+        <path d={`M${cx - 2} 22 H${cx + 2}`} stroke={ink} strokeWidth={1.9} strokeLinecap="round" />
+      );
     case "ast":
       return (
         <path
@@ -93,7 +95,13 @@ function mouth(kind: MouthKind, ink: string): ReactNode {
   switch (kind) {
     case "small":
       return (
-        <path d="M19.4 29.6 Q22 31.3 24.6 29.6" fill="none" stroke={ink} strokeWidth={1.7} strokeLinecap="round" />
+        <path
+          d="M19.4 29.6 Q22 31.3 24.6 29.6"
+          fill="none"
+          stroke={ink}
+          strokeWidth={1.7}
+          strokeLinecap="round"
+        />
       );
     case "smile":
       return (
@@ -292,7 +300,9 @@ function verbReaction(verb: string): AvatarReaction {
  */
 export function useAvatarReaction(): { reaction: AvatarReaction; nonce: number } {
   const w = useWallet();
-  const [shot, setShot] = useState<{ r: AvatarReaction; terminal: boolean; nonce: number } | null>(null);
+  const [shot, setShot] = useState<{ r: AvatarReaction; terminal: boolean; nonce: number } | null>(
+    null,
+  );
   const nonceRef = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 

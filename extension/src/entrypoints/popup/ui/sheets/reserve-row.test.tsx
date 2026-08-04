@@ -38,7 +38,12 @@ function render(asset: PublicBalance) {
   } as unknown as Wallet;
   return renderToStaticMarkup(
     <Ctx.Provider value={value}>
-      <AssetDetailSheet asset={asset} onClose={() => undefined} onSend={() => undefined} />
+      <AssetDetailSheet
+        asset={asset}
+        onClose={() => undefined}
+        onSend={() => undefined}
+        onSwap={() => undefined}
+      />
     </Ctx.Provider>,
   );
 }

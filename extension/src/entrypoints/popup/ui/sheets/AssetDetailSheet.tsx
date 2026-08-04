@@ -5,15 +5,18 @@
 // a leading icon. every value is read from the ledger or from the Stellar DEX.
 //
 // there is deliberately no "liquidity" row and no "market cap" row: Horizon
-// publishes neither, and a row we cannot source is a row we do not draw. there
-// is no "swap" button either, because the wallet cannot swap, and a control that
-// does nothing when pressed is its own small dead end.
+// publishes neither, and a row we cannot source is a row we do not draw.
+//
+// there IS a swap button. this used to say there was not, "because the wallet
+// cannot swap", which stopped being true when the Aquarius swap shipped: the
+// justification outlived the limitation, and the sheet went on omitting the one
+// action a person looking at a single asset most often wants.
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Amount, RollingFigure, Figure } from "../Amount";
-import { Button, IconDisc, Sheet, Skeleton, useRetained } from "../primitives";
+import { Button, ButtonRow, IconDisc, Sheet, Skeleton, useRetained } from "../primitives";
 import { ChangeChip, ValueChartBlock, useValueChart } from "../Chart";
 import { AssetMark } from "../screens/Home";
 import { InfoTip } from "../Tooltip";
@@ -117,11 +120,14 @@ export function AssetDetailSheet({
   asset,
   onClose,
   onSend,
+  onSwap,
 }: {
   /** null when nothing is selected; the sheet is closed. */
   asset: PublicBalance | null;
   onClose: () => void;
   onSend: (asset: PublicBalance) => void;
+  /** open the swap form with this asset selected. */
+  onSwap: (asset: PublicBalance) => void;
 }) {
   const w = useWallet();
   const t = w.t;
@@ -202,9 +208,15 @@ export function AssetDetailSheet({
         // Same rule as the send picker: an unauthorised trustline cannot send,
         // the wallet knows it and says so on Home, and offering the action
         // anyway spends the user's attention on a form the network will refuse.
-        <Button t={t} disabled={!shown.authorized} onClick={() => onSend(shown)}>
-          {shown.authorized ? "Send" : "Not authorised by the issuer"}
-        </Button>
+        // The same is true of a swap, whose whole point is moving this asset.
+        <ButtonRow>
+          <Button t={t} variant="soft" disabled={!shown.authorized} onClick={() => onSwap(shown)}>
+            Swap
+          </Button>
+          <Button t={t} disabled={!shown.authorized} onClick={() => onSend(shown)}>
+            {shown.authorized ? "Send" : "Not authorised by the issuer"}
+          </Button>
+        </ButtonRow>
       }
     >
       <div>

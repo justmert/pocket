@@ -39,7 +39,7 @@ import {
 } from "../theme";
 import { usd, usdOf } from "../money";
 import { NETWORKS, type NetworkId } from "../../../../core/config";
-import { capDecimals, displayAmount } from "../../../../core/chain/balances";
+import { capDecimals, displayAmount, parseAmount } from "../../../../core/chain/balances";
 import type { PrivatePocket, PrivatePocketState, PublicBalance } from "../../../../core/messages";
 
 /** the issuer out of a canonical `CODE:ISSUER` id; undefined for native XLM. */
@@ -619,11 +619,22 @@ export function Home() {
     if (total !== null) {
       return <HeroAmount t={t} value={usd(total)} code="" hidden={w.hidden} />;
     }
-    // nothing priceable: show the largest spendable holding in its own unit rather
-    // than a $0.00 that would read as empty, or a muted line if nothing is
-    // spendable yet (the list below says what each asset needs).
-    const held = privAssets.find(
+    // nothing priceable: show the LARGEST spendable holding in its own unit
+    // rather than a $0.00 that would read as empty, or a muted line if nothing
+    // is spendable yet (the list below says what each asset needs).
+    //
+    // `find` returned the FIRST one, which is configuration order, so the
+    // comment described a choice the code did not make: with 0.5 XLM and 900
+    // USDC the hero read "0.5 XLM". Amounts across assets are not comparable in
+    // general, which is exactly why this branch only runs when NOTHING can be
+    // priced; between two unpriceable figures the larger number is the more
+    // informative one, and it is what the sentence has always promised.
+    const spendableAssets = privAssets.filter(
       (p) => p.state === "ready" && p.spendable && /[1-9]/.test(p.spendable),
+    );
+    const held = spendableAssets.reduce<(typeof spendableAssets)[number] | undefined>(
+      (best, p) => (best && parseAmount(best.spendable!) >= parseAmount(p.spendable!) ? best : p),
+      undefined,
     );
     if (held) {
       return (

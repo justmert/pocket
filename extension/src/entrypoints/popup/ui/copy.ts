@@ -98,9 +98,15 @@ export const NO_MEMO = "None. Exchanges usually require one; a deposit without i
  * whether this build can rebuild private balances at all.
  *
  * the rebuild replays the confidential event history from a durable archive.
- * `archiveUrl` is supplied at build time and no shipped build sets it:
- * config.ts records that the release gate refuses the only value that exists,
- * a loopback address. so on every artifact a user can install, the answer is no.
+ * `archiveUrl` is supplied at build time, so whether a build can rebuild is a
+ * property OF THAT BUILD and this function is the only honest way to ask.
+ *
+ * it used to assert that "no shipped build sets it", which is a claim about
+ * every artifact that will ever exist and is not this file's to make:
+ * `.env.production` exists precisely to supply one at release time, and the
+ * release gate refuses a LOOPBACK url rather than refusing the variable. a
+ * comment that decides the answer in advance is how a control comes to be
+ * hidden on a build that could have used it.
  *
  * this is the same read `privateLossAfterErase` makes, and it exists because the
  * copy branched on it and the CONTROLS did not: a settings row, a sheet and a

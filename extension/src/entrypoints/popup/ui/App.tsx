@@ -458,6 +458,10 @@ function Shell() {
           w.closeSheet();
           w.openSheet("send");
         }}
+        onSwap={() => {
+          w.closeSheet();
+          w.openSheet("swap");
+        }}
       />
       <ReceiveSheet open={top === "receive"} onClose={w.closeSheet} />
       <PrivateAssetSheet open={top === "privateAsset"} onClose={w.closeSheet} />

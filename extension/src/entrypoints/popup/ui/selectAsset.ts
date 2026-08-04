@@ -15,7 +15,7 @@
 // deleted: that singular read carries NO `token` field, and matching on token
 // would find nothing at all. So the rule keeps the fallback for exactly that
 // shape and refuses it otherwise.
-import type { PrivatePocket } from "../../../core/messages";
+import type { PrivatePocket, PublicBalance } from "../../../core/messages";
 
 /**
  * The pocket for `selected`, or null when the answer is not known.
@@ -76,4 +76,26 @@ export function liveDetail(
 ): PrivatePocket | null {
   if (snapshot === null || loaded === null || snapshot.token === undefined) return snapshot;
   return selectPrivateAsset(loaded, snapshot.token);
+}
+
+/**
+ * The PUBLIC asset a detail sheet is showing, resolved against the loaded
+ * balances. The twin of `liveDetail`, and here beside it so the pair cannot
+ * drift.
+ *
+ * `setAssetDetail` has one writer, "a row was tapped", and `refresh` writes
+ * `balances`. Nothing reconciled them, so the open sheet held the object its
+ * row was rendered from and could disagree with that row a moment later.
+ *
+ * Matched by id, so an asset that has left the list stops being drawn as
+ * present rather than being replaced by whatever is first. The snapshot stands
+ * only while the balances have not been read: null there is "not loaded yet",
+ * and blanking an open sheet on every refresh would be a flicker.
+ */
+export function livePublicDetail(
+  snapshot: PublicBalance | null,
+  loaded: PublicBalance[] | null,
+): PublicBalance | null {
+  if (snapshot === null || loaded === null) return snapshot;
+  return loaded.find((b) => b.id === snapshot.id) ?? null;
 }

@@ -43,7 +43,9 @@ describe("a transport failure is reported in the wallet's own words", () => {
     // error name, and rewriting it here would throw away the one sentence that
     // was written for the user.
     send.mockResolvedValue({ ok: false, error: "You need a trustline for this vault's asset." });
-    await expect(call({ type: "status" })).rejects.toThrow("You need a trustline for this vault's asset.");
+    await expect(call({ type: "status" })).rejects.toThrow(
+      "You need a trustline for this vault's asset.",
+    );
   });
 
   it("still handles a silent no-answer", async () => {

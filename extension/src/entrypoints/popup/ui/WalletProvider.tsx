@@ -23,7 +23,7 @@ import {
   removeFromAddressBook,
   clearAddressBook,
 } from "./addressBook";
-import { selectPrivateAsset, liveDetail } from "./selectAsset";
+import { selectPrivateAsset, liveDetail, livePublicDetail } from "./selectAsset";
 import { COPY_HOLD_MS, motion, theme, type Pocket, type Theme } from "./theme";
 import type {
   PrivatePocket,
@@ -919,6 +919,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // is what stops a USDC sheet quietly becoming an XLM one.
   const privateDetailLive = liveDetail(privateDetail, privAssets);
 
+  // The same for the PUBLIC asset sheet. `setAssetDetail` has one writer, "a
+  // row was tapped", and `refresh` writes `balances`: nothing reconciled them,
+  // so the open sheet held the object the row was rendered from and could
+  // disagree with the row it came from a moment later. Resolved by the asset's
+  // own id, so an asset that leaves the list stops being drawn as present and
+  // is never replaced by a different one. The snapshot stands only while the
+  // balances have not been read.
+  const assetDetailLive = livePublicDetail(assetDetail, balances);
+
   const value: Wallet = {
     t,
     pocket,
@@ -973,7 +982,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     openSheet,
     closeSheet,
     goHome,
-    assetDetail,
+    assetDetail: assetDetailLive,
     openAsset,
     openPrivateAsset,
     openMove,

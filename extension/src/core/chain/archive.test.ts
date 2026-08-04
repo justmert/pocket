@@ -229,7 +229,11 @@ describe("paging an account's whole history terminates against a hostile archive
     // The control. Without it every refusal below is satisfied by a pager that
     // simply does not work.
     const url = await servingByCursor((c) =>
-      c === null ? pageWith("p1", [{ id: "a" }]) : c === "p1" ? pageWith("p2", [{ id: "b" }]) : pageWith(null, [{ id: "c" }]),
+      c === null
+        ? pageWith("p1", [{ id: "a" }])
+        : c === "p1"
+          ? pageWith("p2", [{ id: "b" }])
+          : pageWith(null, [{ id: "c" }]),
     );
     const got = await new ArchiveClient(url).allEvents("CTOKEN", ACCOUNT);
     expect(got.map((e) => (e as { id: string }).id)).toEqual(["a", "b", "c"]);

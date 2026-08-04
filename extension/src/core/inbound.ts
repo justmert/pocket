@@ -312,12 +312,7 @@ export async function findInbound(
       topics: [
         [xdr.ScVal.scvSymbol("transfer").toXDR("base64"), "*", me.toXDR("base64")],
         [xdr.ScVal.scvSymbol("deposit").toXDR("base64"), "*", me.toXDR("base64")],
-        [
-          xdr.ScVal.scvSymbol("spender_transfer").toXDR("base64"),
-          "*",
-          "*",
-          me.toXDR("base64"),
-        ],
+        [xdr.ScVal.scvSymbol("spender_transfer").toXDR("base64"), "*", "*", me.toXDR("base64")],
       ],
     },
   ];

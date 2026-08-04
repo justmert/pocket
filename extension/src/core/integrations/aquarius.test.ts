@@ -167,9 +167,7 @@ describe("reading what a swap route actually commits to", () => {
   });
 
   it("refuses a hop whose shape is not the three-part tuple", () => {
-    const short = xdr.ScVal.scvVec([
-      xdr.ScVal.scvVec([nativeToScVal(Address.fromString(XLM))]),
-    ]);
+    const short = xdr.ScVal.scvVec([xdr.ScVal.scvVec([nativeToScVal(Address.fromString(XLM))])]);
     expect(() => readRouteEndpoints(short.toXDR("base64"))).toThrow(AquariusError);
   });
 });

@@ -38,7 +38,10 @@ describe("periodLabel", () => {
     // Whatever the labels are, no moment inside this month may be labelled with
     // this month's own name, or the list contradicts itself.
     const later = at(2026, 8, 20, 14, 30);
-    const thisMonth = new Date(later).toLocaleDateString(DATE_LOCALE, { month: "long", year: "numeric" });
+    const thisMonth = new Date(later).toLocaleDateString(DATE_LOCALE, {
+      month: "long",
+      year: "numeric",
+    });
     for (let day = 1; day <= 20; day++) {
       for (const hour of [0, 6, 14, 23]) {
         const t = at(2026, 8, day, hour);
