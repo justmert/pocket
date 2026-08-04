@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const store = new Map<string, unknown>();
+const sessionStore = new Map<string, unknown>();
 vi.stubGlobal("chrome", {
   storage: {
     local: {
@@ -12,6 +13,24 @@ vi.stubGlobal("chrome", {
       },
       remove: async (k: string | string[]) => {
         for (const key of Array.isArray(k) ? k : [k]) store.delete(key);
+      },
+    },
+    // The dApp grants live in the SESSION area now: RAM-backed, wiped when the
+    // browser closes, which is what makes "a connection is dropped when the
+    // wallet locks" true rather than nearly true. Its own map, so a test can
+    // tell the two areas apart.
+    session: {
+      get: async (k: string | null) =>
+        k === null
+          ? Object.fromEntries(sessionStore)
+          : sessionStore.has(k)
+            ? { [k]: sessionStore.get(k) }
+            : {},
+      set: async (o: Record<string, unknown>) => {
+        for (const [k, v] of Object.entries(o)) sessionStore.set(k, v);
+      },
+      remove: async (k: string | string[]) => {
+        for (const key of Array.isArray(k) ? k : [k]) sessionStore.delete(key);
       },
     },
   },
@@ -44,7 +63,10 @@ describe("origin is taken from the browser, never from the page", () => {
 });
 
 describe("a session is scoped to exactly one origin", () => {
-  beforeEach(() => store.clear());
+  beforeEach(() => {
+    store.clear();
+    sessionStore.clear();
+  });
 
   it("does not leak across scheme, subdomain or port", async () => {
     await S.connect("https://app.example", ADDR);
@@ -58,14 +80,14 @@ describe("a session is scoped to exactly one origin", () => {
 
   it("expires rather than lasting forever", async () => {
     await S.connect("https://app.example", ADDR);
-    const sessions = await chrome.storage.local.get("pocket.dapps");
+    const sessions = await chrome.storage.session.get("pocket.dapps");
     const all = sessions["pocket.dapps"] as Record<string, { connectedAt: number }>;
     all["https://app.example"]!.connectedAt = Date.now() - S.SESSION_TTL_MS - 1;
-    await chrome.storage.local.set({ "pocket.dapps": all });
+    await chrome.storage.session.set({ "pocket.dapps": all });
 
     expect(await S.sessionFor("https://app.example")).toBeNull();
     // And the expired grant is removed, not merely ignored.
-    const after = (await chrome.storage.local.get("pocket.dapps"))["pocket.dapps"] as object;
+    const after = (await chrome.storage.session.get("pocket.dapps"))["pocket.dapps"] as object;
     expect(Object.keys(after)).toHaveLength(0);
   });
 
@@ -147,5 +169,57 @@ describe("the sender boundary is structural, not a property of one relay", () =>
     expect(
       S.senderOrigin({ url: "http://localhost:3000/app" } as chrome.runtime.MessageSender),
     ).toBe("http://localhost:3000");
+  });
+});
+
+/**
+ * A grant must not outlive the browser.
+ *
+ * The wallet's README says a connection "is dropped when the wallet locks", and
+ * `lock()` does clear them. A browser close is a lock in every way that
+ * matters: the seed is gone, the worker is gone, the wallet comes back needing
+ * a password. But nothing calls `lock()` on the way out, and the grants were in
+ * `chrome.storage.local`, which survives. Measured: grant a connection, close
+ * the browser, and the record is still there with its original `connectedAt`,
+ * so the 24-hour clock keeps running across restarts and a site reconnects
+ * silently to a wallet the user has since locked.
+ */
+describe("where a grant lives", () => {
+  /** What a browser close does: the RAM-backed area goes, disk stays. */
+  const browserClose = () => sessionStore.clear();
+
+  it("does not survive the browser closing", async () => {
+    await S.connect("https://app.example", ADDR);
+    expect(await S.sessionFor("https://app.example"), "premise").not.toBeNull();
+
+    browserClose();
+
+    expect(
+      await S.sessionFor("https://app.example"),
+      "a site kept its grant across a browser restart",
+    ).toBeNull();
+  });
+
+  it("does survive an ordinary worker eviction", async () => {
+    // MV3 kills the worker constantly. A grant that died with it would mean
+    // reconnecting several times an hour, which is a different defect.
+    await S.connect("https://app.example", ADDR);
+    // Eviction drops memory, not either storage area.
+    expect(await S.sessionFor("https://app.example")).not.toBeNull();
+  });
+
+  it("is not written to disk at all", async () => {
+    // The point of the move. A grant on disk outlives everything.
+    await S.connect("https://app.example", ADDR);
+    expect(store.get("pocket.dapps"), "the grant was written to local storage").toBeUndefined();
+  });
+
+  it("sweeps a grant an earlier build left on disk", async () => {
+    // A wallet updated in place can hold one in the old location, in the one
+    // store a browser close does not touch, with nothing left that reads it to
+    // expire it.
+    store.set("pocket.dapps", { "https://old.example": { origin: "https://old.example" } });
+    await S.clearSessions();
+    expect(store.get("pocket.dapps")).toBeUndefined();
   });
 });

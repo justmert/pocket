@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import "../../lib/polyfill";
 
 const store = new Map<string, unknown>();
+const sessionStore = new Map<string, unknown>();
 vi.stubGlobal("chrome", {
   storage: {
     local: {
@@ -15,27 +16,48 @@ vi.stubGlobal("chrome", {
         for (const key of Array.isArray(k) ? k : [k]) store.delete(key);
       },
     },
+    // The dApp grants live in the SESSION area now: RAM-backed, wiped when the
+    // browser closes, which is what makes "a connection is dropped when the
+    // wallet locks" true rather than nearly true. Backed by its own map here so
+    // a test can tell the two areas apart.
+    session: {
+      get: async (k: string | null) =>
+        k === null
+          ? Object.fromEntries(sessionStore)
+          : sessionStore.has(k)
+            ? { [k]: sessionStore.get(k) }
+            : {},
+      set: async (o: Record<string, unknown>) => {
+        for (const [k, v] of Object.entries(o)) sessionStore.set(k, v);
+      },
+      remove: async (k: string | string[]) => {
+        for (const key of Array.isArray(k) ? k : [k]) sessionStore.delete(key);
+      },
+    },
   },
 });
 
 const { WalletController } = await import("../controller");
-const { KEYS, readLocal } = await import("../../lib/storage");
+const { KEYS } = await import("../../lib/storage");
 
 describe("a grant does not outlive the wallet that made it", () => {
-  beforeEach(() => store.clear());
+  beforeEach(() => {
+    store.clear();
+    sessionStore.clear();
+  });
 
   it("erasing the wallet takes every dApp grant with it", async () => {
     const c = new WalletController();
     await c.init();
     await c.create("first password");
     await c.connectDapp("https://app.example");
-    expect(await readLocal(KEYS.dappSessions)).toBeDefined();
+    expect(await sessionStore.get(KEYS.dappSessions)).toBeDefined();
 
     await c.reset("first password");
 
     // Otherwise the NEXT wallet installed on this device inherits every
     // connection the last one made, silently and with no prompt.
-    expect(await readLocal(KEYS.dappSessions)).toBeUndefined();
+    expect(await sessionStore.get(KEYS.dappSessions)).toBeUndefined();
   });
 
   it("a recovery into a different wallet takes them too", async () => {
@@ -45,12 +67,15 @@ describe("a grant does not outlive the wallet that made it", () => {
     await c.connectDapp("https://app.example");
 
     await c.recoverFromMnemonic(mnemonic, "a new password");
-    expect(await readLocal(KEYS.dappSessions)).toBeUndefined();
+    expect(await sessionStore.get(KEYS.dappSessions)).toBeUndefined();
   });
 });
 
 describe("the granted address is the consent", () => {
-  beforeEach(() => store.clear());
+  beforeEach(() => {
+    store.clear();
+    sessionStore.clear();
+  });
 
   it("answers getAddress for the account the site was connected to", async () => {
     const c = new WalletController();
@@ -73,10 +98,10 @@ describe("the granted address is the consent", () => {
     await c.connectDapp("https://app.example");
 
     // Forge the situation directly: the stored grant names a different account.
-    const sessions = (await readLocal<Record<string, { address: string }>>(KEYS.dappSessions))!;
+    const sessions = sessionStore.get(KEYS.dappSessions) as Record<string, { address: string }>;
     sessions["https://app.example"]!.address =
       "GB43MNLS6IL77FIZHOBLYILQIQP5MPQVF77O5JOAYCSWX3TUHAL6Z3F7";
-    await chrome.storage.local.set({ [KEYS.dappSessions]: sessions });
+    await chrome.storage.session.set({ [KEYS.dappSessions]: sessions });
 
     const res = (await c.sep43("https://app.example", "getAddress", [])) as {
       error?: { message: string };
@@ -85,7 +110,8 @@ describe("the granted address is the consent", () => {
     expect(res.error!.message).toMatch(/changed since this site connected/);
 
     // And the stale grant is GONE, not merely refused once.
-    const after = (await readLocal<Record<string, unknown>>(KEYS.dappSessions)) ?? {};
+    const after =
+      (sessionStore.get(KEYS.dappSessions) as Record<string, unknown> | undefined) ?? {};
     expect(after["https://app.example"]).toBeUndefined();
   });
 

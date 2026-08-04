@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import "../../lib/polyfill";
 
 const store = new Map<string, unknown>();
+const sessionStore = new Map<string, unknown>();
 vi.stubGlobal("chrome", {
   storage: {
     local: {
@@ -18,6 +19,24 @@ vi.stubGlobal("chrome", {
       },
       remove: async (k: string | string[]) => {
         for (const key of Array.isArray(k) ? k : [k]) store.delete(key);
+      },
+    },
+    // The dApp grants live in the SESSION area now: RAM-backed, wiped when the
+    // browser closes, which is what makes "a connection is dropped when the
+    // wallet locks" true rather than nearly true. Its own map, so a test can
+    // tell the two areas apart.
+    session: {
+      get: async (k: string | null) =>
+        k === null
+          ? Object.fromEntries(sessionStore)
+          : sessionStore.has(k)
+            ? { [k]: sessionStore.get(k) }
+            : {},
+      set: async (o: Record<string, unknown>) => {
+        for (const [k, v] of Object.entries(o)) sessionStore.set(k, v);
+      },
+      remove: async (k: string | string[]) => {
+        for (const key of Array.isArray(k) ? k : [k]) sessionStore.delete(key);
       },
     },
   },
@@ -78,7 +97,10 @@ async function parked(c: { pendingDappRequest: () => unknown }, within = 5_000) 
 }
 
 describe("a site cannot get a signature without a person answering", () => {
-  beforeEach(() => store.clear());
+  beforeEach(() => {
+    store.clear();
+    sessionStore.clear();
+  });
 
   it("parks the request rather than signing, and the popup can see it", async () => {
     const { c, address } = await connected();
@@ -210,5 +232,73 @@ describe("a site cannot get a signature without a person answering", () => {
       expect(res.error, `${m} must refuse`).toBeDefined();
       expect(c.pendingDappRequest()).toBeNull();
     }
+  });
+});
+
+/**
+ * Revoking a connection has to stop what is already in flight.
+ *
+ * A site's signature request parks in a queue and waits for a person. Revoking
+ * the connection left it sitting there, and answering it later signed for a
+ * site the user had just disconnected: measured, `dappSessions` empty, a NEW
+ * call from that origin refused, and the disconnected site nonetheless received
+ * `{ signed: true, signer: G... }`. A button that means "from now on" while
+ * looking like it means "stop" is worse than no button.
+ */
+describe("revoking a connection", () => {
+  beforeEach(() => {
+    store.clear();
+    sessionStore.clear();
+  });
+
+  it("answers a request that site already parked", async () => {
+    const { c, address } = await connected();
+    const xdr = await envelope(address);
+
+    const pending = c.sep43("https://app.example", "signTransaction", [xdr]);
+    await parked(c);
+
+    await c.disconnectDapp("https://app.example");
+
+    const answer = (await pending) as { error?: { message: string } };
+    expect(
+      answer.error,
+      "the request was left parked after the site was disconnected",
+    ).toBeDefined();
+  });
+
+  it("leaves nothing in the queue for that origin", async () => {
+    const { c, address } = await connected();
+    const xdr = await envelope(address);
+    void c.sep43("https://app.example", "signTransaction", [xdr]);
+    await parked(c);
+
+    await c.disconnectDapp("https://app.example");
+
+    expect(c.pendingDappRequest(), "a revoked site's request survived in the queue").toBeNull();
+  });
+
+  it("signs nothing for it", async () => {
+    const { c, address } = await connected();
+    const xdr = await envelope(address);
+    const pending = c.sep43("https://app.example", "signTransaction", [xdr]);
+    await parked(c);
+
+    await c.disconnectDapp("https://app.example");
+    const answer = (await pending) as { signedTxXdr?: string };
+    expect(answer.signedTxXdr, "a disconnected site got a signature").toBeUndefined();
+  });
+
+  it("does not disturb another site's parked request", async () => {
+    // Revocation is per origin. Taking a second site's request down with it
+    // would be its own denial of service.
+    const { c, address } = await connected();
+    await c.connectDapp("https://other.example");
+    const xdr = await envelope(address);
+    void c.sep43("https://other.example", "signTransaction", [xdr]);
+    await parked(c);
+
+    await c.disconnectDapp("https://app.example");
+    expect(c.pendingDappRequest()?.origin).toBe("https://other.example");
   });
 });

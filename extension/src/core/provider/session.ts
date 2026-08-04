@@ -7,7 +7,7 @@
 //
 // There is no "remember this site" for signing, deliberately. §14.7 forbids
 // blind signing, and an approval the user cannot see is blind by definition.
-import { KEYS, readLocal, writeLocal, removeLocal } from "../../lib/storage";
+import { KEYS, removeLocal } from "../../lib/storage";
 
 /** How long a connection grant lasts without being renewed. */
 export const SESSION_TTL_MS = 24 * 60 * 60_000;
@@ -63,8 +63,44 @@ export function isExtensionPage(sender: chrome.runtime.MessageSender, base: stri
   return sender.url.startsWith(base);
 }
 
+/**
+ * The grants live in `chrome.storage.session`, which dies with the BROWSER.
+ *
+ * They were in `chrome.storage.local`, which does not. `lock()` clears them and
+ * a browser close is a lock in every way that matters -- the seed is gone, the
+ * worker is gone, the wallet comes back needing a password -- but nothing calls
+ * `lock()` on the way out, so the grant simply survived. Measured: grant a
+ * connection, close the browser, and `storage.local` still holds it with its
+ * original `connectedAt`, so the 24-hour clock keeps running across restarts
+ * and a site reconnects silently to a wallet the user has since locked.
+ *
+ * The wallet's own README says a connection "is dropped when the wallet locks",
+ * and this is what makes that true rather than nearly true. RAM-backed, wiped
+ * when the browser closes, and it survives ordinary MV3 worker eviction, which
+ * is the distinction that matters: a grant should outlive the worker and not
+ * the browser.
+ */
+function area(): chrome.storage.StorageArea | undefined {
+  return chrome?.storage?.session;
+}
+
 async function all(): Promise<Record<string, DappSession>> {
-  return (await readLocal<Record<string, DappSession>>(KEYS.dappSessions)) ?? {};
+  const store = area();
+  if (!store) return {};
+  try {
+    const got = (await store.get(KEYS.dappSessions))[KEYS.dappSessions];
+    return (got as Record<string, DappSession> | undefined) ?? {};
+  } catch {
+    // A store that will not answer holds no grant this code can honour, and
+    // "no session" is the refusing direction.
+    return {};
+  }
+}
+
+async function put(sessions: Record<string, DappSession>): Promise<void> {
+  const store = area();
+  if (!store) return;
+  await store.set({ [KEYS.dappSessions]: sessions });
 }
 
 /** The live session for an origin, if it has one that has not expired. */
@@ -82,14 +118,14 @@ export async function connect(origin: string, address: string): Promise<DappSess
   const sessions = await all();
   const session: DappSession = { origin, connectedAt: Date.now(), address };
   sessions[origin] = session;
-  await writeLocal(KEYS.dappSessions, sessions);
+  await put(sessions);
   return session;
 }
 
 export async function disconnect(origin: string): Promise<void> {
   const sessions = await all();
   delete sessions[origin];
-  await writeLocal(KEYS.dappSessions, sessions);
+  await put(sessions);
 }
 
 export async function listSessions(): Promise<DappSession[]> {
@@ -98,5 +134,14 @@ export async function listSessions(): Promise<DappSession[]> {
 
 /** Drop every session. Used by lock and by erase, so nothing outlives the wallet. */
 export async function clearSessions(): Promise<void> {
+  try {
+    await area()?.remove(KEYS.dappSessions);
+  } catch {
+    /* nothing to remove, or the area went away with the browser. */
+  }
+  // ...and the LOCAL key an earlier build wrote. A wallet updated in place
+  // would otherwise carry a grant that predates this change, in the one store
+  // that survives a browser close, with nothing left that reads it to expire
+  // it. Erase and lock both call this, so it is swept on the first of either.
   await removeLocal(KEYS.dappSessions);
 }

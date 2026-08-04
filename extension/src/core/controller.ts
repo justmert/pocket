@@ -2693,6 +2693,24 @@ export class WalletController {
     requireSession();
     const { disconnect } = await import("./provider/session");
     await disconnect(origin);
+    // ...and anything that site has ALREADY parked.
+    //
+    // Revoking a connection left a signature request from the same origin
+    // sitting in the queue, and answering it later signed for a site the user
+    // had just disconnected: measured, `dappSessions` empty, a new call from
+    // that origin refused, and the disconnected site nonetheless received
+    // `{ signed: true, signer: G... }`. Revocation has to mean the same thing
+    // for what is in flight as for what comes next, or it is a button that
+    // means "from now on" while looking like it means "stop".
+    //
+    // Answered as DECLINED, which is what the timeout answers, so a site's
+    // handling of the two is identical and SEP-43's "do not retry a rejection"
+    // applies.
+    for (const [id, parked] of this.dappPending) {
+      if (parked.origin !== origin) continue;
+      parked.resolve("declined");
+      this.dappPending.delete(id);
+    }
   }
 
   /**
@@ -3219,10 +3237,18 @@ export class WalletController {
       // A grant says a site may see this wallet's address. Erasing the wallet
       // and leaving the grant behind means the NEXT wallet installed here
       // inherits every connection the last one made, silently.
+      //
+      // The live grants moved to `chrome.storage.session` (they must die with
+      // the browser, which is what the README promises), and they are cleared
+      // by `clearSessions()` below. This entry stays because a wallet updated
+      // in place can still hold one an EARLIER build wrote here.
       KEYS.dappSessions,
       ...(await openingKeys()),
       ...(keepAuditorIds ? [] : await auditorIdKeys()),
     ]);
+    // ...and the session area, which `removeLocal` cannot reach.
+    const { clearSessions } = await import("./provider/session");
+    await clearSessions();
   }
 
   /**
