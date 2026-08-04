@@ -302,3 +302,122 @@ describe("revoking a connection", () => {
     expect(c.pendingDappRequest()?.origin).toBe("https://other.example");
   });
 });
+
+/**
+ * A request that nobody answered is not a request the user refused.
+ *
+ * Both a timeout and the auto-lock resolved a parked approval as "declined",
+ * so the site was told `USER_REJECTED: "You declined that in Pocket."` -- a
+ * claim about a decision the user never made. SEP-43 tells a dapp not to retry
+ * a rejection, so it also permanently forecloses a request they never saw.
+ */
+describe("an approval nobody answered", () => {
+  beforeEach(() => {
+    store.clear();
+    sessionStore.clear();
+  });
+
+  it("is not reported as the user declining, when the wallet locks", async () => {
+    const { c, address } = await connected();
+    const xdr = await envelope(address);
+    const pending = c.sep43("https://app.example", "signTransaction", [xdr]);
+    await parked(c);
+
+    await c.lock();
+
+    const answer = (await pending) as { error: { code: number; message: string } };
+    expect(answer.error.message, "claimed a decision the user never made").not.toMatch(
+      /you declined/i,
+    );
+    expect(answer.error.message).toMatch(/locked before that request was answered/i);
+  });
+
+  it("does not tell the site never to ask again", async () => {
+    // -4 is USER_REJECTED, and SEP-43 says a dapp must not retry one.
+    const { c, address } = await connected();
+    const xdr = await envelope(address);
+    const pending = c.sep43("https://app.example", "signTransaction", [xdr]);
+    await parked(c);
+    await c.lock();
+
+    const answer = (await pending) as { error: { code: number } };
+    expect(answer.error.code).not.toBe(-4);
+  });
+
+  it("still reports a real decline as one", async () => {
+    // The control. A user who pressed Reject HAS decided, and the site must be
+    // told so, with the code that stops it asking again.
+    const { c, address } = await connected();
+    const xdr = await envelope(address);
+    const pending = c.sep43("https://app.example", "signTransaction", [xdr]);
+    const req = (await parked(c)) as { id: string };
+    c.resolveDappRequest(req.id, false);
+
+    const answer = (await pending) as { error: { code: number; message: string } };
+    expect(answer.error.code).toBe(-4);
+    expect(answer.error.message).toMatch(/you declined/i);
+  });
+});
+
+/**
+ * `signTransaction`'s options object was read by nothing.
+ *
+ * Measured with all four SEP-43 options set at once, including `submit: true`
+ * and a `submitUrl` pointing elsewhere: the request parked normally, the user
+ * approved, and the site got a signature back with no hint that three of its
+ * four instructions had been discarded.
+ */
+describe("the options a site passes to signTransaction", () => {
+  beforeEach(() => {
+    store.clear();
+    sessionStore.clear();
+  });
+
+  const call = async (opts: unknown) => {
+    const { c, address } = await connected();
+    const xdr = await envelope(address);
+    return (await c.sep43("https://app.example", "signTransaction", [xdr, opts])) as {
+      error?: { code: number; message: string };
+      signedTxXdr?: string;
+    };
+  };
+
+  it("refuses a request naming a different network", async () => {
+    const answer = await call({
+      networkPassphrase: "Public Global Stellar Network ; September 2015",
+    });
+    expect(answer.signedTxXdr, "signed for a chain nobody agreed on").toBeUndefined();
+    expect(answer.error!.message).toMatch(/different network/i);
+  });
+
+  it("refuses a request naming a different signer", async () => {
+    const answer = await call({
+      address: "GB43MNLS6IL77FIZHOBLYILQIQP5MPQVF77O5JOAYCSWX3TUHAL6Z3F7",
+    });
+    expect(answer.signedTxXdr).toBeUndefined();
+    expect(answer.error!.message).toMatch(/different account/i);
+  });
+
+  it("refuses submit, rather than signing and not submitting", async () => {
+    // A caller expecting `submit: true` believes the transaction has been
+    // broadcast. Nothing left the machine.
+    const answer = await call({ submit: true, submitUrl: "https://evil.example/submit" });
+    expect(answer.signedTxXdr).toBeUndefined();
+    expect(answer.error!.message).toMatch(/never submits/i);
+  });
+
+  it("accepts options it does honour", async () => {
+    // The control: matching values must not become a refusal.
+    const { c, address } = await connected();
+    const xdr = await envelope(address);
+    const { Networks } = await import("@stellar/stellar-sdk/base");
+    const pending = c.sep43("https://app.example", "signTransaction", [
+      xdr,
+      { networkPassphrase: Networks.TESTNET, address },
+    ]);
+    const req = (await parked(c)) as { id: string };
+    c.resolveDappRequest(req.id, true);
+    const answer = (await pending) as { signedTxXdr?: string };
+    expect(answer.signedTxXdr, "a legitimate request was refused").toBeTruthy();
+  });
+});

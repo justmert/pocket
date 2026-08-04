@@ -464,13 +464,66 @@ async function readSingleInvocation(tx: Transaction): Promise<Invocation | null>
 }
 
 /**
- * The three answers a parked dApp approval can have.
+ * Every answer a parked dApp approval can have, and they are all different
+ * facts about the user.
  *
- * "busy" is separate from "declined" because they are different facts about the
- * user. One of them is a decision they made; the other is a request that never
- * reached them.
+ * "declined" is the only one that is a DECISION. The rest are things that
+ * happened instead of a decision, and reporting them as a decision is a lie
+ * about consent on the one path where consent is the whole subject:
+ *
+ *   busy      the request never reached them; another prompt was open
+ *   timedOut  the prompt stood for 280 seconds and nobody answered
+ *   locked    the wallet locked, taking the prompt with it
+ *
+ * It matters to the SITE as well as to the truth. SEP-43 says a dapp must NOT
+ * retry a rejection, so answering USER_REJECTED to a timeout tells a site never
+ * to ask again about something the user never saw.
  */
-type DappVerdict = "approved" | "declined" | "busy";
+type DappVerdict = "approved" | "declined" | "busy" | "timedOut" | "locked";
+
+/**
+ * What a site asked for in `signTransaction`'s options that Pocket will not do.
+ *
+ * Returns a sentence, or null when the options are ones this wallet honours.
+ * Every branch REFUSES rather than ignoring: the whole surface exists so a site
+ * cannot get something the user did not agree to, and silently discarding an
+ * instruction is the same failure with better manners.
+ */
+function unsupportedSignOptions(
+  raw: unknown,
+  signingAddress: string,
+  passphrase: string,
+): string | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "object") {
+    return "signTransaction's options must be an object.";
+  }
+  const opts = raw as {
+    networkPassphrase?: unknown;
+    address?: unknown;
+    submit?: unknown;
+    submitUrl?: unknown;
+  };
+  if (typeof opts.networkPassphrase === "string" && opts.networkPassphrase !== passphrase) {
+    return (
+      "That request names a different network from the one this wallet is on, so Pocket will " +
+      "not sign it. Nothing has been signed."
+    );
+  }
+  if (typeof opts.address === "string" && opts.address !== signingAddress) {
+    return (
+      "That request asks Pocket to sign as a different account from the one this site is " +
+      "connected to, and this wallet holds one account. Nothing has been signed."
+    );
+  }
+  if (opts.submit === true || typeof opts.submitUrl === "string") {
+    return (
+      "Pocket signs but never submits on a site's behalf, so it will not honour `submit`. " +
+      "Ask for the signature alone and send it yourself."
+    );
+  }
+  return null;
+}
 
 export class WalletController {
   private network: NetworkId = DEFAULT_NETWORK;
@@ -2616,7 +2669,7 @@ export class WalletController {
       this.dappPending.set(id, { origin, summary, resolve: done });
       void chrome.action?.openPopup?.().catch(() => undefined);
       setTimeout(() => {
-        if (this.dappPending.has(id)) done("declined");
+        if (this.dappPending.has(id)) done("timedOut");
       }, 280_000);
     });
   }
@@ -2775,6 +2828,32 @@ export class WalletController {
         if (typeof xdr !== "string") {
           return err(ERROR.INVALID_REQUEST, "signTransaction needs a transaction envelope.");
         }
+        // The OPTIONS object, which was read by nothing at all.
+        //
+        // SEP-43 defines four, and a site setting any of them is asking for
+        // behaviour this wallet does not implement. Measured with all four set
+        // at once, including `submit: true` and a `submitUrl` pointing
+        // somewhere else: the request parked normally, the user approved, and
+        // the site got back a signature with no hint that three of its four
+        // instructions had been discarded.
+        //
+        // Refused, not honoured and not ignored:
+        //   networkPassphrase  a mismatch means the site thinks it is on
+        //                      another network, and signing anyway produces a
+        //                      valid signature for a chain nobody agreed on
+        //   address            asking a wallet to sign as a key it does not
+        //                      hold; silently signing as ourselves answers a
+        //                      question that was not asked
+        //   submit/submitUrl   "sign AND send it, to this URL". Pocket never
+        //                      submits for a site, and a caller expecting it to
+        //                      would believe a transaction had been broadcast
+        //                      when nothing had left the machine.
+        const refusal = unsupportedSignOptions(
+          params[1],
+          current,
+          NETWORKS[this.network].passphrase,
+        );
+        if (refusal) return err(ERROR.INVALID_REQUEST, refusal);
         const { describeTransaction } = await import("./provider/describe-tx");
         const summary = describeTransaction(xdr, NETWORKS[this.network].passphrase);
 
@@ -2826,6 +2905,24 @@ export class WalletController {
         }
         if (verdict === "declined") {
           return err(ERROR.USER_REJECTED, "You declined that in Pocket.");
+        }
+        // NOT `USER_REJECTED`. Nobody answered, and SEP-43 tells a site never
+        // to retry a rejection, so claiming one here permanently forecloses a
+        // request the user never saw. `INTERNAL` is the honest one of the four:
+        // the wallet is the party that failed to obtain an answer.
+        if (verdict === "timedOut") {
+          return err(
+            ERROR.INTERNAL,
+            "Nobody answered that request in Pocket, so it expired without being signed. " +
+              "Ask again when the wallet is open.",
+          );
+        }
+        if (verdict === "locked") {
+          return err(
+            ERROR.INTERNAL,
+            "Pocket locked before that request was answered, so nothing was signed. " +
+              "Unlock the wallet and ask again.",
+          );
         }
         const { TransactionBuilder } = await import("@stellar/stellar-sdk/base");
         const tx = TransactionBuilder.fromXDR(xdr, NETWORKS[this.network].passphrase);
@@ -3110,7 +3207,10 @@ export class WalletController {
     // Pending dApp approvals are RESOLVED as refused rather than dropped. The
     // map holds each site's `resolve`, so clearing it alone would leave the page
     // hanging until its own timeout. A lock is an answer, and the answer is no.
-    for (const parked of this.dappPending.values()) parked.resolve("declined");
+    // "locked", not "declined". A lock is an answer and the answer is no, but
+    // it is not the user's no: they may have walked away, or the idle timer may
+    // have fired while they were reading. The site is told what happened.
+    for (const parked of this.dappPending.values()) parked.resolve("locked");
     this.dappPending.clear();
   }
 
