@@ -8,6 +8,25 @@
 // The origin is NOT taken from anything the page says. Chrome fills in
 // `sender.origin` on the worker side from the frame itself, so a page cannot
 // claim to be somewhere it is not.
+/**
+ * SEP-43's error codes, which are the only ones a site knows how to read.
+ *
+ * This relay answered with JSON-RPC's: -32601, -32005, -32603. They are not
+ * among the four SEP-43 defines (-1 internal, -2 external, -3 invalid request,
+ * -4 user rejected), so a site handling the standard's codes falls through
+ * every branch it has. Worse, the WORKER's own answers already use the SEP-43
+ * codes, so one call could come back -4 and the next -32603 through the same
+ * channel for the same class of refusal.
+ *
+ * Two of the four are reachable from here: -3 for what the page asked (an
+ * unsupported method, or more requests than the relay will carry), and -1 for
+ * a failure on our side. A refusal the worker authored arrives with its own
+ * code already set and is passed through untouched; -1 is only for the case
+ * where the worker never answered at all.
+ */
+const SEP43_INTERNAL = -1;
+const SEP43_INVALID_REQUEST = -3;
+
 export default defineContentScript({
   matches: ["http://*/*", "https://*/*"],
   runAt: "document_start",
@@ -73,7 +92,7 @@ export default defineContentScript({
       // is convenience; the worker enforces its own, because a content script
       // runs in a hostile page's process and is not a trust boundary.
       if (typeof d.method !== "string" || !ALLOWED.has(d.method)) {
-        reply(id, { error: { code: -32601, message: "Unsupported method." } });
+        reply(id, { error: { code: SEP43_INVALID_REQUEST, message: "Unsupported method." } });
         return;
       }
 
@@ -82,7 +101,10 @@ export default defineContentScript({
       // a token either. The budget is for calls that would have been relayed.
       if (!take()) {
         reply(id, {
-          error: { code: -32005, message: "Too many requests to Pocket. Slow down and retry." },
+          error: {
+            code: SEP43_INVALID_REQUEST,
+            message: "Too many requests to Pocket. Slow down and retry.",
+          },
         });
         return;
       }
@@ -93,13 +115,13 @@ export default defineContentScript({
           (r: { ok: boolean; data?: unknown; error?: string }) => {
             const result = r?.ok
               ? r.data
-              : { error: { code: -32603, message: r?.error ?? "Pocket refused." } };
+              : { error: { code: SEP43_INTERNAL, message: r?.error ?? "Pocket refused." } };
             reply(id, result);
           },
           () => {
             // The worker was evicted or the extension is updating. Say so
             // rather than leaving the promise unsettled.
-            reply(id, { error: { code: -32603, message: "Pocket is unavailable." } });
+            reply(id, { error: { code: SEP43_INTERNAL, message: "Pocket is unavailable." } });
           },
         );
     });

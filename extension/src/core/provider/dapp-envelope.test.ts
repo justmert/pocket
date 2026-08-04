@@ -142,3 +142,60 @@ describe("a memo the user is asked to check", () => {
     expect(s.memo).toBe("invoice 42");
   });
 });
+
+/**
+ * A contract call is not describable, so it is refused.
+ *
+ * D-007 was closed "in part": `DESCRIBED` had been added, and its note recorded
+ * that `invokeHostFunction` was still ON that allowlist and rendered as the
+ * single line "Invoke a smart contract" with no contract id, function name or
+ * arguments. That is the finding's own title, one layer down.
+ *
+ * It is off the list now, and this is what says so. A contract call's effect
+ * lives in ScVal arguments of arbitrary shape; "Invoke a smart contract" over
+ * an enabled Approve is blind signing with a caption.
+ */
+describe("an envelope carrying a contract call", () => {
+  it("is refused rather than summarised", () => {
+    const call = new TransactionBuilder(new Account(SOURCE, "100"), {
+      fee: "100",
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(
+        Operation.invokeContractFunction({
+          contract: "CBIS5TEMTNNOTBE3WXPQUAGUEDYZZVIWAKTXEQCOUJ34OJJ3FJ5NLF2P",
+          function: "transfer",
+          args: [],
+        }),
+      )
+      .setTimeout(180)
+      .build()
+      .toXDR();
+
+    const s = summarise(call);
+    expect(s.decoded, "a contract call was offered for approval").toBe(false);
+    expect(s.effects, "an undecodable envelope must offer nothing to approve").toEqual([]);
+    // Its own sentence, not the generic one: the envelope is fine and the
+    // limitation is Pocket's, so a site is told that retrying will not help.
+    expect(s.warning ?? "").toMatch(/calls a smart contract/i);
+    expect(s.warning!).toMatch(/cannot yet put those into words/i);
+  });
+
+  it("says nothing was sent, which is the fact the user needs", () => {
+    const call = new TransactionBuilder(new Account(SOURCE, "100"), {
+      fee: "100",
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(
+        Operation.invokeContractFunction({
+          contract: "CBIS5TEMTNNOTBE3WXPQUAGUEDYZZVIWAKTXEQCOUJ34OJJ3FJ5NLF2P",
+          function: "transfer",
+          args: [],
+        }),
+      )
+      .setTimeout(180)
+      .build()
+      .toXDR();
+    expect(summarise(call).warning!).toMatch(/Nothing has been sent/);
+  });
+});
