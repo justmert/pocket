@@ -155,15 +155,17 @@ describe("recoverFromMnemonic: the one destructive path reachable while locked",
 
   it("refuses an invalid phrase", async () => {
     const { controller } = await installedAndLocked();
-    await expect(controller.recoverFromMnemonic("word ".repeat(24), PASSWORD)).rejects.toBeInstanceOf(
-      RecoveryError,
-    );
+    await expect(
+      controller.recoverFromMnemonic("word ".repeat(24), PASSWORD),
+    ).rejects.toBeInstanceOf(RecoveryError);
     expect(whatSurvives()).toEqual(INTACT);
   });
 
   it("refuses an empty phrase", async () => {
     const { controller } = await installedAndLocked();
-    await expect(controller.recoverFromMnemonic("", PASSWORD)).rejects.toBeInstanceOf(RecoveryError);
+    await expect(controller.recoverFromMnemonic("", PASSWORD)).rejects.toBeInstanceOf(
+      RecoveryError,
+    );
     expect(whatSurvives()).toEqual(INTACT);
   });
 
@@ -178,12 +180,14 @@ describe("recoverFromMnemonic: the one destructive path reachable while locked",
     chrome.local.delete(KEYS.publicAddress);
 
     const strangers = generateMnemonic(wordlist, 256);
-    await expect(controller.recoverFromMnemonic(strangers, "attacker password")).rejects.toBeInstanceOf(
-      RecoveryError,
-    );
+    await expect(
+      controller.recoverFromMnemonic(strangers, "attacker password"),
+    ).rejects.toBeInstanceOf(RecoveryError);
     expect(chrome.local.has(KEYS.vaultHeader)).toBe(true);
     expect(chrome.local.has(KEYS.state)).toBe(true);
-    expect([...chrome.local.keys()].filter((k) => k.startsWith(`${KEYS.openings}.`))).toHaveLength(1);
+    expect([...chrome.local.keys()].filter((k) => k.startsWith(`${KEYS.openings}.`))).toHaveLength(
+      1,
+    );
   });
 
   it("refuses even the CORRECT phrase when there is no stored address", async () => {
@@ -240,7 +244,9 @@ describe("recoverFromMnemonic: the one destructive path reachable while locked",
     // it is the cost of the operation and it must not quietly change.
     const { controller, mnemonic } = await installedAndLocked();
     await controller.recoverFromMnemonic(mnemonic, "a brand new password");
-    expect([...chrome.local.keys()].filter((k) => k.startsWith(`${KEYS.openings}.`))).toHaveLength(0);
+    expect([...chrome.local.keys()].filter((k) => k.startsWith(`${KEYS.openings}.`))).toHaveLength(
+      0,
+    );
   });
 
   it("normalises case and spacing rather than refusing a correct phrase", async () => {

@@ -14,7 +14,13 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import "../../src/lib/polyfill";
-import { installChrome, EVERY_REQUEST, ALLOWED_WHILE_LOCKED, EXTENSION_ID, POPUP_SENDER } from "./_harness/chrome";
+import {
+  installChrome,
+  EVERY_REQUEST,
+  ALLOWED_WHILE_LOCKED,
+  EXTENSION_ID,
+  POPUP_SENDER,
+} from "./_harness/chrome";
 
 const chrome = installChrome();
 
@@ -280,13 +286,16 @@ describe("the sender check", () => {
   });
 });
 
-
 describe("the extension's own pages are the boundary, not the extension's id", () => {
   // `sender.id === chrome.runtime.id` is true of a content script: it runs in a
   // hostile page's process and carries our id. So it cannot be what separates
   // the wallet router from the web. This is what a content script's message
   // looks like: our id, and a page URL.
-  const AS_CONTENT_SCRIPT = { id: EXTENSION_ID, origin: "https://evil.example", url: "https://evil.example/x" };
+  const AS_CONTENT_SCRIPT = {
+    id: EXTENSION_ID,
+    origin: "https://evil.example",
+    url: "https://evil.example/x",
+  };
 
   it("refuses a wallet request that did not come from one of our pages", async () => {
     for (const msg of [

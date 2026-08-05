@@ -117,9 +117,8 @@ test("no data arrival moves a control the user can press", async ({ harness, wal
     .filter((s) => /^(Send|Receive|SendReceive|Set up the private pocket)/.test(s.text));
 
   const cls = p.shifts.reduce((t, s) => t + s.value, 0);
-  console.log(`  CLS ${cls.toFixed(4)} over ${p.shifts.length} shift(s); moved controls: ${JSON.stringify(movedButtons)}`);
-  expect(
-    movedButtons,
-    "an unprompted layout shift moved a control the user can press",
-  ).toEqual([]);
+  console.log(
+    `  CLS ${cls.toFixed(4)} over ${p.shifts.length} shift(s); moved controls: ${JSON.stringify(movedButtons)}`,
+  );
+  expect(movedButtons, "an unprompted layout shift moved a control the user can press").toEqual([]);
 });

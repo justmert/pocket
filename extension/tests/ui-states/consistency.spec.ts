@@ -31,7 +31,12 @@ async function stubReady(page: Page, mergeAvailable: boolean): Promise<void> {
         if (msg?.type === "privatePocket") {
           return {
             ok: true,
-            data: { state: "ready", spendable: "12.0000000", receiving: "0.0000000", mergeAvailable },
+            data: {
+              state: "ready",
+              spendable: "12.0000000",
+              receiving: "0.0000000",
+              mergeAvailable,
+            },
           };
         }
         if (msg?.type === "buildPrivateOp") {

@@ -149,8 +149,8 @@ test("injection payloads in the recovery phrase field are refused without being 
   for (const p of PAYLOADS) {
     await page.getByLabel("Recovery phrase").fill(p.value);
     await page.getByLabel("New password", { exact: true }).fill("a-strong-password");
-  // The restore screen asks twice; one field leaves the submit disabled.
-  await page.getByLabel("Confirm new password", { exact: true }).fill("a-strong-password");
+    // The restore screen asks twice; one field leaves the submit disabled.
+    await page.getByLabel("Confirm new password", { exact: true }).fill("a-strong-password");
     await page.getByRole("button", { name: "Restore wallet" }).click();
     // Whatever the wallet says, it must not be the phrase read back: a
     // recovery phrase is the one string that must never be re-rendered, and a

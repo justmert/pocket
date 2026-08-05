@@ -78,7 +78,11 @@ test("a sub-one amount is set as one run, not as a giant zero", async ({ wallet 
     if (!amount) return null;
     const walk = (el: Element): { size: number; opacity: number; text: string }[] => {
       const s = getComputedStyle(el);
-      const own = { size: parseFloat(s.fontSize), opacity: parseFloat(s.opacity), text: el.textContent ?? "" };
+      const own = {
+        size: parseFloat(s.fontSize),
+        opacity: parseFloat(s.opacity),
+        text: el.textContent ?? "",
+      };
       return [own, ...Array.from(el.children).flatMap(walk)];
     };
     return walk(amount);

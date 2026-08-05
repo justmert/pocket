@@ -108,9 +108,10 @@ test("every private balance the screen shows is money the record on disk can act
   // The screen said 25. The sealed bytes have to say 25 too, to the stroop:
   // a display derived from one number and a record holding another is exactly
   // the failure that only shows up when the money is spent.
-  expect(formatStroops(afterShield.spendable.value), "the record must hold what the screen showed").toBe(
-    "25.0000000",
-  );
+  expect(
+    formatStroops(afterShield.spendable.value),
+    "the record must hold what the screen showed",
+  ).toBe("25.0000000");
   expect(formatStroops(afterShield.receiving.value)).toBe("0.0000000");
   // A deposit is public and unblinded, so its blinding is exactly zero. Any
   // other value here means the credit was computed from something other than
@@ -221,9 +222,7 @@ test("money received privately is written to disk, not re-read from an event win
     await other.registerPrivatePocket();
 
     // The recipient's record, before anything arrives.
-    const beforeInbound = JSON.stringify(
-      (await storage(second.popup))[openingKeyFor(recipient)],
-    );
+    const beforeInbound = JSON.stringify((await storage(second.popup))[openingKeyFor(recipient)]);
 
     await wallet.openOp("Shield");
     await wallet.submitOp({ amount: "25" });
@@ -294,10 +293,7 @@ test("money received privately is written to disk, not re-read from an event win
       other.receivingMoney(),
       "the received 5 XLM must come off disk, with no event window to re-read",
     ).toHaveText(/^5\.0000000\s*XLM$/, { timeout: WAITS.ledgerRead });
-    expect(
-      eventsAsked,
-      "a record that already opens the chain needs no event scan at all",
-    ).toBe(0);
+    expect(eventsAsked, "a record that already opens the chain needs no event scan at all").toBe(0);
 
     // Prove that counter is live before trusting a zero.
     //

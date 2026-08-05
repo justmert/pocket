@@ -102,7 +102,9 @@ describe("the idle lock is armed by activity and only by activity", () => {
     const server = await FaultServer.start({
       fallback: (req) =>
         req.body.includes(accountKey(address).toXDR("base64"))
-          ? rpcOk(entriesResult([entryFor(accountKey(address), accountEntry(address, 100_0000000n))]))
+          ? rpcOk(
+              entriesResult([entryFor(accountKey(address), accountEntry(address, 100_0000000n))]),
+            )
           : rpcOk(entriesResult([])),
     });
     open.push(server);

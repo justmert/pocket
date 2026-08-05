@@ -12,6 +12,24 @@ import { defineConfig } from "wxt";
 export default defineConfig({
   modules: ["@wxt-dev/module-react"],
   srcDir: "src",
+  // Drop colocated vitest files before WXT imports them.
+  //
+  // WXT's entrypoint discovery claims every `*.[jt]s?(x)` in src/entrypoints as
+  // an "unlisted script" (find-entrypoints.mjs PATH_GLOB_TO_TYPE_MAP), then
+  // imports each one to read its config. A test sitting next to the code it
+  // pins (relay-codes.test.ts beside content.ts, reading that file's source via
+  // `new URL("./content.ts", import.meta.url)`) is therefore executed at BUILD
+  // time and fails with "Cannot read properties of undefined (reading 'href')".
+  // vitest.config.ts already runs these over src/**, so a green `npm run check`
+  // never saw it: the gate does not build. The hook fires before
+  // importEntrypoints, so removing them here keeps them tests, not entrypoints.
+  hooks: {
+    "entrypoints:found"(_wxt, infos) {
+      for (let i = infos.length - 1; i >= 0; i--) {
+        if (/\.(test|spec)\.[jt]sx?$/.test(infos[i]!.inputPath)) infos.splice(i, 1);
+      }
+    },
+  },
   // Everything under public/ is copied verbatim to the output root, untouched by
   // the bundler. That is what public/vendor/bb needs: see scripts/vendor-bb.mjs.
   //

@@ -1,16 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
-import {
-  addressOf,
-  fund,
-  launch,
-  onboard,
-  send,
-  storage,
-  TOKEN,
-  waitForFunded,
-} from "./harness";
+import { addressOf, fund, launch, onboard, send, storage, TOKEN, waitForFunded } from "./harness";
 import { launchWallet } from "../support/extension";
 import { Wallet, WAITS, openMoveAction } from "../support/wallet";
 
@@ -77,14 +68,18 @@ test("a wallet that lost its openings gets them back from the archive", async ()
     await waitForReview(page);
     await page.getByRole("button", { name: "Approve" }).click();
     await expect(page.getByText("Transaction successful")).toBeVisible({ timeout: 300_000 });
-    await expect(page.getByRole("button", { name: "Private pocket" })).toBeVisible({ timeout: 180_000 });
+    await expect(page.getByRole("button", { name: "Private pocket" })).toBeVisible({
+      timeout: 180_000,
+    });
 
     await page.getByRole("button", { name: "Shield" }).click();
     await page.getByRole("textbox", { name: "Amount" }).fill("25");
     await page.getByRole("button", { name: "Continue" }).click();
     await waitForReview(page);
     await page.getByRole("button", { name: "Approve" }).click();
-    await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 600_000 });
+    await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({
+      timeout: 600_000,
+    });
 
     // No second navigation: the private-pocket read goes to the worker, which is
     // the same thing the screen calls. Clicking through again only adds a way
@@ -95,9 +90,13 @@ test("a wallet that lost its openings gets them back from the archive", async ()
     const total = (p?: { spendable?: string; receiving?: string }) =>
       Number(p?.spendable ?? "0") + Number(p?.receiving ?? "0");
     const pocket = async () =>
-      total((await send<{ spendable?: string; receiving?: string }>(page, {
-        type: "privatePocket",
-      })).data);
+      total(
+        (
+          await send<{ spendable?: string; receiving?: string }>(page, {
+            type: "privatePocket",
+          })
+        ).data,
+      );
 
     // POLLED, not read once. "PUBLIC POCKET" is back on screen when the flow
     // returns, which is not the same instant the merge is confirmed and its
@@ -140,21 +139,27 @@ test("a wallet that lost its openings gets them back from the archive", async ()
       // Driven by the button's own name rather than the shared helper's
       // /private pocket/i locator, which did not resolve against this page.
       await payer.page.getByRole("button", { name: "Set up private pocket" }).click();
-      await expect(payer.page.getByText(/Private pocket not set up/)).toBeVisible({ timeout: 120_000 });
+      await expect(payer.page.getByText(/Private pocket not set up/)).toBeVisible({
+        timeout: 120_000,
+      });
       await openMoveAction(payer.page, "Set up the private pocket");
       await waitForReview(payer.page);
       await payer.page.getByRole("button", { name: "Approve" }).click();
       await expect(payer.page.getByText("Transaction successful")).toBeVisible({
         timeout: 300_000,
       });
-      await expect(payer.page.getByRole("button", { name: "Private pocket" })).toBeVisible({ timeout: 180_000 });
+      await expect(payer.page.getByRole("button", { name: "Private pocket" })).toBeVisible({
+        timeout: 180_000,
+      });
 
       await payer.page.getByRole("button", { name: "Shield" }).click();
       await payer.page.getByRole("textbox", { name: "Amount" }).fill("30");
       await payer.page.getByRole("button", { name: "Continue" }).click();
       await waitForReview(payer.page);
       await payer.page.getByRole("button", { name: "Approve" }).click();
-      await expect(payer.page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 600_000 });
+      await expect(payer.page.getByRole("button", { name: "Public pocket" })).toBeVisible({
+        timeout: 600_000,
+      });
 
       // Reloaded: Home decides between "Set up" and "Open" from a status it
       // read before this wallet had a private pocket, and coming back from the
@@ -188,7 +193,6 @@ test("a wallet that lost its openings gets them back from the archive", async ()
       })
       .toBe(shielded + received);
 
-
     // Everything above is on chain now. Ingest it into a throwaway archive, the
     // same way an operator would, with the real backfill against real RPC.
     // Backfilled in a LOOP, until the archive actually holds the merge.
@@ -208,8 +212,7 @@ test("a wallet that lost its openings gets them back from the archive", async ()
       });
     const servedTypes = async (): Promise<string[]> => {
       backfill();
-      const url =
-        `${ARCHIVE}/v1/tokens/${TOKEN}/accounts/${address}/events?limit=200`;
+      const url = `${ARCHIVE}/v1/tokens/${TOKEN}/accounts/${address}/events?limit=200`;
       const r = (await (await fetch(url)).json()) as { events: { event_type: string }[] };
       return r.events.map((e) => e.event_type);
     };
@@ -228,10 +231,7 @@ test("a wallet that lost its openings gets them back from the archive", async ()
     // THE DESTRUCTIVE STEP. This is the situation the feature exists for: the
     // commitments are on chain, the openings are gone, and only a replay can
     // reproduce them.
-    await page.evaluate(
-      (key) => chrome.storage.local.remove(key),
-      openingsKey,
-    );
+    await page.evaluate((key) => chrome.storage.local.remove(key), openingsKey);
     expect(Object.keys(await storage(page)), "the openings must actually be gone").not.toContain(
       openingsKey,
     );

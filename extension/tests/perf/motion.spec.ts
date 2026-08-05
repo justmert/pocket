@@ -79,7 +79,10 @@ test("with reduced motion asked for, the wait spinner is slowed and NOT frozen",
   });
 
   console.log(`  reduced-motion spinner: ${JSON.stringify(seen)}`);
-  expect(seen.count, "the wait indicator must still be animated under reduced motion").toBeGreaterThan(0);
+  expect(
+    seen.count,
+    "the wait indicator must still be animated under reduced motion",
+  ).toBeGreaterThan(0);
   expect(seen.states, "a paused animation is a frozen spinner").toEqual(["running"]);
   for (const d of seen.durations) {
     expect(typeof d, "the animation must have a real duration").toBe("number");
@@ -87,13 +90,15 @@ test("with reduced motion asked for, the wait spinner is slowed and NOT frozen",
       d as number,
       "0.001ms is a revolution per frame: that is the frozen-spinner regression",
     ).toBeGreaterThanOrEqual(SPIN_MIN_MS);
-    expect(d as number, "slower than this and a glance cannot tell it is moving").toBeLessThanOrEqual(
-      SPIN_MAX_MS,
-    );
+    expect(
+      d as number,
+      "slower than this and a glance cannot tell it is moving",
+    ).toBeLessThanOrEqual(SPIN_MAX_MS);
   }
-  expect(seen.iterations, "a wait indicator that stops before the wait does is worse than none").toEqual([
-    "infinite",
-  ]);
+  expect(
+    seen.iterations,
+    "a wait indicator that stops before the wait does is worse than none",
+  ).toEqual(["infinite"]);
 
   // And it must actually be TURNING, not merely declared as animated. Read at
   // two points of the animation's own timeline rather than after a sleep, so
@@ -165,9 +170,10 @@ test("without reduced motion, the press feedback and the spinner keep their norm
   // the two tests would be measuring nothing.
   for (const d of durations) {
     const first = Number((d.split(",")[0] ?? "").replace("s", ""));
-    expect(first, "press feedback exists when the user has not asked for less motion").toBeGreaterThan(
-      0.01,
-    );
+    expect(
+      first,
+      "press feedback exists when the user has not asked for less motion",
+    ).toBeGreaterThan(0.01);
   }
 });
 
@@ -199,7 +205,9 @@ test("no animation stands between a press and the screen it opens", async ({ wal
   const p = await read(wallet.page);
 
   expect(at(p, "sendScreen"), "the Send screen must have been painted").toBeGreaterThan(0);
-  console.log(`  click to the frame carrying the Send screen: ${(at(p, "sendScreen") - t0).toFixed(1)}ms`);
+  console.log(
+    `  click to the frame carrying the Send screen: ${(at(p, "sendScreen") - t0).toFixed(1)}ms`,
+  );
   expect(
     at(p, "sendScreen") - t0,
     "the next screen must arrive on the next frame, not after a transition",
@@ -230,9 +238,7 @@ test("scrolling a screen taller than the popup stays smooth", async ({ wallet })
   const scroller = () =>
     wallet.page.evaluate(() => {
       const root = document.querySelector("[role='dialog']") ?? document.body;
-      const el = [...root.querySelectorAll("div")].find(
-        (d) => d.scrollHeight > d.clientHeight + 8,
-      );
+      const el = [...root.querySelectorAll("div")].find((d) => d.scrollHeight > d.clientHeight + 8);
       if (!el) return null;
       const r = el.getBoundingClientRect();
       return {
@@ -262,6 +268,8 @@ test("scrolling a screen taller than the popup stays smooth", async ({ wallet })
   const p = await read(wallet.page);
   const during = framesBetween(p.frames, t0, t1);
   expect(during.length, "frames must have been painted during the scroll").toBeGreaterThan(5);
-  console.log(`  scrolled ${after}px of ${JSON.stringify(before)}, ${during.length} frames, worst gap ${longestFrameGap(during).toFixed(1)}ms`);
+  console.log(
+    `  scrolled ${after}px of ${JSON.stringify(before)}, ${during.length} frames, worst gap ${longestFrameGap(during).toFixed(1)}ms`,
+  );
   expect(longestFrameGap(during), "the popup dropped frames while scrolling").toBeLessThan(100);
 });

@@ -58,7 +58,9 @@ test("the actions menu opens the swap and cross-chain screens", async ({ wallet 
   // CCTP inbound: source chain + burn tx hash field.
   await openMenu();
   await page.getByRole("menuitem", { name: "Claim from a chain", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Claim from a chain", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Claim from a chain", exact: true }),
+  ).toBeVisible();
   await expect(page.getByLabel("Burn transaction hash", { exact: true })).toBeVisible();
   await back();
 });

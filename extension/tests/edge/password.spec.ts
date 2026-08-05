@@ -37,7 +37,7 @@ async function createWith(page: Page, password: string): Promise<void> {
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: SLOW });
   await page.getByRole("button", { name: "Show the phrase" }).click();
-    const shownWords = await page
+  const shownWords = await page
     .locator("span")
     .filter({ hasText: /^\d+\.\s\w+\s*$/ })
     .allInnerTexts();

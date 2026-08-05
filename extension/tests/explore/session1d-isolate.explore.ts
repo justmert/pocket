@@ -40,7 +40,8 @@ test("session 1d: which error escapes the allowlist", async ({ wallet, harness }
       new Promise<string>((res) => {
         chrome.runtime.sendMessage(
           { type: "buildPrivateOp", op: { kind: "transfer", to, amount: "1" } },
-          (r: { ok: boolean; error?: string }) => res(r?.ok ? "(it succeeded)" : (r?.error ?? "(no answer)")),
+          (r: { ok: boolean; error?: string }) =>
+            res(r?.ok ? "(it succeeded)" : (r?.error ?? "(no answer)")),
         );
       }),
     [TO] as const,

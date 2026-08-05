@@ -66,7 +66,7 @@ test("creating a wallet twice in one gesture leaves one wallet, and the phrase o
     .map((c) => c.replace(/^\d+\.\s*/, "").trim())
     .join(" ");
 
-    const shownWords = await page
+  const shownWords = await page
     .locator("span")
     .filter({ hasText: /^\d+\.\s\w+\s*$/ })
     .allInnerTexts();
@@ -88,7 +88,9 @@ test("creating a wallet twice in one gesture leaves one wallet, and the phrase o
     await other.getByLabel("Recovery phrase").fill(phrase);
     await other.getByLabel("New password", { exact: true }).fill(PASSWORD);
     await other.getByRole("button", { name: "Restore wallet" }).click();
-    await expect(other.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
+    await expect(other.getByRole("button", { name: "Public pocket" })).toBeVisible({
+      timeout: SLOW,
+    });
     expect(
       await receiveAddress(other),
       "the phrase shown at backup must restore the account this device kept",
@@ -191,8 +193,7 @@ test("confirming a payment twice in one gesture sends it once and shows the rece
         // working. it carries the four step names once the worker is naming
         // phases and the operation's own description while it is not, so both
         // are what "still working" looks like.
-        const working =
-          body.includes("Prepare") || body.includes("Signing and submitting");
+        const working = body.includes("Prepare") || body.includes("Signing and submitting");
         return working ? "working" : "settled";
       },
       { timeout: SLOW * 5, message: "the wallet never finished submitting" },
@@ -245,7 +246,9 @@ test("erasing and restoring twice in one gesture restores once", async ({ wallet
 
   await clickTwiceInOneTask(page, "Erase and restore");
 
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW * 2 });
+  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({
+    timeout: SLOW * 2,
+  });
   // Same account, and the new password opens it. A second erase landing after
   // the first restore would leave a vault the new password does not match, or
   // no vault at all.

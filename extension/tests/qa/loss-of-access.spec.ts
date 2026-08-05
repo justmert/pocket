@@ -63,7 +63,8 @@ function bundleFiles(): { name: string; text: string }[] {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
-      else if (entry.name.endsWith(".js")) out.push({ name: full, text: readFileSync(full, "utf8") });
+      else if (entry.name.endsWith(".js"))
+        out.push({ name: full, text: readFileSync(full, "utf8") });
     }
   };
   walk(EXTENSION_PATH);
@@ -83,7 +84,9 @@ function bundleFiles(): { name: string; text: string }[] {
 async function workerStorage(page: Page, ctx: BrowserContext): Promise<Record<string, unknown>> {
   const [worker] = ctx.serviceWorkers();
   if (!worker) return storage(page);
-  const raw = await worker.evaluate(async () => JSON.stringify(await chrome.storage.local.get(null)));
+  const raw = await worker.evaluate(async () =>
+    JSON.stringify(await chrome.storage.local.get(null)),
+  );
   return JSON.parse(raw) as Record<string, unknown>;
 }
 
@@ -130,9 +133,13 @@ async function tryAsk(
  * this loudly instead of planting something the wallet quietly ignores.
  */
 async function sealLikeVault(dek: Uint8Array, value: unknown, v: number): Promise<Sealed> {
-  const key = await crypto.subtle.importKey("raw", dek as unknown as ArrayBuffer, "AES-GCM", false, [
-    "encrypt",
-  ]);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    dek as unknown as ArrayBuffer,
+    "AES-GCM",
+    false,
+    ["encrypt"],
+  );
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = await crypto.subtle.encrypt(
     {
@@ -193,18 +200,16 @@ function confidentialAccountScVal(a: {
 }): string {
   const field = (name: string, val: xdr.ScVal) =>
     new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(name), val });
-  return xdr.ScVal
-    .scvMap([
-      field("auditor_id", xdr.ScVal.scvU32(a.auditorId)),
-      field("receiving_commitment", pointScVal(a.receiving)),
-      field("spendable_commitment", pointScVal(a.spendable)),
-      // the wallet does not check these two against its own derivation on a
-      // read, and no test below spends, so the identity is enough to satisfy
-      // the decoder without pretending to be a key anyone holds.
-      field("spending_public_key", pointScVal(IDENTITY)),
-      field("viewing_public_key", pointScVal(IDENTITY)),
-    ])
-    .toXDR("base64");
+  return xdr.ScVal.scvMap([
+    field("auditor_id", xdr.ScVal.scvU32(a.auditorId)),
+    field("receiving_commitment", pointScVal(a.receiving)),
+    field("spendable_commitment", pointScVal(a.spendable)),
+    // the wallet does not check these two against its own derivation on a
+    // read, and no test below spends, so the identity is enough to satisfy
+    // the decoder without pretending to be a key anyone holds.
+    field("spending_public_key", pointScVal(IDENTITY)),
+    field("viewing_public_key", pointScVal(IDENTITY)),
+  ]).toXDR("base64");
 }
 
 /**
@@ -251,7 +256,11 @@ async function presentConfidentialAccount(
       const id = c?.id ?? 1;
       if (c?.method === "getEvents") {
         // no cursor, so `findInbound` stops after one page rather than paging.
-        return { jsonrpc: "2.0", id, result: { events: [], latestLedger: FAKE_LEDGER, oldestLedger: 1 } };
+        return {
+          jsonrpc: "2.0",
+          id,
+          result: { events: [], latestLedger: FAKE_LEDGER, oldestLedger: 1 },
+        };
       }
       if (c?.method === "simulateTransaction") {
         const tx = c.params?.transaction ?? "";
@@ -349,7 +358,8 @@ test("both erase doors say the private balances cannot be rebuilt, in the same w
   // The sentence a build with no archive is obliged to say. Read from the two
   // screens that reach the irreversible act, because the two used to disagree
   // and the softer wording was on the door more people reach.
-  const CANNOT = /Rebuilding them needs a durable archive, and this build has none configured, so they cannot be rebuilt yet\./;
+  const CANNOT =
+    /Rebuilding them needs a durable archive, and this build has none configured, so they cannot be rebuilt yet\./;
 
   await wallet.nav("Settings").click();
   await page.getByRole("button", { name: "Erase this wallet" }).click();
@@ -398,7 +408,10 @@ test("a private pocket with no record on this device says the record cannot be r
   );
   // And it must not put a number next to that sentence. A figure here would be
   // a claim about money the wallet cannot move.
-  expect(pocket.spendable, "an unreadable balance must not be rendered as a figure").toBeUndefined();
+  expect(
+    pocket.spendable,
+    "an unreadable balance must not be rendered as a figure",
+  ).toBeUndefined();
 });
 
 test("rebuildFromHistory refuses, names the archive, and writes nothing", async ({
@@ -597,10 +610,7 @@ test("the phrase alone reproduces the account on a clean device, and does not br
     // private record did NOT, and cannot, because only the old device ever held
     // it. This assertion is what makes the copy on the erase screens a fact
     // rather than a caution.
-    expect(
-      disk.openings,
-      "no opening can survive to a device that never held one",
-    ).toBeNull();
+    expect(disk.openings, "no opening can survive to a device that never held one").toBeNull();
     expect(
       Object.keys(disk.all).filter((k) => k.startsWith(OPENINGS_PREFIX)),
       "a restored device starts with no record of any confidential balance",
@@ -713,7 +723,11 @@ for (const c of DAMAGE) {
     expect(
       Object.keys(after).sort(),
       "a refused unlock must not add or remove stored records",
-    ).toEqual(Object.keys(before).filter((k) => !(c.drop ?? []).includes(k)).sort());
+    ).toEqual(
+      Object.keys(before)
+        .filter((k) => !(c.drop ?? []).includes(k))
+        .sort(),
+    );
   });
 }
 
@@ -753,10 +767,9 @@ test("a damaged openings record is refused, never read as a zero balance", async
   const answer = await tryAsk(harness.popup, { type: "privatePocket" });
   if (answer.ok) {
     const pocket = answer.data as { state: string; spendable?: string };
-    expect(
-      pocket.state,
-      "an unreadable record must not be reported as a working pocket",
-    ).not.toBe("ready");
+    expect(pocket.state, "an unreadable record must not be reported as a working pocket").not.toBe(
+      "ready",
+    );
     expect(
       pocket.spendable,
       "a record that cannot be opened must not produce a figure",
@@ -803,7 +816,10 @@ test("a stored address that no longer matches the vault is repaired by one unloc
     mnemonic: phrase,
     password: "another-strong-password",
   });
-  expect(refused.ok, "a phrase that does not match the recorded account must not erase it").toBeFalsy();
+  expect(
+    refused.ok,
+    "a phrase that does not match the recorded account must not erase it",
+  ).toBeFalsy();
 
   // The documented repair: one unlock rewrites the address from the seed the
   // vault just yielded. Without it the corruption would be permanent.
@@ -1020,15 +1036,17 @@ test("received funds are counted separately, and the wallet refuses to spend the
   // have built the transaction is not the claim the receiving card makes.
   const spend = await tryAsk(harness.popup, {
     type: "buildPrivateOp",
-    op: { kind: "transfer", to: "GBHEDQ5XUXCWK5I32NVDSGAL6BIX2X7DUWQYC2MLXV27N44JLDQFGT73", amount: "1" },
+    op: {
+      kind: "transfer",
+      to: "GBHEDQ5XUXCWK5I32NVDSGAL6BIX2X7DUWQYC2MLXV27N44JLDQFGT73",
+      amount: "1",
+    },
   });
   expect(spend.ok, "received funds must not be spendable before a merge").toBeFalsy();
   expect(spend.error, "the refusal must name the spendable balance it measured against").toMatch(
     /more than your spendable balance of 0\.0000000 XLM/i,
   );
-  expect(spend.error, "and must say what releases the rest").toMatch(
-    /made spendable first/i,
-  );
+  expect(spend.error, "and must say what releases the rest").toMatch(/made spendable first/i);
 
   // Moving it out is spending it too, and the same money must be just as stuck
   // by that route. This is the second door on the same room.
@@ -1109,7 +1127,10 @@ test("a merge that fails to submit leaves the received funds exactly where they 
   ).toBe(true);
   const handle = (built.data as { handle: string }).handle;
   const sent = await tryAsk(harness.popup, { type: "confirmPrivateOp", handle });
-  expect(sent.ok, "a submission that never reached the network must not report success").toBeFalsy();
+  expect(
+    sent.ok,
+    "a submission that never reached the network must not report success",
+  ).toBeFalsy();
 
   // Whatever happened, the money is still findable. The openings blob is the
   // only thing that can reopen the commitment, so an unchanged blob is the

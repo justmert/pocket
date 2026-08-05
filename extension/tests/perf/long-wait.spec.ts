@@ -106,7 +106,9 @@ test("the wallet never goes quiet during a private operation: something is alway
   await fundedWallet(wallet);
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
+    timeout: WAITS.ledgerRead,
+  });
 
   await arm(wallet.page);
   await openMoveAction(wallet.page, "Set up the private pocket");
@@ -154,7 +156,9 @@ test("the short wait the wallet already has does not leave the screen unchanged 
   await wallet.page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await wallet.page.getByLabel("Confirm password").fill(PASSWORD);
   await wallet.page.getByRole("button", { name: "Create wallet" }).click();
-  await expect(wallet.page.getByText("Save your recovery phrase")).toBeVisible({ timeout: WAITS.onboarding });
+  await expect(wallet.page.getByText("Save your recovery phrase")).toBeVisible({
+    timeout: WAITS.onboarding,
+  });
   const p = await read(wallet.page);
   await disarm(wallet.page);
 
@@ -163,7 +167,9 @@ test("the short wait the wallet already has does not leave the screen unchanged 
   const during = p.samples.filter((s) => s.t >= from && s.t <= to);
   expect(to - from, "there must be a wait to inspect").toBeGreaterThan(300);
   expect(during.length, "the wait must have been sampled").toBeGreaterThan(1);
-  console.log(`  vault creation ${(to - from).toFixed(0)}ms, longest unchanged screen ${longestStaticMs(during).toFixed(0)}ms`);
+  console.log(
+    `  vault creation ${(to - from).toFixed(0)}ms, longest unchanged screen ${longestStaticMs(during).toFixed(0)}ms`,
+  );
   expect(
     longestStaticMs(during),
     "scrypt under one static label still resolves inside the bound",
@@ -178,7 +184,9 @@ test("the build-and-prove wait does not leave the screen unchanged for seconds",
   await fundedWallet(wallet);
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
+    timeout: WAITS.ledgerRead,
+  });
 
   await arm(wallet.page);
   const t0 = await now(wallet.page);
@@ -194,7 +202,9 @@ test("the build-and-prove wait does not leave the screen unchanged for seconds",
   // offscreen document and simulates against live RPC.
   expect(t1 - t0, "this is supposed to be the slow path").toBeGreaterThan(1_000);
 
-  console.log(`  build+prove ${(t1 - t0).toFixed(0)}ms, longest unchanged screen ${longestStaticMs(p.samples).toFixed(0)}ms, ${screens(p.samples).length} distinct screen(s)`);
+  console.log(
+    `  build+prove ${(t1 - t0).toFixed(0)}ms, longest unchanged screen ${longestStaticMs(p.samples).toFixed(0)}ms, ${screens(p.samples).length} distinct screen(s)`,
+  );
   expect(
     longestStaticMs(p.samples),
     "the user watched an unchanging screen while the wallet ran several distinct phases",
@@ -209,7 +219,9 @@ test("the wait after Approve does not leave the screen unchanged for seconds", a
   await fundedWallet(wallet);
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
+    timeout: WAITS.ledgerRead,
+  });
   await openMoveAction(wallet.page, "Set up the private pocket");
   await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
 
@@ -223,10 +235,13 @@ test("the wait after Approve does not leave the screen unchanged for seconds", a
   const p = await read(wallet.page);
   await disarm(wallet.page);
 
-  expect(t1 - t0, "simulate, sign, submit and confirm cannot beat one ledger close").toBeGreaterThan(
-    1_000,
+  expect(
+    t1 - t0,
+    "simulate, sign, submit and confirm cannot beat one ledger close",
+  ).toBeGreaterThan(1_000);
+  console.log(
+    `  approve to receipt ${(t1 - t0).toFixed(0)}ms, longest unchanged screen ${longestStaticMs(p.samples).toFixed(0)}ms, ${screens(p.samples).length} distinct screen(s)`,
   );
-  console.log(`  approve to receipt ${(t1 - t0).toFixed(0)}ms, longest unchanged screen ${longestStaticMs(p.samples).toFixed(0)}ms, ${screens(p.samples).length} distinct screen(s)`);
   expect(
     longestStaticMs(p.samples),
     "signing, submitting and waiting for the ledger are three phases under one unchanging line",
@@ -239,7 +254,9 @@ test("the wait after Approve says the wallet is waiting for the ledger", async (
   await fundedWallet(wallet);
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
+    timeout: WAITS.ledgerRead,
+  });
   await openMoveAction(wallet.page, "Set up the private pocket");
   await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
 
@@ -302,7 +319,9 @@ test("the build wait does not sign and submit while it says it is only setting u
   const address = await fundedWallet(wallet);
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
+    timeout: WAITS.ledgerRead,
+  });
 
   // the disclosure lives with the button, and the button lives in the move
   // sheet, so the sheet is what has to be open for either to be judged.

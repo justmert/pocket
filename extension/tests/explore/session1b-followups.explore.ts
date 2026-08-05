@@ -25,7 +25,9 @@ async function look(page: Page, step: string): Promise<string> {
   mkdirSync(OUT, { recursive: true });
   const slug = step.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
   writeFileSync(join(OUT, `${slug}.png`), await page.screenshot());
-  const body = await page.evaluate(() => (document.body.innerText ?? "").replace(/\n{2,}/g, "\n").trim());
+  const body = await page.evaluate(() =>
+    (document.body.innerText ?? "").replace(/\n{2,}/g, "\n").trim(),
+  );
   writeFileSync(join(OUT, `${slug}.txt`), `STEP: ${step}\n\n${body}\n`);
   return body;
 }

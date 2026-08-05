@@ -25,17 +25,19 @@ import { describe, it, expect, afterEach } from "vitest";
 import { rpc } from "@stellar/stellar-sdk";
 import { Address, xdr, scValToNative } from "@stellar/stellar-sdk/base";
 import "../../src/lib/polyfill";
-import { findInbound, creditInbound, openInbound, InboundCreditError } from "../../src/core/inbound";
+import {
+  findInbound,
+  creditInbound,
+  openInbound,
+  InboundCreditError,
+} from "../../src/core/inbound";
 import { withRequestDeadline } from "../../src/core/chain/http";
 import { describeError } from "../../src/core/dispatch";
 import { G, H, commit, decodePoint, encodePoint, scalarMul } from "../../src/core/crypto/grumpkin";
 import { sharedScalar, encryptAmount, transferBlinding } from "../../src/core/crypto/derive";
 import { R, toBytesBE, fromBytesBE } from "../../src/core/crypto/field";
 import { FaultServer, DEAD_ORIGIN, rpcOk, rpcError, type Fault } from "./_harness/faults";
-import {
-  LIVE_TRANSFER_VALUE_B64,
-  LIVE_TRANSFER_FIELDS,
-} from "./_fixtures/live-transfer-event";
+import { LIVE_TRANSFER_VALUE_B64, LIVE_TRANSFER_FIELDS } from "./_fixtures/live-transfer-event";
 
 const ACCOUNT = "GBZXN7PIRZGNMHGA7MUUUF4GWPY5AYPV6LY4UV2GL6VJGIQRXFDNMADI";
 const SENDER = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7";
@@ -167,7 +169,12 @@ describe("a page that did not answer is not an empty page", () => {
   const unanswered: [string, Fault][] = [
     [
       "a result with no events field at all",
-      rpcOk({ latestLedger: 1_000, oldestLedger: 1, latestLedgerCloseTime: "1", oldestLedgerCloseTime: "1" }),
+      rpcOk({
+        latestLedger: 1_000,
+        oldestLedger: 1,
+        latestLedgerCloseTime: "1",
+        oldestLedgerCloseTime: "1",
+      }),
     ],
     [
       "events: null",
@@ -279,8 +286,8 @@ describe("the decoder is pinned against the contract, not against our encoder", 
   // `_fixtures/live-transfer-event.ts` is a real event body off the deployed
   // contract. It cannot drift from the contract because it came from it.
 
-  const live = () => scValToNative(xdr.ScVal.fromXDR(LIVE_TRANSFER_VALUE_B64, "base64")) as
-    Record<string, unknown>;
+  const live = () =>
+    scValToNative(xdr.ScVal.fromXDR(LIVE_TRANSFER_VALUE_B64, "base64")) as Record<string, unknown>;
 
   it("publishes exactly the eight fields, at the widths we decode", () => {
     const body = live();

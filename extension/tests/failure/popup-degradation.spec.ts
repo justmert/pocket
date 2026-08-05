@@ -83,14 +83,16 @@ async function onboard(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: 60_000 });
   await page.getByRole("button", { name: "Show the phrase" }).click();
-    const shownWords = await page
+  const shownWords = await page
     .locator("span")
     .filter({ hasText: /^\d+\.\s\w+\s*$/ })
     .allInnerTexts();
   const shownPhraseText = shownWords.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
   await answerBackupCheck(page, shownPhraseText);
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({
+    timeout: 30_000,
+  });
 }
 
 /** Every digit-shaped thing on screen, so a fabricated balance cannot hide. */

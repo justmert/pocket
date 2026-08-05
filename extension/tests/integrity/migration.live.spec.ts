@@ -167,4 +167,3 @@ test("openings written by a previous version still open the balance the contract
     rmSync(at, { recursive: true, force: true });
   }
 });
-

@@ -28,7 +28,10 @@ test("every screen that sets a password says what the password is not", async ({
   await expect(page.getByText(DEVICE_LOCAL), "the create form states it").toBeVisible();
 
   // 2. import.
-  await page.getByRole("button", { name: /Back|Cancel/ }).first().click();
+  await page
+    .getByRole("button", { name: /Back|Cancel/ })
+    .first()
+    .click();
   await page.getByRole("button", { name: /recovery phrase/i }).click();
   await expect(
     page.getByText(DEVICE_LOCAL),

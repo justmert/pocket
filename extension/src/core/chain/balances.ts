@@ -255,7 +255,17 @@ export function formatAmount(raw: bigint, decimals = 7): string {
 
 /** Parse a decimal string into stroops. Rejects excess precision rather than rounding. */
 export function parseAmount(text: string): bigint {
-  const m = /^(-?)(\d+)(?:\.(\d*))?$/.exec(text.trim());
+  // The whole part is OPTIONAL, so ".5" parses as 0.5.
+  //
+  // It required at least one digit before the point, and a keypad that offers
+  // "." as its own key invites exactly that: the wallet answered "That is not
+  // an amount Pocket can read. Use digits and at most one decimal point" about
+  // a string that is digits and one decimal point. Nothing downstream cares:
+  // this returns stroops either way.
+  //
+  // "." and "-" alone are still refused, which is what the digit count below
+  // enforces: the point is to accept a shorthand, not to accept nothing.
+  const m = /^(-?)(\d*)(?:\.(\d*))?$/.exec(text.trim());
   // The message is authored and interpolates NOTHING. Allowlisting a name puts
   // the whole message on screen, so echoing `text` back rendered 100,039
   // characters of whatever was typed into a 360px popup. Repeating the typo is
@@ -265,11 +275,16 @@ export function parseAmount(text: string): bigint {
       "That is not an amount Pocket can read. Use digits and at most one decimal point.",
     );
   }
-  const [, sign, whole, frac = ""] = m;
+  const [, sign, whole = "", frac = ""] = m;
+  if (whole.length + frac.length === 0) {
+    throw new InvalidAmountError(
+      "That is not an amount Pocket can read. Use digits and at most one decimal point.",
+    );
+  }
   if (frac.length > 7) {
     throw new InvalidAmountError("Amounts go to 7 decimal places and that has more.");
   }
-  const raw = BigInt(whole as string) * STROOPS_PER_UNIT + BigInt(frac.padEnd(7, "0") || "0");
+  const raw = BigInt(whole || "0") * STROOPS_PER_UNIT + BigInt(frac.padEnd(7, "0") || "0");
   return sign === "-" ? -raw : raw;
 }
 

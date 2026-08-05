@@ -135,7 +135,9 @@ test("the worker dying mid-poll leaves the hash on disk and the wallet never res
     await expect(reopened.getByText(/Do not send it again/)).toBeVisible();
 
     await reopened.getByRole("button", { name: "Check now" }).click();
-    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 120_000 });
+    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({
+      timeout: 120_000,
+    });
     expect(await storageKeys(reopened)).not.toContain("pocket.inflight");
 
     // The thing this whole mechanism exists for.
@@ -322,7 +324,9 @@ test("reloading the popup mid-payment does not send it again", async () => {
     blindPolls = false;
 
     await page.getByRole("button", { name: "Check now" }).click();
-    await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({
+      timeout: 120_000,
+    });
 
     const paid = (await ledgerPayments(address)).filter((p) => p.to === to);
     expect(paid, "a refresh must not turn one payment into two").toHaveLength(1);

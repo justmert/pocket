@@ -73,9 +73,7 @@ test("the yield row states the configuration it is actually in", async ({ wallet
   }
 
   // Configured. Everything below came off the live API a moment ago.
-  expect(y.vault, "an available position must name the vault it is in").toMatch(
-    /^C[A-Z2-7]{55}$/,
-  );
+  expect(y.vault, "an available position must name the vault it is in").toMatch(/^C[A-Z2-7]{55}$/);
   // describeApy's exact sentence. The window is labelled because the API
   // reports different windows on different endpoints.
   //

@@ -21,7 +21,16 @@
 import { scrypt } from "@noble/hashes/scrypt.js";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha512 } from "@noble/hashes/sha2.js";
-import { Account, Address, BASE_FEE, Contract, Keypair, TransactionBuilder, nativeToScVal, xdr } from "@stellar/stellar-sdk/base";
+import {
+  Account,
+  Address,
+  BASE_FEE,
+  Contract,
+  Keypair,
+  TransactionBuilder,
+  nativeToScVal,
+  xdr,
+} from "@stellar/stellar-sdk/base";
 import type { Page } from "@playwright/test";
 
 export const RPC_URL = "https://soroban-testnet.stellar.org";
@@ -100,17 +109,29 @@ function headerAad(h: VaultHeader): Uint8Array {
  * wallet rather than per assertion.
  */
 export async function unwrapDek(header: VaultHeader, password: string): Promise<Uint8Array> {
-  const kekRaw = scrypt(new TextEncoder().encode(password.normalize("NFKC")), b64.decode(header.salt), {
-    N: header.kdf.N,
-    r: header.kdf.r,
-    p: header.kdf.p,
-    dkLen: header.kdf.dkLen,
-  });
-  const kek = await crypto.subtle.importKey("raw", kekRaw as unknown as ArrayBuffer, "AES-GCM", false, [
-    "decrypt",
-  ]);
+  const kekRaw = scrypt(
+    new TextEncoder().encode(password.normalize("NFKC")),
+    b64.decode(header.salt),
+    {
+      N: header.kdf.N,
+      r: header.kdf.r,
+      p: header.kdf.p,
+      dkLen: header.kdf.dkLen,
+    },
+  );
+  const kek = await crypto.subtle.importKey(
+    "raw",
+    kekRaw as unknown as ArrayBuffer,
+    "AES-GCM",
+    false,
+    ["decrypt"],
+  );
   const pt = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: buf(b64.decode(header.wrap.iv)), additionalData: buf(headerAad(header)) },
+    {
+      name: "AES-GCM",
+      iv: buf(b64.decode(header.wrap.iv)),
+      additionalData: buf(headerAad(header)),
+    },
     kek,
     buf(b64.decode(header.wrap.ct)),
   );
@@ -131,9 +152,13 @@ function buf(u: Uint8Array): ArrayBuffer {
 
 /** Open a payload sealed under the DEK. Throws on a wrong key or tampering. */
 export async function openSealed<T>(dek: Uint8Array, sealed: Sealed): Promise<T> {
-  const key = await crypto.subtle.importKey("raw", dek as unknown as ArrayBuffer, "AES-GCM", false, [
-    "decrypt",
-  ]);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    dek as unknown as ArrayBuffer,
+    "AES-GCM",
+    false,
+    ["decrypt"],
+  );
   const pt = await crypto.subtle.decrypt(
     {
       name: "AES-GCM",
@@ -269,7 +294,9 @@ export function commitmentOf(o: { value: bigint; randomness: bigint }): Point {
 
 export const samePoint = (a: Point, b: Point): boolean => a.x === b.x && a.y === b.y;
 export const showPoint = (p: Point): string =>
-  isZero(p) ? "IDENTITY" : `${p.x.toString(16).padStart(64, "0")}:${p.y.toString(16).padStart(64, "0")}`;
+  isZero(p)
+    ? "IDENTITY"
+    : `${p.x.toString(16).padStart(64, "0")}:${p.y.toString(16).padStart(64, "0")}`;
 
 // ------------------------------------------------------------- the chain read
 
@@ -439,9 +466,7 @@ export async function storage(page: Page): Promise<Record<string, unknown>> {
 }
 
 /** The one opening blob this device holds, and the key it is under. */
-export function openingEntry(
-  all: Record<string, unknown>,
-): { key: string; sealed: Sealed } | null {
+export function openingEntry(all: Record<string, unknown>): { key: string; sealed: Sealed } | null {
   const key = Object.keys(all).find((k) => k.startsWith(OPENINGS_PREFIX));
   if (!key) return null;
   return { key, sealed: all[key] as Sealed };

@@ -132,7 +132,7 @@ test("a second install of the same phrase gets its own key, so neither device ca
     // the whole hazard: a fresh vault gets a fresh random DEK, so any blob left
     // behind by the first install is undecryptable forever by the second, and
     // it would sit exactly where the second install looks.
-    expect((other[ADDRESS_KEY] as string), "same phrase, same account").toBe(
+    expect(other[ADDRESS_KEY] as string, "same phrase, same account").toBe(
       first[ADDRESS_KEY] as string,
     );
 

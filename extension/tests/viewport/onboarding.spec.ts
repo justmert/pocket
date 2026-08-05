@@ -108,7 +108,9 @@ test("all 24 backup words and both buttons are reachable at every viewport", asy
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByLabel("Confirm password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create wallet" }).click();
-  await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: WAITS.onboarding });
+  await expect(page.getByText("Save your recovery phrase")).toBeVisible({
+    timeout: WAITS.onboarding,
+  });
   await page.getByRole("button", { name: "Show the phrase" }).click();
 
   for (const vp of VIEWPORTS) {

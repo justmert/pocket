@@ -16,7 +16,12 @@
 // thing that makes an on-chain commitment spendable, so a user who had ever been
 // paid privately and then lost local state could not recover the money, ever.
 import { describe, it, expect } from "vitest";
-import { replay, INITIAL_STATE, UnreplayableEventError, type ConfidentialEvent } from "../../src/core/sync";
+import {
+  replay,
+  INITIAL_STATE,
+  UnreplayableEventError,
+  type ConfidentialEvent,
+} from "../../src/core/sync";
 import { commit, scalarMul, H, equals, type Point } from "../../src/core/crypto/grumpkin";
 import {
   ephemeralScalar,
@@ -100,9 +105,9 @@ describe("a received payment replays when the archive supplies the invocation", 
     expect(out.receiving.value).toBe(42_500_000n);
     // And the opening it produced must actually open the published commitment,
     // or it is a number that cannot be spent.
-    expect(equals(commit(out.receiving.value, out.receiving.randomness), e.payload!.cTransfer)).toBe(
-      true,
-    );
+    expect(
+      equals(commit(out.receiving.value, out.receiving.randomness), e.payload!.cTransfer),
+    ).toBe(true);
   });
 
   it("accumulates several, in order", async () => {
@@ -169,10 +174,7 @@ describe("a received payment replays when the archive supplies the invocation", 
  *
  * (circuits/transfer/src/main.nr:42,48 and spender_transfer/src/main.nr:38,44)
  */
-function inboundSpenderTransfer(
-  amount: bigint,
-  opts: { ledger?: number } = {},
-): ConfidentialEvent {
+function inboundSpenderTransfer(amount: bigint, opts: { ledger?: number } = {}): ConfidentialEvent {
   const spenderVk = 0x1234567890abcdefn;
   const rE = ephemeralScalar(spenderVk, SIGMA);
   const RE = scalarMul(rE, H);
@@ -257,9 +259,10 @@ describe("the real event from the deployed contract", () => {
     // starts publishing c_transfer in the event, this test goes red and the
     // payload plumbing can be deleted.
     const { xdr, scValToNative } = await import("@stellar/stellar-sdk/base");
-    const body = scValToNative(
-      xdr.ScVal.fromXDR(LIVE_TRANSFER_VALUE_B64, "base64"),
-    ) as Record<string, unknown>;
+    const body = scValToNative(xdr.ScVal.fromXDR(LIVE_TRANSFER_VALUE_B64, "base64")) as Record<
+      string,
+      unknown
+    >;
     expect(Object.keys(body).sort()).toEqual([
       "b_tilde",
       "b_tilde_aud_s",

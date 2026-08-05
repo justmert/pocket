@@ -170,7 +170,10 @@ test.describe("an ordinary website, with the wallet installed", () => {
       await new Wallet(site.harness.popup).createWallet(PASSWORD);
 
       const res = (await ask(site.page, "getAddress")) as { error?: { message: string } };
-      expect(res.error, "an unlocked wallet handed its address to an unconnected site").toBeTruthy();
+      expect(
+        res.error,
+        "an unlocked wallet handed its address to an unconnected site",
+      ).toBeTruthy();
       expect(JSON.stringify(res)).not.toMatch(/G[A-Z2-7]{55}/);
       // And it says what to do, rather than failing silently.
       expect(res.error!.message).toMatch(/not connected|open pocket/i);

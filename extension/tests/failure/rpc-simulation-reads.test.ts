@@ -118,10 +118,7 @@ const GARBAGE: [string, Fault][] = [
     "an error reported as an object rather than a string",
     rpcOk({ latestLedger: 9, error: { code: -32000, message: "SECRET-RPC-STRING" } }),
   ],
-  [
-    "an error reported as a number",
-    rpcOk({ latestLedger: 9, error: 500 }),
-  ],
+  ["an error reported as a number", rpcOk({ latestLedger: 9, error: 500 })],
   ["a truncated body", { kind: "truncated", body: '{"jsonrpc":"2.0","id":1,"resu' }],
   ["a socket closed mid-body", { kind: "closeMidBody", body: '{"jsonrpc":"2.0","id":1,' }],
   ["a connection reset", { kind: "reset" }],

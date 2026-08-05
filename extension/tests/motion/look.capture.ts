@@ -62,5 +62,4 @@ test("home, funded, both pockets", async ({ wallet }) => {
   await page.getByRole("button", { name: "Continue" }).click();
   await page.waitForTimeout(2500);
   await page.screenshot({ path: `${OUT}/send-confirm.png` });
-
 });

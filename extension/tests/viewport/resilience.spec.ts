@@ -130,7 +130,10 @@ test("a mirrored reading order does not push anything off screen", async ({ wall
   // The address is the case that matters: it is the one string in the product
   // that must never be reordered, whatever direction the page reads in.
   await expectLayoutHolds(page, "receive mirrored");
-  const shown = await page.getByText(/^G[A-Z2-7]{55}$/).first().innerText();
+  const shown = await page
+    .getByText(/^G[A-Z2-7]{55}$/)
+    .first()
+    .innerText();
   expect(shown.replace(/\s/g, ""), "a mirrored page reordered an address").toMatch(
     /^G[A-Z2-7]{55}$/,
   );

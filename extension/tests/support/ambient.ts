@@ -66,13 +66,19 @@ export class Ambient {
     page.on("requestfailed", (r) => {
       const host = safeHost(r.url());
       if (host && !this.allowed(host)) {
-        this.violations.push({ kind: "unexpected-host", detail: `${host} (failed) ${r.url().slice(0, 120)}` });
+        this.violations.push({
+          kind: "unexpected-host",
+          detail: `${host} (failed) ${r.url().slice(0, 120)}`,
+        });
       }
     });
     page.on("request", (r) => {
       const host = safeHost(r.url());
       if (host && !this.allowed(host)) {
-        this.violations.push({ kind: "unexpected-host", detail: `${host} ${r.url().slice(0, 120)}` });
+        this.violations.push({
+          kind: "unexpected-host",
+          detail: `${host} ${r.url().slice(0, 120)}`,
+        });
       }
     });
   }
@@ -91,7 +97,9 @@ export class Ambient {
   /** every storage key written during the test, for the write-outside-expected check. */
   async recordStorage(worker: Worker): Promise<void> {
     try {
-      const keys = await worker.evaluate(async () => Object.keys(await chrome.storage.local.get(null)));
+      const keys = await worker.evaluate(async () =>
+        Object.keys(await chrome.storage.local.get(null)),
+      );
       for (const k of keys) this.storageKeys.add(k);
     } catch {
       // a torn-down worker has no storage to read, which is not a violation.
@@ -110,7 +118,9 @@ export class Ambient {
     const message = `ambient assertions tripped during "${testTitle}":\n${lines}`;
     if (mode === "report") {
       // eslint-disable-next-line no-console
-      console.log(`AMBIENT-REPORT ${JSON.stringify({ test: testTitle, violations: this.violations })}`);
+      console.log(
+        `AMBIENT-REPORT ${JSON.stringify({ test: testTitle, violations: this.violations })}`,
+      );
       return;
     }
     throw new Error(message);
@@ -120,7 +130,8 @@ export class Ambient {
 function safeHost(url: string): string | null {
   try {
     const u = new URL(url);
-    if (u.protocol === "chrome-extension:" || u.protocol === "data:" || u.protocol === "blob:") return null;
+    if (u.protocol === "chrome-extension:" || u.protocol === "data:" || u.protocol === "blob:")
+      return null;
     return u.hostname;
   } catch {
     return null;

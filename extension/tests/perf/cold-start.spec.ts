@@ -56,7 +56,9 @@ test("a popup opened on a dead service worker paints the wallet, and says it is 
   await expect(wallet.lockedNotice()).toBeVisible({ timeout: WAITS.ledgerRead });
 
   const p = await read(wallet.page);
-  console.log(`  cold shell ${at(p, "shell")?.toFixed(0)}ms, "Starting" ${at(p, "starting")?.toFixed(0)}ms`);
+  console.log(
+    `  cold shell ${at(p, "shell")?.toFixed(0)}ms, "Starting" ${at(p, "starting")?.toFixed(0)}ms`,
+  );
 
   // The first frame carrying the wallet's own name. Stamped inside the page on
   // the frame AFTER the DOM changed, so it is a painted frame rather than a
@@ -94,7 +96,9 @@ test("a cold service worker still reaches a usable password field within a bound
     await expect(wallet.lockedNotice()).toBeVisible({ timeout: WAITS.ledgerRead });
 
     const p = await read(wallet.page);
-    console.log(`  cold start ${i + 1}: shell ${at(p, "shell")?.toFixed(0)}ms, password field ${at(p, "locked")?.toFixed(0)}ms`);
+    console.log(
+      `  cold start ${i + 1}: shell ${at(p, "shell")?.toFixed(0)}ms, password field ${at(p, "locked")?.toFixed(0)}ms`,
+    );
     expect(
       at(p, "locked"),
       `cold start ${i + 1} of 3: the password field must be on screen`,
@@ -151,7 +155,9 @@ test("a slow ledger does not hold up the screen it is going to land on", async (
 
   await expect(wallet.money().first()).toBeVisible({ timeout: WAITS.ledgerRead });
   const p = await read(wallet.page);
-  console.log(`  home ${at(p, "home")?.toFixed(0)}ms, balance ${at(p, "balance")?.toFixed(0)}ms, RPC held ${HELD_MS}ms`);
+  console.log(
+    `  home ${at(p, "home")?.toFixed(0)}ms, balance ${at(p, "balance")?.toFixed(0)}ms, RPC held ${HELD_MS}ms`,
+  );
   expect(
     at(p, "balance") - at(p, "home"),
     "the balance must have landed on a screen that was already up",

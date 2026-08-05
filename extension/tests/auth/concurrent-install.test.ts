@@ -83,8 +83,9 @@ describe("two tabs creating a wallet at once", () => {
     const ok = results.filter((r) => r.status === "fulfilled");
     expect(ok).toHaveLength(1);
     expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
-    expect((results.find((r) => r.status === "rejected") as PromiseRejectedResult).reason)
-      .toBeInstanceOf(WalletExistsError);
+    expect(
+      (results.find((r) => r.status === "rejected") as PromiseRejectedResult).reason,
+    ).toBeInstanceOf(WalletExistsError);
   });
 
   it("the phrase it handed out owns the wallet that is installed", async () => {
@@ -127,10 +128,7 @@ describe("two tabs importing DIFFERENT phrases at once", () => {
     await c.init();
     const [a, b] = [generateMnemonic(wordlist, 256), generateMnemonic(wordlist, 256)];
 
-    const results = await Promise.allSettled([
-      c.import("tab one", a),
-      c.import("tab two", b),
-    ]);
+    const results = await Promise.allSettled([c.import("tab one", a), c.import("tab two", b)]);
     const fulfilled = results.filter(
       (r): r is PromiseFulfilledResult<{ address: string }> => r.status === "fulfilled",
     );
@@ -189,9 +187,9 @@ describe("create racing import", () => {
       expect(imported.value.address).toBe(storedAddress());
     }
     // And they cannot both be right.
-    expect(
-      [created, imported].filter((r) => r.status === "fulfilled").length,
-    ).toBeLessThanOrEqual(1);
+    expect([created, imported].filter((r) => r.status === "fulfilled").length).toBeLessThanOrEqual(
+      1,
+    );
   });
 });
 

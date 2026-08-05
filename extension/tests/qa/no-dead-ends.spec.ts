@@ -36,10 +36,19 @@ async function stubPocket(page: Page, pocket: Record<string, unknown> | null): P
 }
 
 /** every state in which there is nothing to send from. */
-const NOT_SPENDABLE = ["unavailable", "unfunded", "unregistered", "archived", "needsRecovery", "diverged"];
+const NOT_SPENDABLE = [
+  "unavailable",
+  "unfunded",
+  "unregistered",
+  "archived",
+  "needsRecovery",
+  "diverged",
+];
 
 for (const state of NOT_SPENDABLE) {
-  test(`the private send explains itself rather than offering a form while the pocket is "${state}"`, async ({ wallet }) => {
+  test(`the private send explains itself rather than offering a form while the pocket is "${state}"`, async ({
+    wallet,
+  }) => {
     test.setTimeout(4 * 60_000);
     const page = wallet.page;
     await stubPocket(page, { state, message: "x" });
@@ -49,7 +58,10 @@ for (const state of NOT_SPENDABLE) {
     await wallet.openPocket("Private pocket");
 
     const send = page.getByRole("button", { name: "Send privately" });
-    await expect(send, "the slot must stay in place: the bar has five in both pockets").toBeVisible();
+    await expect(
+      send,
+      "the slot must stay in place: the bar has five in both pockets",
+    ).toBeVisible();
     await send.click();
 
     // The sheet opens and ANSWERS. What must not happen is a compose form: a
@@ -68,10 +80,9 @@ for (const state of NOT_SPENDABLE) {
     // And it says which state it is in, rather than one sentence for all six.
     const said = await sheet.innerText();
     expect(said.length, "the sheet opened and explained nothing").toBeGreaterThan(30);
-    expect(
-      said,
-      "the explanation must name a route out, not just a refusal",
-    ).toMatch(/Open the private pocket/i);
+    expect(said, "the explanation must name a route out, not just a refusal").toMatch(
+      /Open the private pocket/i,
+    );
   });
 }
 

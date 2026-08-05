@@ -101,10 +101,14 @@ describe("locking drops the envelopes the worker has built", () => {
       },
     });
     await c.lock();
-    // "declined", not "busy". The lock is an answer about consent, and the site
-    // must be told no rather than told to come back: a retry after a lock is
-    // exactly the loop the per-origin cap exists to stop.
-    expect(answered, "the waiting site was never answered").toBe("declined");
+    // "locked", and specifically NOT "declined". A lock IS an answer and the
+    // answer is no, but it is not the user's no: they may have walked away, or
+    // the idle timer may have fired while they were reading. SEP-43 tells a
+    // site never to retry a rejection, so reporting one here would permanently
+    // foreclose a request the user never saw. The site is told what actually
+    // happened, and `sep43` maps this to INTERNAL rather than USER_REJECTED.
+    expect(answered, "the waiting site was never answered").toBe("locked");
+    expect(answered, "claimed a decision the user never made").not.toBe("declined");
     expect(memoryOf(c).dappPending.size).toBe(0);
   });
 });

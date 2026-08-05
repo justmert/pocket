@@ -263,7 +263,9 @@ export async function read(page: Page): Promise<Probe> {
   });
   if (!p) throw new Error("the probe did not install: window.__t9 is absent");
   if (p.installError) throw new Error(`the probe failed to install: ${p.installError}`);
-  const unstamped = Object.entries(p.marks).filter(([, v]) => v === -1).map(([k]) => k);
+  const unstamped = Object.entries(p.marks)
+    .filter(([, v]) => v === -1)
+    .map(([k]) => k);
   if (unstamped.length) {
     throw new Error(
       `these marks were claimed but never painted: ${unstamped.join(", ")}. ` +
@@ -350,6 +352,8 @@ export function moved(positions: Position[], name: string, from: number, to: num
 
 /** Every distinct position a tracked control held in a window. Evidence, not a claim. */
 export function trackOf(positions: Position[], name: string, from: number, to: number): number[] {
-  const tops = positions.filter((p) => p.name === name && p.t >= from && p.t <= to).map((p) => p.top);
+  const tops = positions
+    .filter((p) => p.name === name && p.t >= from && p.t <= to)
+    .map((p) => p.top);
   return [...new Set(tops)];
 }

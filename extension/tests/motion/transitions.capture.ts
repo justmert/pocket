@@ -64,9 +64,11 @@ for (const reduced of [false, true] as const) {
     if (reduced) await page.emulateMedia({ reducedMotion: "reduce" });
 
     // 1. onboarding's first step arriving.
-    expect(await film(page, `onboarding-choose${suffix}`, async () => {
-      await page.reload();
-    })).toBeGreaterThan(0);
+    expect(
+      await film(page, `onboarding-choose${suffix}`, async () => {
+        await page.reload();
+      }),
+    ).toBeGreaterThan(0);
 
     await expect(page.getByRole("button", { name: "Create a new wallet" })).toBeVisible({
       timeout: WAITS.ledgerRead,
@@ -78,10 +80,14 @@ for (const reduced of [false, true] as const) {
     await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
     await page.getByLabel("Confirm password").fill(PASSWORD);
     await page.getByRole("button", { name: "Create wallet" }).click();
-    await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: WAITS.onboarding });
-    expect(await film(page, `phrase-reveal${suffix}`, async () => {
-      await page.getByRole("button", { name: "Show the phrase" }).click();
-    })).toBeGreaterThan(0);
+    await expect(page.getByText("Save your recovery phrase")).toBeVisible({
+      timeout: WAITS.onboarding,
+    });
+    expect(
+      await film(page, `phrase-reveal${suffix}`, async () => {
+        await page.getByRole("button", { name: "Show the phrase" }).click();
+      }),
+    ).toBeGreaterThan(0);
 
     const phrase = await wallet.readBackupPhrase();
     await page.getByRole("button", { name: "I have written it down" }).click();
@@ -89,16 +95,25 @@ for (const reduced of [false, true] as const) {
     await wallet.waitForHome(WAITS.ledgerRead);
 
     // 3. the home list arriving, which is what ROW_STAGGER_MS times.
-    expect(await film(page, `home-arrival${suffix}`, async () => {
-      await page.reload();
-    }, { count: 12 })).toBeGreaterThan(0);
+    expect(
+      await film(
+        page,
+        `home-arrival${suffix}`,
+        async () => {
+          await page.reload();
+        },
+        { count: 12 },
+      ),
+    ).toBeGreaterThan(0);
     await wallet.waitForHome(WAITS.ledgerRead);
 
     // 4. a sheet coming up.
-    expect(await film(page, `sheet-open${suffix}`, async () => {
-      await page.getByRole("button", { name: "Actions", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Send", exact: true }).click();
-    })).toBeGreaterThan(0);
+    expect(
+      await film(page, `sheet-open${suffix}`, async () => {
+        await page.getByRole("button", { name: "Actions", exact: true }).click();
+        await page.getByRole("menuitem", { name: "Send", exact: true }).click();
+      }),
+    ).toBeGreaterThan(0);
     // `film` starts its action without awaiting it, so the sheet must be seen
     // gone before the next sequence begins or it films the wrong thing.
     await page.keyboard.press("Escape");
@@ -106,8 +121,15 @@ for (const reduced of [false, true] as const) {
 
     // 5. the pocket switch, the one piece of motion that is the product's
     //    identity rather than its feedback.
-    expect(await film(page, `pocket-switch${suffix}`, async () => {
-      await wallet.openPocket("Private pocket");
-    }, { count: 14, everyMs: 50 })).toBeGreaterThan(0);
+    expect(
+      await film(
+        page,
+        `pocket-switch${suffix}`,
+        async () => {
+          await wallet.openPocket("Private pocket");
+        },
+        { count: 14, everyMs: 50 },
+      ),
+    ).toBeGreaterThan(0);
   });
 }

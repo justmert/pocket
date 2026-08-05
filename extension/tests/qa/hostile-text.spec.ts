@@ -117,10 +117,7 @@ const NATIVE = balance({
 
 /** the asset list, every payload in the catalogue at once. */
 function hostileBalances(): Record<string, unknown>[] {
-  return [
-    NATIVE,
-    ...HOSTILE.map((h, i) => balance({ id: `a${i}`, code: h.value, issuer: REAL })),
-  ];
+  return [NATIVE, ...HOSTILE.map((h, i) => balance({ id: `a${i}`, code: h.value, issuer: REAL }))];
 }
 
 /**
@@ -356,13 +353,17 @@ test("attacker text in the asset list never speaks in the wallet's voice", async
     // a payload the wallet dropped cannot impersonate it, so absence would be an
     // acceptable answer. It is not this screen's answer, and asserting presence
     // is what stops the loop below becoming a loop over nothing.
-    expect(v.present, `${h.name} never reached the screen, so nothing was tested for it`).toBe(true);
-    expect(v.headings, `${h.name} was rendered as a heading, which is the wallet's own voice`).toEqual(
-      [],
+    expect(v.present, `${h.name} never reached the screen, so nothing was tested for it`).toBe(
+      true,
     );
-    expect(v.live, `${h.name} was announced through a live region the wallet speaks through`).toEqual(
-      [],
-    );
+    expect(
+      v.headings,
+      `${h.name} was rendered as a heading, which is the wallet's own voice`,
+    ).toEqual([]);
+    expect(
+      v.live,
+      `${h.name} was announced through a live region the wallet speaks through`,
+    ).toEqual([]);
     expect(v.controls, `${h.name} became the name of a control`).toEqual([]);
     expect(
       v.mixed,
@@ -600,7 +601,11 @@ test("a signature request cannot borrow the wallet's voice through its origin, m
         fee: "100",
         network: "testnet",
         memo,
-        effects: [`1. Send 1.0000000 XLM to ${LOOKALIKE}`, "<img src=x onerror=alert(1)>", impersonation],
+        effects: [
+          `1. Send 1.0000000 XLM to ${LOOKALIKE}`,
+          "<img src=x onerror=alert(1)>",
+          impersonation,
+        ],
       },
     },
   });
@@ -622,15 +627,17 @@ test("a signature request cannot borrow the wallet's voice through its origin, m
 
   for (const needle of [origin, memo, impersonation]) {
     const v = await voiceProbe(page, needle);
-    expect(v.present, `a site's string vanished instead of being shown: ${needle.slice(0, 40)}`).toBe(
-      true,
-    );
+    expect(
+      v.present,
+      `a site's string vanished instead of being shown: ${needle.slice(0, 40)}`,
+    ).toBe(true);
     expect(v.headings, `a site's string was rendered as a heading: ${needle.slice(0, 40)}`).toEqual(
       [],
     );
-    expect(v.controls, `a site's string became the name of a control: ${needle.slice(0, 40)}`).toEqual(
-      [],
-    );
+    expect(
+      v.controls,
+      `a site's string became the name of a control: ${needle.slice(0, 40)}`,
+    ).toEqual([]);
   }
 
   // the origin is shown whole. a truncated origin is a lookalike with the part
@@ -761,9 +768,10 @@ test("a connected site's own name cannot be made to read as another site's", asy
   await expect(sheet).toBeVisible({ timeout: WAITS.ledgerRead });
   await settle(page);
 
-  expect(await parsedMarkup(page), "an origin was parsed as markup in the connections list").toEqual(
-    NO_MARKUP,
-  );
+  expect(
+    await parsedMarkup(page),
+    "an origin was parsed as markup in the connections list",
+  ).toEqual(NO_MARKUP);
   expect(dialogs).toBe(0);
 
   // the wallet's own words for this screen are still the wallet's, and the
@@ -776,40 +784,43 @@ test("a connected site's own name cannot be made to read as another site's", asy
   // rects rather than inferred from a width. The first visual line is the whole
   // question: it is the line a reader's eye stops on before deciding whether
   // they recognise the site.
-  const laidOut = await sheet.evaluate((root, origins) => {
-    const registrable = (host: string) => host.split(".").slice(-2).join(".");
-    const out: { origin: string; lines: number; firstLine: string; wrap: string }[] = [];
-    const spans = Array.from(root.querySelectorAll("span")) as HTMLElement[];
-    for (const origin of origins) {
-      const el = spans.find(
-        (sp) => sp.childNodes.length === 1 && (sp.textContent ?? "") === origin,
-      );
-      if (!el) continue;
-      const node = el.firstChild as Text;
-      const tops: number[] = [];
-      let first = "";
-      let firstTop: number | null = null;
-      for (let i = 0; i < node.data.length; i++) {
-        const r = document.createRange();
-        r.setStart(node, i);
-        r.setEnd(node, i + 1);
-        const top = Math.round(r.getBoundingClientRect().top);
-        if (firstTop === null) firstTop = top;
-        if (top === firstTop) first += node.data.charAt(i);
-        if (!tops.includes(top)) tops.push(top);
+  const laidOut = await sheet.evaluate(
+    (root, origins) => {
+      const registrable = (host: string) => host.split(".").slice(-2).join(".");
+      const out: { origin: string; lines: number; firstLine: string; wrap: string }[] = [];
+      const spans = Array.from(root.querySelectorAll("span")) as HTMLElement[];
+      for (const origin of origins) {
+        const el = spans.find(
+          (sp) => sp.childNodes.length === 1 && (sp.textContent ?? "") === origin,
+        );
+        if (!el) continue;
+        const node = el.firstChild as Text;
+        const tops: number[] = [];
+        let first = "";
+        let firstTop: number | null = null;
+        for (let i = 0; i < node.data.length; i++) {
+          const r = document.createRange();
+          r.setStart(node, i);
+          r.setEnd(node, i + 1);
+          const top = Math.round(r.getBoundingClientRect().top);
+          if (firstTop === null) firstTop = top;
+          if (top === firstTop) first += node.data.charAt(i);
+          if (!tops.includes(top)) tops.push(top);
+        }
+        out.push({
+          origin,
+          lines: tops.length,
+          firstLine: first,
+          wrap: getComputedStyle(el).overflowWrap,
+        });
       }
-      out.push({
-        origin,
-        lines: tops.length,
-        firstLine: first,
-        wrap: getComputedStyle(el).overflowWrap,
-      });
-    }
-    // `registrable` is used by the caller's comparison, not here; leaving it
-    // unreferenced in the page would be dead code, so the split is deliberate.
-    void registrable;
-    return { rows: out };
-  }, hostile.map((h) => h.origin).filter((o) => /^https:\/\/[a-z0-9.-]+$/i.test(o)));
+      // `registrable` is used by the caller's comparison, not here; leaving it
+      // unreferenced in the page would be dead code, so the split is deliberate.
+      void registrable;
+      return { rows: out };
+    },
+    hostile.map((h) => h.origin).filter((o) => /^https:\/\/[a-z0-9.-]+$/i.test(o)),
+  );
 
   // the ones whose first line is, by itself, a complete and plausible domain
   // that is NOT the domain the row belongs to. the TLD is required, because a

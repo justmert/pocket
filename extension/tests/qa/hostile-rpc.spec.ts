@@ -514,7 +514,10 @@ test.describe("the public balance", () => {
     // after another against the SAME wallet, so the recovery at the end also
     // proves the wallet was not wedged by any of them.
     const shapes: [string, Answer][] = [
-      ["a proxy's HTML on a 200", { raw: { contentType: "text/html", body: "<html><body/></html>" } }],
+      [
+        "a proxy's HTML on a 200",
+        { raw: { contentType: "text/html", body: "<html><body/></html>" } },
+      ],
       ["a body that stops halfway", { raw: { body: '{"jsonrpc":"2.0","id":1,"result":{"entr' } }],
       ["a 500", { raw: { status: 500, body: "upstream failure" } }],
       ["a JSON-RPC error object", { error: { code: -32000, message: "SECRET-RPC-STRING" } }],
@@ -541,10 +544,9 @@ test.describe("the public balance", () => {
       await expect(refusal(wallet.page), name).toBeVisible({ timeout: WAITS.ledgerRead });
       await expect(wallet.money(), name).toHaveCount(0);
       // Nothing the provider wrote may reach the screen.
-      await expect(
-        wallet.page.getByText(/SECRET-RPC-STRING|upstream failure/),
-        name,
-      ).toHaveCount(0);
+      await expect(wallet.page.getByText(/SECRET-RPC-STRING|upstream failure/), name).toHaveCount(
+        0,
+      );
     }
 
     // And it recovers on its own once the provider stops lying, which is the

@@ -40,7 +40,11 @@ test("the dormant pocket offers no rebuild, because that route denies the accoun
 }) => {
   test.setTimeout(4 * 60_000);
   const page = wallet.page;
-  await stubPocket(page, { state: "archived", spendable: "8.0000000", message: "This pocket went dormant." });
+  await stubPocket(page, {
+    state: "archived",
+    spendable: "8.0000000",
+    message: "This pocket went dormant.",
+  });
   await wallet.createWallet(PASSWORD);
   await page.reload();
   await wallet.waitForHome(WAITS.ledgerRead);

@@ -4147,6 +4147,18 @@ export class WalletController {
     const amount = parseAmount(req.amount);
     const asset = req.assetId === "native" ? Asset.native() : this.assetFromId(req.assetId);
 
+    // Paying YOURSELF. Legal on Stellar, and it moves nothing: the balance ends
+    // where it started, minus the fee.
+    //
+    // Not refused, because a self-payment with a memo is a real thing people do
+    // and the wallet is not the place to forbid it. Said, because it was
+    // silent: the confirm screen showed a send, the receipt showed a success,
+    // and the only difference from an ordinary payment was that the money had
+    // not gone anywhere. The private pocket refuses the same shape outright,
+    // and that stays: a confidential self-transfer is a different question
+    // about the protocol, not about the user's intent.
+    const toSelf = to.value === address;
+
     // Refuse here, not in the popup. Presenting a reserve-adjusted balance is
     // display only: entering more than it still builds, signs and submits, and
     // the failure charges a fee and consumes the sequence number. The check
@@ -4205,6 +4217,13 @@ export class WalletController {
         assetCode: asset.isNative() ? "XLM" : asset.getCode(),
         fee: tx.fee,
         memo: req.memo,
+        ...(toSelf
+          ? {
+              warning:
+                "This address is your own, so this payment moves nothing: the balance ends " +
+                "where it started, less the network fee.",
+            }
+          : {}),
         effects: [
           createDestination
             ? `CREATE this account on Stellar and fund it with ${formatAmount(amount)} XLM`

@@ -91,7 +91,7 @@ test("a wallet whose worker died before the backup was acknowledged is not orpha
     await page.getByRole("textbox", { name: "Confirm password" }).fill(PASSWORD);
     await page.getByRole("button", { name: "Create wallet" }).click();
     await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: 60_000 });
-  await page.getByRole("button", { name: "Show the phrase" }).click();
+    await page.getByRole("button", { name: "Show the phrase" }).click();
     const phrase = (
       await page
         .locator("span")
@@ -109,7 +109,9 @@ test("a wallet whose worker died before the backup was acknowledged is not orpha
     const reopened = await w.popup();
     await expect(reopened.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
     await unlockUi(reopened);
-    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
+    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({
+      timeout: 60_000,
+    });
     const address = await addressOf(reopened);
 
     // And the words that were on screen when it died are the words that own it.
@@ -118,11 +120,11 @@ test("a wallet whose worker died before the backup was acknowledged is not orpha
     await p2.getByRole("textbox", { name: /Recovery phrase/i }).fill(phrase);
     await p2.getByRole("textbox", { name: "New password", exact: true }).fill(PASSWORD);
     // The restore screen asks twice; one field leaves the submit disabled.
-    await p2
-      .getByRole("textbox", { name: "Confirm new password", exact: true })
-      .fill(PASSWORD);
+    await p2.getByRole("textbox", { name: "Confirm new password", exact: true }).fill(PASSWORD);
     await p2.getByRole("button", { name: "Restore wallet" }).click();
-    await expect(p2.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
+    await expect(p2.getByRole("button", { name: "Public pocket" })).toBeVisible({
+      timeout: 60_000,
+    });
     expect(await addressOf(p2)).toBe(address);
   } finally {
     await w.close();
@@ -145,7 +147,9 @@ test("worker death with nothing submitted leaves no in-flight or staged record",
     // wallet that has never submitted anything.
     const reopened = await w.popup();
     await unlockUi(reopened);
-    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
+    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({
+      timeout: 60_000,
+    });
     await expect(reopened.getByText("Unfinished transaction")).toHaveCount(0);
   } finally {
     await w.close();
@@ -200,7 +204,9 @@ test("a browser restart keeps the wallet exactly as it was", async () => {
       await expect(page2.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
       expect(await storageKeys(page2)).toEqual(keys);
       await unlockUi(page2);
-      await expect(page2.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
+      await expect(page2.getByRole("button", { name: "Public pocket" })).toBeVisible({
+        timeout: 60_000,
+      });
       expect(await addressOf(page2)).toBe(address);
     } finally {
       await again.close();
@@ -290,7 +296,9 @@ test("the idle lock fires, and a status poll does not hold it off", async () => 
     // And the lock is a real one: the vault is intact and the password gets in.
     const reopened = await w.popup();
     await unlockUi(reopened);
-    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
+    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({
+      timeout: 60_000,
+    });
   } finally {
     await w.close();
   }

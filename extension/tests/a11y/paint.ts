@@ -54,8 +54,7 @@ export async function contrastFailures(page: Page): Promise<ContrastViolation[]>
       const round = (c: RGBA) => `rgb(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)})`;
 
       /** Every colour stop in a `background-image`, in source order. */
-      const stopsOf = (image: string): RGBA[] =>
-        (image.match(/rgba?\([^)]*\)/g) ?? []).map(parse);
+      const stopsOf = (image: string): RGBA[] => (image.match(/rgba?\([^)]*\)/g) ?? []).map(parse);
 
       const out: ContrastViolation[] = [];
       for (const el of Array.from(document.querySelectorAll<HTMLElement>("*"))) {

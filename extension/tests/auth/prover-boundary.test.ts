@@ -130,11 +130,24 @@ describe("a tagged request from us is still checked for shape", () => {
   // missing its bytecode would otherwise reach atob() as undefined and fail as
   // an opaque decode error from inside the serial queue.
   const malformed: [string, Record<string, unknown>][] = [
-    ["no acir", { channel: PROVER_CHANNEL, kind: "prove", id: "p", circuit: "transfer", witness: "AA" }],
-    ["no witness", { channel: PROVER_CHANNEL, kind: "prove", id: "p", circuit: "transfer", acir: "AA" }],
+    [
+      "no acir",
+      { channel: PROVER_CHANNEL, kind: "prove", id: "p", circuit: "transfer", witness: "AA" },
+    ],
+    [
+      "no witness",
+      { channel: PROVER_CHANNEL, kind: "prove", id: "p", circuit: "transfer", acir: "AA" },
+    ],
     [
       "acir that is not a string",
-      { channel: PROVER_CHANNEL, kind: "prove", id: "p", circuit: "transfer", acir: 1, witness: "AA" },
+      {
+        channel: PROVER_CHANNEL,
+        kind: "prove",
+        id: "p",
+        circuit: "transfer",
+        acir: 1,
+        witness: "AA",
+      },
     ],
     [
       "an unknown circuit",

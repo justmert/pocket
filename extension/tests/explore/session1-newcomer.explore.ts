@@ -30,7 +30,9 @@ async function look(page: Page, step: string): Promise<void> {
       const s = getComputedStyle(el);
       return s.display !== "none" && s.visibility !== "hidden" && Number(s.opacity) > 0.05;
     };
-    const controls = Array.from(document.querySelectorAll("button, [role='button'], input, textarea"))
+    const controls = Array.from(
+      document.querySelectorAll("button, [role='button'], input, textarea"),
+    )
       .filter(visible)
       .map((el) => {
         const tag = el.tagName.toLowerCase();
@@ -49,7 +51,9 @@ async function look(page: Page, step: string): Promise<void> {
   );
 }
 
-test("session 1: a newcomer sets up a wallet reading nothing but the screen", async ({ wallet }) => {
+test("session 1: a newcomer sets up a wallet reading nothing but the screen", async ({
+  wallet,
+}) => {
   test.setTimeout(14 * 60_000);
   const page = wallet.page;
   await page.setViewportSize({ width: 384, height: 600 });
@@ -93,7 +97,10 @@ test("session 1: a newcomer sets up a wallet reading nothing but the screen", as
   await page.getByRole("button", { name: "Receive" }).click();
   await look(page, "09 receive");
   await page.keyboard.press("Escape");
-  await page.locator("[role='dialog']").waitFor({ state: "detached" }).catch(() => undefined);
+  await page
+    .locator("[role='dialog']")
+    .waitFor({ state: "detached" })
+    .catch(() => undefined);
 
   // 7. And the thing they will try before they have any: send.
   await page.getByRole("button", { name: "Actions", exact: true }).click();
@@ -109,7 +116,10 @@ test("session 1: a newcomer sets up a wallet reading nothing but the screen", as
     await look(page, "11 review is disabled with nothing typed");
   }
   await page.keyboard.press("Escape");
-  await page.locator("[role='dialog']").waitFor({ state: "detached" }).catch(() => undefined);
+  await page
+    .locator("[role='dialog']")
+    .waitFor({ state: "detached" })
+    .catch(() => undefined);
 
   // 8. The other pocket, which is the product's whole point and which a
   //    newcomer has been told nothing about yet.
@@ -119,7 +129,10 @@ test("session 1: a newcomer sets up a wallet reading nothing but the screen", as
   await page.getByRole("button", { name: "Move" }).click();
   await look(page, "13 move sheet on a pocket that does not exist yet");
   await page.keyboard.press("Escape");
-  await page.locator("[role='dialog']").waitFor({ state: "detached" }).catch(() => undefined);
+  await page
+    .locator("[role='dialog']")
+    .waitFor({ state: "detached" })
+    .catch(() => undefined);
 
   // 9. Settings, which is where a newcomer goes when they are unsure.
   await page.getByRole("button", { name: "Settings" }).click();

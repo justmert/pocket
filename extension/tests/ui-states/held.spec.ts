@@ -74,7 +74,9 @@ const HELD = [
 ] as const;
 
 for (const state of HELD) {
-  test(`held value, ${state.name}: names itself, its figure and its way out`, async ({ wallet }) => {
+  test(`held value, ${state.name}: names itself, its figure and its way out`, async ({
+    wallet,
+  }) => {
     test.setTimeout(4 * 60_000);
     const page = wallet.page;
     await stubPocket(page, state.pocket);

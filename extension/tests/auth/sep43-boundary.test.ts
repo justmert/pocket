@@ -285,9 +285,17 @@ describe("a grant expires and can be revoked", () => {
 
     // Age the stored grant rather than the clock, so nothing else in the worker
     // is moved and the assertion is about the TTL alone.
-    const sessions = chrome.local.get(KEYS.dappSessions) as Record<string, { connectedAt: number }>;
+    //
+    // The SESSION area, not local: a grant must die with the browser, which is
+    // what the README promises when it says a connection is dropped when the
+    // wallet locks. Nothing calls `lock()` on the way out of a browser close,
+    // so a grant on disk simply survived it.
+    const sessions = chrome.session.get(KEYS.dappSessions) as Record<
+      string,
+      { connectedAt: number }
+    >;
     sessions[SITE]!.connectedAt = Date.now() - SESSION_TTL_MS - 1;
-    chrome.local.set(KEYS.dappSessions, sessions);
+    chrome.session.set(KEYS.dappSessions, sessions);
 
     expect(await sessionFor(SITE)).toBeNull();
     const res = await fromSite("getAddress", SITE);
@@ -297,12 +305,15 @@ describe("a grant expires and can be revoked", () => {
   it("forgets an expired grant rather than leaving it to be renewed", async () => {
     const address = await unlockedWallet();
     await connect(SITE, address);
-    const sessions = chrome.local.get(KEYS.dappSessions) as Record<string, { connectedAt: number }>;
+    const sessions = chrome.session.get(KEYS.dappSessions) as Record<
+      string,
+      { connectedAt: number }
+    >;
     sessions[SITE]!.connectedAt = Date.now() - SESSION_TTL_MS - 1;
-    chrome.local.set(KEYS.dappSessions, sessions);
+    chrome.session.set(KEYS.dappSessions, sessions);
 
     await sessionFor(SITE);
-    const after = (chrome.local.get(KEYS.dappSessions) ?? {}) as Record<string, unknown>;
+    const after = (chrome.session.get(KEYS.dappSessions) ?? {}) as Record<string, unknown>;
     expect(Object.keys(after)).not.toContain(SITE);
   });
 
@@ -362,7 +373,7 @@ describe("granting is the popup's job, not the site's", () => {
     // away by the session check before the method switch is even reached. What
     // matters is that asking did not create the thing being asked for.
     expect(JSON.stringify(res?.data ?? res)).toMatch(/not connected|unsupported method/i);
-    expect(chrome.local.get(KEYS.dappSessions) ?? {}).toEqual({});
+    expect(chrome.session.get(KEYS.dappSessions) ?? {}).toEqual({});
   });
 });
 
@@ -373,13 +384,13 @@ describe("grants do not outlive the wallet that issued them", () => {
     // supposed to be gone.
     const address = await unlockedWallet();
     await asPopup({ type: "connectDapp", origin: SITE });
-    expect(Object.keys((chrome.local.get(KEYS.dappSessions) ?? {}) as object)).toContain(SITE);
+    expect(Object.keys((chrome.session.get(KEYS.dappSessions) ?? {}) as object)).toContain(SITE);
     void address;
 
     const res = await asPopup({ type: "reset", password: PASSWORD });
     expect(res?.ok, `reset failed: ${res?.error}`).toBe(true);
 
-    const left = (chrome.local.get(KEYS.dappSessions) ?? {}) as Record<string, unknown>;
+    const left = (chrome.session.get(KEYS.dappSessions) ?? {}) as Record<string, unknown>;
     expect(
       Object.keys(left),
       "a dApp grant survived the wipe that was supposed to remove everything",

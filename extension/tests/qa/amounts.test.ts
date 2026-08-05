@@ -146,14 +146,25 @@ function refFormat(v: bigint): string {
   return `${neg ? "-" : ""}${whole}.${frac}`;
 }
 
-/** the same, in reverse. returns null for anything it refuses. */
+/**
+ * the same, in reverse. returns null for anything it refuses.
+ *
+ * the WHOLE part is optional, matching the grammar the wallet accepts: ".5" is
+ * an amount and a keypad offering "." as its own key invites it. "." and "-"
+ * alone are still nothing, which is what the digit count below enforces.
+ *
+ * written independently of `parseAmount`, as the point of a differential test
+ * is that the two do not share a mistake, and changed here deliberately at the
+ * same time as the grammar rather than relaxed to make a failure go away.
+ */
 function refParse(text: string): bigint | null {
   const s = text.trim();
-  const m = /^(-?)([0-9]+)(?:\.([0-9]*))?$/.exec(s);
+  const m = /^(-?)([0-9]*)(?:\.([0-9]*))?$/.exec(s);
   if (!m) return null;
-  const [, sign, whole, frac = ""] = m;
+  const [, sign, whole = "", frac = ""] = m;
+  if (whole.length + frac.length === 0) return null;
   if (frac.length > 7) return null;
-  const joined = `${whole}${frac.padEnd(7, "0")}`.replace(/^0+(?=\d)/, "");
+  const joined = `${whole || "0"}${frac.padEnd(7, "0")}`.replace(/^0+(?=\d)/, "");
   const v = BigInt(joined);
   return sign === "-" ? -v : v;
 }

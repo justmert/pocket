@@ -188,8 +188,10 @@ test("the bottom bar is reachable by keyboard, in the order it is drawn", async 
   const bar = order.map((o) => o.replace(/^BUTTON:/, ""));
   const at = (name: string) => bar.indexOf(name);
   for (const name of ["Home", "Receive", "Send", "Move", "Settings"]) {
-    expect(at(name), `the bar's ${name} control is not reachable by Tab: ${bar.join(" -> ")}`)
-      .toBeGreaterThanOrEqual(0);
+    expect(
+      at(name),
+      `the bar's ${name} control is not reachable by Tab: ${bar.join(" -> ")}`,
+    ).toBeGreaterThanOrEqual(0);
   }
   expect(
     [at("Home"), at("Receive"), at("Send"), at("Move"), at("Settings")],

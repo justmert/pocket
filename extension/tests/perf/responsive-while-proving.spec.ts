@@ -65,7 +65,9 @@ async function fundedPocket(wallet: import("../support/wallet").Wallet): Promise
   await wallet.page.reload();
   await wallet.waitForHome(WAITS.ledgerRead);
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
+    timeout: WAITS.ledgerRead,
+  });
 }
 
 test("the popup keeps painting while a proof runs in the offscreen document", async ({
@@ -103,7 +105,9 @@ test("the popup keeps painting while a proof runs in the offscreen document", as
   const during = framesBetween(p.frames, t0, t1);
   expect(t1 - t0, "this must be a real proof, not a cached answer").toBeGreaterThan(500);
   expect(during.length, "the popup must have painted during the proof").toBeGreaterThan(20);
-  console.log(`  proof ${(t1 - t0).toFixed(0)}ms, ${during.length} frames painted in the popup, worst gap ${longestFrameGap(during).toFixed(1)}ms`);
+  console.log(
+    `  proof ${(t1 - t0).toFixed(0)}ms, ${during.length} frames painted in the popup, worst gap ${longestFrameGap(during).toFixed(1)}ms`,
+  );
   expect(
     longestFrameGap(during),
     "the popup stopped painting while a proof ran: the offscreen document is not buying what it is supposed to buy",
@@ -132,8 +136,7 @@ test("the popup still obeys a click while a proof runs", async ({ wallet }) => {
   const t1 = await now(wallet.page);
 
   console.log(`  click to the next screen, mid-proof: ${(t1 - t0).toFixed(1)}ms`);
-  expect(
-    t1 - t0,
-    "the popup did not respond to a press while a proof was running",
-  ).toBeLessThan(MAX_INPUT_MS);
+  expect(t1 - t0, "the popup did not respond to a press while a proof was running").toBeLessThan(
+    MAX_INPUT_MS,
+  );
 });

@@ -112,7 +112,10 @@ describe("the mainnet guard", () => {
         const text = readFileSync(p, "utf8");
         // The public mainnet passphrase and the mainnet rpc host. Either one in
         // a test means that test could reach the real network.
-        if (text.includes("Public Global Stellar Network") || text.includes("mainnet.sorobanrpc.com")) {
+        if (
+          text.includes("Public Global Stellar Network") ||
+          text.includes("mainnet.sorobanrpc.com")
+        ) {
           offenders.push(p.replace(ROOT, ""));
         }
       }

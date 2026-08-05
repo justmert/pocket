@@ -134,8 +134,10 @@ test("every button has an accessible name, on every screen and every sheet", asy
     // body-wide snapshot here would re-report the home screen's controls and
     // say nothing about the sheet.
     const snapshot = await dialog.ariaSnapshot();
-    expect(await unnamedIn(snapshot), `unnamed buttons in the ${sheet.title} sheet\n${snapshot}`)
-      .toEqual([]);
+    expect(
+      await unnamedIn(snapshot),
+      `unnamed buttons in the ${sheet.title} sheet\n${snapshot}`,
+    ).toEqual([]);
     await wallet.page.keyboard.press("Escape");
   }
 });
@@ -153,7 +155,10 @@ test("every sheet is a dialog with an accessible name", async ({ wallet }) => {
     await wallet.nav("Home").click();
     await sheet.open(wallet);
     const dialog = wallet.page.getByRole("dialog", { name: sheet.title });
-    await expect(dialog, `the ${sheet.title} sheet is not an accessibly named dialog`).toBeVisible();
+    await expect(
+      dialog,
+      `the ${sheet.title} sheet is not an accessibly named dialog`,
+    ).toBeVisible();
     await expect(dialog).toHaveAttribute("aria-modal", "true");
     await wallet.page.keyboard.press("Escape");
   }

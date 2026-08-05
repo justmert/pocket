@@ -31,7 +31,9 @@ test("a funded account that has not set up a private pocket says so, and states 
   await expect(wallet.page.getByText(/Hides amounts, never addresses/)).toBeVisible();
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
+    timeout: WAITS.ledgerRead,
+  });
 
   // The disclosure lives with the button that commits to it, and that button
   // lives in the move sheet, so the sheet is what has to be open.
@@ -51,7 +53,9 @@ test("a funded account that has not set up a private pocket says so, and states 
   await expect(wallet.page.getByText(/sends the first one straight away/)).toBeVisible();
   await expect(wallet.page.getByText(/pays a network fee/)).toBeVisible();
   await expect(
-    wallet.page.getByText("Setting up is public. Anyone can see this account has a private pocket."),
+    wallet.page.getByText(
+      "Setting up is public. Anyone can see this account has a private pocket.",
+    ),
   ).toBeVisible();
   await expect(wallet.page.getByText(/Only amounts are hidden/)).toBeVisible();
   await expect(wallet.page.getByText(/derived from your recovery phrase/)).toBeVisible();

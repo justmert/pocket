@@ -46,7 +46,8 @@ test("every recovery phrase Pocket shows must control the wallet it wrote", asyn
 
     const phrases: string[] = [];
     for (const p of [a, b]) {
-      if ((await p.getByText("Save your recovery phrase").count()) > 0) phrases.push(await shownPhrase(p));
+      if ((await p.getByText("Save your recovery phrase").count()) > 0)
+        phrases.push(await shownPhrase(p));
     }
 
     // The backup screen says these words are the only way to recover the wallet
@@ -213,7 +214,9 @@ test("two erase-and-restore submissions at once leave one wallet on the same add
     // A successful restore leaves the wallet open, so the way to prove the
     // vault it wrote is the one the new password opens is to lock it first.
     const reopened = await w.popup();
-    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
+    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({
+      timeout: 60_000,
+    });
     expect(await addressOf(reopened), "the restored wallet must be the same account").toBe(address);
     await reopened.getByRole("menuitem", { name: "Lock wallet" }).click();
     await expect(reopened.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
@@ -253,7 +256,9 @@ test("erase-and-restore refuses a phrase belonging to a different wallet", async
     const reopened = await w.popup();
     await reopened.getByRole("textbox", { name: "Password", exact: true }).fill(PASSWORD);
     await reopened.getByRole("button", { name: "Unlock" }).click();
-    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
+    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({
+      timeout: 60_000,
+    });
     expect(await addressOf(reopened)).toBe(address);
   } finally {
     await w.close();
@@ -278,7 +283,9 @@ test("closing the popup mid-compose loses the draft and nothing else", async () 
 
     const reopened = await w.popup();
     // Back at the start, with nothing carried over and nothing left behind.
-    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
+    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({
+      timeout: 60_000,
+    });
     await expect(reopened.getByText("Unfinished transaction")).toHaveCount(0);
     expect(await storageKeys(reopened)).toEqual(before);
 

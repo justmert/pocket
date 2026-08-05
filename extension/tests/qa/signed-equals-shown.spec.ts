@@ -270,7 +270,12 @@ test("the payment on the wire is, byte for byte, the payment the review screen s
   // field by field first, so a failure names which field moved.
   expect(wire.source).toBe(sender);
   expect(wire.operations).toHaveLength(1);
-  const op = wire.operations[0] as { type: string; destination: string; amount: string; asset: Asset };
+  const op = wire.operations[0] as {
+    type: string;
+    destination: string;
+    amount: string;
+    asset: Asset;
+  };
   expect(op.type).toBe("payment");
   expect(op.destination).toBe(shown.to);
   expect(op.amount).toBe(shown.amount);
@@ -317,9 +322,9 @@ test("the payment on the wire is, byte for byte, the payment the review screen s
   // this network. a signature that verifies against another passphrase would be
   // valid on a chain the user did not choose.
   expect(wire.signatures).toHaveLength(1);
-  expect(
-    Keypair.fromPublicKey(sender).verify(wire.hash(), wire.signatures[0]!.signature()),
-  ).toBe(true);
+  expect(Keypair.fromPublicKey(sender).verify(wire.hash(), wire.signatures[0]!.signature())).toBe(
+    true,
+  );
 
   // and the ledger's own copy agrees, which is the only authority on what was
   // actually applied.

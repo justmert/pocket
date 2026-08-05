@@ -98,7 +98,9 @@ test("the 24 backup words stay legible at every width Chrome can zoom to", async
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByLabel("Confirm password").fill(PASSWORD);
   await page.getByRole("button", { name: "Create wallet" }).click();
-  await expect(page.getByText("Save your recovery phrase")).toBeVisible({ timeout: WAITS.onboarding });
+  await expect(page.getByText("Save your recovery phrase")).toBeVisible({
+    timeout: WAITS.onboarding,
+  });
   await page.getByRole("button", { name: "Show the phrase" }).click();
 
   // A grid of monospace words is the layout most likely to give way first, and

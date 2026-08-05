@@ -34,7 +34,10 @@ const SOURCE = Keypair.random().publicKey();
 const OTHER = Keypair.random().publicKey();
 
 function envelope(op: ReturnType<typeof Operation.payment>): string {
-  return new TransactionBuilder(new Account(SOURCE, "1"), { fee: "100", networkPassphrase: NETWORK })
+  return new TransactionBuilder(new Account(SOURCE, "1"), {
+    fee: "100",
+    networkPassphrase: NETWORK,
+  })
     .addOperation(op)
     .setTimeout(180)
     .build()
@@ -68,7 +71,9 @@ describe("an operation the wallet cannot describe", () => {
     expect(summary.warning ?? "", "the refusal must name what it could not read").toMatch(
       /createClaimableBalance/,
     );
-    expect(summary.warning ?? "", "and must say nothing was sent").toMatch(/nothing has been sent/i);
+    expect(summary.warning ?? "", "and must say nothing was sent").toMatch(
+      /nothing has been sent/i,
+    );
   });
 
   it("refuses every other operation type nobody has written a sentence for", () => {

@@ -31,7 +31,10 @@ function ratio(a: number[], b: number[]): number {
 function parse(css: string): number[] {
   const m = css.match(/rgba?\(([^)]+)\)/);
   if (!m) throw new Error(`not a colour: ${css}`);
-  return m[1]!.split(",").slice(0, 3).map((n) => Number(n.trim()));
+  return m[1]!
+    .split(",")
+    .slice(0, 3)
+    .map((n) => Number(n.trim()));
 }
 
 test("the focus ring is visible against every surface it is drawn on", async ({ wallet }) => {
@@ -81,10 +84,10 @@ test("the recovery phrase is never offered to the browser", async ({ wallet }) =
     ["autocorrect", "off"],
     ["autocapitalize", "off"],
   ] as const) {
-    await expect(
-      field,
-      `the phrase field must set ${attribute}="${want}"`,
-    ).toHaveAttribute(attribute, want);
+    await expect(field, `the phrase field must set ${attribute}="${want}"`).toHaveAttribute(
+      attribute,
+      want,
+    );
   }
 });
 
@@ -126,8 +129,10 @@ test("motion is declared once, in the token file", async ({ wallet }) => {
   // provider writes from theme.ts. If a duration is ever written into the CSS
   // directly it will disagree with the token eventually, so the assertion is
   // that the properties are actually there and actually used.
-  await wallet.page.waitForFunction(() =>
-    getComputedStyle(document.documentElement).getPropertyValue("--pocket-enter").trim().length > 0,
+  await wallet.page.waitForFunction(
+    () =>
+      getComputedStyle(document.documentElement).getPropertyValue("--pocket-enter").trim().length >
+      0,
   );
 
   const tokens = await wallet.page.evaluate(() => {
@@ -157,9 +162,10 @@ test("motion is declared once, in the token file", async ({ wallet }) => {
   const missing = Object.entries(tokens)
     .filter(([, v]) => v === "")
     .map(([k]) => k);
-  expect(missing, `motion tokens the stylesheet reads but nothing writes: ${missing.join(", ")}`).toEqual(
-    [],
-  );
+  expect(
+    missing,
+    `motion tokens the stylesheet reads but nothing writes: ${missing.join(", ")}`,
+  ).toEqual([]);
 
   // And the press feedback really is running on the token rather than on a
   // number someone typed into the stylesheet.
@@ -191,9 +197,18 @@ test("no component times itself with a number of its own", async ({ wallet }) =>
       return t;
     };
     const names = [
-      "--pocket-instant", "--pocket-quick", "--pocket-page", "--pocket-page-out",
-      "--pocket-sheet", "--pocket-sheet-out", "--pocket-settle", "--pocket-pocket",
-      "--pocket-ambient", "--pocket-ambient-slow", "--pocket-spin", "--pocket-spin-calm",
+      "--pocket-instant",
+      "--pocket-quick",
+      "--pocket-page",
+      "--pocket-page-out",
+      "--pocket-sheet",
+      "--pocket-sheet-out",
+      "--pocket-settle",
+      "--pocket-pocket",
+      "--pocket-ambient",
+      "--pocket-ambient-slow",
+      "--pocket-spin",
+      "--pocket-spin-calm",
       "--pocket-shimmer-calm",
     ];
     const ok = new Set(["0s", "0.001s", ...names.map((n) => seconds(root.getPropertyValue(n)))]);

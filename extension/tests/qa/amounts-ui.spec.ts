@@ -281,9 +281,7 @@ async function funded(page: Page): Promise<void> {
  */
 function assertNoFloatArtefact(body: string, where: string): void {
   const withoutAddresses = body.replace(/[A-Z2-7]{20,}/g, "«address»");
-  expect(withoutAddresses, `${where}: an exponent reached the screen`).not.toMatch(
-    /\d[eE][+-]\d/,
-  );
+  expect(withoutAddresses, `${where}: an exponent reached the screen`).not.toMatch(/\d[eE][+-]\d/);
   expect(withoutAddresses, `${where}: more than seven decimal places`).not.toMatch(/\d\.\d{8,}/);
   for (const artefact of ["NaN", "Infinity", "[object "]) {
     expect(withoutAddresses, `${where}: "${artefact}" on a screen about money`).not.toContain(
@@ -363,9 +361,10 @@ test("changing the browser's language between typing and confirming moves no dig
   const out = await review(page);
   expect(out.stage, out.stage === "error" ? out.message : "").toBe("confirm");
 
-  expect(await exactFigures(page), "the confirm screen must state the typed amount exactly").toContain(
-    `${typed} XLM`,
-  );
+  expect(
+    await exactFigures(page),
+    "the confirm screen must state the typed amount exactly",
+  ).toContain(`${typed} XLM`);
   await expect(page.getByText(`Send ${typed} XLM to this address`)).toBeVisible();
   const afterGerman = await surfaceText(page);
 
@@ -384,9 +383,10 @@ test("changing the browser's language between typing and confirming moves no dig
   // repainted; this cannot.
   const recorded: Recording = await page.evaluate(COLLECT);
   expect(recorded.alive).toBe(true);
-  expect(recorded.locale, "the wallet consulted the browser's locale while showing an amount").toEqual(
-    [],
-  );
+  expect(
+    recorded.locale,
+    "the wallet consulted the browser's locale while showing an amount",
+  ).toEqual([]);
   // `recorded.floats` is deliberately NOT asserted here. the float question
   // belongs to the test above, which owns it and reports it once; repeating it
   // would turn one defect into two red lines and tell a reader nothing new
@@ -467,9 +467,10 @@ for (const locale of ["de-DE", "ar-EG"]) {
       await compose(page, { to: valid(), amount: typed });
       const out = await review(page);
       expect(out.stage, out.stage === "error" ? out.message : "").toBe("confirm");
-      expect(await exactFigures(page), `${locale}: the typed amount is not stated exactly`).toContain(
-        `${typed} XLM`,
-      );
+      expect(
+        await exactFigures(page),
+        `${locale}: the typed amount is not stated exactly`,
+      ).toContain(`${typed} XLM`);
 
       const body = await surfaceText(page);
       // no other script's digits anywhere on a screen about money. if the
@@ -610,4 +611,3 @@ test("what the confirm screen draws re-parses to the stroops that were typed", a
     await closeSend(page);
   }
 });
-

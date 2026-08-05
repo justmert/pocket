@@ -21,11 +21,17 @@ test("the register review never calls its way out a cancel", async ({ wallet }) 
   await wallet.page.evaluate(() => {
     const send = chrome.runtime.sendMessage.bind(chrome.runtime);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (chrome.runtime as any).sendMessage = async (msg: { type?: string; op?: { kind?: string } }) => {
+    (chrome.runtime as any).sendMessage = async (msg: {
+      type?: string;
+      op?: { kind?: string };
+    }) => {
       if (msg?.type === "privatePocket") {
         return {
           ok: true,
-          data: { state: "unregistered", message: "Setting up a private pocket is a one-time, publicly visible transaction." },
+          data: {
+            state: "unregistered",
+            message: "Setting up a private pocket is a one-time, publicly visible transaction.",
+          },
         };
       }
       if (msg?.type === "buildPrivateOp" && msg.op?.kind === "register") {

@@ -212,9 +212,6 @@ describe("an authorised recovery is never turned into a stranger's wallet", () =
       controller.import("pw two", generateMnemonic(wordlist, 256)),
     ]);
 
-    expect(
-      storedAddress(),
-      "an import landed in the window the recovery opened",
-    ).toBe(address);
+    expect(storedAddress(), "an import landed in the window the recovery opened").toBe(address);
   });
 });

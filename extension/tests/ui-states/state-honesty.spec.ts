@@ -35,7 +35,8 @@ async function stub(
         }
         if (msg?.type === "status") {
           const real = await send(msg);
-          if (real?.ok) return { ok: true, data: { ...real.data, privateAvailable: true, ...(st as object) } };
+          if (real?.ok)
+            return { ok: true, data: { ...real.data, privateAvailable: true, ...(st as object) } };
           return real;
         }
         return send(msg);
@@ -70,7 +71,7 @@ for (const c of UNREADABLE) {
     ).toBeVisible({ timeout: WAITS.ledgerRead });
     await expect(
       page.getByText("Not open yet"),
-      'a pocket that exists and holds money was described as never opened',
+      "a pocket that exists and holds money was described as never opened",
     ).toHaveCount(0);
   });
 }

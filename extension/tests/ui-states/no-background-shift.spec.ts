@@ -104,9 +104,10 @@ for (const sheet of SHEETS) {
     await expect(page.getByRole("dialog")).toBeVisible();
     const during = await rectsBehind(page);
 
-    expect(Object.keys(settled).length, "found nothing behind the sheet to measure").toBeGreaterThan(
-      0,
-    );
+    expect(
+      Object.keys(settled).length,
+      "found nothing behind the sheet to measure",
+    ).toBeGreaterThan(0);
     for (const [key, base] of Object.entries(settled)) {
       expect(during[key], `${key} vanished while the sheet opened`).toBeDefined();
       expect(during[key], `${key} moved while the ${sheet.name} sheet opened`).toEqual(base);
