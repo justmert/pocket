@@ -434,7 +434,20 @@ export function Button({
       disabled={disabled && !busy}
       aria-disabled={off || undefined}
       aria-busy={busy || undefined}
-      onClick={off ? undefined : rest.onClick}
+      // PREVENT DEFAULT, not merely "no handler". Dropping `onClick` stops
+      // React calling the handler and does nothing about the browser's own
+      // behaviour: a `type="submit"` button keeps its default action, and the
+      // HTML spec's implicit submission fires a click on the default button
+      // when Enter is pressed in a field. So a busy submit could still be
+      // driven from the keyboard, and the "blocks a second press" this prop
+      // documents held for the mouse only.
+      onClick={
+        off
+          ? (e) => {
+              e.preventDefault();
+            }
+          : rest.onClick
+      }
       style={{
         ...sized,
         // reset the native button chrome, or the browser draws its own faint
@@ -629,6 +642,22 @@ export function Field({
           aria-describedby={described}
           aria-invalid={invalid || undefined}
           rows={3}
+          // `onSubmit` works here too. The prop is accepted by every Field and
+          // was wired only to the single-line branch, so a caller that passed
+          // it to a multiline one got no error, no warning, and no behaviour:
+          // the field simply never submitted.
+          //
+          // Enter WITH A MODIFIER, not bare Enter. A textarea is where a
+          // recovery phrase is typed, and a plain Enter there has to keep
+          // inserting a newline or pasting a phrase across lines becomes
+          // impossible; cmd/ctrl+Enter is the ordinary convention for "send
+          // this" in a multiline field.
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && onSubmit) {
+              e.preventDefault();
+              onSubmit();
+            }
+          }}
           style={base}
         />
       ) : (
@@ -1072,8 +1101,17 @@ export function Spinner({ size = 20, color }: { size?: number; color?: string })
         height: size,
         borderRadius: "50%",
         border: `${Math.max(2, Math.round(size / 9))}px solid`,
-        borderColor: "currentColor",
-        borderTopColor: color ?? "transparent",
+        // `color` paints the RING. It painted the gap: `borderColor` was pinned
+        // to `currentColor` and the caller's colour went to `borderTopColor`,
+        // which is the quarter deliberately left out to make the ring look like
+        // it is spinning. So the two History call sites that pass a theme
+        // colour got a currentColor ring with a coloured notch, the opposite of
+        // what they asked for.
+        //
+        // With no `color` this is byte-identical to what it was: ring in
+        // currentColor, gap transparent.
+        borderColor: color ?? "currentColor",
+        borderTopColor: "transparent",
         opacity: 0.75,
         display: "inline-block",
         flex: "0 0 auto",
