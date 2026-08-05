@@ -90,3 +90,52 @@ describe("what product-truth.md says is NOT in the product", () => {
     expect(TRUTH).toMatch(/in-app swap/i);
   });
 });
+
+/**
+ * `product-information.md` is the other public-claims document, and it went
+ * stale the same way.
+ *
+ * Its own changelog line at the top already said "yield is no longer read-only
+ * (deposit and withdraw are wired)", while the body two hundred lines down
+ * still said "Yield is read-only ... you cannot deposit or withdraw through the
+ * interface" and a table row still answered "earn yield, deposit" with
+ * "read-only; there is no deposit action". A document that contradicts itself
+ * cannot be used to check a claim, which is the only thing it is for.
+ */
+describe("what product-information.md says is missing", () => {
+  const INFO = readFileSync(repo("product-information.md"), "utf8");
+
+  const RETIRED_INFO = [
+    {
+      denial: "Yield is read-only",
+      now: () => existsSync(at("src/entrypoints/popup/ui/screens/Yield.tsx")),
+    },
+    {
+      denial: "there is no history screen",
+      now: () => existsSync(at("src/entrypoints/popup/ui/screens/History.tsx")),
+    },
+    {
+      denial: "No cross-chain anything",
+      now: () => existsSync(at("src/entrypoints/popup/ui/screens/CctpSend.tsx")),
+    },
+    {
+      denial: "No way to see your recovery phrase again",
+      now: () => DISPATCH.includes('case "revealPhrase"'),
+    },
+  ];
+
+  for (const { denial, now } of RETIRED_INFO) {
+    it(`does not still say "${denial}"`, () => {
+      expect(now(), `the feature behind "${denial}" is not in the tree after all`).toBe(true);
+      // The changelog at the top RECORDS that these changed, so it is allowed
+      // to mention them; the body must not still assert them.
+      const body = INFO.slice(INFO.indexOf("\n## "));
+      expect(body, "a public-claims document denies a shipped feature").not.toContain(denial);
+    });
+  }
+
+  it("still says what really is absent", () => {
+    expect(INFO).toMatch(/No hardware wallet/);
+    expect(INFO).toMatch(/No external security audit/);
+  });
+});

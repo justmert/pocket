@@ -1403,6 +1403,14 @@ export class WalletController {
       // below is the prepared one.
       const prepared = await this.prepareForReview(decoded);
 
+      // The underlying's CODE, for the sentence below. Best effort, exactly as
+      // the deposit guard above is: the vault names its underlying by symbol
+      // and a lookup that cannot answer must not become the reason a legitimate
+      // move is refused.
+      const underlyingCode = await this.yieldUnderlying(client, cfg.vault)
+        .then((a) => (a ? (a.isNative() ? "XLM" : a.getCode()) : null))
+        .catch(() => null);
+
       // The real fee, now that one exists. The guard before the build could
       // only assume, and a vault deposit is a Soroban invocation costing orders
       // of magnitude more.
@@ -1421,9 +1429,16 @@ export class WalletController {
           amount: formatAmount(amount),
           fee: formatAmount(BigInt(prepared.fee)),
           effects: [
+            // WITH the asset code. A bare figure on a signing screen is the one
+            // thing the effects list exists to prevent: "Deposit 10 into the
+            // yield vault" says nothing about what 10 of, on the surface whose
+            // whole job is to state what is being signed. The vault names its
+            // underlying and `yieldUnderlying` already resolves it; where that
+            // lookup cannot answer, the sentence says the vault's asset rather
+            // than naming the wrong one.
             kind === "deposit"
-              ? `Deposit ${formatAmount(amount)} into the yield vault`
-              : `Withdraw ${formatAmount(amount)} from the yield vault`,
+              ? `Deposit ${formatAmount(amount)} ${underlyingCode ?? "of the vault's asset"} into the yield vault`
+              : `Withdraw ${formatAmount(amount)} ${underlyingCode ?? "of the vault's asset"} from the yield vault`,
             "This is in the PUBLIC pocket and is visible on the ledger",
             `Pay a network fee of ${formatAmount(BigInt(prepared.fee))} XLM`,
           ],
