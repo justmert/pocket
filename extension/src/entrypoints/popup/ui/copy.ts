@@ -9,6 +9,7 @@
 // the same place by both.
 import { NETWORKS } from "../../../core/config";
 import type { NetworkId } from "../../../core/config";
+import type { PrivatePocketState } from "../../../core/messages";
 
 /**
  * what happens to private balances when the vault on this device is destroyed.
@@ -139,4 +140,37 @@ export const PHRASE_LENGTHS = [12, 15, 18, 21, 24];
 export function phraseLengthList(): string {
   const all = PHRASE_LENGTHS;
   return `${all.slice(0, -1).join(", ")} or ${all[all.length - 1]}`;
+}
+
+/**
+ * What a non-ready private pocket can do about itself, or null when it can do
+ * nothing.
+ *
+ * One table, because two screens offer this and they disagreed: the private
+ * asset sheet mapped each state to its own action and to NO button for
+ * `unavailable` and `unfunded`, while the Shield/Unshield screen showed one
+ * unbranched "Open the private pocket" for all six. Two of those six have no
+ * action, so the button was a door back to the same wall.
+ *
+ * A rebuild is only a real offer where there is an archive to replay from, so
+ * the two states whose only route out is a rebuild answer null without one.
+ * That is the same read `canRebuild` makes, and it is why the network is a
+ * parameter rather than something the caller decides.
+ */
+export function privateStateAction(
+  state: PrivatePocketState,
+  network: NetworkId | undefined,
+): string | null {
+  switch (state) {
+    case "unregistered":
+      return "Set up";
+    case "archived":
+      return "Reactivate";
+    case "needsRecovery":
+    case "diverged":
+      return canRebuild(network ?? "testnet") ? "Rebuild" : null;
+    default:
+      // `unavailable`, `unfunded` and `ready`: nothing this screen can start.
+      return null;
+  }
 }

@@ -64,9 +64,20 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
   // id of the background-op record for the op in flight, so the confirm's resolver
   // can flip it to done even after the sheet has been sent to the background.
   const opId = useRef<string | null>(null);
-  // set the moment a register build returns, because by then its first
-  // transaction is on the ledger and the disclosure below must stop describing
-  // it in the future tense.
+  // set the moment a register build STARTS, not when it returns.
+  //
+  // `buildPrivateOp({kind:"register"})` calls `ownAuditorId` first, and that
+  // SUBMITS: up to four auditor registrations, each a real transaction with a
+  // real fee, before the register envelope is ever proved. So a failure after
+  // the auditor transaction landed left this false, and the sheet went on
+  // describing the whole thing in the future tense: "Pocket will register your
+  // auditor key", about a key that was already registered and paid for.
+  //
+  // Set before the call, cleared only by a `reset`. Over-claiming in this
+  // direction is the safe one: the worst case is the disclosure saying setup
+  // has begun when the very first submission was refused, which is a sentence
+  // about something that was attempted rather than about something that was
+  // not.
   const [registerStarted, setRegisterStarted] = useState(false);
 
   const reset = () => {
@@ -75,6 +86,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setHandle(null);
     setSummary(null);
     setResult(null);
+    setRegisterStarted(false);
     setBusy(false);
     once.release();
   };
@@ -130,8 +142,8 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     setError(null);
     setBuilding(true);
     try {
-      const r = await call({ type: "buildPrivateOp", op, asset: assetToken });
       if (op.kind === "register") setRegisterStarted(true);
+      const r = await call({ type: "buildPrivateOp", op, asset: assetToken });
       setHandle(r.handle);
       setSummary(r.summary);
       setStage("review");

@@ -17,6 +17,7 @@ import { fiatOf } from "../money";
 import { AmountComposer, AmountSlider, sliderPercent, amountReady } from "../AmountComposer";
 import { ConfirmSheet, useOnce } from "../flow";
 import { privateAbsence } from "../holdings";
+import { privateStateAction } from "../copy";
 import { AssetMark, privateMarkId } from "./Home";
 import { PrivateAssetPicker } from "../sheets/PrivateAssetPicker";
 import {
@@ -67,6 +68,9 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
   // the user did not make. Nothing selected yet still defaults to the first,
   // which is a default rather than a substitution, and the helper says so.
   const localPriv = selectPrivateAsset(w.privAssets, privToken);
+  // What this state can actually do about itself, from the one table both this
+  // screen and the private asset sheet read.
+  const blockedAction = localPriv ? privateStateAction(localPriv.state, w.status?.network) : null;
   const symbol = localPriv?.symbol ?? "XLM";
   const assetToken = localPriv?.token ?? undefined;
   const isNativeAsset = symbol === "XLM";
@@ -308,7 +312,15 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
                         // private pocket is not set up" when XLM is already live, so name
                         // the asset rather than implying the whole pocket is closed.
                         `Setting up ${symbol} in your private pocket takes two transactions, and you review the second one.`
-                      : NOT_READY[localPriv.state]
+                      : // The WORKER's own sentence first, and this table only when
+                        // there is none. `privatePocket` sets `message` for every
+                        // state a user must act on, and it is the half that carries
+                        // `rebuildAdvice`: whether a rebuild is possible on this
+                        // build at all. Dropping it left "has to be rebuilt before
+                        // anything can move" next to no way to rebuild, on a build
+                        // that cannot. The table stays as the fallback, because a
+                        // state with no message still needs a sentence.
+                        (localPriv.message ?? NOT_READY[localPriv.state])
                     : // three unrelated facts produce a null pocket and only one of
                       // them is "still reading". this asserted that one always, so a
                       // failed read and a network with no private pocket at all both
@@ -360,15 +372,28 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
               style={{ padding: `${space.md}px ${space.gutter}px ${space.lg}px`, background: t.bg }}
             >
               {blocked ? (
-                <Button
-                  t={t}
-                  onClick={() => {
-                    onClose();
-                    if (localPriv) w.openMove(localPriv);
-                  }}
-                >
-                  Open the private pocket
-                </Button>
+                // The action the STATE actually has, not one label for six of
+                // them. "Open the private pocket" was a constant string on a
+                // screen that can be blocked by six different things: an
+                // account that does not exist yet, a network with no
+                // deployment, a pocket that needs rebuilding on a build with no
+                // archive. Two of those have no action at all, and offering one
+                // is a door that leads back to the same wall.
+                //
+                // The same map the private asset sheet uses, imported rather
+                // than copied, so the two screens cannot come to disagree about
+                // what a state can do.
+                blockedAction && (
+                  <Button
+                    t={t}
+                    onClick={() => {
+                      onClose();
+                      if (localPriv) w.openMove(localPriv);
+                    }}
+                  >
+                    {blockedAction}
+                  </Button>
+                )
               ) : (
                 <Button
                   t={t}

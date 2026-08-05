@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useWallet, type SheetId } from "../WalletProvider";
 import { call } from "../rpc";
-import { canRebuild } from "../copy";
+import { privateStateAction } from "../copy";
 import { KEEPALIVE_THRESHOLD_DAYS } from "../../../../core/chain/ttl";
 import { Amount } from "../Amount";
 import { Button, IconDisc, Notice, Sheet, Skeleton } from "../primitives";
@@ -35,18 +35,14 @@ const STATE_TITLE: Record<PrivatePocketState, string> = {
   diverged: "Out of step with the ledger",
   ready: "",
 };
-/** states whose only route out is a rebuild, which needs an archive. */
-const NEEDS_ARCHIVE: PrivatePocketState[] = ["needsRecovery", "diverged"];
 
-const STATE_ACTION: Record<PrivatePocketState, string | null> = {
-  unavailable: null,
-  unfunded: null,
-  unregistered: "Set up",
-  archived: "Reactivate",
-  needsRecovery: "Rebuild",
-  diverged: "Rebuild",
-  ready: null,
-};
+// The action table lives in `copy.ts` now: the Shield/Unshield screen offers
+// the same thing and had one unbranched label for all six states, so the two
+// screens disagreed about what a state can do. One table, one answer.
+//
+// It also folds in the archive check this file used to make separately below,
+// which is why `NEEDS_ARCHIVE` is gone: a rebuild is only a real offer where
+// there is an archive to replay from.
 
 export function PrivateAssetSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const w = useWallet();
@@ -94,11 +90,7 @@ export function PrivateAssetSheet({ open, onClose }: { open: boolean; onClose: (
 
   // A rebuild is only offerable where there is an archive to replay from. See
   // the comment at the button.
-  const label = priv ? STATE_ACTION[priv.state] : null;
-  const action =
-    priv && NEEDS_ARCHIVE.includes(priv.state) && !canRebuild(w.status?.network ?? "testnet")
-      ? null
-      : label;
+  const action = priv ? privateStateAction(priv.state, w.status?.network) : null;
 
   // an action REPLACES this sheet with the form, so the form's close returns to the
   // pocket rather than back into this detail. the asset is already selected, so the
