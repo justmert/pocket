@@ -359,6 +359,22 @@ export function Home() {
           </div>
         </div>
 
+        {/* a status read that FAILED, on a wallet that is already loaded.
+            `bootError` was rendered in exactly one place, `App`'s `if
+            (!w.status)` branch, so it could only ever be seen before the first
+            status arrived. Every later failure set the field and showed
+            nothing: `refresh` returns early on it, so the balances and the
+            private pocket are not read either, and the screen simply stops
+            updating with no sign that it has. Both pockets, because the read
+            that failed serves both. */}
+        {w.bootError && (
+          <div style={{ marginTop: space.gutter }}>
+            <Notice t={t} tone="danger">
+              {w.bootError}
+            </Notice>
+          </div>
+        )}
+
         {isPrivate ? privateBody() : publicBody()}
       </div>
     </ScrollArea>
@@ -586,8 +602,15 @@ export function Home() {
             alignItems: "center",
           }}
         >
+          {/* THE SAME sentence the multi-asset hero uses for the same state.
+              This one said "Not reported. Close and reopen the wallet to read
+              it again.", which is a different answer to the same question, on a
+              path no shipped build reaches: testnet configures two confidential
+              assets so `multiPrivate` is always true, and mainnet configures
+              none so the tab is hidden. Two answers that cannot both be seen
+              cannot be compared either, which is exactly how they drifted. */}
           <span style={{ ...text.heading, color: t.sub }}>
-            Not reported. Close and reopen the wallet to read it again.
+            {priv.state !== "ready" ? HERO_STATE[priv.state] : "Nothing spendable yet"}
           </span>
         </div>
       );
@@ -865,7 +888,16 @@ export function Home() {
             </Notice>
           </div>
         )}
-        {!privAssets ? (
+        {/* a read that FAILED leaves `privAssets` null forever, and nothing
+            retries it: a wait that has already ended, drawn as one that has
+            not. the same guard the public list above carries, for the same
+            reason. `privError` is already stated over the list; what this
+            branch removes is the shimmer that says it is still coming. */}
+        {!privAssets && w.privError ? (
+          <div style={{ ...text.body, color: t.faint, paddingTop: space.sm }}>
+            Pocket could not read your private assets.
+          </div>
+        ) : !privAssets ? (
           <div style={{ display: "grid", gap: space.md, paddingTop: space.xs }}>
             <Skeleton width="100%" height={52} />
             <Skeleton width="100%" height={52} />
