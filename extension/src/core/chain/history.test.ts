@@ -1,13 +1,24 @@
 // Public-pocket history: mapping Horizon payment records into the wallet's own
 // entries, the shared merge cursor, and the walk that pages and filters them.
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { publicHistory, encodeCursor, decodeCursor, beforeCursor, byRecency } from "./history";
+import { Address, nativeToScVal } from "@stellar/stellar-sdk/base";
+import {
+  publicHistory,
+  encodeCursor,
+  decodeCursor,
+  beforeCursor,
+  byRecency,
+  invokedContract,
+} from "./history";
 import type { HistoryEntry } from "../messages";
 
+const ISSUER_G = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 const HORIZON = "https://horizon.example";
 const ME = "GAME000000000000000000000000000000000000000000000000ME";
 const THEM = "GATHEM00000000000000000000000000000000000000000000THEM";
-const TOKEN = "CTOKEN0000000000000000000000000000000000000000000TOKEN";
+// Real contract strkeys: `parameters[0]` is DECODED, so a fixture whose
+// contract id is not encodable proves nothing about the live shape.
+const TOKEN = "CBRW63TGNFSGK3TUNFQWYLLUN5VWK3RNMZUXQ5DVOJSQAAAAAAAABKFC";
 
 interface Rec {
   id: string;
@@ -28,9 +39,12 @@ interface Rec {
   account?: string;
   funder?: string;
   starting_balance?: string;
-  // invoke_host_function: the contract invoked, and the balance movements it
-  // caused. Shape taken verbatim from a live testnet record.
+  // invoke_host_function: the call's arguments, and the balance movements it
+  // caused. Shape taken verbatim from a live testnet record, including the fact
+  // that `address` is the EMPTY STRING on every contract call.
   address?: string;
+  function?: string;
+  parameters?: { value?: string; type?: string }[];
   asset_balance_changes?: {
     asset_type?: string;
     asset_code?: string;
@@ -40,6 +54,31 @@ interface Rec {
     to?: string;
     amount?: string;
   }[];
+}
+
+/**
+ * The `function`/`parameters`/`address` triple Horizon serves for a contract
+ * call, built the way Horizon builds it.
+ *
+ * `address` is "" and NOT the contract: surveyed over 583 consecutive
+ * `invoke_host_function` operations on 2026-08-08, it was empty on 569 and the
+ * exceptions were CreateContract records carrying a deployer's G-address. The
+ * contract is `parameters[0]`, an XDR-encoded ScVal address, with the function
+ * symbol at `parameters[1]`. Read verbatim off operation 17257049746350081.
+ *
+ * The fixtures used to put the contract in `address`, which is a shape the
+ * network never produces, and that is why the counterparty fallback below could
+ * be dead and green at the same time.
+ */
+function invoke(contract: string, fn = "swap"): Pick<Rec, "address" | "function" | "parameters"> {
+  return {
+    address: "",
+    function: "HostFunctionTypeHostFunctionTypeInvokeContract",
+    parameters: [
+      { value: new Address(contract).toScVal().toXDR("base64"), type: "Address" },
+      { value: nativeToScVal(fn, { type: "symbol" }).toXDR("base64"), type: "Sym" },
+    ],
+  };
 }
 
 /** Serve fixed pages of records in order, ignoring the URL. */
@@ -187,6 +226,50 @@ describe("mapping Horizon records", () => {
     });
   });
 
+  it("reads funding somebody ELSE's account as XLM leaving this one", async () => {
+    // Horizon serves the same record on the funder's own /payments feed, and it
+    // was dropped there as "the other account's business". Confirmed live on
+    // 2026-08-08: the newest record of
+    // GC6JCCFWYPYIHOR7SYXEBRJ5RD32ULVXCQS2P5TDDDCR3AYT6V56CDMN is a
+    // create_account it funded with 1.2 XLM. That XLM is gone and there was no
+    // row for it.
+    stubHorizon([
+      {
+        id: "1b",
+        type: "create_account",
+        created_at: AUG1,
+        transaction_hash: "tx1b",
+        account: THEM,
+        funder: ME,
+        starting_balance: "1.2000000",
+      },
+    ]);
+    const { entries } = await history();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      kind: "create",
+      direction: "out",
+      code: "XLM",
+      amount: "1.2000000",
+      counterparty: THEM,
+    });
+  });
+
+  it("still drops a creation this account had no part in", async () => {
+    stubHorizon([
+      {
+        id: "1c",
+        type: "create_account",
+        created_at: AUG1,
+        transaction_hash: "tx1c",
+        account: THEM,
+        funder: "GSTRANGER000000000000000000000000000000000000STRANGER",
+        starting_balance: "5.0000000",
+      },
+    ]);
+    expect((await history()).entries).toEqual([]);
+  });
+
   it("uses the source asset and amount for a path payment the account sent", async () => {
     stubHorizon([
       {
@@ -248,7 +331,7 @@ describe("mapping Horizon records", () => {
  * the fact that a SAC transfer names a contract on the far side.
  */
 describe("value moved by a contract call", () => {
-  const ROUTER = "CROUTER000000000000000000000000000000000000000000ROUTER";
+  const ROUTER = "CBZG65LUMVZC2ZTJPB2HK4TFAAAAAAAAAAAAAAAAAAAAAAAAAAAABYO7";
   const USDC_ISSUER = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
 
   it("reads what the account paid into a contract as a send", async () => {
@@ -258,7 +341,7 @@ describe("value moved by a contract call", () => {
         type: "invoke_host_function",
         created_at: AUG1,
         transaction_hash: "tx10",
-        address: ROUTER,
+        ...invoke(ROUTER),
         asset_balance_changes: [
           {
             asset_type: "credit_alphanum4",
@@ -293,7 +376,7 @@ describe("value moved by a contract call", () => {
         type: "invoke_host_function",
         created_at: AUG1,
         transaction_hash: "tx11",
-        address: ROUTER,
+        ...invoke(ROUTER),
         asset_balance_changes: [
           { asset_type: "native", type: "transfer", from: ME, to: ROUTER, amount: "100.0000000" },
           {
@@ -331,7 +414,7 @@ describe("value moved by a contract call", () => {
         type: "invoke_host_function",
         created_at: AUG1,
         transaction_hash: "tx16",
-        address: ROUTER,
+        ...invoke(ROUTER),
         asset_balance_changes: [
           { asset_type: "native", type: "transfer", from: ME, to: ROUTER, amount: "10.0000000" },
           { asset_type: "native", type: "transfer", from: ROUTER, to: ME, amount: "9.0000000" },
@@ -351,7 +434,7 @@ describe("value moved by a contract call", () => {
         type: "invoke_host_function",
         created_at: AUG1,
         transaction_hash: "tx17",
-        address: ROUTER,
+        ...invoke(ROUTER),
         asset_balance_changes: [
           { asset_type: "native", type: "transfer", from: ME, to: ROUTER, amount: "10.0000000" },
         ],
@@ -369,7 +452,7 @@ describe("value moved by a contract call", () => {
         type: "invoke_host_function",
         created_at: AUG1,
         transaction_hash: "tx12",
-        address: ROUTER,
+        ...invoke(ROUTER),
         asset_balance_changes: [
           {
             asset_type: "credit_alphanum4",
@@ -396,7 +479,7 @@ describe("value moved by a contract call", () => {
         type: "invoke_host_function",
         created_at: AUG1,
         transaction_hash: "tx13",
-        address: TOKEN,
+        ...invoke(TOKEN),
         asset_balance_changes: [
           { asset_type: "native", type: "transfer", from: ME, to: TOKEN, amount: "5.0000000" },
         ],
@@ -412,14 +495,14 @@ describe("value moved by a contract call", () => {
         type: "invoke_host_function",
         created_at: AUG1,
         transaction_hash: "tx14",
-        address: ROUTER,
+        ...invoke(ROUTER),
       },
       {
         id: "15",
         type: "invoke_host_function",
         created_at: AUG1,
         transaction_hash: "tx15",
-        address: ROUTER,
+        ...invoke(ROUTER),
         asset_balance_changes: [
           { asset_type: "native", type: "transfer", from: THEM, to: ROUTER, amount: "1.0000000" },
         ],
@@ -520,5 +603,67 @@ describe("cursor helpers", () => {
     expect(beforeCursor(2, "b", { at: 2, id: "b" })).toBe(false);
     expect(beforeCursor(3, "a", { at: 2, id: "z" })).toBe(false);
     expect(beforeCursor(1, "a", null)).toBe(true);
+  });
+});
+
+/**
+ * The counterparty fallback was dead for as long as it existed.
+ *
+ * `chain/history.ts` fell back to the record's `address` field, whose own name
+ * says "the contract", and Horizon puts "" there on every contract call. So the
+ * comment that said the fallback "keeps a CCTP claim from rendering as
+ * 'Received from ' with nothing after it" described exactly what shipped.
+ */
+describe("which contract a call actually named", () => {
+  const MESSENGER = "CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP";
+
+  it("reads it off the first argument, verbatim from operation 17257049746350081", () => {
+    // The two values below are Horizon's own, copied from
+    // https://horizon-testnet.stellar.org/operations/17257049746350081
+    // (fetched 2026-08-09), not re-encoded here.
+    expect(
+      invokedContract({
+        function: "HostFunctionTypeHostFunctionTypeInvokeContract",
+        parameters: [
+          {
+            value: "AAAAEgAAAAHab57geGyBI0TYKBfvGbZItK8SD4vRC/ZY5rmerP8kuA==",
+            type: "Address",
+          },
+          { value: "AAAADwAAABBkZXBvc2l0X2Zvcl9idXJu", type: "Sym" },
+        ],
+      }),
+    ).toBe(MESSENGER);
+  });
+
+  it("refuses a CreateContract, whose `address` is a DEPLOYER and whose args are not a call", () => {
+    expect(
+      invokedContract({
+        function: "HostFunctionTypeHostFunctionTypeCreateContract",
+        parameters: [{ value: "AAAAAQ==", type: "Bytes" }],
+      }),
+    ).toBeUndefined();
+  });
+
+  it("answers undefined rather than throwing on anything it cannot read", () => {
+    const fn = "HostFunctionTypeHostFunctionTypeInvokeContract";
+    expect(invokedContract({})).toBeUndefined();
+    expect(invokedContract({ function: fn })).toBeUndefined();
+    expect(invokedContract({ function: fn, parameters: [] })).toBeUndefined();
+    expect(invokedContract({ function: fn, parameters: [{ type: "Address" }] })).toBeUndefined();
+    expect(
+      invokedContract({ function: fn, parameters: [{ value: "not-xdr", type: "Address" }] }),
+      "a history read must not fail over a counterparty it cannot name",
+    ).toBeUndefined();
+    // A G-address in the first argument is a real ScVal address and NOT the
+    // contract that was called, so it is not a counterparty for this row.
+    expect(
+      invokedContract({
+        function: fn,
+        parameters: [
+          { value: new Address(ISSUER_G).toScVal().toXDR("base64"), type: "Address" },
+          { value: nativeToScVal("swap", { type: "symbol" }).toXDR("base64"), type: "Sym" },
+        ],
+      }),
+    ).toBeUndefined();
   });
 });

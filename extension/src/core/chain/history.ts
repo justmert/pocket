@@ -11,6 +11,7 @@
 // counterparty is the confidential token contract: those moments are shown from
 // the private side as `shield`/`unshield`, with their real (decrypted) amount,
 // so showing the public leg too would double-count one movement.
+import { Address, xdr } from "@stellar/stellar-sdk/base";
 import { deadlineSignal } from "./http";
 import { formatAmount } from "./balances";
 import type { HistoryEntry } from "../messages";
@@ -107,8 +108,19 @@ interface PaymentRecord {
   // invoke_host_function: a Soroban call. It carries NO top-level from/to/amount,
   // which is why every one of them used to fall off the end of `mapPayment` and
   // vanish from history. What it carries instead is the list below, and the
-  // contract it invoked.
+  // arguments the call was made with.
+  //
+  // `address` is NOT the contract that was invoked, whatever the name suggests.
+  // Surveyed over 583 consecutive `invoke_host_function` operations from
+  // /operations?order=desc on 2026-08-08: it was the empty string on 569 of
+  // them, and the fourteen exceptions were all CreateContract/CreateContractV2,
+  // where it is the DEPLOYER's G-address. On Pocket's own CCTP burn,
+  // operation 17257049746350081, it is "".
+  //
+  // The invoked contract is `parameters[0]` instead: see `invokedContract`.
   address?: string;
+  function?: string;
+  parameters?: { value?: string; type?: string }[];
   asset_balance_changes?: AssetBalanceChange[];
   // joined via ?join=transactions: the fee is a property of the transaction, not
   // the payment operation, so it rides along on the record. `source_account` is
@@ -198,6 +210,46 @@ async function fetchPage(url: string): Promise<PaymentRecord[]> {
 }
 
 /**
+ * The contract an `invoke_host_function` record actually called.
+ *
+ * Horizon serialises the host function's arguments verbatim, so for an
+ * InvokeContract the first is the contract address and the second is the
+ * function symbol. Read off operation 17257049746350081 on 2026-08-09:
+ *
+ *   parameters[0] = {"value":"AAAAEgAAAAHab57geGyBI0TYKBfvGbZItK8SD4vRC/ZY5rmerP8kuA==",
+ *                    "type":"Address"}  -> CDNG7HXAPBWICI2E3AUBP3YZWZELJLYSB6F5CC7WLDTLTHVM74SLRTHP
+ *   parameters[1] = {"value":"AAAADwAAABBkZXBvc2l0X2Zvcl9idXJu","type":"Sym"} -> deposit_for_burn
+ *
+ * which is the CCTP token messenger this wallet is configured against. The
+ * record's own `address` field is "" on the same operation, so the fallback
+ * that used it produced an empty counterparty and the row said "Received from"
+ * with nothing after it.
+ *
+ * Guarded on the function type: CreateContract's parameters are not a contract
+ * call's, and its `address` really is a deployer. Returns undefined rather than
+ * throwing on any shape that is not the expected one, because a counterparty
+ * this cannot name is a missing row detail, never a failed history read.
+ */
+export function invokedContract(r: {
+  function?: string;
+  parameters?: { value?: string; type?: string }[];
+}): string | undefined {
+  if (r.function !== "HostFunctionTypeHostFunctionTypeInvokeContract") return undefined;
+  const first = r.parameters?.[0];
+  if (!first || first.type !== "Address" || !first.value) return undefined;
+  try {
+    const address = Address.fromScVal(xdr.ScVal.fromXDR(first.value, "base64")).toString();
+    // Only a contract is a useful counterparty here. An InvokeContract's first
+    // argument is a contract by construction, but the decode is of attacker-
+    // reachable bytes and this is the one place that assumption is cheap to
+    // check rather than assume.
+    return /^C[A-Z2-7]{55}$/.test(address) ? address : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * One record into a history entry, or null when it is not this account's money
  * or not a kind we render (a counterparty's leg, an unknown op type, or a leg of
  * a confidential deposit/withdraw shown from the private side instead).
@@ -224,19 +276,44 @@ function mapPayment(r: PaymentRecord, me: string, exclude: ReadonlySet<string>):
   };
 
   if (r.type === "create_account") {
-    // Only our own creation, which is our first funding. A create_account this
-    // account merely funded belongs to the OTHER account.
-    if (r.account !== me) return [];
-    return [
-      {
-        ...base,
-        kind: "create",
-        direction: "in",
-        code: "XLM",
-        amount: r.starting_balance ?? null,
-        counterparty: r.funder,
-      },
-    ];
+    // Two sides, and only one of them used to produce a row.
+    //
+    // `account === me` is our own creation, which is our first funding. The
+    // other side, `funder === me`, is this account paying the starting balance
+    // of somebody else's, and it used to be dropped on the stated ground that
+    // it "belongs to the OTHER account". The XLM is ours and it is gone:
+    // Horizon serves the record on the FUNDER's /payments feed too, which is
+    // the feed this walk reads. Confirmed on the live chain 2026-08-08, newest
+    // record of GC6JCCFWYPYIHOR7SYXEBRJ5RD32ULVXCQS2P5TDDDCR3AYT6V56CDMN:
+    // {"type":"create_account","account":"GBB2FJQ3...","funder":"GC6JCCFW...",
+    //  "starting_balance":"1.2000000"} - 1.2 XLM left the funder and Activity
+    // said nothing had happened. `createAccount` is also on the SEP-43
+    // describable list, so a site can get one signed.
+    if (r.account === me) {
+      return [
+        {
+          ...base,
+          kind: "create",
+          direction: "in",
+          code: "XLM",
+          amount: r.starting_balance ?? null,
+          counterparty: r.funder,
+        },
+      ];
+    }
+    if (r.funder === me) {
+      return [
+        {
+          ...base,
+          kind: "create",
+          direction: "out",
+          code: "XLM",
+          amount: r.starting_balance ?? null,
+          counterparty: r.account,
+        },
+      ];
+    }
+    return [];
   }
 
   // A Soroban call. Every in-app swap, yield move and CCTP leg is one of these,
@@ -251,6 +328,7 @@ function mapPayment(r: PaymentRecord, me: string, exclude: ReadonlySet<string>):
   // them into one would have to discard half. Both are true, and both are the
   // account's own money.
   if (r.type === "invoke_host_function") {
+    const invoked = invokedContract(r);
     const mine: {
       index: number;
       toMe: boolean;
@@ -267,7 +345,13 @@ function mapPayment(r: PaymentRecord, me: string, exclude: ReadonlySet<string>):
       // back to the contract that was invoked. That is a real counterparty and
       // it is always present, which keeps a CCTP claim from rendering as
       // "Received from " with nothing after it.
-      const other = (toMe ? c.from : c.to) ?? r.address;
+      //
+      // This used to read `?? r.address`, and `r.address` is "" on every
+      // contract call (see the field's own note), so the fallback resolved to
+      // an empty string and produced exactly the sentence it exists to prevent.
+      // `invokedContract` reads the call's first argument instead, which is the
+      // contract.
+      const other = (toMe ? c.from : c.to) || invoked;
       // The confidential wrappers' legs are the private pocket's story, told
       // from the private side. This is the first place the exclusion has ever
       // had anything to match: a classic payment names G-addresses on `to` and

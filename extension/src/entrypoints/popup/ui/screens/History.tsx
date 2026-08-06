@@ -40,7 +40,7 @@ import {
 } from "../icons";
 import { usd } from "../money";
 import { DATE_LOCALE, periodLabel } from "../period";
-import { explorerUrl } from "../explorer";
+import { addressUrl, explorerUrl } from "../explorer";
 import { shortAddress } from "../Address";
 import { conciseReason, opToEntry } from "../opEntry";
 import { NAV_SPACE } from "../BottomNav";
@@ -74,7 +74,7 @@ function assetId(e: Pick<HistoryEntry, "code" | "issuer">): string {
 }
 
 /** the sentence under the code, in the wallet's own words. */
-function entryLine(e: HistoryEntry): string {
+export function entryLine(e: HistoryEntry): string {
   const who = e.counterparty ? short(e.counterparty) : "";
   // A movement with no counterparty and no direction out of this account is one
   // the user made to themselves, and the wallet neither blocks it nor refuses
@@ -104,8 +104,11 @@ function entryLine(e: HistoryEntry): string {
     // not choose and does not think of as a counterparty.
     case "swap":
       return "Swapped";
+    // Both sides of a create_account reach here. "Account funded" reads as
+    // money arriving, and on the funder's side it is money leaving: this
+    // account paid the starting balance of a new one.
     case "create":
-      return "Account funded";
+      return e.direction === "out" ? `Funded a new account for ${who}` : "Account funded";
     case "shield":
       return "Shielded";
     case "unshield":
@@ -1177,7 +1180,7 @@ function DetailSheet({
                 label={e.direction === "in" ? "Received from" : "Sent to"}
                 value={short(e.counterparty)}
                 onCopy={() => onCopy(e.counterparty!)}
-                href={explorerUrl(network, "account", e.counterparty)}
+                href={addressUrl(network, e.counterparty)}
               />
             )}
             <DetailRow
@@ -1193,7 +1196,7 @@ function DetailSheet({
               label="Wallet"
               value={short(ownAddress)}
               onCopy={ownAddress ? () => onCopy(ownAddress) : undefined}
-              href={ownAddress ? explorerUrl(network, "account", ownAddress) : undefined}
+              href={addressUrl(network, ownAddress)}
             />
           </div>
         </div>
@@ -1673,11 +1676,13 @@ function ProcessingDetailSheet({
                 // led to "address does not exist". Shown in full and left
                 // unlinked instead: this wallet has no explorer for that chain,
                 // and no link is better than one that denies the address.
+                //
+                // `addressUrl` now holds the linking half of that rule for every
+                // address on the screen, including the C-addresses this one did
+                // not cover; the shortener still branches here.
                 value={isStellarAddress(op.to) ? short(op.to) : op.to}
                 onCopy={() => onCopy(op.to!)}
-                href={
-                  isStellarAddress(op.to) ? explorerUrl(op.network, "account", op.to) : undefined
-                }
+                href={addressUrl(op.network, op.to)}
               />
             )}
             {op.hash && (
@@ -1695,7 +1700,7 @@ function ProcessingDetailSheet({
               label="Wallet"
               value={short(ownAddress)}
               onCopy={ownAddress ? () => onCopy(ownAddress) : undefined}
-              href={ownAddress ? explorerUrl(op.network, "account", ownAddress) : undefined}
+              href={addressUrl(op.network, ownAddress)}
             />
           </div>
 
