@@ -61,3 +61,51 @@ describe("every terminal outcome says whether it cost anything", () => {
     );
   });
 });
+
+/**
+ * A transaction-level rejection reaches the user as words.
+ *
+ * `describeSendError` returned the XDR discriminant name verbatim, so the
+ * sentence read "The network rejected it (txBadSeq). Nothing was charged." That
+ * is safe (a closed set, no RPC-authored string) and useless: it names a
+ * protocol identifier to somebody who wanted to know what to do next.
+ */
+describe("what a rejection says happened", () => {
+  const rejectionFor = async (name: string) => {
+    const { submitAndConfirm } = await import("./submit");
+    const server = {
+      sendTransaction: async () => ({
+        status: "ERROR",
+        hash: "h".repeat(64),
+        errorResult: { result: () => ({ switch: () => ({ name }) }) },
+      }),
+    } as never;
+    const tx = {
+      hash: () => Buffer.from("h".repeat(32)),
+      timeBounds: { maxTime: String(Math.floor(Date.now() / 1000) + 180) },
+      toXDR: () => "",
+    } as never;
+    const out = await submitAndConfirm(server, tx);
+    return out.kind === "rejected" ? out.reason : `not a rejection: ${out.kind}`;
+  };
+
+  it("says what a stale sequence number means", async () => {
+    const said = await rejectionFor("txBadSeq");
+    expect(said, "a protocol identifier reached the user").not.toBe("txBadSeq");
+    expect(said).toMatch(/sequence number had already moved on/);
+  });
+
+  it("says what a passed time window means", async () => {
+    expect(await rejectionFor("txTooLate")).toMatch(/time window had already passed/);
+  });
+
+  it("says what an unaffordable transaction means", async () => {
+    expect(await rejectionFor("txInsufficientBalance")).toMatch(/cannot cover the amount/);
+  });
+
+  it("still passes an unmapped code through rather than inventing one", async () => {
+    // From a closed set, better than silence, and guessing at a sentence for a
+    // code nobody has seen would be inventing the one thing this reports.
+    expect(await rejectionFor("txSomethingNew")).toBe("txSomethingNew");
+  });
+});

@@ -77,6 +77,12 @@ describe.skipIf(!SENDER)("live testnet payment, end to end", () => {
     expect(hasExpired(expired)).toBe(true);
     const outcome = await submitAndConfirm(server, expired);
     expect(outcome.kind).toBe("rejected");
-    if (outcome.kind === "rejected") expect(outcome.reason).toContain("txTooLate");
+    // The MEANING, not the XDR discriminant name. `describeSendError` maps the
+    // codes a wallet can actually produce to plain reasons, because "The
+    // network rejected it (txTooLate)" names a protocol identifier and leaves
+    // the reader with nothing to do.
+    if (outcome.kind === "rejected") {
+      expect(outcome.reason).toContain("time window had already passed");
+    }
   }, 60_000);
 });

@@ -359,11 +359,40 @@ export function hasExpired(tx: Transaction, nowSeconds = chainNow()): boolean {
   return nowSeconds > Number(max);
 }
 
+/**
+ * A TRANSACTION-level rejection, in words rather than in XDR enum names.
+ *
+ * `txBadSeq`, `txTooLate`, `txInsufficientBalance` and the rest are the
+ * discriminant names of a closed set, so surfacing them is safe: no RPC-authored
+ * string reaches a user through here. Safe is not the same as useful. "The
+ * network rejected it (txBadSeq)" names a protocol identifier and leaves the
+ * reader with nothing to do; the same set has plain meanings, and the ones a
+ * wallet can actually produce are written out.
+ *
+ * An unmapped name still crosses. It is from a closed set, it is better than
+ * silence, and inventing a sentence for a code nobody has seen would be
+ * guessing about the one thing this function exists to report.
+ */
+const TX_REASON: Record<string, string> = {
+  txBadSeq: "the account's sequence number had already moved on, so this envelope was stale",
+  txTooLate: "its time window had already passed",
+  txTooEarly: "its time window had not opened yet",
+  txInsufficientBalance: "the account cannot cover the amount and the network fee together",
+  txInsufficientFee: "the fee offered was below what the network was taking",
+  txNoAccount: "the account paying for it does not exist on the network",
+  txBadAuth: "the signature did not satisfy the account's signers",
+  txBadAuthExtra: "it carried a signature the account did not need",
+  txMissingOperation: "it carried no operation at all",
+  txMalformed: "the envelope was malformed",
+  txSorobanInvalid: "the contract data on it was not valid",
+};
+
 function describeSendError(sent: rpc.Api.SendTransactionResponse): string {
   const r = sent.errorResult;
   if (!r) return "submission rejected";
   try {
-    return r.result().switch().name;
+    const name = r.result().switch().name;
+    return TX_REASON[name] ?? name;
   } catch {
     return "submission rejected";
   }
