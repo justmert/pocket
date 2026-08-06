@@ -128,7 +128,9 @@ describe("sending to an address that does not exist yet", () => {
     });
     const said = summary.effects.join(" ");
     expect(said).toMatch(/CREATE this account/);
-    expect(said).toMatch(/minimum balance/);
+    // The locked reserve is a visible notice under the amount, not a line
+    // inside the tip.
+    expect(summary.warning).toMatch(/New account: [\d.]+ XLM stays locked/);
   });
 
   it("refuses below the minimum a new account needs, before any fee is paid", async () => {

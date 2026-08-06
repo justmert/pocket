@@ -61,7 +61,8 @@ test("the unfinished-transaction screen keeps its hash and its buttons on screen
   await expect(page.getByText("Unfinished transaction")).toBeVisible({
     timeout: WAITS.onboarding,
   });
-  await expect(page.getByText(/It can still be included until/)).toBeVisible();
+  // the deadline is a fact row now: the label, and the clock beside it.
+  await expect(page.getByText("Open until", { exact: true })).toBeVisible();
 
   for (const vp of [...REQUIRED_VIEWPORTS, ...NARROW_VIEWPORTS]) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
@@ -133,13 +134,13 @@ test("the private pocket's refusal to spend states itself fully inside the frame
   await wallet.reopen();
   await wallet.waitForHome(WAITS.ledgerRead);
   await wallet.openPrivatePocket();
-  await expect(page.getByText("Balances need rebuilding")).toBeVisible({
+  await expect(page.getByText("Needs rebuilding").first()).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
 
   // Half one, on the home screen: the heading, the worker's account of what
   // happened, and the one control that leads anywhere from here. The message is
-  // long, and it is the only thing telling the user their money is safe.
+  // the only thing telling the user their money is safe.
   //
   // FINDING. The heading is RED at and below 266px, and is left red.
   //
@@ -157,11 +158,11 @@ test("the private pocket's refusal to spend states itself fully inside the frame
   // Reported per viewport rather than at the first red, so the report says how
   // much worse it gets rather than naming one width and inviting the reading
   // that it is cosmetic.
-  const said = page.getByText(/This account has a private pocket but this device/);
+  const said = page.getByText(/This device has no record of your private balances/);
   const onHome = () =>
     forEachViewport(page, [...REQUIRED_VIEWPORTS, ...NARROW_VIEWPORTS], async (vp) => {
       await expectReachable(
-        page.getByText("Balances need rebuilding"),
+        page.getByText("Needs rebuilding").first(),
         `private/needsRecovery @ ${vp.name}: the heading`,
       );
       await expectReachable(said, `private/needsRecovery @ ${vp.name}: what happened`);
@@ -191,14 +192,14 @@ test("the private pocket's refusal to spend states itself fully inside the frame
   // Half two, inside the Move sheet: what rebuilding actually is, and the
   // control that starts it. It arrived with the rebuild-from-history work; a
   // layout that puts it out of reach makes the state a dead end again.
-  // on a build with no archive the sentence is why rebuilding CANNOT happen,
-  // not what it does. both wordings are the same job — the explanation a user in
-  // this state has to be able to read at every width — so the matcher covers the
-  // branch this build actually renders as well as the one it would with an
-  // archive configured.
-  const whatRebuildingIs = page.getByText(
-    /Rebuilding replays your history|Rebuilding would replay your history/,
-  );
+  // the sheet no longer explains what a rebuild IS where one is possible: the
+  // button is labelled Rebuild from history and a note on the verification
+  // strategy above it is a design document. so the two branches now carry
+  // different KINDS of way out, and both must survive every width: the sentence
+  // where there is no archive, and the control where there is.
+  const whatRebuildingIs = page
+    .getByText("This version cannot rebuild them.")
+    .or(page.getByRole("button", { name: "Rebuild from history" }));
   const inMoveSheet = () =>
     forEachViewport(page, [...REQUIRED_VIEWPORTS, ...NARROW_VIEWPORTS], async (vp) => {
       // one check, not two. this used to also require the "Rebuild from

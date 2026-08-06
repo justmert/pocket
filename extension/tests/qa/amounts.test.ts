@@ -1284,14 +1284,6 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "one character, 0-9, into a CSS row offset; the value itself is rendered as text",
   },
   {
-    fragment: "...(summary?.dust && Number(summary.dust) > 0",
-    why:
-      "a presence test, not a value. the float decides only whether the dust ROW is drawn; " +
-      "the figure beside it renders `${summary.dust}`, the original 7dp string. dust is " +
-      "bounded to at most 9 stroops by the 7dp->6dp scale, so nothing here is near a " +
-      "precision boundary and no float reaches the user",
-  },
-  {
     fragment: "const id = `${Date.now()}-${Math.round(Math.random() * 1e9)}`",
     why: "a request id",
   },
@@ -1489,10 +1481,6 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     why: "swap: clears the live quote when the input is non-positive or the two assets match; a display guard, never a conversion",
   },
   {
-    fragment: "setQuoteAge(Math.round((Date.now() - quotedAt) / 1000))",
-    why: "how many seconds old the displayed swap quote is, for the staleness notice; elapsed time, never an amount",
-  },
-  {
     fragment: "domain: Number(d), name",
     why: "cctp: a CCTP domain id parsed from the config table's string key; an integer chain id, not a balance",
   },
@@ -1535,18 +1523,14 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
       '? `${describedAs}: ${shown >= 0 ? "up" : "down"} ${Math.abs(shown).toFixed(2)} percent`',
     why: "the change chip's own percentage, spelled out for a screen reader; the same number the visible chip already prints, and a rate rather than an amount",
   },
-  // the swap's price impact, in three places. basis points are an integer the
+  // the swap's price impact, in two places. basis points are an integer the
   // worker computed in bigint arithmetic on stroops (`impactBps` in
   // integrations/aquarius.ts); these divide that integer by 100 to print it as
   // a percentage. a RATE being displayed, never an amount, and the amount the
-  // swap moves is untouched by all three.
+  // swap moves is untouched by both.
   {
-    fragment: "? `This swap's rate is about ${(impact / 100).toFixed(1)}% worse than the price `",
+    fragment: "? `Rate is ${(impact / 100).toFixed(1)}% worse than the pool's price.`",
     why: "the confirm screen's impact warning; bps to a percentage for display",
-  },
-  {
-    fragment: ": `${(summary.impactBps / 100).toFixed(2)}%`,",
-    why: "the same percentage as a confirm-sheet fact row",
   },
   {
     fragment: ": `Price impact ${(quote.impactBps / 100).toFixed(2)}%`}",

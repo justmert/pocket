@@ -347,10 +347,14 @@ test.describe("the public balance", () => {
     await wallet.openSend();
     await wallet.composePayment({ to: RECIPIENT, amount: "100" });
     const sheet = wallet.page.getByRole("dialog", { name: "Send" });
-    await expect(sheet.getByText(/That is more than you can send/)).toBeVisible({
+    await expect(sheet.getByText(/More than you can send/)).toBeVisible({
       timeout: WAITS.ledgerRead,
     });
-    await expect(sheet.getByText(/Your balance is 15\.0000000 XLM/)).toBeVisible();
+    // The refusal no longer prints the raw balance, so the figure it DOES print
+    // carries the same proof: 13.9999900 is the wallet's own 15 XLM read less
+    // the reserve and the base fee, and nothing derived from the provider's
+    // ten thousand can produce it.
+    await expect(sheet.getByText(/13\.9999900 XLM is available/)).toBeVisible();
   });
 
   test("VERIFIED: an entry that belongs to a stranger renders no figure at all", async ({
@@ -628,8 +632,8 @@ test.describe("submission", () => {
     const hash = await wallet.confirmPayment();
 
     // A receipt for a confirmation the wallet did not verify and cannot: confirm*
-    // resolves on the provider's "included" verdict, so "Transaction successful"
-    // is shown for a transaction that only the provider claims happened. (The
+    // resolves on the provider's "included" verdict, so "Success" is shown for a
+    // transaction that only the provider claims happened. (The
     // ledger number the receipt used to print, of the provider's choosing, is no
     // longer surfaced; the trusted verdict it stood on is what this documents.)
     await expect(wallet.receipt()).toBeVisible();
@@ -702,7 +706,7 @@ test.describe("submission", () => {
     await wallet.page.getByRole("button", { name: "Confirm" }).click();
 
     // The one instruction that must follow an unresolved submission.
-    await expect(wallet.page.getByText(/It has not confirmed yet/)).toBeVisible({
+    await expect(wallet.page.getByText(/Not confirmed yet/)).toBeVisible({
       timeout: WAITS.submission,
     });
     await expect(wallet.page.getByText(/do not resend/)).toBeVisible();
@@ -801,9 +805,9 @@ test.describe("submission", () => {
     // The fee is a constant this build chose, not a number the provider offered:
     // a classic payment is never simulated, so there is nothing for an RPC to
     // inflate here.
-    await expect(sheet.getByText("Pay a network fee of 0.0000100 XLM")).toBeVisible();
+    await expect(sheet.getByText("0.0000100 XLM", { exact: true })).toBeVisible();
     await wallet.page.getByRole("button", { name: "Confirm" }).click();
-    await expect(wallet.page.getByText(/It has not confirmed yet/)).toBeVisible({
+    await expect(wallet.page.getByText(/Not confirmed yet/)).toBeVisible({
       timeout: WAITS.submission,
     });
 
@@ -871,7 +875,7 @@ test.describe("submission", () => {
     await wallet.openSend();
     await wallet.composePayment({ to: RECIPIENT, amount: "1.5" });
     await wallet.page.getByRole("button", { name: "Confirm" }).click();
-    await expect(wallet.page.getByText(/It has not confirmed yet/)).toBeVisible({
+    await expect(wallet.page.getByText(/Not confirmed yet/)).toBeVisible({
       timeout: WAITS.submission,
     });
 
@@ -958,11 +962,13 @@ test.describe("fees and costs", () => {
     });
     await move.getByRole("button", { name: "Set up the private pocket" }).click();
 
-    // The review screen, and the one sentence about cost it offers.
-    await expect(wallet.page.getByText("What this does")).toBeVisible({
+    // The review screen, and the one place cost is stated: the Network fee row.
+    await expect(wallet.page.getByRole("button", { name: "What this does" })).toBeVisible({
       timeout: WAITS.proving,
     });
-    const feeLine = wallet.page.getByText(/^Pay a network fee of [\d.]+ XLM$/);
+    const feeLine = wallet.page
+      .getByText("Network fee", { exact: true })
+      .locator("xpath=following-sibling::*[1]");
     await expect(feeLine).toBeVisible();
     const statedXlm = (await feeLine.innerText()).replace(/[^\d.]/g, "");
     const statedStroops = Math.round(Number(statedXlm) * 1e7);
@@ -972,7 +978,7 @@ test.describe("fees and costs", () => {
     inflate = true;
     await wallet.page.getByRole("button", { name: "Approve" }).click();
     await expect(
-      wallet.page.getByText(/It has not confirmed yet|Something went wrong/).first(),
+      wallet.page.getByText(/Not confirmed yet|Something went wrong/).first(),
     ).toBeVisible({ timeout: WAITS.submission });
 
     const signed = sent.tx as Transaction;
@@ -1014,7 +1020,7 @@ test.describe("the private pocket", () => {
     });
     await expect(wallet.money()).toHaveCount(0);
     // And the invented state is not narrated back as a fact about the user.
-    await expect(wallet.page.getByText("Private pocket not set up")).toHaveCount(0);
+    await expect(wallet.page.getByText("Not open yet")).toHaveCount(0);
     await expect(wallet.page.getByText(/auditor #?7/i)).toHaveCount(0);
     // The lie was told, from the worker. Without this the test would pass just
     // as well against a wallet that never asked.
@@ -1046,7 +1052,7 @@ test.describe("the private pocket", () => {
       wallet.page.getByText(/did not answer whether this account has a private pocket/),
     ).toBeVisible({ timeout: WAITS.ledgerRead });
     await expect(wallet.money()).toHaveCount(0);
-    await expect(wallet.page.getByText("Private pocket not set up")).toHaveCount(0);
+    await expect(wallet.page.getByText("Not open yet")).toHaveCount(0);
     // Nothing on screen invites the permanent action while the answer is unknown.
     await expect(
       wallet.page.getByRole("button", { name: "Set up the private pocket" }),
@@ -1082,11 +1088,9 @@ test.describe("the private pocket", () => {
     // `LedgerReadError` is on the safe-error allowlist because its wording is
     // wholly ours and interpolates nothing from the wire, so the exact sentence
     // is the assertion rather than a shrug at any error at all.
-    await expect(
-      wallet.page.getByText(
-        "the ledger did not answer the question: the response carried no entries field",
-      ),
-    ).toBeVisible({ timeout: WAITS.ledgerRead });
+    await expect(wallet.page.getByText("Could not read the ledger. Try again.")).toBeVisible({
+      timeout: WAITS.ledgerRead,
+    });
     await expect(wallet.money()).toHaveCount(0);
     await expect(wallet.page.getByText(/dormant/)).toHaveCount(0);
     expect(ttlReads).toBeGreaterThan(0);
@@ -1127,7 +1131,7 @@ test.describe("availability", () => {
       wallet.page.getByText(/Looking for payments you have received|Something went wrong/).first(),
     ).toBeVisible({ timeout: WAITS.ledgerRead });
     await expect(wallet.money()).toHaveCount(0);
-    for (const claim of ["Private pocket not set up", "Private pocket is dormant", "Receiving"]) {
+    for (const claim of ["Not open yet", "Dormant", "Receiving"]) {
       await expect(wallet.page.getByText(claim, { exact: true })).toHaveCount(0);
     }
 
@@ -1148,7 +1152,7 @@ test.describe("availability", () => {
     // The exact renderings, so the assertions below are about THESE facts rather
     // than about anything that happens to be shaped like them.
     const figure = (await wallet.money().first().innerText()).trim();
-    await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible();
+    await expect(wallet.page.getByText("Not open yet").first()).toBeVisible();
 
     // The Refresh control on the home screen is a user action, so this is the
     // reachable version of "a balance that is stale presented as current".
@@ -1190,7 +1194,7 @@ test.describe("availability", () => {
     // not have"; these are numbers and states it no longer has.
     await expect(wallet.money().first()).toHaveText(figure);
     await expect(wallet.page.getByText(/by the network as a reserve/)).toBeVisible();
-    await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible();
+    await expect(wallet.page.getByText("Not open yet").first()).toBeVisible();
     await expect(wallet.page.getByText(/Something went wrong/)).toHaveCount(0);
     await expect(wallet.page.getByText(/Reading the ledger/)).toHaveCount(0);
     await expect(wallet.page.locator(".pocket-skeleton")).toHaveCount(0);
@@ -1211,9 +1215,9 @@ test.describe("availability", () => {
     await wallet.reopen();
     await wallet.waitForHome(WAITS.ledgerRead);
 
-    await expect(
-      wallet.page.getByText(/Something went wrong|check your connection/i).first(),
-    ).toBeVisible({ timeout: WAITS.ledgerRead });
+    await expect(wallet.page.getByText(/Something went wrong/i).first()).toBeVisible({
+      timeout: WAITS.ledgerRead,
+    });
     await expect(wallet.money()).toHaveCount(0);
 
     expect(await wallet.revealAddress()).toMatch(/^G[A-Z2-7]{55}$/);
@@ -1238,11 +1242,9 @@ test.describe("availability", () => {
     await wallet.reopen();
     await wallet.waitForHome(WAITS.ledgerRead);
 
-    await expect(
-      wallet.page.getByText(
-        "Yield is not configured for this network. Nothing is at risk; there is simply no vault to deposit into.",
-      ),
-    ).toBeVisible({ timeout: WAITS.ledgerRead });
+    await expect(wallet.page.getByText("Not available on this network.")).toBeVisible({
+      timeout: WAITS.ledgerRead,
+    });
     await expect(wallet.page.getByText(/could not be read/)).toHaveCount(0);
     expect(contacted).toBe(0);
   });
@@ -1280,7 +1282,7 @@ test.describe("availability", () => {
     await wallet.waitForHome(WAITS.ledgerRead);
     expect(await wallet.publicBalance()).toBeGreaterThan(9000);
     await wallet.openPrivatePocket();
-    await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
+    await expect(wallet.page.getByText("Not open yet").first()).toBeVisible({
       timeout: WAITS.ledgerRead,
     });
     await wallet.openPocket("Public pocket");

@@ -19,7 +19,9 @@ describe("keep-alive planning", () => {
     // The saver persona: shields, holds, never transacts, archives on schedule.
     const p = planKeepAlive(expiring(3), false);
     expect(p.due).toBe(true);
-    expect(p.notice).toMatch(/dormant in 3 days/);
+    // No notice. Background housekeeping is not news, and the bump happens
+    // whether or not anyone is looking.
+    expect(p.notice).toBeUndefined();
   });
 
   it("does NOT submit when the user has been active", () => {
@@ -35,8 +37,9 @@ describe("keep-alive planning", () => {
   it("treats an archived account as needing restore, not a bump", () => {
     const p = planKeepAlive({ kind: "archived" }, false);
     expect(p.due).toBe(false);
-    expect(p.notice).toMatch(/dormant/i);
-    expect(p.notice).toMatch(/reactivating/i);
+    // The card already says Dormant and the button already says Reactivate.
+    // The fee is the only part the notice has to carry.
+    expect(p.notice).toMatch(/reactivating costs/i);
   });
 
   it("does nothing for an account that was never registered", () => {

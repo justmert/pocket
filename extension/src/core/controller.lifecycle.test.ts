@@ -151,7 +151,7 @@ describe("shield is two transactions, and the second one can fail", () => {
     onChain = { spendable: IDENTITY, receiving: commit(amount, 0n) };
 
     const handle = stage(c, deposit, { kind: "credit", amount: amount.toString() }, true);
-    await expect(c.confirmPrivateOp(handle)).rejects.toThrow(/receiving balance/);
+    await expect(c.confirmPrivateOp(handle)).rejects.toThrow(/not spendable yet/);
 
     // The point of the test. Before the fix nothing was written here, the local
     // record was short by exactly the deposit, privatePocket() reported
@@ -274,7 +274,7 @@ describe("the worker dies between submit and the write", () => {
     onChain = { spendable: commit(1n, 1n), receiving: IDENTITY };
     getTx = async () => ({ status: "SUCCESS", ledger: 12, applicationOrder: 1 });
 
-    await expect(fresh.c.reconcileInFlight()).rejects.toThrow(/does not/);
+    await expect(fresh.c.reconcileInFlight()).rejects.toThrow(/no longer match the ledger/);
     expect(await openings(fresh.c, address)).toBeNull();
     // Left in place: the user is brought back here rather than told all is well.
     expect(store.has("pocket.inflight")).toBe(true);
@@ -364,7 +364,7 @@ describe("the consequence of a landed operation outlives a failed write", () => 
       kind: "spend",
       spendable: ["40000000", "5"],
     });
-    await expect(c.confirmPrivateOp(handle)).rejects.toThrow(/does not match/);
+    await expect(c.confirmPrivateOp(handle)).rejects.toThrow(/no longer match the ledger/);
 
     // BOTH survive. The staged record is the opening; the in-flight record is
     // the only pointer to it.
@@ -497,7 +497,7 @@ describe("a payment arriving while the proof is being built", () => {
       kind: "spend",
       spendable: ["30000000", "77"],
     });
-    await expect(c.confirmPrivateOp(handle)).rejects.toThrow(/does not match/);
+    await expect(c.confirmPrivateOp(handle)).rejects.toThrow(/no longer match the ledger/);
     // Nothing written, and the record kept so the user is brought back to it.
     expect(await openings(c, address)).toEqual({
       spendable: { value: 40_000_000n, randomness: 11n },

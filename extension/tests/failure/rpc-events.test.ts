@@ -379,7 +379,7 @@ describe("a credit is refused unless the chain agrees, whatever the RPC served",
     })();
     expect(said).toMatch(/will not credit them/i);
     expect(said).toMatch(/funds are safe on chain/i);
-    expect(said).not.toBe("Something went wrong. Try again, and check your connection.");
+    expect(said).not.toBe("Something went wrong. Try again.");
   });
 
   it("does not open a transfer that was addressed to somebody else", () => {

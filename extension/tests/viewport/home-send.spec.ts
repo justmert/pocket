@@ -58,7 +58,7 @@ test("a funded home keeps both actions, the reserve line and both pockets on scr
   await expect(page.getByText(/locked by the network as a reserve/)).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
-  await expect(page.getByRole("button", { name: "Private pocket" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Private", exact: true })).toBeVisible();
 
   await atEveryViewport(page, "home/loaded", async () => {
     await expect(wallet.nav("Send")).toBeAttached();
@@ -169,7 +169,7 @@ test("the submitting wait stays on screen at every viewport", async ({ wallet, h
 
   // the processing view: the mark, "Processing", and the way home while the
   // transaction lands. it has to stay reachable at every viewport rather than
-  // scrolled out of the frame, and its way out (Go to Home) with it.
+  // scrolled out of the frame, and its way out (Go home) with it.
   const processing = page.getByText("Processing", { exact: true });
   await expect(processing).toBeVisible({ timeout: WAITS.submission });
 
@@ -177,8 +177,8 @@ test("the submitting wait stays on screen at every viewport", async ({ wallet, h
     await page.setViewportSize({ width: vp.width, height: vp.height });
     await expectReachable(processing, `send/sending @ ${vp.name}: the processing view`);
     await expectReachable(
-      page.getByRole("button", { name: "Go to Home" }),
-      `send/sending @ ${vp.name}: Go to Home`,
+      page.getByRole("button", { name: "Go home" }),
+      `send/sending @ ${vp.name}: Go home`,
     );
     await expectLayoutHolds(page, `send/sending @ ${vp.name}`);
   }
@@ -217,7 +217,7 @@ test("home reports an unread balance and an honest error inside the frame", asyn
   await page.setViewportSize(FRAME);
   await wallet.reopen();
   await wallet.waitForHome();
-  const notice = page.getByText(/Something went wrong|check your connection/i).first();
+  const notice = page.getByText(/Something went wrong/i).first();
   await expect(notice).toBeVisible({ timeout: WAITS.ledgerRead });
 
   for (const vp of VIEWPORTS) {

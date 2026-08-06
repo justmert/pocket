@@ -35,7 +35,7 @@ import { FaultServer, DEAD_ORIGIN_HTTP, type Fault } from "./_harness/faults";
 
 const ACCOUNT = "GBZXN7PIRZGNMHGA7MUUUF4GWPY5AYPV6LY4UV2GL6VJGIQRXFDNMADI";
 const CONTRACT = "CDMXZEFOM5DN2GSHQKNOOW242RJZGCEM5LOOAPGRQE35GGHB7ALDK2Y6";
-const GENERIC = "Something went wrong. Try again, and check your connection.";
+const GENERIC = "Something went wrong. Try again.";
 
 const open: FaultServer[] = [];
 afterEach(async () => {

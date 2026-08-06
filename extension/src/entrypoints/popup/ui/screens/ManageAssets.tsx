@@ -5,14 +5,13 @@
 // trustline via the directory search, and close one it no longer wants. XLM is
 // not shown: it is always held and has no trustline to manage.
 import { useEffect, useRef, useState } from "react";
-import { displayAmount } from "../../../../core/chain/balances";
 import { useWallet, nativeOf } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Frame, Header, Notice, Skeleton } from "../primitives";
 import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark } from "./Home";
 import { Amount } from "../Amount";
-import { shortAddress } from "../Address";
+import { AddressBlock, shortAddress } from "../Address";
 import { Trash } from "../icons";
 import { fonts, ROW_STAGGER_MS, space, text, type Theme } from "../theme";
 import type { Trustline, TrustlineSummary } from "../../../../core/messages";
@@ -68,11 +67,8 @@ export function ManageAssets({ onClose }: { onClose: () => void }) {
     // round trip with no busy state, into a notice at the top of a list that can
     // be scrolled well past it: eight 60px rows in a ~440px body is enough, and
     // the observable behaviour of the trash icon was then that it did nothing.
-    // the wallet already had the number.
     if (/[1-9]/.test(tl.balance)) {
-      setError(
-        `You still hold ${displayAmount(tl.balance)} ${tl.code}. Send or swap it away first, then remove the asset.`,
-      );
+      setError(`Send or swap all your ${tl.code} out first.`);
       setRemoving(null);
       return;
     }
@@ -186,10 +182,7 @@ export function ManageAssets({ onClose }: { onClose: () => void }) {
                   padding: `${space.xl}px ${space.md}px`,
                 }}
               >
-                {onLedger
-                  ? "You have no assets added. Get started by adding an asset."
-                  : "This account is not on the Stellar network yet, so it cannot hold any asset. " +
-                    "Receive some XLM first: the first payment creates the account."}
+                {onLedger ? "No assets yet." : "Receive XLM to activate this account."}
               </div>
             )}
 
@@ -220,11 +213,20 @@ export function ManageAssets({ onClose }: { onClose: () => void }) {
         heading={`Remove ${removing?.code ?? ""}`}
         code={removing?.code ?? "XLM"}
         fee={summary?.fee}
-        // the reserve is the largest number in this transaction by five orders of
-        // magnitude (0.5 XLM against a fee around 0.00001) and it was stated only
-        // inside the effects list, behind a tap. it is locked, not spent, and the
-        // row says which.
-        facts={[{ label: "Reserve locked", value: "0.5 XLM, released if removed" }]}
+        // which of several same-coded assets is being dropped. the same row the
+        // add confirm draws, so the two doors to a trustline state its identity
+        // the same way.
+        facts={
+          summary?.issuer
+            ? [
+                {
+                  label: "Issuer",
+                  value: <AddressBlock t={t} address={summary.issuer} compact />,
+                },
+                { label: "Reserve locked", value: "0.5 XLM, released if removed" },
+              ]
+            : []
+        }
         effects={summary?.effects ?? []}
         error={error}
         unresolved={unresolved}

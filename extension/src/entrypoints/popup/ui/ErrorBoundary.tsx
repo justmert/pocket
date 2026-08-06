@@ -68,9 +68,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
           <Logo t={t} width={168} />
           <div style={{ marginTop: space.lg, width: "100%" }}>
             <Notice t={t} tone="danger">
-              Pocket could not draw this screen. Your wallet and your funds are not affected: the
-              keys are held by the extension&rsquo;s background service, not by this window. Reopen
-              the wallet to continue.
+              This screen crashed. Your funds are safe.
             </Notice>
             <ButtonStack>
               <Button t={t} onClick={() => window.location.reload()}>

@@ -263,15 +263,14 @@ describe("adding a trustline the account cannot afford", () => {
     // 1.5 XLM covers the base 2 entries plus one existing subentry with nothing
     // spare, so a second subentry cannot be afforded.
     poorNative = 15_000_000n;
-    await expect(c.buildAddTrustline("EURC", ISSUER)).rejects.toThrow(/minimum balance/i);
+    await expect(c.buildAddTrustline("EURC", ISSUER)).rejects.toThrow(/Add about .* XLM first/);
   });
 
   it("says how much more the account needs", async () => {
     const { c } = await worker();
     poorNative = 15_000_000n;
     const err = await c.buildAddTrustline("EURC", ISSUER).catch((e: Error) => e);
-    expect((err as Error).message).toMatch(/Add about .* XLM first/);
-    expect((err as Error).message).toMatch(/EURC/);
+    expect((err as Error).message).toMatch(/Add about 0\.5000100 XLM first\./);
   });
 
   it("allows it when the reserve is covered", async () => {
@@ -293,12 +292,12 @@ describe("adding an asset that is not what it looks like", () => {
     // "XLM", which sat in the asset list beside the real balance wearing the
     // same three letters, with only the issuer telling them apart.
     const { c } = await worker();
-    await expect(c.buildAddTrustline("XLM", ISSUER)).rejects.toThrow(/not the native asset/i);
+    await expect(c.buildAddTrustline("XLM", ISSUER)).rejects.toThrow(/not real XLM/i);
   });
 
   it("refuses the lowercase spelling too", async () => {
     const { c } = await worker();
-    await expect(c.buildAddTrustline("xlm", ISSUER)).rejects.toThrow(/not the native asset/i);
+    await expect(c.buildAddTrustline("xlm", ISSUER)).rejects.toThrow(/not real XLM/i);
   });
 
   it("refuses adding a trustline the account already holds", async () => {
@@ -307,7 +306,7 @@ describe("adding an asset that is not what it looks like", () => {
     // to change nothing the user asked to change.
     const { c } = await worker();
     usdcLine = { raw: 5_0000000n, sellingLiabilities: 0n, authorized: true };
-    await expect(c.buildAddTrustline("USDC", ISSUER)).rejects.toThrow(/already holds/i);
+    await expect(c.buildAddTrustline("USDC", ISSUER)).rejects.toThrow(/already hold this asset/i);
   });
 
   it("still adds one the account does not hold", async () => {

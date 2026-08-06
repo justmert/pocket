@@ -67,7 +67,7 @@ test("openings written by a previous version still open the balance the contract
 
     // Register only, and no shield. `7076c5a`'s OWN shield leaves it diverged:
     // driven through its own UI the deposit confirms and the very next read
-    // says "Records do not match the ledger … for the receiving balance". That
+    // says "Out of step … for the receiving balance". That
     // is a defect of that commit, since fixed, and it is not what this test is
     // about, so the old build is asked for the one thing it does correctly:
     // register, and write the opening record that goes with it.

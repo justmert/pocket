@@ -209,8 +209,8 @@ describe("recoverFromMnemonic: the one destructive path reachable while locked",
       () => "erased",
       (e) => describeError(e),
     );
-    expect(said).toMatch(/unlock the wallet once with its password/i);
-    expect(said).toMatch(/reinstalling the extension/i);
+    expect(said).toMatch(/unlock once with your password/i);
+    expect(said).toMatch(/reinstall the extension/i);
   });
 
   it("becomes possible again after one unlock, which back-fills the address", async () => {

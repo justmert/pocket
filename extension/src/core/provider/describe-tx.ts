@@ -111,7 +111,7 @@ export function assetName(asset: {
   // better than dropping the qualifier and reading like a known asset.
   return issuer
     ? `${asset.getCode()} (issued by ${issuer})`
-    : `${asset.getCode()} (issuer not stated in this envelope)`;
+    : `${asset.getCode()} (no issuer stated)`;
 }
 
 /**
@@ -166,7 +166,7 @@ export function describeSetOptions(op: {
   if (op.masterWeight !== undefined) {
     parts.push(
       op.masterWeight === 0
-        ? "DISABLE this account's own key permanently (master weight 0)"
+        ? "DISABLE this account's own key permanently"
         : `Set this account's own key weight to ${op.masterWeight}`,
     );
   }
@@ -189,7 +189,7 @@ export function describeSetOptions(op: {
   // An operation that sets nothing is still a signed operation, and saying
   // "changes nothing" would be a claim this function cannot make about a shape
   // it did not recognise.
-  if (parts.length === 0) return "CHANGE ACCOUNT SECURITY SETTINGS (no field this build can name)";
+  if (parts.length === 0) return "CHANGE ACCOUNT SECURITY SETTINGS (unknown field)";
   return parts.join("; ");
 }
 
@@ -271,8 +271,8 @@ function describeBody(op: DecodedOp, n: string): string {
  * anything outside it is refused, not summarised. the previous behaviour was to
  * fall through to the bare type name and still hand back `decoded: true`, so a
  * site could ask for a `createClaimableBalance` of the whole account balance to
- * an address of its choosing and the approval screen would show one line —
- * "1. createClaimableBalance" — with the amount and the beneficiary nowhere on
+ * an address of its choosing and the approval screen would show one line,
+ * "1. createClaimableBalance", with the amount and the beneficiary nowhere on
  * it, and an enabled Approve beneath. That is blind signing wearing the costume
  * of a description, and this file's own header says it must be impossible.
  *
@@ -294,18 +294,13 @@ const DESCRIBED = new Set([
  * an operation with a refusal written for it, because the generic one would
  * misdescribe WHY.
  *
- * the generic refusal reads "an operation Pocket cannot describe
- * (invokeHostFunction)", which a user reasonably hears as "this envelope is
- * broken". it is not. the envelope is fine and the limitation is ours, and a
- * site hitting it needs to know that retrying or re-encoding will not help.
+ * the generic refusal names the operation TYPE, which a user reasonably hears
+ * as "this envelope is broken". it is not. the envelope is fine and the
+ * limitation is ours, and a site hitting it needs to know that retrying or
+ * re-encoding will not help.
  */
 const REFUSED = new Map([
-  [
-    "invokeHostFunction",
-    "This transaction calls a smart contract. What a contract call actually does is " +
-      "carried in its arguments, and Pocket cannot yet put those into words, so it will not " +
-      "ask you to approve one on trust. Nothing has been sent.",
-  ],
+  ["invokeHostFunction", "Pocket cannot describe contract calls, so it will not sign this."],
 ]);
 
 /** Operations that hand away control and must be called out, not listed. */
@@ -329,7 +324,7 @@ export function describeTransaction(xdr: string, networkPassphrase: string): TxS
       fee: "0",
       network: networkPassphrase,
       effects: [],
-      warning: "Pocket could not read this transaction, so it will not offer to sign it.",
+      warning: "Unreadable transaction. Pocket will not sign it.",
     };
   }
 
@@ -343,7 +338,7 @@ export function describeTransaction(xdr: string, networkPassphrase: string): TxS
       fee: tx.fee,
       network: networkPassphrase,
       effects: [],
-      warning: "This is a fee-bump transaction. Pocket does not sign these for sites.",
+      warning: "Pocket does not sign fee-bump transactions.",
     };
   }
 
@@ -388,9 +383,7 @@ export function describeTransaction(xdr: string, networkPassphrase: string): TxS
       fee: tx.fee,
       network: networkPassphrase,
       effects: [],
-      warning:
-        `This transaction contains an operation Pocket cannot describe (${names}), ` +
-        "so it will not offer to sign it. Nothing has been sent.",
+      warning: `Pocket cannot describe ${names}, so it will not sign this.`,
     };
   }
 
@@ -403,7 +396,7 @@ export function describeTransaction(xdr: string, networkPassphrase: string): TxS
   // is a real way to lose money to a site, it needs no unusual operation to
   // arrange, and it looked exactly like any other transaction. Measured: fee
   // 1,000,000,000 stroops, warning `undefined`.
-  const steep = steepFee(tx.fee, tx.operations.length);
+  const steep = steepFee(tx.fee);
 
   return {
     decoded: true,
@@ -416,12 +409,7 @@ export function describeTransaction(xdr: string, networkPassphrase: string): TxS
     // Both can be true. The security one leads, because losing the account is
     // worse than overpaying, and the fee one still has to be said.
     warning:
-      [
-        alarming
-          ? "This transaction changes who controls the account. Only approve it if you are certain."
-          : null,
-        steep,
-      ]
+      [alarming ? "This transaction changes who controls the account." : null, steep]
         .filter(Boolean)
         .join(" ") || undefined,
   };
@@ -440,7 +428,7 @@ export function describeTransaction(xdr: string, networkPassphrase: string): TxS
  * is 100. One XLM is 10,000,000 stroops: about 28x the largest real one, so a
  * legitimate envelope does not trip it and a punitive one cannot hide under it.
  */
-function steepFee(fee: string, ops: number): string | null {
+function steepFee(fee: string): string | null {
   const STEEP_STROOPS = 10_000_000n;
   let stroops: bigint;
   try {
@@ -448,12 +436,8 @@ function steepFee(fee: string, ops: number): string | null {
   } catch {
     // An unreadable fee is worth saying so about: it is a field the user is
     // being asked to accept.
-    return "Pocket could not read this transaction's network fee.";
+    return "Unreadable network fee.";
   }
   if (stroops <= STEEP_STROOPS) return null;
-  const each = ops > 0 ? ` across ${ops} operations` : "";
-  return (
-    `The network fee on this transaction is ${formatAmount(stroops)} XLM${each}, which is far ` +
-    `more than a transaction normally costs. The site chose it, not Pocket.`
-  );
+  return `The site set a fee of ${formatAmount(stroops)} XLM, far above normal.`;
 }

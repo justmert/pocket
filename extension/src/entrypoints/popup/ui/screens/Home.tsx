@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode, UIEvent } from "react";
 import { nativeOf, useWallet } from "../WalletProvider";
 import { call } from "../rpc";
-import { canRebuild, privateLossAfterErase } from "../copy";
+import { canRebuild } from "../copy";
 import { ChangeChip, ValueChartBlock, useValueChart } from "../Chart";
 import { NAV_SPACE } from "../BottomNav";
 import { Amount, HeroAmount, Figure, MASK } from "../Amount";
@@ -79,12 +79,22 @@ export function Home() {
   // the public pocket's value over time. keyed on the address so switching
   // wallets refetches, and NOT on the pocket: the private pocket has no chart,
   // so re-running this when the tab flips would be a request for nothing.
+  //
+  // a signature of the public balances is passed as the revalidate key: now that
+  // Home stays mounted across tab switches, the chart is not rebuilt on return
+  // (no skeleton), but a send or swap that actually changes a balance refetches it
+  // in place so it never goes stale. a tab switch does not change the signature.
+  const balanceSig = (w.balances ?? []).map((b) => `${b.code}:${b.total ?? b.amount}`).join(",");
   const {
     chart,
     loading: chartLoading,
     range,
     setRange,
-  } = useValueChart(status?.address ?? "none", (r) => call({ type: "valueSeries", range: r }));
+  } = useValueChart(
+    status?.address ?? "none",
+    (r) => call({ type: "valueSeries", range: r }),
+    balanceSig,
+  );
   const [scrubAt, setScrubAt] = useState<number | null>(null);
   // whether the backup check was ever completed. read once on mount; the flag
   // lives in local storage so it survives the browser closing, which is the
@@ -391,7 +401,7 @@ export function Home() {
     if (w.balances && !native) {
       return (
         <Notice t={t} tone="danger">
-          The ledger did not report a balance for this account. Reopen the wallet to try again.
+          No balance reported.
         </Notice>
       );
     }
@@ -447,20 +457,6 @@ export function Home() {
             describedAs={`Value change over ${range}, including money moved in and out`}
           />
         </div>
-        {/* the two figures measure DIFFERENT things and the hero swaps between
-            them silently: at rest it is the sum of what is spendable, priced at
-            spot; scrubbed it is the chart's own point, which is the account TOTAL
-            at that candle's close and therefore includes the network reserve. on
-            a 10 XLM account with one trustline the figure steps up on hover by the
-            value of 1.5 XLM and drops again on release, with nothing saying why.
-            the two cannot be reconciled here (a past reserve is not recoverable
-            from this data), so the screen says which one it is showing rather than
-            letting the step read as a balance change. */}
-        {scrubAt !== null && (
-          <div style={{ ...text.caption, color: t.faint }}>
-            Account total at that time, including the network reserve.
-          </div>
-        )}
 
         {/* the number on screen is the last one the ledger gave us, and the most
             recent attempt to refresh it did not answer.
@@ -489,8 +485,7 @@ export function Home() {
         {(w.balanceError || w.bootError) && native && (
           <div style={{ marginTop: space.xs }}>
             <Notice t={t} tone="exposed" bare>
-              Showing the last balance Pocket read. It could not reach the network just now, so this
-              may be out of date.
+              Could not refresh. This may be out of date.
             </Notice>
           </div>
         )}
@@ -506,17 +501,6 @@ export function Home() {
           bleed={space.gutter}
           style={{ marginTop: space.sm }}
         />
-        {/* the chart is built from the ACCOUNT's own history and knows nothing
-            about the vault: a deposit leaves the account, so the line steps
-            down by the amount deposited while the headline above, which counts
-            the vault, does not. two figures on one screen that disagree by a
-            known quantity, with nothing saying so, is the thing this line
-            exists to prevent. it appears only when there IS a position. */}
-        {vaultUnderlying() !== null && (
-          <div style={{ ...text.caption, color: t.faint, marginTop: space.xs }}>
-            This chart follows the account itself, so it does not include what is in the vault.
-          </div>
-        )}
       </>
     );
   }
@@ -713,9 +697,7 @@ export function Home() {
         {phraseUnconfirmed && (
           <div style={{ marginTop: space.gutter }}>
             <Notice t={t} tone="exposed">
-              Your recovery phrase was never confirmed, so Pocket cannot tell whether it was written
-              down. It is the only way to recover this wallet. Open Settings, then Recovery phrase,
-              to see the words again.
+              You never confirmed your recovery phrase. It is the only way back in.
             </Notice>
             <div style={{ marginTop: space.sm }}>
               <Button
@@ -747,12 +729,13 @@ export function Home() {
             pocket when NOTHING is ready yet; once any asset is live, adding another is
             a per-asset step in the private pocket, not a "set up your pocket" banner. */}
         {/* not while the funding card is up: an unfunded account showed BOTH this
-            ("Fund this account first", no action) and the actionable funding card
+            ("Fund first", no action) and the actionable funding card
             above, saying the same thing twice. once funded, `priv` becomes
             unregistered and this returns as the real "Set up" prompt. */}
         {status?.privateAvailable &&
           priv &&
           priv.state !== "ready" &&
+          priv.state !== "unavailable" &&
           !privAssets?.some((p) => p.state === "ready") &&
           !needsFunding && <div style={{ marginTop: space.gutter }}>{privatePrompt(priv)}</div>}
 
@@ -763,7 +746,7 @@ export function Home() {
               has not. the error itself is already stated at the hero. */}
           {w.balances === null && (w.balanceError || w.bootError) ? (
             <div style={{ ...text.body, color: t.faint, paddingTop: space.sm }}>
-              Pocket could not read this account&rsquo;s assets.
+              Could not load assets.
             </div>
           ) : w.balances === null ? (
             // the placeholders match the real Row PITCH: a row is 60px and the
@@ -785,19 +768,7 @@ export function Home() {
                 icon={<AssetMark t={t} id={b.id} code={b.code} />}
                 title={b.code}
                 sub={
-                  b.id === "native" ? (
-                    // the RESERVE, named. the worker publishes `reserved` on every
-                    // native balance and nothing in the popup read it, so Home
-                    // showed 8.5 XLM where an explorer shows 10 and nothing on any
-                    // screen accounted for the missing 1.5. it is not spendable,
-                    // which is why the figure beside it is right; it is also not
-                    // gone, which is why its absence read as a discrepancy.
-                    b.reserved && /[1-9]/.test(b.reserved) ? (
-                      `Stellar Lumens · ${displayAmount(b.reserved)} held as network reserve`
-                    ) : (
-                      "Stellar Lumens"
-                    )
-                  ) : b.issuer ? (
+                  b.issuer ? (
                     // an issuer is verbatim address data, read one glyph at a time, so
                     // it belongs in the mono face like every other address in the wallet.
                     <span style={{ fontFamily: fonts.mono }}>{shortAddress(b.issuer)}</span>
@@ -834,6 +805,9 @@ export function Home() {
   function singleAssetBody() {
     if (!priv) return null;
     const symbol = priv.symbol ?? "XLM";
+    // `unavailable` draws no card: it has no action by design, and
+    // `privateAvailable` already hides the tab it would sit on.
+    if (priv.state === "unavailable") return null;
     if (priv.state !== "ready") {
       return <div style={{ marginTop: space.gutter }}>{privatePrompt(priv)}</div>;
     }
@@ -895,7 +869,7 @@ export function Home() {
             branch removes is the shimmer that says it is still coming. */}
         {!privAssets && w.privError ? (
           <div style={{ ...text.body, color: t.faint, paddingTop: space.sm }}>
-            Pocket could not read your private assets.
+            Could not load assets.
           </div>
         ) : !privAssets ? (
           <div style={{ display: "grid", gap: space.md, paddingTop: space.xs }}>
@@ -981,7 +955,7 @@ export function Home() {
                 textOverflow: "ellipsis",
               }}
             >
-              {PROMPT_TITLE[priv.state]}
+              {privateStateTitle(priv.state)}
             </span>
             {/* the long "why" moves off the card and into the tip. the card now
                 says the state and offers the one action; the reasoning is a hover
@@ -991,17 +965,6 @@ export function Home() {
                 <span style={{ display: "block", marginBottom: 6 }}>{priv.message}</span>
               ) : null}
               Hides amounts, never addresses. Who you pay stays public on the ledger.
-              {/* the DURABILITY fact, on the screen where the pocket is opened
-                  rather than only on the screen where it is destroyed. it lived in
-                  `copy.ts` with exactly one caller, the erase sheet, so the one
-                  place it was said was the place it was already too late to act
-                  on. on testnet the omission costs nothing, which is why it would
-                  still be missing the day mainnet is enabled. */}
-              {priv.state === "unregistered" && (
-                <span style={{ display: "block", marginTop: 6 }}>
-                  {privateLossAfterErase(w.status?.network ?? "testnet")}
-                </span>
-              )}
             </InfoTip>
           </span>
           {action && (
@@ -1011,22 +974,6 @@ export function Home() {
             </Button>
           )}
         </div>
-        {/* with NO action, the tip above is the whole content of the card, and
-            the card reduces to an alarm: "Records do not match the ledger", an
-            "i", and nothing to press. that is exactly the `diverged` and
-            `needsRecovery` pair on a build with no archive, which is every
-            shipped one, and the worker's sentence for those states ends "Your
-            funds are safe on chain" and was reachable only by hovering. the
-            comment above moved the reasoning into the tip on the premise that
-            the card offers an action; where it does not, the reassurance comes
-            back out, as `PrivateAssetSheet` already does with the same string. */}
-        {!action && priv.message && (
-          <div style={{ marginTop: space.sm }}>
-            <Notice t={t} tone="exposed" bare>
-              {priv.message}
-            </Notice>
-          </div>
-        )}
       </Card>
     );
   }
@@ -1073,6 +1020,12 @@ export function Home() {
     // a withdraw only makes sense against an existing position; a fresh vault
     // shows only Deposit until there is something to take back out.
     const hasPosition = Boolean(y.balance && /[1-9]/.test(y.balance));
+    // deposit and withdraw live on the FAB's Yield action now, so this section is
+    // a quiet summary rather than a control surface: the rate figure and the
+    // Deposit/Withdraw buttons were removed to declutter it. with no controls and
+    // nothing deposited, an available-but-empty vault has nothing to show, so the
+    // section stays hidden until there is a position (a refresh error still shows).
+    if (y.available && !hasPosition && !w.yieldError) return null;
     return (
       <div style={{ marginTop: space.xl }}>
         {/* a refresh that failed WITH a position already on screen is the case
@@ -1089,33 +1042,11 @@ export function Home() {
             </Notice>
           </div>
         )}
-        {/* Deposit / Withdraw ride the section header row, beside the "Yield" heading
-            they belong to, rather than sitting below the position line. */}
-        <div
-          style={{ display: "flex", alignItems: "center", gap: space.sm, marginBottom: space.sm }}
-        >
-          <div style={{ ...text.heading, color: t.text }}>Yield</div>
-          <div style={{ flex: 1 }} />
-          {y.available && (
-            <>
-              <Button t={t} size="pill" onClick={() => w.openSheet("yieldDeposit")}>
-                Deposit
-              </Button>
-              {hasPosition && (
-                <Button
-                  t={t}
-                  size="pill"
-                  variant="soft"
-                  onClick={() => w.openSheet("yieldWithdraw")}
-                >
-                  Withdraw
-                </Button>
-              )}
-            </>
-          )}
-        </div>
+        <Overline t={t}>Yield</Overline>
+        {/* no position, no row: an empty vault has nothing to report, and a row
+            saying so is the section header spelled out. */}
         {y.available ? (
-          <>
+          hasPosition && (
             <div style={{ display: "flex", alignItems: "center", gap: space.sm, minHeight: 44 }}>
               <span
                 style={{
@@ -1123,32 +1054,15 @@ export function Home() {
                   color: t.text,
                   flex: 1,
                   minWidth: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
                 }}
               >
                 Vault position
-                {/* the APY and its caveat were a sentence jammed into a subtitle
-                    ("14.67% over the last 7 days, variable and not guaranteed
-                    reported"). the figure stays; the sentence becomes a tip. */}
-                {y.apy?.figure && (
-                  <InfoTip t={t} label="About this yield">
-                    {y.apy.sentence}. Reported by the vault rather than earned in the private
-                    pocket.
-                  </InfoTip>
-                )}
               </span>
               {/* the SAME figure the Yield screen shows, in the same unit and at
                   the same precision. this printed the raw share count uncapped
                   while Yield preferred `underlyingBalance` with the asset code,
                   so one deposit read "0.0019987 shares" here and "3.3331 XLM"
-                  one tap away.
-
-                  `hasPosition` is the predicate, not `y.balance`: the balance is
-                  a formatted string, so "0.0000000" is truthy and "None
-                  deposited" was dead code. that predicate is declared five lines
-                  above this and was not used here. */}
+                  one tap away. */}
               <span
                 style={{
                   ...text.rowTitle,
@@ -1158,17 +1072,13 @@ export function Home() {
                   alignItems: "flex-end",
                 }}
               >
-                {hasPosition ? (
-                  <Figure
-                    value={
-                      y.underlyingBalance
-                        ? `${displayAmount(y.underlyingBalance)} ${y.underlying ?? ""}`.trim()
-                        : `${displayAmount(y.balance!)} shares`
-                    }
-                  />
-                ) : (
-                  "None deposited"
-                )}
+                <Figure
+                  value={
+                    y.underlyingBalance
+                      ? `${displayAmount(y.underlyingBalance)} ${y.underlying ?? ""}`.trim()
+                      : `${displayAmount(y.balance!)} shares`
+                  }
+                />
                 {/* the same holding in dollars, because the headline above now
                     counts it and a figure that is inside a total has to be
                     readable in the total's own unit. every other holding on
@@ -1180,7 +1090,7 @@ export function Home() {
                 )}
               </span>
             </div>
-          </>
+          )
         ) : (
           // the "not configured" case is short and factual, so it stays inline.
           <div style={{ ...text.caption, color: t.faint, lineHeight: 1.5 }}>{y.reason}</div>
@@ -1452,18 +1362,6 @@ export function Home() {
 }
 
 /**
- * what stands in the balance slot when there is no number to put there.
- *
- * two groups, not one. a pocket that was never opened and a pocket whose balance
- * this device cannot currently read are different facts about the user's money,
- * and "Not open yet" is false for the second: the money is there, and saying it
- * was never opened is the most frightening available reading of a state that is
- * usually one press from fixed.
- *
- * the words are `Held`'s labels, so the hero and the sheet that fixes it call the
- * same state by the same name.
- */
-/**
  * which non-ready state a mixed list is named by, least to most serious.
  *
  * "your money is here and unreadable" outranks "you have not opened this yet":
@@ -1480,7 +1378,20 @@ const HERO_STATE_RANK: PrivatePocket["state"][] = [
   "needsRecovery",
 ];
 
-const HERO_STATE: Record<PrivatePocket["state"], string> = {
+/**
+ * what stands in the balance slot when there is no number to put there.
+ *
+ * two groups, not one. a pocket that was never opened and a pocket whose balance
+ * this device cannot currently read are different facts about the user's money,
+ * and "Not open yet" is false for the second: the money is there, and saying it
+ * was never opened is the most frightening available reading of a state that is
+ * usually one press from fixed.
+ *
+ * this is the ONLY table of state words. the hero, the prompt card, the asset row
+ * and the asset sheet all read it, so four surfaces cannot call one state by four
+ * names, which is exactly what happened while there were four tables.
+ */
+export const HERO_STATE: Record<PrivatePocket["state"], string> = {
   unavailable: "Not open yet",
   unfunded: "Not open yet",
   unregistered: "Not open yet",
@@ -1490,6 +1401,15 @@ const HERO_STATE: Record<PrivatePocket["state"], string> = {
   ready: "",
 };
 
+/**
+ * the prompt card's title, one per state.
+ *
+ * NOT `HERO_STATE`. ux/decisions.md D17 decided this: "Not open yet" is true for
+ * `unavailable`, `unfunded` and `unregistered` and FALSE for `archived`,
+ * `needsRecovery` and `diverged`, where the pocket exists, holds money, and this
+ * device merely cannot read it. Collapsing the six into three phrasings puts the
+ * most frightening reading, "the money is gone", in front of the user first.
+ */
 const PROMPT_TITLE: Record<PrivatePocket["state"], string> = {
   unavailable: "No private pocket on this network",
   unfunded: "Fund this account first",
@@ -1500,20 +1420,11 @@ const PROMPT_TITLE: Record<PrivatePocket["state"], string> = {
   ready: "",
 };
 
-/** states whose only route out is a rebuild, which needs an archive. */
-const NEEDS_ARCHIVE: PrivatePocket["state"][] = ["needsRecovery", "diverged"];
+export function privateStateTitle(state: PrivatePocket["state"]): string {
+  return PROMPT_TITLE[state];
+}
 
-const PROMPT_ACTION: Record<PrivatePocket["state"], string | null> = {
-  unavailable: null,
-  unfunded: null,
-  unregistered: "Set up",
-  archived: "Reactivate",
-  needsRecovery: "Rebuild",
-  diverged: "Rebuild",
-  ready: null,
-};
-
-/** the value-slot word for a private asset that is not ready to spend. */
+/** the asset row's value slot: the VERB, so the row says what to do about it. */
 const ROW_STATE_LABEL: Record<PrivatePocket["state"], string> = {
   unavailable: "—",
   unfunded: "Fund first",
@@ -1524,7 +1435,7 @@ const ROW_STATE_LABEL: Record<PrivatePocket["state"], string> = {
   ready: "",
 };
 
-/** the one-line reason under a not-ready private asset row. */
+/** the asset row's subtitle: what the state means, not what to press. */
 const ROW_STATE_SUB: Record<PrivatePocket["state"], string> = {
   unavailable: "Not available on this network",
   unfunded: "Fund this account first",
@@ -1539,6 +1450,31 @@ const ROW_STATE_SUB: Record<PrivatePocket["state"], string> = {
 const PRIVATE_ASSET_NAME: Record<string, string> = {
   XLM: "Stellar Lumens",
   USDC: "USD Coin",
+};
+
+/**
+ * the rate chip on the Yield header: "14.67% · 7d".
+ *
+ * the measurement window only reaches the popup inside `apy.sentence` (the worker
+ * interpolates it there), and it is what makes the figure honest, so it is lifted
+ * back out rather than lost with the sentence.
+ */
+export function apyChip(apy: { figure: string | null; sentence: string }): string {
+  const days = apy.sentence.match(/last (\d+) days?/)?.[1];
+  return days ? `${apy.figure} · ${days}d` : (apy.figure ?? "");
+}
+
+/** states whose only route out is a rebuild, which needs an archive. */
+const NEEDS_ARCHIVE: PrivatePocket["state"][] = ["needsRecovery", "diverged"];
+
+const PROMPT_ACTION: Record<PrivatePocket["state"], string | null> = {
+  unavailable: null,
+  unfunded: null,
+  unregistered: "Set up",
+  archived: "Reactivate",
+  needsRecovery: "Rebuild",
+  diverged: "Rebuild",
+  ready: null,
 };
 
 /**
@@ -1590,17 +1526,12 @@ export function PrivateAssetRow({
   // thing WalletProvider says must never happen: "a zero would be a lie". the
   // hero on this very screen already refuses to do it, so the row and the hero
   // disagreed about the same pocket.
-  // "Rebuild" is only a real offer where there is an archive to replay from, and
-  // this map was the one of five that did not consult `canRebuild`: on every
-  // shipped build (none configures an archive) the row invited an action whose
-  // only outcome is the worker refusing it. the prompt card two hundred lines up
-  // was gated for exactly this and this map was left behind.
-  const label =
-    NEEDS_ARCHIVE.includes(p.state) && !canRebuild(network)
-      ? "Needs rebuilding"
-      : ROW_STATE_LABEL[p.state];
   const value = !ready ? (
-    <span style={{ ...text.value, color: t.exposed }}>{label}</span>
+    <span style={{ ...text.value, color: t.exposed }}>
+      {NEEDS_ARCHIVE.includes(p.state) && !canRebuild(network)
+        ? "Needs rebuilding"
+        : ROW_STATE_LABEL[p.state]}
+    </span>
   ) : p.spendable ? (
     // the symbol reaches the accessibility tree; `hideCode` keeps it out of the
     // drawn figure, where the row already names the asset on its left.

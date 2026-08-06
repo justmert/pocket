@@ -52,6 +52,19 @@ export function conciseReason(full: string | undefined): string | undefined {
   return inParens ? inParens[1] : full;
 }
 
+/**
+ * Whether a lifted reason is words a reader can act on rather than the raw XDR
+ * discriminant it was lifted from.
+ *
+ * `OP_REASON` and `TX_REASON` translate the codes they know; anything they do
+ * not know falls through as the code itself, and a row then read
+ * "Failed · txBadSeq" beside a red alert badge. One word of the row is then the
+ * word "Failed" twice and the rest is a symbol from a wire format.
+ */
+export function isPlainReason(reason: string | undefined): reason is string {
+  return Boolean(reason && /\s/.test(reason));
+}
+
 /** a done watched op drawn as the settled row it is about to become, so a completed
  *  transaction looks completed at once instead of lingering as a processing card
  *  until the indexer catches up. reconciled away by hash the moment the real entry

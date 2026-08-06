@@ -32,7 +32,7 @@ test("switching pocket closes an open compose form rather than repurposing it", 
   await page.getByRole("textbox", { name: "To", exact: true }).fill(TO);
   await page.getByRole("textbox", { name: /Amount/ }).fill("1");
 
-  await page.getByRole("button", { name: "Private pocket" }).click({ force: true });
+  await page.getByRole("button", { name: "Private", exact: true }).click({ force: true });
 
   // Gone, not converted. `toHaveCount(0)` waits, so this also covers the exit
   // animation rather than racing it.
@@ -45,7 +45,7 @@ test("switching pocket closes an open compose form rather than repurposing it", 
   // pocket to send from, so the reachable half of the question is whether
   // coming back to the public one reopens a form still holding the old
   // recipient.
-  await page.getByRole("button", { name: "Public pocket" }).click();
+  await page.getByRole("button", { name: "Public", exact: true }).click();
   await page.getByRole("button", { name: "Actions", exact: true }).click();
   await page.getByRole("menuitem", { name: "Send", exact: true }).click();
   await expect(page.locator("[role='dialog']")).toHaveCount(1);

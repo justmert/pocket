@@ -39,6 +39,9 @@ vi.stubGlobal("chrome", {
 
 /** Exactly what the live endpoint answered for a 3.3333333 XLM position. */
 let body = { dfTokens: "19987", underlying: "33331683" as string | undefined };
+/** The symbol the vault reports for its underlying. The live XLM vault answers
+ *  "native"; the wallet's own code for native is "XLM". */
+let vaultSymbol = "XLM";
 
 vi.mock("./integrations/defindex", async (orig) => {
   const real = (await orig()) as Record<string, unknown>;
@@ -46,7 +49,7 @@ vi.mock("./integrations/defindex", async (orig) => {
     ...real,
     DefindexClient: class {
       async vault() {
-        return { address: "CV", apy: 0.1306, assets: [{ address: "CX", symbol: "XLM" }] };
+        return { address: "CV", apy: 0.1306, assets: [{ address: "CX", symbol: vaultSymbol }] };
       }
       // The shape `position()` returns after its own validation: the raw
       // strings, unconverted. Converting here would test the mock.
@@ -82,6 +85,7 @@ const { WalletController } = await import("./controller");
 beforeEach(() => {
   store.clear();
   body = { dfTokens: "19987", underlying: "33331683" };
+  vaultSymbol = "XLM";
 });
 
 async function worker() {
@@ -130,6 +134,27 @@ describe("the yield position the screen is handed", () => {
     const p = await c.yieldPosition();
     expect(p.underlyingBalance).toBe("3.3331683");
     expect(p.balance).toBe("1.5");
+  });
+
+  it("normalises the vault's 'native' underlying to the wallet's XLM code", async () => {
+    // The live DeFindex XLM vault reports its underlying symbol as "native", but
+    // the rest of the wallet calls native XLM "XLM" and keys the home price map on
+    // that. Left "native" the position matched no price, `publicTotalUsd` returned
+    // null, the hero fell back to a bare XLM figure, and the value chart that shares
+    // that early return never rendered. Verified live on 2026-08-09.
+    vaultSymbol = "native";
+    const c = await worker();
+    const p = await c.yieldPosition();
+    expect(p.underlying).toBe("XLM");
+  });
+
+  it("passes a real (non-native) underlying symbol through unchanged", async () => {
+    // A USDC vault already reports "USDC", which the price map has; only "native"
+    // needs translating, so everything else is left exactly as the vault named it.
+    vaultSymbol = "USDC";
+    const c = await worker();
+    const p = await c.yieldPosition();
+    expect(p.underlying).toBe("USDC");
   });
 
   it("reports no underlying rather than a zero when the vault omits it", async () => {

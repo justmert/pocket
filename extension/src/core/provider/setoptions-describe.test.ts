@@ -80,7 +80,7 @@ describe("a setOptions the user is asked to approve", () => {
     // operation. "Changes nothing" would be a claim about a shape it did not
     // recognise.
     const said = describeSetOptions({});
-    expect(said).toMatch(/no field this build can name/);
+    expect(said).toMatch(/unknown field/);
     expect(said).not.toMatch(/nothing/i);
   });
 

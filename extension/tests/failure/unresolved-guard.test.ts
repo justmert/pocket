@@ -120,7 +120,7 @@ describe("building is refused while a submission is unresolved", () => {
     expect(shown).toMatch(/may still land/i);
     // Not a network problem. Telling someone to check their connection here
     // sends them to retry the exact thing that causes the damage.
-    expect(shown).not.toMatch(/check your connection/i);
+    expect(shown).not.toMatch(/Something went wrong/i);
   });
 
   it("builds again once the earlier envelope can no longer be included", async () => {

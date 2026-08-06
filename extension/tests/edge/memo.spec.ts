@@ -217,6 +217,6 @@ test("no memo at all is stated as an absence, never left to be inferred", async 
   expect(out.stage, out.stage === "error" ? out.message : "").toBe("confirm");
   await expect(page.getByText("Send with NO memo")).toBeVisible();
   await expect(
-    page.getByText("None. Exchanges usually require one; a deposit without it can be lost."),
+    page.getByText("Exchanges usually need one; a deposit without it can be lost."),
   ).toBeVisible();
 });

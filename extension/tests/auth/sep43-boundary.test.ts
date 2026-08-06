@@ -242,7 +242,7 @@ describe("a grant is a grant to ask, never a grant to sign", () => {
     // refusal happened to contain the words for a different reason.
     const bad = await fromSite("signTransaction", SITE, ["AAAAAgAAAA..."]);
     const payload = JSON.stringify(bad?.data ?? bad);
-    expect(payload).toMatch(/could not read this transaction/i);
+    expect(payload).toMatch(/unreadable transaction/i);
     expect(payload, "a refusal must not carry a signature").not.toMatch(
       /signedTxXdr|signerAddress/,
     );

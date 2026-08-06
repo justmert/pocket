@@ -73,14 +73,16 @@ export const WATCH: Record<string, string> = {
   // The named wait the boot frame shows while the worker answers `status`.
   starting: "Starting",
   // Interactive, unlocked: Send and Receive are on screen.
-  home: "Public pocket",
+  home: "Public",
   // Interactive, locked: the password field is on screen. This is what a
   // returning user sees, because an evicted MV3 worker is a lock.
-  locked: "Enter your password to unlock Pocket",
+  locked: "Welcome back",
   // The real balance, seven decimals, from the ledger.
   balance: "\\d+\\.\\d{7}\\s*XLM",
-  // Onboarding's first screen.
-  splash: "Two pockets on Stellar",
+  // Onboarding's first screen. Its own button, because the front door's
+  // wording differs between the tab and the popup fallback and this one does
+  // not.
+  splash: "Create a new wallet",
 };
 
 /** Controls whose position is followed, by the text on them. */

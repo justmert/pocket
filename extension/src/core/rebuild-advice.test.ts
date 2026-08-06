@@ -13,18 +13,12 @@ import { canRebuild } from "../entrypoints/popup/ui/copy";
 import { NETWORKS } from "./config";
 
 describe("advice about rebuilding", () => {
-  it("says an archive is needed and absent when that is true", () => {
-    const said = rebuildAdvice(undefined);
-    expect(said).toMatch(/none configured/);
-    expect(said).not.toMatch(/Settings/);
+  it("says rebuilding is impossible when it is", () => {
+    expect(rebuildAdvice(undefined)).toBe("This version cannot rebuild them.");
   });
 
-  it("points at the control that exists when one does", () => {
-    const said = rebuildAdvice("https://archive.example");
-    expect(said).not.toMatch(/none configured/);
-    // The sentence has to name where the button is, or it states a capability
-    // and leaves the user to find it.
-    expect(said).toMatch(/Settings/);
+  it("says nothing when the Rebuild control is on the screen", () => {
+    expect(rebuildAdvice("https://archive.example")).toBe("");
   });
 
   it("agrees with the control the popup actually renders", () => {
@@ -35,7 +29,7 @@ describe("advice about rebuilding", () => {
       const url = NETWORKS[id].archiveUrl;
       const offered = canRebuild(id);
       expect(offered, id).toBe(Boolean(url));
-      expect(rebuildAdvice(url).includes("none configured"), id).toBe(!offered);
+      expect(rebuildAdvice(url) === "", id).toBe(offered);
     }
   });
 });

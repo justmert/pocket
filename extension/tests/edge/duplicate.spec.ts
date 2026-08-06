@@ -73,7 +73,9 @@ test("creating a wallet twice in one gesture leaves one wallet, and the phrase o
   const shownPhraseText = shownWords.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
   await answerBackupCheck(page, shownPhraseText);
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: SLOW,
+  });
   const address = await receiveAddress(page);
 
   // The assertion that matters, and the reason this test is worth its cost:
@@ -88,7 +90,7 @@ test("creating a wallet twice in one gesture leaves one wallet, and the phrase o
     await other.getByLabel("Recovery phrase").fill(phrase);
     await other.getByLabel("New password", { exact: true }).fill(PASSWORD);
     await other.getByRole("button", { name: "Restore wallet" }).click();
-    await expect(other.getByRole("button", { name: "Public pocket" })).toBeVisible({
+    await expect(other.getByRole("button", { name: "Public", exact: true })).toBeVisible({
       timeout: SLOW,
     });
     expect(
@@ -106,13 +108,15 @@ test("unlocking twice in one gesture unlocks once and reports nothing wrong", as
   test.slow();
   const page = wallet.page;
   await onboard(page);
-  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
-  await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
+  await page.getByRole("menuitem", { name: "Lock" }).click();
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
 
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await clickTwiceInOneTask(page, "Unlock");
 
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: SLOW,
+  });
 
   // Not "no error appeared": that assertion could not fail. The error notice
   // lives on the Unlock screen, and the first success unmounts it, so the
@@ -125,11 +129,13 @@ test("unlocking twice in one gesture unlocks once and reports nothing wrong", as
   await expect(page.getByLabel("To", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
 
-  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
-  await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
+  await page.getByRole("menuitem", { name: "Lock" }).click();
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Unlock" }).click();
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: SLOW,
+  });
 });
 
 test("importing twice in one gesture leaves one wallet, not an existing-wallet error", async ({
@@ -145,7 +151,9 @@ test("importing twice in one gesture leaves one wallet, not an existing-wallet e
 
   await clickTwiceInOneTask(page, "Restore wallet");
 
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: SLOW,
+  });
   // The second import is refused by design (`WalletExistsError`), and being
   // told so after successfully importing is the wallet reporting its own
   // internal race to the user.
@@ -228,7 +236,7 @@ test("confirming a payment twice in one gesture sends it once and shows the rece
     body,
     "a payment that succeeded must not be described as needing to be built again",
   ).not.toContain("Build it again and review it.");
-  expect(body, "the receipt must survive the second click").toContain("Transaction successful");
+  expect(body, "the receipt must survive the second click").toContain("Success");
 });
 
 test("erasing and restoring twice in one gesture restores once", async ({ wallet }) => {
@@ -237,7 +245,7 @@ test("erasing and restoring twice in one gesture restores once", async ({ wallet
   const phrase = await onboard(page);
   const address = await receiveAddress(page);
 
-  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock" }).click();
   await page.getByRole("button", { name: "Forgot your password?" }).click();
   await page.getByRole("button", { name: "I understand, continue" }).click();
   await page.getByLabel(/Recovery phrase/).fill(phrase);
@@ -246,15 +254,17 @@ test("erasing and restoring twice in one gesture restores once", async ({ wallet
 
   await clickTwiceInOneTask(page, "Erase and restore");
 
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
     timeout: SLOW * 2,
   });
   // Same account, and the new password opens it. A second erase landing after
   // the first restore would leave a vault the new password does not match, or
   // no vault at all.
   expect(await receiveAddress(page)).toBe(address);
-  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock" }).click();
   await page.getByLabel("Password", { exact: true }).fill("a-different-password");
   await page.getByRole("button", { name: "Unlock" }).click();
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: SLOW,
+  });
 });

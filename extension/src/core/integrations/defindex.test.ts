@@ -119,7 +119,7 @@ describe("failure handling", () => {
       .then(() => null)
       .catch((e: unknown) => e)) as Error & { status?: number };
     expect(err.status).toBe(502);
-    expect(err.message).toMatch(/not answering right now/i);
+    expect(err.message).toMatch(/is not answering/i);
     expect(err.message, "an HTTP status is not a sentence").not.toMatch(/502/);
   });
 
@@ -154,7 +154,7 @@ describe("failure handling", () => {
           baseUrl: `http://127.0.0.1:${port}`,
           timeoutMs: 300,
         }).vault("C"),
-      ).rejects.toThrow(/no answer within/i);
+      ).rejects.toThrow(/is not answering/i);
     } finally {
       s.close();
     }
@@ -355,7 +355,7 @@ describe("actionable errors from the live API", () => {
     );
     await expect(
       new DefindexClient(cfg).buildDeposit("CVAULT", { caller: "GUSER", amounts: [1n] }),
-    ).rejects.toThrow(/not answering right now/i);
+    ).rejects.toThrow(/is not answering/i);
   });
 
   it("tells a refusal from an outage, because the remedies differ", async () => {

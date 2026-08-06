@@ -72,7 +72,7 @@ export class IrisClient {
             ? `no answer within ${(this.cfg.timeoutMs ?? SERVICE_HTTP_TIMEOUT_MS) / 1000}s`
             : e.message
           : "network error";
-      throw new IrisError(`Could not reach the attestation service (${why}).`);
+      throw new IrisError(`Could not reach Circle (${why}).`);
     }
     // NOT the same as "pending", and reporting it as such is what made the claim
     // screen unable to ever say "there is nothing to claim". A 404 covers two
@@ -84,13 +84,13 @@ export class IrisClient {
     // and the caller authors a sentence that covers both readings honestly.
     if (res.status === 404) return { status: "not_found", ready: false };
     if (!res.ok) {
-      throw new IrisError(`The attestation service returned ${res.status}.`, res.status);
+      throw new IrisError(`Circle returned ${res.status}.`, res.status);
     }
     let body: { messages?: unknown };
     try {
       body = (await res.json()) as { messages?: unknown };
     } catch {
-      throw new IrisError("The attestation service sent a response Pocket could not read.");
+      throw new IrisError("Circle sent an unreadable response.");
     }
     const messages = Array.isArray(body.messages) ? (body.messages as IrisMessage[]) : [];
     const m = messages[0];

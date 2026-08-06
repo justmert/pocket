@@ -34,6 +34,7 @@ import {
   Check,
   ChevronRight,
   Clock,
+  Close,
   External,
   Filter,
   Search,
@@ -42,8 +43,9 @@ import { usd } from "../money";
 import { DATE_LOCALE, periodLabel } from "../period";
 import { addressUrl, explorerUrl } from "../explorer";
 import { shortAddress } from "../Address";
-import { conciseReason, opToEntry } from "../opEntry";
+import { conciseReason, isPlainReason, opToEntry } from "../opEntry";
 import { NAV_SPACE } from "../BottomNav";
+import { InfoTip } from "../Tooltip";
 import {
   DateRangeSheet,
   TypeFilterSheet,
@@ -51,7 +53,16 @@ import {
   type DateRange,
   type FilterCategory,
 } from "./HistoryFilters";
-import { COPY_HOLD_MS, fonts, radius, ROW_STAGGER_MS, space, text, type Theme } from "../theme";
+import {
+  COPY_HOLD_MS,
+  fonts,
+  motion,
+  radius,
+  ROW_STAGGER_MS,
+  space,
+  text,
+  type Theme,
+} from "../theme";
 import type { HistoryEntry } from "../../../../core/messages";
 
 const PAGE = 30;
@@ -78,13 +89,12 @@ export function entryLine(e: HistoryEntry): string {
   const who = e.counterparty ? short(e.counterparty) : "";
   // A movement with no counterparty and no direction out of this account is one
   // the user made to themselves, and the wallet neither blocks it nor refuses
-  // it. Named here, because the sentences below all end in a party: without
-  // this a self-transfer read "Sent privately to " with nothing after it, and
-  // the detail sheet showed no counterparty row to explain the gap.
+  // it. Named here, because the sentences below all end in a party: without this
+  // a self-transfer read "Sent to " with nothing after it, and the detail sheet
+  // showed no counterparty row to explain the gap.
   if (e.direction === "self" && !e.counterparty) {
     switch (e.kind) {
       case "privateSend":
-        return "Sent privately to yourself";
       case "send":
         return "Sent to yourself";
       case "receive":
@@ -95,8 +105,10 @@ export function entryLine(e: HistoryEntry): string {
   }
   switch (e.kind) {
     case "receive":
+    case "privateReceive":
       return `Received from ${who}`;
     case "send":
+    case "privateSend":
       return `Sent to ${who}`;
     // Both legs of a swap say the same word, because they are one event. The
     // row already carries the asset, the amount and the direction badge, so
@@ -113,10 +125,6 @@ export function entryLine(e: HistoryEntry): string {
       return "Shielded";
     case "unshield":
       return "Unshielded";
-    case "privateReceive":
-      return `Received privately from ${who}`;
-    case "privateSend":
-      return `Sent privately to ${who}`;
     case "makeSpendable":
       return "Made spendable";
     case "setup":
@@ -175,7 +183,7 @@ export function History() {
   const [error, setError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   /** an older page that could not be read, so the tail of the list is missing. */
-  const [olderError, setOlderError] = useState<string | null>(null);
+  const [olderFailed, setOlderFailed] = useState(false);
   const [query, setQuery] = useState("");
   const [range, setRange] = useState<DateRange>({ start: null, end: null });
   const [types, setTypes] = useState<Set<FilterCategory>>(new Set());
@@ -192,6 +200,24 @@ export function History() {
   const gen = useRef(0);
   /** halves of the history the worker could not read, with its own wording. */
   const [unread, setUnread] = useState<{ pocket: string; reason: string }[]>([]);
+  // the filter row (pocket toggle + search + the two openers) hides on a downward
+  // scroll and returns on an upward one, so the list gets the height while you read
+  // and the controls are one flick away. the title stays pinned above it either way.
+  const [filtersHidden, setFiltersHidden] = useState(false);
+  const lastScroll = useRef(0);
+  // measured so the collapse animates over the row's real height rather than a
+  // guessed maximum, which the pocket toggle's presence changes.
+  const filtersInner = useRef<HTMLDivElement>(null);
+  const [filtersH, setFiltersH] = useState(0);
+  useEffect(() => {
+    const el = filtersInner.current;
+    if (!el) return;
+    const measure = () => setFiltersH(el.scrollHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [privateAvailable]);
 
   // one loader for two callers: the pocket switch clears to skeletons, the
   // reconcile poll keeps the list on screen and only refreshes it underneath. the
@@ -265,16 +291,16 @@ export function History() {
         if (myGen !== gen.current) return;
         setEntries((prev) => [...(prev ?? []), ...p.entries]);
         setCursor(p.cursor);
-        setOlderError(null);
+        setOlderFailed(false);
       })
-      .catch((e) => {
+      .catch(() => {
         if (myGen !== gen.current) return;
         // keep what is on screen, and SAY the tail is missing. discarding this
         // silently made a truncated history pixel-identical to one that ended:
         // there is no shape a partial list has that a whole one does not, which
         // is the same argument the unread notice above is built on. a later
         // scroll still retries, and a retry that succeeds clears it.
-        setOlderError(message(e));
+        setOlderFailed(true);
       })
       .finally(() => {
         if (myGen === gen.current) {
@@ -286,6 +312,14 @@ export function History() {
 
   const onScroll = (e: UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
+    const y = el.scrollTop;
+    // hide the filter row on a downward scroll, show it on an upward one, and
+    // always show it near the very top. a small threshold so a jittery trackpad
+    // does not flip it on a stationary hover.
+    if (y < 48) setFiltersHidden(false);
+    else if (y > lastScroll.current + 6) setFiltersHidden(true);
+    else if (y < lastScroll.current - 6) setFiltersHidden(false);
+    lastScroll.current = y;
     // within one screen of the bottom, pull the next (older) page in.
     if (el.scrollHeight - el.scrollTop - el.clientHeight < el.clientHeight) loadMore();
   };
@@ -354,8 +388,8 @@ export function History() {
   // history by time, so they land at the top under "Today" like any settled row.
   const matched = [...syntheticDone, ...(entries ?? [])].filter(match).sort((a, b) => b.at - a.at);
   // zero-value transfers from addresses this account has never sent to (spec
-  // 18.7, decided in core/spam.ts). anyone can push endless "Received privately
-  // from G...  0 XLM" rows into a registered account's private Activity, so the
+  // 18.7, decided in core/spam.ts). anyone can push endless "Received from
+  // G...  0 XLM" rows into a registered account's private Activity, so the
   // default view collapses them into a count. hidden, never dropped: the button
   // below shows them and the entry was never removed from the list.
   const spam = matched.filter((e) => e.spam);
@@ -379,8 +413,8 @@ export function History() {
 
   // A filter hides everything loaded, and older pages remain.
   //
-  // The list below says "Nothing matches those filters", which is a claim about
-  // the account's whole history, and the filters only narrow what has been
+  // The list below says "No matches.", which is a claim about the account's
+  // whole history, and the filters only narrow what has been
   // fetched. Normally the scroll handler pulls the rest, but an EMPTY list has
   // nothing to scroll, so the one thing that could have disproved the sentence
   // could never run: the wallet asserted a user had never shielded anything
@@ -450,107 +484,130 @@ export function History() {
             position: "sticky",
             top: 0,
             zIndex: 5,
-            background: t.canvas,
+            // OPAQUE, which the comment above already claims and the single
+            // `background` shorthand did not deliver: `t.canvas` is a radial hue
+            // gradient that fades to `transparent`, so with nothing behind it the
+            // rows scrolled straight through the pinned band and ghosted over the
+            // title and tabs. The solid pocket colour goes UNDER the wash, and it
+            // reads `var(--pocket-bg)` (the same base the ScrollArea paints) so the
+            // band crossfades with a pocket switch instead of snapping.
+            backgroundColor: "var(--pocket-bg)",
+            backgroundImage: t.canvas,
             padding: `${space.gutter}px ${space.gutter}px ${space.md}px`,
           }}
         >
-          <Header t={t} title="Activity" />
+          <Header t={t} title="Activity" dense />
 
-          {/* the two pockets keep separate histories; the toggle is how you cross
-            between them, and it flips the whole surface with the pocket. */}
-          {privateAvailable && (
-            <div
-              role="group"
-              aria-label="Pocket"
-              style={{
-                display: "flex",
-                gap: 4,
-                background: t.field,
-                borderRadius: radius.pill,
-                padding: 4,
-                marginBottom: space.md,
-              }}
-            >
-              {(["public", "private"] as const).map((p) => {
-                const on = pocket === p;
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => w.setPocket(p)}
-                    className="pk-tap"
-                    style={{
-                      all: "unset",
-                      boxSizing: "border-box",
-                      flex: 1,
-                      textAlign: "center",
-                      cursor: "pointer",
-                      padding: "8px 0",
-                      borderRadius: radius.pill,
-                      background: on ? t.accent : "transparent",
-                      color: on ? t.onAccent : t.sub,
-                      ...text.pocketTab,
-                    }}
-                  >
-                    {p === "public" ? "Public" : "Private"}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          {/* the filter row, collapsible: hidden on a downward scroll, shown on an
+              upward one. the outer clips to the measured height so it animates
+              smoothly; the inner div is what `filtersInner` measures, and its top
+              padding is the gap under the (now dense) title, which collapses with it. */}
+          <div
+            style={{
+              maxHeight: filtersHidden ? 0 : filtersH || undefined,
+              opacity: filtersHidden ? 0 : 1,
+              overflow: "hidden",
+              transition: `max-height ${motion.page} ${motion.enter}, opacity ${motion.quick} ${motion.enter}`,
+            }}
+          >
+            <div ref={filtersInner} style={{ paddingTop: space.md }}>
+              {/* the two pockets keep separate histories; the toggle is how you cross
+                between them, and it flips the whole surface with the pocket. */}
+              {privateAvailable && (
+                <div
+                  role="group"
+                  aria-label="Pocket"
+                  style={{
+                    display: "flex",
+                    gap: 4,
+                    background: t.field,
+                    borderRadius: radius.pill,
+                    padding: 4,
+                    marginBottom: space.md,
+                  }}
+                >
+                  {(["public", "private"] as const).map((p) => {
+                    const on = pocket === p;
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => w.setPocket(p)}
+                        className="pk-tap"
+                        style={{
+                          all: "unset",
+                          boxSizing: "border-box",
+                          flex: 1,
+                          textAlign: "center",
+                          cursor: "pointer",
+                          padding: "8px 0",
+                          borderRadius: radius.pill,
+                          background: on ? t.accent : "transparent",
+                          color: on ? t.onAccent : t.sub,
+                          ...text.pocketTab,
+                        }}
+                      >
+                        {p === "public" ? "Public" : "Private"}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
-          {/* search + the two filter openers narrow the loaded stream. no bottom
+              {/* search + the two filter openers narrow the loaded stream. no bottom
               margin: this is the last row of the pinned block, and the block's own
               padding sets the gap to the list below. */}
-          <div style={{ display: "flex", alignItems: "center", gap: space.sm }}>
-            <div
-              className="pk-field"
-              style={{
-                flex: 1,
-                minWidth: 0,
-                // matches the 42px filter buttons beside it so the row reads level.
-                boxSizing: "border-box",
-                minHeight: 42,
-                display: "flex",
-                alignItems: "center",
-                background: t.field,
-                borderRadius: radius.pill,
-                padding: `10px ${space.md}px`,
-                gap: space.sm,
-              }}
-            >
-              {/* a leading magnifier, so the search field carries an icon like the
+              <div style={{ display: "flex", alignItems: "center", gap: space.sm }}>
+                <div
+                  className="pk-field"
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    // matches the 42px filter buttons beside it so the row reads level.
+                    boxSizing: "border-box",
+                    minHeight: 42,
+                    display: "flex",
+                    alignItems: "center",
+                    background: t.field,
+                    borderRadius: radius.pill,
+                    padding: `10px ${space.md}px`,
+                    gap: space.sm,
+                  }}
+                >
+                  {/* a leading magnifier, so the search field carries an icon like the
                   two filter buttons beside it rather than reading as a bare pill. */}
-              <span aria-hidden style={{ color: t.sub, display: "flex", flex: "0 0 auto" }}>
-                <Search size={18} />
-              </span>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search"
-                aria-label="Search activity by address, token, or amount"
-                spellCheck={false}
-                autoComplete="off"
-                style={{ all: "unset", flex: 1, minWidth: 0, ...text.body, color: t.text }}
-              />
+                  <span aria-hidden style={{ color: t.sub, display: "flex", flex: "0 0 auto" }}>
+                    <Search size={18} />
+                  </span>
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search"
+                    aria-label="Search activity by address, token, or amount"
+                    spellCheck={false}
+                    autoComplete="off"
+                    style={{ all: "unset", flex: 1, minWidth: 0, ...text.body, color: t.text }}
+                  />
+                </div>
+                <FilterButton
+                  t={t}
+                  label="Date range"
+                  active={range.start !== null}
+                  onClick={() => setShowDate(true)}
+                >
+                  <Calendar size={20} />
+                </FilterButton>
+                <FilterButton
+                  t={t}
+                  label="Filters"
+                  active={types.size > 0}
+                  onClick={() => setShowFilter(true)}
+                >
+                  <Filter size={20} />
+                </FilterButton>
+              </div>
             </div>
-            <FilterButton
-              t={t}
-              label="Date range"
-              active={range.start !== null}
-              onClick={() => setShowDate(true)}
-            >
-              <Calendar size={20} />
-            </FilterButton>
-            <FilterButton
-              t={t}
-              label="Filters"
-              active={types.size > 0}
-              onClick={() => setShowFilter(true)}
-            >
-              <Filter size={20} />
-            </FilterButton>
           </div>
         </div>
 
@@ -621,35 +678,47 @@ export function History() {
                   absence, which is by definition invisible. */}
               {/* NOT gated on `shown.length > 0` any more. the filtered-empty
                   state was the one case this sentence was written for and the one
-                  case it could not reach: the screen said "Nothing matches those
-                  filters." while knowing it could not read the half of the history
-                  those transactions live in. */}
+                  case it could not reach: the screen said "No matches." while
+                  knowing it could not read the half of the history those
+                  transactions live in. */}
               {unread.length > 0 && (
                 <div style={{ marginBottom: space.md }}>
                   <Notice t={t} tone="exposed" bare>
-                    {unread.map((u) => u.reason).join(" ")} What is shown below is incomplete.
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {unread.map((u) => u.reason).join(" ")}
+                      {/* the lag line is honest but terse; the tip says WHY in one
+                          sentence, so a user does not read "may not be listed" as
+                          "was lost". only shown when that line is actually present. */}
+                      {unread.some((u) => /not be listed yet/i.test(u.reason)) && (
+                        <InfoTip t={t} label="Why recent activity may be missing" size={16}>
+                          Your private history is rebuilt from an archive that runs a little behind
+                          the network, so a transfer you just made can take about a minute to show
+                          up here.
+                        </InfoTip>
+                      )}
+                    </span>
                   </Notice>
                 </div>
               )}
               {shown.length > 0 && <List t={t} entries={shown} now={now} onOpen={setSelected} />}
 
               {/* zero-value transfers from addresses this account has never sent
-                  to. anyone can push endless "Received privately from G...  0 XLM"
+                  to. anyone can push endless "Received from G...  0 XLM"
                   rows at a registered account, and each one costs the recipient
                   replay work and archive storage. collapsed into a count, and
                   reachable in one tap: nothing filtered may be unreachable, and
                   the row still says plainly that they exist. */}
               {spam.length > 0 && (
                 <div style={{ marginTop: space.md, display: "flex", justifyContent: "center" }}>
-                  <Button
-                    t={t}
-                    variant="quiet"
-                    size="pill"
-                    onClick={() => setShowSpam((v) => !v)}
-                  >
-                    {showSpam
-                      ? "Hide zero-value transfers"
-                      : `Show ${spam.length} zero-value ${spam.length === 1 ? "transfer" : "transfers"} from unknown senders`}
+                  <Button t={t} variant="quiet" size="pill" onClick={() => setShowSpam((v) => !v)}>
+                    {showSpam ? "Hide" : `Show ${spam.length} zero-value`}
                   </Button>
                 </div>
               )}
@@ -675,7 +744,7 @@ export function History() {
                     </Button>
                   }
                 >
-                  {emptyMatchSentence({ q, filtersActive, readAll: cursor == null, pagingGaveUp })}
+                  {emptyMatchSentence({ readAll: cursor == null, pagingGaveUp })}
                 </EmptyState>
               )}
 
@@ -688,29 +757,29 @@ export function History() {
                 !q &&
                 !filtersActive &&
                 inProgress.length === 0 && (
-                // a warm anchor rather than a bare line, since this is often the
-                // first-run screen of a brand-new wallet.
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: space.md,
-                    paddingTop: space.xl,
-                    textAlign: "center",
-                  }}
-                >
-                  {/* the mascot lives ONLY in the top-left header, never on a page
+                  // a warm anchor rather than a bare line, since this is often the
+                  // first-run screen of a brand-new wallet.
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: space.md,
+                      paddingTop: space.xl,
+                      textAlign: "center",
+                    }}
+                  >
+                    {/* the mascot lives ONLY in the top-left header, never on a page
                       body, so the empty state is just the sentence. */}
-                  {/* "No activity yet" is a claim about the ACCOUNT. It may
+                    {/* "No activity yet" is a claim about the ACCOUNT. It may
                       only be made when the history was actually read. */}
-                  <span style={{ ...text.body, color: t.faint }}>
-                    {unread.length > 0
-                      ? unread.map((u) => u.reason).join(" ")
-                      : "No activity yet. Your transactions will appear here."}
-                  </span>
-                </div>
-              )}
+                    <span style={{ ...text.body, color: t.faint }}>
+                      {unread.length > 0
+                        ? unread.map((u) => u.reason).join(" ")
+                        : "No activity yet."}
+                    </span>
+                  </div>
+                )}
             </>
           )}
 
@@ -723,11 +792,20 @@ export function History() {
           {/* the tail could not be read. said at the END of the list, which is
               where the missing rows would have been, and where a reader who has
               scrolled that far is actually looking. */}
-          {!loadingMore && olderError && (
-            <div style={{ paddingTop: space.md }}>
-              <Notice t={t} tone="exposed" bare>
-                {olderError} Older activity is missing from this list; scroll again to retry.
-              </Notice>
+          {!loadingMore && olderFailed && (
+            <div
+              style={{
+                paddingTop: space.md,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: space.sm,
+              }}
+            >
+              <span style={{ ...text.rowSub, color: t.sub }}>Could not load older activity</span>
+              <Button t={t} variant="quiet" size="pill" onClick={loadMore}>
+                Retry
+              </Button>
             </div>
           )}
         </div>
@@ -744,7 +822,6 @@ export function History() {
       <ProcessingDetailSheet
         t={t}
         op={liveOpenOp}
-        ownAddress={w.status?.address ?? ""}
         onClose={() => setOpenOp(null)}
         onDismiss={(id) => {
           w.dropOp(id);
@@ -880,7 +957,9 @@ function Mark({ t, e, size = 40 }: { t: Theme; e: HistoryEntry; size?: number })
         <AssetMark t={t} id={assetId(e)} code={e.code} />
       </span>
       {e.failed ? (
-        // a failed transaction wears a red warning badge in place of the direction arrow.
+        // a failed transaction wears a red X badge in place of the direction arrow:
+        // an X reads as "this did not happen" at a glance, where the warning triangle
+        // read as "caution" and was easy to mistake for a notice rather than a failure.
         <span
           aria-hidden
           style={{
@@ -898,7 +977,7 @@ function Mark({ t, e, size = 40 }: { t: Theme; e: HistoryEntry; size?: number })
             justifyContent: "center",
           }}
         >
-          <Alert size={badge - 7} />
+          <Close size={badge - 7} />
         </span>
       ) : e.direction !== "self" ? (
         <span
@@ -988,7 +1067,11 @@ function Entry({
               : { display: "block", textOverflow: "ellipsis", whiteSpace: "nowrap" }),
           }}
         >
-          {e.failed ? `Failed${e.failureReason ? ` · ${e.failureReason}` : ""}` : entryLine(e)}
+          {e.failed
+            ? isPlainReason(e.failureReason)
+              ? `Failed · ${e.failureReason}`
+              : "Failed"
+            : entryLine(e)}
         </span>
       </span>
       <span
@@ -1192,12 +1275,9 @@ function DetailSheet({
           />
 
           <div style={{ display: "grid", gap: space.xs }}>
-            {/* the OTHER party first. "Wallet" is the user's own address and led
-                every detail, drawn identically to the counterparty's (DetailRow
-                paints any copyable value in the accent, and this row always
-                passes `onCopy`), so the first address on a receipt was the one
-                the reader already knows. it stays: for a private entry with no
-                counterparty it is the only explorer link there is. */}
+            {/* the OTHER party first, and the only address here: the user's own
+                led every detail, drawn identically to the counterparty's, so the
+                first address on a receipt was the one the reader already knows. */}
             {e.counterparty && (
               <DetailRow
                 t={t}
@@ -1215,13 +1295,18 @@ function DetailSheet({
               href={explorerUrl(network, "tx", e.hash)}
             />
             {e.fee && <DetailRow t={t} label="Network fee" value={`${e.fee} XLM`} />}
-            <DetailRow
-              t={t}
-              label="Wallet"
-              value={short(ownAddress)}
-              onCopy={ownAddress ? () => onCopy(ownAddress) : undefined}
-              href={addressUrl(network, ownAddress)}
-            />
+            {/* the user's own account, last. it stays because a private entry can
+                have no counterparty at all, and then this is the only explorer
+                link on the sheet. */}
+            {ownAddress && (
+              <DetailRow
+                t={t}
+                label="Wallet"
+                value={short(ownAddress)}
+                onCopy={() => onCopy(ownAddress)}
+                href={addressUrl(network, ownAddress)}
+              />
+            )}
           </div>
         </div>
       )}
@@ -1237,16 +1322,20 @@ function statusText(op: BgOp): string {
   // Not a failure, and worded so nobody reads it as one. The worker still holds
   // an in-flight record for this hash, which means the transaction may yet be
   // included, and the only wrong thing a user can do here is send it again.
-  if (op.status === "unresolved") return "Not confirmed yet. Do not send it again.";
+  if (op.status === "unresolved") return "Not confirmed. Do not send again.";
   // the concise cause reads well in the row's one line; the full sentence (fee
-  // charged, sequence used) stays in the detail sheet below.
-  if (op.status === "failed") return conciseReason(op.error) ?? "Could not complete";
+  // charged, sequence used) stays in the detail sheet below. a cause that lifted
+  // to a bare XDR discriminant is not a cause a reader can act on.
+  if (op.status === "failed") {
+    const why = conciseReason(op.error);
+    return isPlainReason(why) ? why : "Could not complete";
+  }
   // "Proving" is a PRIVATE-pocket word, and this branched on the verb being
   // exactly "Send", so seven of the twelve public operations (a swap, a yield
   // move, both bridge legs, both trustline ops, a private send's public leg) told
   // the user they were being proved when nothing was. the pocket is the fact that
   // decides it and the op already carries it.
-  return op.pocket === "private" ? "Proving and submitting…" : "Confirming on the ledger…";
+  return op.pocket === "private" ? "Proving…" : "Confirming…";
 }
 
 /** the coloured status token for the detail header. */
@@ -1277,7 +1366,10 @@ function StatusPill({ t, status }: { t: Theme; status: BgOp["status"] }) {
     >
       {status === "processing" && <Spinner size={12} color={s.fg} />}
       {status === "done" && <Check size={13} sw={2.6} />}
-      {(status === "failed" || status === "unresolved") && <Alert size={13} />}
+      {/* failed is an X (this did not happen); unresolved keeps the warning
+          triangle, because it is caution, not a definite failure. */}
+      {status === "failed" && <Close size={13} />}
+      {status === "unresolved" && <Alert size={13} />}
       {s.label}
     </span>
   );
@@ -1329,12 +1421,17 @@ function ProcessingMark({ t, op, size = 40 }: { t: Theme; op: BgOp; size?: numbe
       >
         {done ? (
           <Check size={badge - 8} sw={2.8} />
-        ) : failed || unresolved ? (
+        ) : failed ? (
+          // the same X the settled failed rows wear: a failure reads as "this did
+          // not happen", not the caution a warning triangle carries.
+          <Close size={badge - 8} />
+        ) : unresolved ? (
           // `unresolved` fell through to the spinner, so a row reading "Not
-          // confirmed yet. Do not send it again." turned forever beside its own
+          // confirmed. Do not send again." turned forever beside its own
           // words. the provider states the rule where it sets this status: "A
           // stuck spinner is a worse lie than a wrong label." the colours already
-          // distinguish the two (exposed, not danger); only the glyph did not.
+          // distinguish the two (exposed, not danger); only the glyph did not. it
+          // keeps the warning triangle: unresolved is caution, not a failure.
           <Alert size={badge - 8} />
         ) : (
           <Spinner size={badge - 6} color={fg} />
@@ -1361,39 +1458,21 @@ function ProcessingMark({ t, op, size = 40 }: { t: Theme; op: BgOp; size?: numbe
  *  - older pages are unread and the pager is still walking them.
  *  - older pages are unread and the pager has STOPPED. It gives up at
  *    MAX_AUTO_PAGES, and an empty list has nothing to scroll, so `onScroll`
- *    can never restart it. "Still reading older history" then stayed on screen
+ *    can never restart it. The "yet" of the branch above then stayed on screen
  *    forever while nothing was reading.
- *
- * A search is not a filter, so each fact has both wordings: this branch is
- * entered on `q || filtersActive`, and every sentence in it was once written
- * for the second disjunct, which reported a search that matched nothing as
- * filters hiding things.
  *
  * Pure and exported so the three-way choice can be tested without driving an
  * effect that only stops after twenty network pages.
  */
 export function emptyMatchSentence(s: {
-  q: string;
-  filtersActive: boolean;
   /** The pager reached the end of the stream: `cursor == null`. */
   readAll: boolean;
   /** The pager stopped at its bound with older pages still unread. */
   pagingGaveUp: boolean;
 }): string {
-  const searching = Boolean(s.q) && !s.filtersActive;
-  if (s.readAll) {
-    return searching
-      ? `Nothing in your activity matches “${s.q}”.`
-      : "Nothing matches those filters.";
-  }
-  if (s.pagingGaveUp) {
-    return searching
-      ? `Nothing matches “${s.q}” in the history read so far, and there is more that has not been read.`
-      : "Nothing matches those filters in the history read so far, and there is more that has not been read.";
-  }
-  return searching
-    ? `Nothing matches “${s.q}” yet. Still reading older history.`
-    : "Nothing matches those filters yet. Still reading older history.";
+  if (s.readAll) return "No matches.";
+  if (s.pagingGaveUp) return "No matches in what has loaded.";
+  return "No matches yet.";
 }
 
 /**
@@ -1428,7 +1507,6 @@ export function TransactionsSheet({ open, onClose }: { open: boolean; onClose: (
   // done ops have moved to the settled history, so this quick view is the still-
   // running and failed ones, the same as Activity's "In progress" section.
   const pending = w.backgroundOps.filter((o) => o.pocket === w.pocket && o.status !== "done");
-  const inProgress = pending.filter((o) => o.status === "processing").length;
   const [openOp, setOpenOp] = useState<BgOp | null>(null);
   const liveOpenOp = openOp ? (w.backgroundOps.find((o) => o.id === openOp.id) ?? null) : null;
 
@@ -1437,9 +1515,6 @@ export function TransactionsSheet({ open, onClose }: { open: boolean; onClose: (
       <Sheet t={t} open={open} onClose={onClose} title=" " ariaLabel="Transactions in progress">
         <div style={{ textAlign: "center", marginBottom: space.lg }}>
           <div style={{ ...text.screenTitle, color: t.text }}>Transactions</div>
-          <div style={{ ...text.body, fontWeight: 600, color: t.sub, marginTop: 4 }}>
-            {inProgress > 0 ? `${inProgress} in progress` : ""}
-          </div>
         </div>
         {pending.length === 0 ? (
           <EmptyState t={t} icon={<Clock size={28} />}>
@@ -1471,7 +1546,6 @@ export function TransactionsSheet({ open, onClose }: { open: boolean; onClose: (
       <ProcessingDetailSheet
         t={t}
         op={liveOpenOp}
-        ownAddress={w.status?.address ?? ""}
         onClose={() => setOpenOp(null)}
         onDismiss={(id) => {
           w.dropOp(id);
@@ -1567,8 +1641,8 @@ function ProcessingRow({
             display: "inline-flex",
             alignItems: "center",
             gap: 7,
-            // shrink in the row (a long failed-tx message must give way to "More
-            // details" beside it) and let the icon keep its size.
+            // shrink in the row (a long failed-tx message must give way to the
+            // chevron beside it) and let the icon keep its size.
             flex: "1 1 auto",
             minWidth: 0,
             ...text.rowSub,
@@ -1578,11 +1652,11 @@ function ProcessingRow({
           <span style={{ flex: "0 0 auto", display: "inline-flex" }}>
             {op.status === "processing" && <Spinner size={13} color={t.sub} />}
             {done && <Check size={13} sw={2.6} />}
-            {failed && <Alert size={13} />}
+            {failed && <Close size={13} />}
           </span>
           {/* a failed reason wraps to at most two lines so it is not cut mid-cause;
               a still-running label is short and stays on one. the full sentence is
-              one tap away under "More details". */}
+              one tap away, in the detail this card opens. */}
           <span
             style={{
               flex: "1 1 auto",
@@ -1602,16 +1676,14 @@ function ProcessingRow({
           </span>
         </span>
         <span
+          aria-hidden
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 2,
             flex: "0 0 auto",
-            ...text.chip,
             color: t.accent,
           }}
         >
-          More details
           <ChevronRight size={15} />
         </span>
       </div>
@@ -1625,14 +1697,12 @@ function ProcessingRow({
 function ProcessingDetailSheet({
   t,
   op: liveOp,
-  ownAddress,
   onClose,
   onDismiss,
   onCopy,
 }: {
   t: Theme;
   op: BgOp | null;
-  ownAddress: string;
   onClose: () => void;
   onDismiss: (id: string) => void;
   onCopy: (v: string) => void;
@@ -1711,7 +1781,7 @@ function ProcessingDetailSheet({
               write its openings arrives here: the worker's own sentence says
               the transaction landed, that this device has no record of the new
               balances, and what rebuilding would need. The row is relabelled
-              "Not confirmed yet" (right: do not resend) and this notice was
+              "Not confirmed" (right: do not resend) and this notice was
               gated on `failed`, so the only instruction that addressed the
               unwritten openings never appeared at all.
 
@@ -1732,8 +1802,8 @@ function ProcessingDetailSheet({
           />
 
           <div style={{ display: "grid", gap: space.xs }}>
-            {/* see the settled sheet above: the counterparty leads, the user's own
-                address is last. these two also ended in opposite orders. */}
+            {/* see the settled sheet above: the counterparty leads, and it is the
+                only address here. */}
             {op.to && (
               <DetailRow
                 t={t}
@@ -1765,13 +1835,6 @@ function ProcessingDetailSheet({
               />
             )}
             {op.fee && <DetailRow t={t} label="Network fee" value={`${op.fee} XLM`} />}
-            <DetailRow
-              t={t}
-              label="Wallet"
-              value={short(ownAddress)}
-              onCopy={ownAddress ? () => onCopy(ownAddress) : undefined}
-              href={addressUrl(op.network, ownAddress)}
-            />
           </div>
 
           {op.status === "processing" ? null : (

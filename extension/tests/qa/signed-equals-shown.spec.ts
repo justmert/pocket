@@ -114,7 +114,7 @@ async function readReview(wallet: Wallet) {
   // the review only exists once the worker has built and retained the envelope,
   // and building reads the ledger first. waiting on the panel itself rather
   // than on a duration.
-  await expect(wallet.page.getByText("What this does")).toBeVisible({
+  await expect(wallet.page.getByRole("button", { name: "What this does" })).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
   // the hero carries the exact value and its code in one run ("12.5000000 XLM").
@@ -424,11 +424,11 @@ test("the worker signs nothing it did not build, and puts nothing on the wire wh
       await expect(
         askWorker(wallet.page, { type: "confirmPayment", handle }),
         `${what} as ${form} was accepted`,
-      ).rejects.toThrow(/no longer pending confirmation/i);
+      ).rejects.toThrow(/no longer pending confirmation|still waiting on an earlier transaction/i);
       await expect(
         askWorker(wallet.page, { type: "confirmPrivateOp", handle }),
         `${what} as ${form} was accepted by the private path`,
-      ).rejects.toThrow(/no longer pending confirmation/i);
+      ).rejects.toThrow(/no longer pending confirmation|still waiting on an earlier transaction/i);
     }
   }
 
@@ -510,10 +510,9 @@ test("one approval authorises one envelope and no other", async ({ harness, wall
     await wallet.page.getByRole("button", { name: "Approve" }).click();
     expect((await signatureResult(site.page)).signedTxXdr).toBeTruthy();
 
-    // the same site, still connected, asks again for something else. "Approving
-    // signs this once. It does not let the site sign anything else." is on the
-    // screen the user just used, so a second envelope must reach a second
-    // approval rather than a signature.
+    // the same site, still connected, asks again for something else. an approval
+    // signs once and grants no standing power, so a second envelope must reach a
+    // second approval rather than a signature.
     const second = siteEnvelope(owner, [Operation.accountMerge({ destination: owner })], {
       sequence: "8675310",
     });
@@ -678,7 +677,9 @@ test("the fee a private-pocket review states is the fee that gets signed [DEFECT
   await setUp.click();
   // the review is for the SECOND transaction; the first went out on the press,
   // which the sheet says above the button.
-  await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+  await expect(wallet.page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: WAITS.proving,
+  });
 
   // the fee is its own row now (the effect enumeration moved into the tip).
   const feeShown = (

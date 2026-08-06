@@ -55,32 +55,43 @@ test("a funded private pocket whose openings are gone rebuilds from the archive"
   await page.getByRole("textbox", { name: "Confirm password" }).fill(PASSWORD);
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
-    const shownWords = await page
+  const shownWords = await page
     .locator("span")
     .filter({ hasText: /^\d+\.\s\w+\s*$/ })
     .allInnerTexts();
   const shownPhraseText = shownWords.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
   await answerBackupCheck(page, shownPhraseText);
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 
   await page.getByRole("button", { name: "Receive" }).click();
-  address = (await page.getByText(/^G[A-Z2-7]{55}$/).first().innerText()).replace(/\s/g, "");
+  address = (
+    await page
+      .getByText(/^G[A-Z2-7]{55}$/)
+      .first()
+      .innerText()
+  ).replace(/\s/g, "");
   expect((await fetch(`${FRIENDBOT}?addr=${address}`)).ok).toBe(true);
   await page.reload();
 
-  await page.getByRole("button", { name: /private pocket/i }).click();
-  await expect(page.getByText(/Private pocket not set up/)).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Private", exact: true }).click();
+  await expect(page.getByText(/Not open yet/).first()).toBeVisible({ timeout: 60_000 });
   await page.getByRole("button", { name: "Set up the private pocket" }).click();
-  await expect(page.getByText(/What this does/)).toBeVisible({ timeout: 180_000 });
+  await expect(page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: 180_000,
+  });
   await page.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByText("Transaction successful")).toBeVisible({ timeout: 240_000 });
+  await expect(page.getByText("Success")).toBeVisible({ timeout: 240_000 });
 
   await expect(page.getByText(/SPENDABLE/)).toBeVisible({ timeout: 120_000 });
   await page.getByRole("button", { name: "Shield" }).click();
   await page.getByRole("textbox", { name: "Amount" }).fill("20");
   await page.getByRole("button", { name: "Review" }).click();
-  await expect(page.getByText(/deposit amount is PUBLIC/)).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText(/This deposit amount is public\./)).toBeVisible({
+    timeout: 120_000,
+  });
   await page.getByRole("button", { name: "Approve" }).click();
   await expect(page.getByText(/Made spendable in a second transaction/)).toBeVisible({
     timeout: 240_000,
@@ -101,11 +112,11 @@ test("a funded private pocket whose openings are gone rebuilds from the archive"
   expect(wiped, "there must have been openings to destroy").toBeGreaterThan(0);
 
   await page.reload();
-  await page.getByRole("button", { name: /private pocket/i }).click();
+  await page.getByRole("button", { name: "Private", exact: true }).click();
 
   // The wallet must NOT pretend. It has an account on chain and no record of
   // its balances, and it says so.
-  await expect(page.getByText(/Balances need rebuilding|Records do not match/)).toBeVisible({
+  await expect(page.getByText(/Needs rebuilding|Out of step/).first()).toBeVisible({
     timeout: 120_000,
   });
 
@@ -116,7 +127,7 @@ test("a funded private pocket whose openings are gone rebuilds from the archive"
   // Rebuilt, and agreeing with the contract: the controller refuses to store a
   // replay that does not reproduce what the chain holds, so reaching a ready
   // state IS the assertion that the numbers are right.
-  await expect(page.getByText(/Records do not match/)).toHaveCount(0);
+  await expect(page.getByText(/Out of step/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Send privately" })).toBeVisible();
   console.log(`  rebuilt ${wiped} opening record(s) for ${address.slice(0, 8)}… from the archive`);
 });

@@ -25,7 +25,7 @@ test("session 1c: pressing Review on a private pocket that does not exist", asyn
   await wallet.createWallet(PASSWORD);
   await wallet.waitForHome(WAITS.ledgerRead);
 
-  await page.getByRole("button", { name: "Private pocket" }).click();
+  await page.getByRole("button", { name: "Private", exact: true }).click();
   await page.getByRole("button", { name: "Send privately" }).click();
   await page.getByRole("textbox", { name: "To", exact: true }).fill(TO);
   await page.getByRole("textbox", { name: /Amount/ }).fill("1");

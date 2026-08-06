@@ -123,7 +123,7 @@ test("session 1: a newcomer sets up a wallet reading nothing but the screen", as
 
   // 8. The other pocket, which is the product's whole point and which a
   //    newcomer has been told nothing about yet.
-  await page.getByRole("button", { name: "Private pocket" }).click();
+  await page.getByRole("button", { name: "Private", exact: true }).click();
   await look(page, "12 private pocket, never set up");
 
   await page.getByRole("button", { name: "Move" }).click();

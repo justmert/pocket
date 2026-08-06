@@ -72,15 +72,7 @@ describe("private activity on a build with no archive configured", () => {
 
     expect(page.entries).toEqual([]);
     expect(page.unread, "an empty page with no reason renders as 'No activity yet'").toBeDefined();
-    expect(page.unread!.map((u) => u.reason).join(" ")).toMatch(/durable event archive/i);
-  });
-
-  it("says the balances are unaffected, because they are", async () => {
-    // The private pocket works completely without the archive. A user told
-    // their activity cannot be read must not conclude their money is at risk.
-    const c = await worker();
-    const page = await c.history(undefined, 30, "private");
-    expect(page.unread!.map((u) => u.reason).join(" ")).toMatch(/balances are unaffected/i);
+    expect(page.unread!.map((u) => u.reason).join(" ")).toMatch(/not available in this build/i);
   });
 
   it("attributes it to the private pocket, not the public one", async () => {

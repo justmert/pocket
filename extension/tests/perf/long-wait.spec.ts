@@ -55,7 +55,6 @@ const PROGRESS = new RegExp(
     "Signing and submitting…",
     "Signing and submitting, then waiting for the ledger…",
     "Submit",
-    "Checking the ledger…",
     "Checking",
     "Reactivating…",
     // the line the progress shows for the stretches where the worker names no
@@ -101,18 +100,23 @@ test("the wallet never goes quiet during a private operation: something is alway
   await installProbe(wallet.page, {
     ...WATCH,
     busy: "Building",
-    review: "What this does",
+    // the probe reads body TEXT, and the review's "what this does" is the info
+    // button's accessible name now, not a painted string. the fee row is the
+    // review's own text and appears nowhere else in this flow.
+    review: "Network fee",
   });
   await fundedWallet(wallet);
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
+  await expect(wallet.page.getByText("Not open yet").first()).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
 
   await arm(wallet.page);
   await openMoveAction(wallet.page, "Set up the private pocket");
-  await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+  await expect(wallet.page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: WAITS.proving,
+  });
   const build = await read(wallet.page);
   await disarm(wallet.page);
 
@@ -184,14 +188,16 @@ test("the build-and-prove wait does not leave the screen unchanged for seconds",
   await fundedWallet(wallet);
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
+  await expect(wallet.page.getByText("Not open yet").first()).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
 
   await arm(wallet.page);
   const t0 = await now(wallet.page);
   await openMoveAction(wallet.page, "Set up the private pocket");
-  await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+  await expect(wallet.page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: WAITS.proving,
+  });
   const t1 = await now(wallet.page);
   const p = await read(wallet.page);
   await disarm(wallet.page);
@@ -219,16 +225,18 @@ test("the wait after Approve does not leave the screen unchanged for seconds", a
   await fundedWallet(wallet);
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
+  await expect(wallet.page.getByText("Not open yet").first()).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
   await openMoveAction(wallet.page, "Set up the private pocket");
-  await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+  await expect(wallet.page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: WAITS.proving,
+  });
 
   await arm(wallet.page);
   const t0 = await now(wallet.page);
   await wallet.page.getByRole("button", { name: "Approve" }).click();
-  await expect(wallet.page.getByText("Transaction successful")).toBeVisible({
+  await expect(wallet.page.getByText("Success")).toBeVisible({
     timeout: WAITS.submission,
   });
   const t1 = await now(wallet.page);
@@ -254,15 +262,17 @@ test("the wait after Approve says the wallet is waiting for the ledger", async (
   await fundedWallet(wallet);
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
+  await expect(wallet.page.getByText("Not open yet").first()).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
   await openMoveAction(wallet.page, "Set up the private pocket");
-  await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+  await expect(wallet.page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: WAITS.proving,
+  });
 
   await arm(wallet.page);
   await wallet.page.getByRole("button", { name: "Approve" }).click();
-  await expect(wallet.page.getByText("Transaction successful")).toBeVisible({
+  await expect(wallet.page.getByText("Success")).toBeVisible({
     timeout: WAITS.submission,
   });
   const p = await read(wallet.page);
@@ -319,7 +329,7 @@ test("the build wait does not sign and submit while it says it is only setting u
   const address = await fundedWallet(wallet);
 
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
+  await expect(wallet.page.getByText("Not open yet").first()).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
 
@@ -348,7 +358,9 @@ test("the build wait does not sign and submit while it says it is only setting u
 
   await openMoveAction(wallet.page, "Set up the private pocket");
   await expect(wallet.page.getByText(/Building/)).toBeVisible();
-  await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+  await expect(wallet.page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: WAITS.proving,
+  });
 
   // The review screen is up and nothing has been approved. Give Horizon time to
   // catch up, so the reading is what actually landed rather than what it had
@@ -401,7 +413,9 @@ test("the public send build wait signs and submits nothing, which is the bar", a
 
   await wallet.openSend();
   await wallet.composePayment({ to, amount: "1" });
-  await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+  await expect(wallet.page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: WAITS.proving,
+  });
 
   let after = before;
   const deadline = Date.now() + 25_000;
@@ -426,11 +440,13 @@ test("the public send wait does say it is waiting for the ledger", async ({ wall
 
   await wallet.openSend();
   await wallet.composePayment({ to, amount: "1" });
-  await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+  await expect(wallet.page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: WAITS.proving,
+  });
 
   await arm(wallet.page);
   await wallet.page.getByRole("button", { name: "Confirm" }).click();
-  await expect(wallet.page.getByText("Transaction successful")).toBeVisible({
+  await expect(wallet.page.getByText("Success")).toBeVisible({
     timeout: WAITS.submission,
   });
   const p = await read(wallet.page);
@@ -461,12 +477,14 @@ test("the public send wait does not leave the screen unchanged for seconds eithe
 
   await wallet.openSend();
   await wallet.composePayment({ to, amount: "1" });
-  await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+  await expect(wallet.page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: WAITS.proving,
+  });
 
   await arm(wallet.page);
   const t0 = await now(wallet.page);
   await wallet.page.getByRole("button", { name: "Confirm" }).click();
-  await expect(wallet.page.getByText("Transaction successful")).toBeVisible({
+  await expect(wallet.page.getByText("Success")).toBeVisible({
     timeout: WAITS.submission,
   });
   const t1 = await now(wallet.page);

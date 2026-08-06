@@ -211,8 +211,7 @@ function FinishOnboarding({ t, onContinue }: { t: Theme; onContinue: () => void 
         {raised === false ? (
           <>
             <Notice t={t} tone="exposed">
-              That tab is gone, so your recovery phrase was never confirmed. Your wallet itself is
-              safe. Open Settings, then Recovery phrase, to see the words again and write them down.
+              Your phrase was never confirmed. Settings &gt; Recovery phrase shows it again.
             </Notice>
             <ButtonStack>
               <Button t={t} onClick={() => void leave()}>
@@ -245,11 +244,9 @@ function FinishOnboarding({ t, onContinue }: { t: Theme; onContinue: () => void 
  * terminal outcome, so it is on disk for the whole of every ordinary confirm.
  * Chrome dismisses a toolbar popup whenever it loses focus, and reopening one
  * mid-confirm re-mounts this tree, found the record, and drew the full-screen
- * "Unfinished transaction / Pocket submitted a transaction and did not see
- * whether it confirmed" blocker: no sentence on it was false, it is written for
- * the crash case, it reads as one, and it removed every other control while
- * contradicting the "this will continue in the background" the processing view
- * had promised seconds earlier.
+ * "Unfinished transaction" blocker: nothing on it was false, it is written for
+ * the crash case, it reads as one, and it removed every other control seconds
+ * after the processing view had offered the way home.
  *
  * The budget is the longest an honest confirm can take, from the two deadlines
  * that bound it: proving is capped at 165s (`PROVER_DEADLINE_MS`) and the
@@ -265,11 +262,10 @@ export function blockingInFlight(r: { expired: boolean; at?: number; kind?: stri
   //
   // It is a background upkeep transaction the wallet sends on an alarm: the
   // user pressed nothing, and it moves nothing they would notice. Stranded by
-  // worker eviction it put "Pocket submitted a transaction and did not see
-  // whether it confirmed. Do not send it again until this is resolved." in
-  // front of the entire wallet, with every other control removed, about
-  // something they never did. The instruction is meaningless too, since there
-  // is nothing for them to resend.
+  // worker eviction it put "Unfinished transaction / Do not send it again until
+  // this is resolved." in front of the entire wallet, with every other control
+  // removed, about something they never did. The instruction is meaningless
+  // too, since there is nothing for them to resend.
   //
   // The record is NOT ignored: `reconcileInFlight` still resolves it on mount,
   // and a user operation submitted while it is outstanding is still refused by
@@ -447,7 +443,22 @@ function Shell() {
 
   return (
     <Frame t={t}>
-      {w.tab === "home" ? <Home /> : w.tab === "history" ? <History /> : <Settings />}
+      {/* Home stays MOUNTED across tab switches (hidden with display:none, not
+          unmounted). unmounting it reset ALL of Home's own state on every return:
+          `prices` cleared so the pocket total fell back to XLM until they refetched,
+          the value chart cleared to a skeleton, and the whole dashboard reloaded.
+          a mounted component cannot lose its state, so the number, the balances and
+          the curve are simply still there on return. it stays FRESH because the
+          chart refetches on a balance-signature change (see Home) and the total is
+          derived live from `w.balances`, which the provider keeps updated; a tab
+          switch alone changes neither, so returning is instant with nothing stale.
+          `display: contents` adds no box while shown, so Home's absolute ScrollArea
+          still fills the Frame. History and Settings mount on demand as before. */}
+      <div style={{ display: w.tab === "home" ? "contents" : "none" }}>
+        <Home />
+      </div>
+      {w.tab === "history" && <History />}
+      {w.tab === "settings" && <Settings />}
 
       <BottomNav />
 

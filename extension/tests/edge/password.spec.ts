@@ -44,30 +44,34 @@ async function createWith(page: Page, password: string): Promise<void> {
   const shownPhraseText = shownWords.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
   await answerBackupCheck(page, shownPhraseText);
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: SLOW,
+  });
 }
 
 test("the eight-character minimum is enforced at exactly eight, and stated", async ({ wallet }) => {
   const page = wallet.page;
   await openCreate(page);
   const button = page.getByRole("button", { name: "Create wallet" });
-  const rule = page.getByText("Use at least eight characters.");
+  // The rule is the field's own placeholder, so it is on screen before the
+  // first keystroke rather than only after a refusal.
+  const field = page.getByLabel("Password", { exact: true });
+  await expect(field).toHaveAttribute("placeholder", "At least 8 characters");
 
-  // Empty: refused, and deliberately silent. Nothing has gone wrong yet, so
-  // shouting a rule at an untouched form is noise, not help.
+  // Empty: refused, and nothing is marked wrong. Nothing has gone wrong yet.
   await fillCreate(page, "");
   await expect(button).toBeDisabled();
-  await expect(rule).toBeHidden();
+  await expect(field).not.toHaveAttribute("aria-invalid", "true");
 
-  // Seven, one under. Refused AND explained.
+  // Seven, one under. Refused AND marked.
   await fillCreate(page, "1234567");
   await expect(button).toBeDisabled();
-  await expect(rule).toBeVisible();
+  await expect(field).toHaveAttribute("aria-invalid", "true");
 
-  // Eight, the boundary itself. Accepted, and the rule stops being shown.
+  // Eight, the boundary itself. Accepted, and the mark comes off.
   await fillCreate(page, "12345678");
   await expect(button).toBeEnabled();
-  await expect(rule).toBeHidden();
+  await expect(field).not.toHaveAttribute("aria-invalid", "true");
 });
 
 test("a mismatched confirmation is refused and named, before anything is created", async ({
@@ -102,8 +106,8 @@ test("a password is taken exactly as typed: padding is part of it, not noise", a
   const padded = "  spaced out  ";
   await createWith(page, padded);
 
-  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
-  await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
+  await page.getByRole("menuitem", { name: "Lock" }).click();
+  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
 
   // The trimmed form must NOT open it.
   await page.getByLabel("Password", { exact: true }).fill(padded.trim());
@@ -113,7 +117,9 @@ test("a password is taken exactly as typed: padding is part of it, not noise", a
   // The exact string must.
   await page.getByLabel("Password", { exact: true }).fill(padded);
   await page.getByRole("button", { name: "Unlock" }).click();
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: SLOW,
+  });
 });
 
 test("an emoji password round-trips through the vault unchanged", async ({ wallet }) => {
@@ -128,10 +134,12 @@ test("an emoji password round-trips through the vault unchanged", async ({ walle
   expect([...emoji], "and four characters to a human").toHaveLength(4);
 
   await createWith(page, emoji);
-  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock" }).click();
   await page.getByLabel("Password", { exact: true }).fill(emoji);
   await page.getByRole("button", { name: "Unlock" }).click();
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: SLOW,
+  });
 });
 
 test("a very long password is not truncated to something shorter", async ({ wallet }) => {
@@ -144,7 +152,7 @@ test("a very long password is not truncated to something shorter", async ({ wall
   expect(long.length).toBeGreaterThan(1000);
 
   await createWith(page, long);
-  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock" }).click();
 
   await page.getByLabel("Password", { exact: true }).fill(long.slice(0, 72));
   await page.getByRole("button", { name: "Unlock" }).click();
@@ -155,14 +163,16 @@ test("a very long password is not truncated to something shorter", async ({ wall
 
   await page.getByLabel("Password", { exact: true }).fill(long);
   await page.getByRole("button", { name: "Unlock" }).click();
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: SLOW,
+  });
 });
 
 test("a wrong password is named as wrong and clears the field", async ({ wallet }) => {
   test.slow();
   const page = wallet.page;
   await createWith(page, "a-strong-password");
-  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock" }).click();
 
   const field = page.getByLabel("Password", { exact: true });
   await field.fill("a-strong-passwerd");
@@ -170,7 +180,7 @@ test("a wrong password is named as wrong and clears the field", async ({ wallet 
   await expect(page.getByText("Wrong password.")).toBeVisible({ timeout: SLOW });
   // The message says what happened without saying anything about the vault:
   // no hint about length, no hint about how close the attempt was.
-  await expect(page.getByText(/check your connection/i)).toBeHidden();
+  await expect(page.getByText(/Something went wrong/i)).toBeHidden();
   // And the field is emptied, so a second attempt starts from nothing rather
   // than from a wrong string the user has to notice and clear.
   await expect(field).toHaveValue("");
@@ -183,7 +193,7 @@ test("an empty password never reaches the key derivation", async ({ wallet }) =>
   test.slow();
   const page = wallet.page;
   await createWith(page, "a-strong-password");
-  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock" }).click();
   await expect(page.getByRole("button", { name: "Unlock" })).toBeDisabled();
   await page.getByLabel("Password", { exact: true }).fill(" ");
   await expect(

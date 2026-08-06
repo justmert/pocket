@@ -31,18 +31,12 @@ const NBSP = " ";
 const words = (p: string) => p.trim().split(/\s+/).filter(Boolean);
 
 const CHROME = new Set([
-  "Pocket",
   "Restore wallet",
-  "Enter your recovery phrase.",
   "Recovery phrase",
   "New password",
-  "Restore wallet",
+  "Confirm new password",
   "Importing",
   "Back",
-  "Use at least eight characters.",
-  // permanent on this screen, and permanent text is furniture however important
-  // it is: what these tests read out of the body is the REFUSAL.
-  "This password unlocks this device. It is not a backup.",
 ]);
 
 /** Open the import screen from the very first run. */
@@ -65,7 +59,7 @@ async function tryImport(page: Page, phrase: string): Promise<string> {
     .poll(
       async () => {
         const body = await page.locator("body").innerText();
-        if (body.includes("Public pocket")) {
+        if (body.includes("Public")) {
           said = "IMPORTED";
           return "done";
         }
@@ -76,7 +70,7 @@ async function tryImport(page: Page, phrase: string): Promise<string> {
           // the phrase field labels itself with a live word count, so it is
           // furniture whatever number it is carrying.
           .filter((l) => !CHROME.has(l) && !/^Recovery phrase \(\d+ words?\)$/.test(l))
-          .filter((l) => l !== "12 or 24 words, separated by spaces")
+          .filter((l) => l !== "words separated by spaces")
           .join(" ");
         if (notice) {
           said = notice;
@@ -132,10 +126,9 @@ test("an unusable phrase is named as the phrase, not as a network problem", asyn
   const said = await tryImport(page, `${"abandon ".repeat(11)}abandon`);
   expect(said).not.toBe("IMPORTED");
   expect(said, "the refusal must name the recovery phrase as the problem").toMatch(/phrase/i);
-  expect(
-    said,
-    "a mis-transcribed phrase is not a connection problem and retrying will never fix it",
-  ).not.toMatch(/check your connection/i);
+  expect(said, "a mis-transcribed phrase must not fall through to the generic refusal").not.toMatch(
+    /Something went wrong/i,
+  );
 });
 
 test("an empty phrase keeps the button disabled rather than failing later", async ({ wallet }) => {
@@ -174,8 +167,9 @@ test("a 12-word phrase is accepted, not only the 24 this wallet makes", async ({
   const page = wallet.page;
   await openImport(page);
   // Pocket generates 24 words, but a user arriving from another wallet almost
-  // certainly holds 12, and the import screen's own placeholder promises both.
-  await expect(page.getByPlaceholder("12 or 24 words, separated by spaces")).toBeVisible();
+  // certainly holds 12. The placeholder no longer names counts, because it
+  // named two of the five the worker accepts.
+  await expect(page.getByPlaceholder("words separated by spaces")).toBeVisible();
   expect(await tryImport(page, TWELVE)).toBe("IMPORTED");
 });
 
@@ -184,7 +178,7 @@ test("the erase-and-restore screen states the word count rule before the attempt
 }) => {
   const page = wallet.page;
   await onboard(page);
-  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock" }).click();
   await page.getByRole("button", { name: "Forgot your password?" }).click();
   await page.getByRole("button", { name: "I understand, continue" }).click();
 
@@ -199,9 +193,7 @@ test("the erase-and-restore screen states the word count rule before the attempt
   for (const n of [1, 11, 13, 23, 25]) {
     await phrase.fill(Array<string>(n).fill("abandon").join(" "));
     await expect(button).toBeDisabled();
-    await expect(
-      page.getByText(`A recovery phrase is 12 or 24 words. This one has ${n}.`),
-    ).toBeVisible();
+    await expect(page.getByText("Must be 12, 15, 18, 21 or 24 words.")).toBeVisible();
   }
 
   // 12 and 24 both clear the count rule, which is the other half of the claim.
@@ -216,7 +208,7 @@ test("a phrase for a different wallet is refused, and this wallet survives", asy
   const page = wallet.page;
   const mine = await onboard(page);
   expect(words(mine)).toHaveLength(24);
-  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock" }).click();
   await page.getByRole("button", { name: "Forgot your password?" }).click();
   await page.getByRole("button", { name: "I understand, continue" }).click();
 
@@ -237,5 +229,7 @@ test("a phrase for a different wallet is refused, and this wallet survives", asy
   await page.reload();
   await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "Unlock" }).click();
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: SLOW,
+  });
 });

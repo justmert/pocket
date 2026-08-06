@@ -5,7 +5,7 @@
 // asset." over that emptiness: an invitation to do something the account cannot
 // do. Pressing it reached `server().getAccount`, which throws a bare
 // `Error("Account not found: G...")`. "Error" is on no allowlist, so the answer
-// was "Something went wrong. Try again, and check your connection." for a
+// was "Something went wrong. Try again." for a
 // connection that is working and a retry that can never succeed.
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import "../lib/polyfill";
@@ -81,16 +81,16 @@ describe("adding an asset to an account that is not on the ledger", () => {
     const err = await c.buildAddTrustline("USDC", USDC_ISSUER).catch((e: unknown) => e);
 
     const said = describeError(err);
-    expect(said, "a working connection was blamed for a missing account").not.toMatch(
-      /check your connection/i,
+    expect(said, "a missing account fell through to the generic refusal").not.toMatch(
+      /Something went wrong/i,
     );
-    expect(said).toMatch(/not on the Stellar network yet/i);
+    expect(said).toBe("Receive XLM to activate this account.");
   });
 
   it("says what to do about it", async () => {
     const c = await worker();
     const err = await c.buildAddTrustline("USDC", USDC_ISSUER).catch((e: unknown) => e);
-    expect(describeError(err)).toMatch(/receive some XLM first/i);
+    expect(describeError(err)).toMatch(/receive XLM to activate/i);
   });
 
   it("never leaks the address the RPC decoded back into the sentence", async () => {

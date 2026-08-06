@@ -21,14 +21,16 @@ describe("a transport failure is reported in the wallet's own words", () => {
     // An extension reloaded from chrome://extensions with the popup still open
     // says this for every press afterwards.
     send.mockRejectedValue(new Error("Extension context invalidated."));
-    await expect(call({ type: "status" })).rejects.toThrow(/updated or reloaded/i);
+    await expect(call({ type: "status" })).rejects.toThrow(
+      /updated or reloaded/i,
+    );
   });
 
   it("names a worker that is not listening", async () => {
     send.mockRejectedValue(
       new Error("Could not establish connection. Receiving end does not exist."),
     );
-    await expect(call({ type: "status" })).rejects.toThrow(/not answering/i);
+    await expect(call({ type: "status" })).rejects.toThrow(/not answering right now/i);
   });
 
   it("falls back to a generic sentence rather than echoing an unknown string", async () => {

@@ -41,7 +41,7 @@ test("the frame asks for its full height in the viewport a popup is first laid o
     if (!sw) sw = await context.waitForEvent("serviceworker");
     const page = await context.newPage();
     await page.goto(`chrome-extension://${new URL(sw.url()).host}/popup.html`);
-    await expect(page.getByText("Two pockets on Stellar")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Create a new wallet" })).toBeVisible();
 
     const frame = page.locator("#root > div").first();
     const box = await frame.boundingBox();
@@ -78,7 +78,7 @@ test("the frame still gives way once the window itself is genuinely short", asyn
     if (!sw) sw = await context.waitForEvent("serviceworker");
     const page = await context.newPage();
     await page.goto(`chrome-extension://${new URL(sw.url()).host}/popup.html`);
-    await expect(page.getByText("Two pockets on Stellar")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Create a new wallet" })).toBeVisible();
 
     // What 200% zoom leaves of a 600px popup.
     await page.setViewportSize({ width: FRAME.width, height: 300 });

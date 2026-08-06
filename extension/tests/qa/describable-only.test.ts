@@ -71,9 +71,7 @@ describe("an operation the wallet cannot describe", () => {
     expect(summary.warning ?? "", "the refusal must name what it could not read").toMatch(
       /createClaimableBalance/,
     );
-    expect(summary.warning ?? "", "and must say nothing was sent").toMatch(
-      /nothing has been sent/i,
-    );
+    expect(summary.warning ?? "", "and must say it will not sign").toMatch(/will not sign this/i);
   });
 
   it("refuses every other operation type nobody has written a sentence for", () => {

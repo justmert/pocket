@@ -99,6 +99,14 @@ export function impactBps(args: {
   return Number(bps);
 }
 
+/**
+ * Two sentences for everything the service can do to us: it did not answer, or
+ * it refused. Both are drawn verbatim, so there is one of each rather than one
+ * per call site.
+ */
+const NOT_ANSWERING = "The swap service is not answering. Try again in a moment.";
+const REFUSED = "The swap service refused that request. Try again.";
+
 export class AquariusError extends Error {
   constructor(
     message: string,
@@ -152,27 +160,27 @@ export function readRouteEndpoints(swapChainXdr: string): RouteEndpoints {
   try {
     root = xdr.ScVal.fromXDR(swapChainXdr, "base64");
   } catch {
-    throw new AquariusError("The swap route could not be decoded, so Pocket will not sign it.");
+    throw badRoute();
   }
-  if (root.switch().name !== "scvVec") throw badRoute("it is not a list of hops");
+  if (root.switch().name !== "scvVec") throw badRoute();
   const hops = root.vec() ?? [];
-  if (hops.length === 0) throw badRoute("it contains no hops");
+  if (hops.length === 0) throw badRoute();
 
   const addressAt = (hop: xdr.ScVal, index: number): string => {
     const parts = hop.switch().name === "scvVec" ? (hop.vec() ?? []) : [];
-    if (parts.length !== 3) throw badRoute("a hop is not a three-part tuple");
+    if (parts.length !== 3) throw badRoute();
     const at = parts[index]!;
-    if (at.switch().name !== "scvAddress") throw badRoute("a hop names no delivered token");
+    if (at.switch().name !== "scvAddress") throw badRoute();
     return Address.fromScVal(at).toString();
   };
 
   const first = hops[0]!;
   const firstParts = first.switch().name === "scvVec" ? (first.vec() ?? []) : [];
-  if (firstParts.length !== 3) throw badRoute("a hop is not a three-part tuple");
+  if (firstParts.length !== 3) throw badRoute();
   const pair = firstParts[0]!;
-  if (pair.switch().name !== "scvVec") throw badRoute("the first hop names no token pair");
+  if (pair.switch().name !== "scvVec") throw badRoute();
   const firstPair = (pair.vec() ?? []).map((a) => {
-    if (a.switch().name !== "scvAddress") throw badRoute("a pool pair holds a non-address");
+    if (a.switch().name !== "scvAddress") throw badRoute();
     return Address.fromScVal(a).toString();
   });
 
@@ -183,12 +191,15 @@ export function readRouteEndpoints(swapChainXdr: string): RouteEndpoints {
   };
 }
 
-function badRoute(why: string): AquariusError {
-  // The reason is authored here and interpolates nothing from the wire, so this
-  // is safe to surface through describeError's allowlist.
-  return new AquariusError(
-    `Pocket could not read the swap route (${why}), so it will not sign it.`,
-  );
+/**
+ * One refusal for every shape this route can arrive in wrong.
+ *
+ * The reasons it used to carry ("a hop is not a three-part tuple", "a pool pair
+ * holds a non-address") are facts about an XDR encoding, and the user's only
+ * move is the same in all of them: quote again and get a route Pocket can read.
+ */
+function badRoute(): AquariusError {
+  return new AquariusError("Pocket will not sign that route. Get a fresh quote.");
 }
 
 interface FindPathResponse {
@@ -230,13 +241,13 @@ export class AquariusClient {
     if (body?.success !== true || typeof body.swap_chain_xdr !== "string") {
       // No route, or a shape we cannot trust. Refused rather than defaulted: a
       // zero estimate is indistinguishable on screen from a real thin market.
-      throw new AquariusError("No swap route was found for that pair and amount.");
+      throw new AquariusError("No route for that pair and amount.");
     }
     // `amount` is stroops. Parse to bigint, refusing anything non-integral rather
     // than coercing a float and silently changing what the user swaps.
     const raw = typeof body.amount === "string" ? body.amount : String(body.amount ?? "");
     if (!/^\d+$/.test(raw)) {
-      throw new AquariusError("The swap route returned an unreadable amount.");
+      throw new AquariusError("Unreadable amount from the swap route.");
     }
     return {
       swapChainXdr: body.swap_chain_xdr,
@@ -257,22 +268,19 @@ export class AquariusClient {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
-    } catch (e) {
-      const why =
-        e instanceof Error
-          ? e.name === "TimeoutError" || e.name === "AbortError"
-            ? `no answer within ${(this.cfg.timeoutMs ?? SERVICE_HTTP_TIMEOUT_MS) / 1000}s`
-            : e.message
-          : "network error";
-      throw new AquariusError(`Could not reach the swap service (${why}).`);
+    } catch {
+      // Unreachable, timed out and 5xx are three wordings of one fact, and the
+      // `why` this used to carry was `e.message`: a fetch-authored string, on a
+      // list that renders verbatim.
+      throw new AquariusError(NOT_ANSWERING);
     }
     if (!res.ok) {
-      throw new AquariusError(`The swap service returned ${res.status}.`, res.status);
+      throw new AquariusError(res.status >= 500 ? NOT_ANSWERING : REFUSED, res.status);
     }
     try {
       return (await res.json()) as FindPathResponse;
     } catch {
-      throw new AquariusError("The swap service sent a response Pocket could not read.");
+      throw new AquariusError(NOT_ANSWERING);
     }
   }
 }

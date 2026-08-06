@@ -88,7 +88,7 @@ const endOfDay = (ms: number): number => {
 const fmtDay = (ms: number): string =>
   new Date(ms).toLocaleDateString(DATE_LOCALE, { month: "short", day: "numeric", year: "numeric" });
 
-/** a small text link, for Clear / Clear all. */
+/** a small text link, for Clear. */
 function LinkButton({
   t,
   onClick,
@@ -158,7 +158,7 @@ export function TypeFilterSheet({
             onClose();
           }}
         >
-          Apply filters
+          Apply
         </Button>
       }
     >
@@ -171,15 +171,15 @@ export function TypeFilterSheet({
         }}
       >
         <LinkButton t={t} onClick={() => setSel(new Set())}>
-          Clear all
+          Clear
         </LinkButton>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: space.sm }}>
         {/* Shielded and Unshielded are produced only by PRIVATE entries, so in
             the public pocket either chip guarantees an empty list, and the empty
             list then drives the auto-pager through up to twenty pages while the
-            screen reads "Still reading older history". a filter that cannot match
-            is not a filter. */}
+            screen reads "No matches yet." a filter that cannot match is not a
+            filter. */}
         {CATS.filter(
           (c) => pocket === "private" || (c.key !== "movedIn" && c.key !== "movedOut"),
         ).map((c) => {
@@ -350,9 +350,7 @@ export function DateRangeSheet({
   };
 
   const summary =
-    start !== null
-      ? `${fmtDay(start)}${end !== null ? ` – ${fmtDay(end)}` : ""}`
-      : "Pick a start date";
+    start !== null ? `${fmtDay(start)}${end !== null ? ` – ${fmtDay(end)}` : ""}` : "Pick a start date";
 
   return (
     <Sheet
@@ -367,7 +365,7 @@ export function DateRangeSheet({
           </Button>
         ) : (
           <Button t={t} disabled={start === null} onClick={apply}>
-            Apply date range
+            Apply
           </Button>
         )
       }
@@ -426,7 +424,6 @@ export function DateRangeSheet({
                 ...text.pocketTab,
               }}
             >
-              {/* sentence case, like every other control in the product. */}
               {p === "start" ? "Start date" : "End date"}
             </button>
           );

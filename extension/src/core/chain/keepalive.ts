@@ -73,11 +73,12 @@ export interface KeepAlivePlan {
  */
 export function planKeepAlive(status: TtlStatus, userWasActiveRecently: boolean): KeepAlivePlan {
   if (status.kind === "archived") {
+    // The card already says Dormant and the button already says Reactivate.
+    // The fee is the only part that is news.
     return {
       due: false,
       nextCheckMs: jitteredDelayMs(1),
-      notice:
-        "Your private pocket is dormant. Reactivating it costs a small fee and restores access.",
+      notice: "Reactivating costs a small fee.",
     };
   }
   if (status.kind === "absent") {
@@ -89,12 +90,11 @@ export function planKeepAlive(status: TtlStatus, userWasActiveRecently: boolean)
     return { due: false, nextCheckMs: jitteredDelayMs(Math.max(1, status.daysRemaining - 7)) };
   }
 
+  // No notice. The wallet does not report its own background housekeeping: the
+  // bump happens whether or not anyone is looking, and there is nothing to do
+  // about it.
   if (needsKeepAlive(status)) {
-    return {
-      due: true,
-      nextCheckMs: jitteredDelayMs(7),
-      notice: `Keeping your private pocket active. It would otherwise go dormant in ${Math.round(status.daysRemaining)} days.`,
-    };
+    return { due: true, nextCheckMs: jitteredDelayMs(7) };
   }
 
   // Check back once there is roughly a week of headroom left.

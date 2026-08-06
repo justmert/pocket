@@ -1,58 +1,19 @@
-// A2-02 and A5-01: the two things the destructive paths were not saying.
+// A5-01: what the destructive paths were not saying.
 //
-// A2-02. "This password unlocks this device. It is not a backup." was under the
-// create form and nowhere else. Someone who imports a phrase, or who erases and
-// restores, sets a password on a screen that never says what it is for, and can
-// reasonably conclude the password is now the thing to keep.
-//
-// A5-01. Two doors reach the same irreversible erase. Settings said "Rebuilding
+// Two doors reach the same irreversible erase. Settings said "Rebuilding
 // them needs your history from an archive", which reads as though a rebuild
 // exists; the locked screen's door read the config and said which of the two
 // situations this build is in. The softer sentence was on the door more people
 // reach.
+//
+// A2-02 was the third password screen saying nothing about what the password
+// is for. That sentence ("This password unlocks this device. It is not a
+// backup.") is gone from all three screens, so the test that walked them is
+// gone with it.
 import { test, expect } from "../support/fixtures";
 import { WAITS } from "../support/wallet";
 
 const PASSWORD = "a-strong-test-password";
-const DEVICE_LOCAL = /This password unlocks this device\. It is not a backup\./;
-/** a phrase that is valid to enter; nothing here ever submits it. */
-const PHRASE =
-  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-
-test("every screen that sets a password says what the password is not", async ({ wallet }) => {
-  test.setTimeout(4 * 60_000);
-  const page = wallet.page;
-
-  // 1. create.
-  await page.getByRole("button", { name: "Create a new wallet" }).click();
-  await expect(page.getByText(DEVICE_LOCAL), "the create form states it").toBeVisible();
-
-  // 2. import.
-  await page
-    .getByRole("button", { name: /Back|Cancel/ })
-    .first()
-    .click();
-  await page.getByRole("button", { name: /recovery phrase/i }).click();
-  await expect(
-    page.getByText(DEVICE_LOCAL),
-    "the import form sets a password too, and said nothing about it",
-  ).toBeVisible();
-
-  // 3. erase and restore, which is reached from the locked screen.
-  await page.getByRole("textbox", { name: /Recovery phrase/i }).fill(PHRASE);
-  await page.getByRole("textbox", { name: "New password", exact: true }).fill(PASSWORD);
-  // The restore screen asks twice; one field leaves the submit disabled.
-  await page.getByRole("textbox", { name: "Confirm new password", exact: true }).fill(PASSWORD);
-  await page.getByRole("button", { name: "Restore wallet" }).click();
-  await wallet.waitForHome(WAITS.ledgerRead);
-  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
-  await page.getByRole("button", { name: "Forgot your password?" }).click();
-  await page.getByRole("button", { name: "I understand, continue" }).click();
-  await expect(
-    page.getByText(DEVICE_LOCAL),
-    "erase and restore sets a password too, and said nothing about it",
-  ).toBeVisible();
-});
 
 test("both doors to erasing this wallet describe the same loss", async ({ wallet }) => {
   test.setTimeout(4 * 60_000);
@@ -73,7 +34,7 @@ test("both doors to erasing this wallet describe the same loss", async ({ wallet
   await page.keyboard.press("Escape");
   await expect(page.locator("[role='dialog']")).toHaveCount(0);
   await page.getByRole("button", { name: "Home", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Lock wallet" }).click();
+  await page.getByRole("menuitem", { name: "Lock" }).click();
   await page.getByRole("button", { name: "Forgot your password?" }).click();
   const fromLocked = await page
     .getByText(/private balances are opened by keys held only here/i)

@@ -98,14 +98,14 @@ describe("what the native guard counts as sendable", () => {
     const { c } = await worker();
     // The number the compose screen shows, typed by hand. It builds, signs,
     // submits and fails on chain if this guard lets it through.
-    await expect(send(c, formatAmount(unreserved()))).rejects.toThrow(/more than you can send/);
+    await expect(send(c, formatAmount(unreserved()))).rejects.toThrow(/more than you can send/i);
   });
 
   it("says where the money went, naming the reserve AND the fee", async () => {
     const { c } = await worker();
     // A refusal that lists only the reserve cannot explain why a number the
     // wallet itself displayed is too large.
-    await expect(send(c, formatAmount(unreserved()))).rejects.toThrow(/network fee/i);
+    await expect(send(c, formatAmount(unreserved()))).rejects.toThrow(/after the reserve and fee/i);
   });
 
   it("allows the unreserved figure minus the fee, which is what max produces", async () => {
@@ -120,14 +120,14 @@ describe("what the native guard counts as sendable", () => {
   it("still refuses one stroop above the fee-adjusted figure", async () => {
     const { c } = await worker();
     await expect(send(c, formatAmount(unreserved() - fee + 1n))).rejects.toThrow(
-      /more than you can send/,
+      /more than you can send/i,
     );
   });
 
   it("does not go negative on an account that cannot even cover the reserve", async () => {
     balanceStroops = RESERVE - 1n;
     const { c } = await worker();
-    await expect(send(c, "0.0000001")).rejects.toThrow(/more than you can send/);
+    await expect(send(c, "0.0000001")).rejects.toThrow(/more than you can send/i);
   });
 });
 
@@ -145,7 +145,7 @@ describe("stroops the protocol has already committed elsewhere", () => {
     // What the account would have been told it could send before: everything
     // above the reserve, offer and all.
     const asIfUncommitted = balanceStroops - RESERVE - fee;
-    await expect(send(c, formatAmount(asIfUncommitted))).rejects.toThrow(/more than you can send/);
+    await expect(send(c, formatAmount(asIfUncommitted))).rejects.toThrow(/more than you can send/i);
 
     // And what it can actually send.
     const real = balanceStroops - RESERVE - locked - fee;
@@ -170,7 +170,7 @@ describe("sending an asset that is not XLM", () => {
   it("refuses more than the trustline holds", async () => {
     const { c } = await withLine();
     await expect(c.buildPayment({ to: TO, amount: "6", assetId: USDC })).rejects.toThrow(
-      /more than you can send/,
+      /more than you can send/i,
     );
   });
 
@@ -203,7 +203,7 @@ describe("sending an asset that is not XLM", () => {
     line = { raw: 50_000_000n, sellingLiabilities: 10_000_000n, authorized: true };
     const { c } = await withLine();
     await expect(c.buildPayment({ to: TO, amount: "4.1", assetId: USDC })).rejects.toThrow(
-      /more than you can send/,
+      /more than you can send/i,
     );
     await expect(c.buildPayment({ to: TO, amount: "4", assetId: USDC })).resolves.toBeTruthy();
   });

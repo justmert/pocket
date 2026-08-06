@@ -38,7 +38,7 @@ describe("describeError has no shape heuristic", () => {
     const rpc = new Error("Error(Contract, #3506).");
     expect(describeError(rpc)).not.toContain("3506");
     expect(describeError(new Error("Insufficient balance for the transfer."))).toBe(
-      "Something went wrong. Try again, and check your connection.",
+      "Something went wrong. Try again.",
     );
   });
 

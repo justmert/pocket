@@ -72,8 +72,8 @@ export class AccountNotFoundError extends Error {
  * An amount the user can correct.
  *
  * Named because `describeError` allowlists by NAME, and a bare Error here
- * reached the user as "check your connection" for a comma they typed. No
- * amount of retrying fixes a comma.
+ * reached the user as the generic message for a comma they typed. No amount of
+ * retrying fixes a comma.
  */
 export class InvalidAmountError extends Error {
   override readonly name = "InvalidAmountError";
@@ -258,10 +258,9 @@ export function parseAmount(text: string): bigint {
   // The whole part is OPTIONAL, so ".5" parses as 0.5.
   //
   // It required at least one digit before the point, and a keypad that offers
-  // "." as its own key invites exactly that: the wallet answered "That is not
-  // an amount Pocket can read. Use digits and at most one decimal point" about
-  // a string that is digits and one decimal point. Nothing downstream cares:
-  // this returns stroops either way.
+  // "." as its own key invites exactly that: the wallet answered "Enter digits
+  // and one decimal point" about a string that is digits and one decimal
+  // point. Nothing downstream cares: this returns stroops either way.
   //
   // "." and "-" alone are still refused, which is what the digit count below
   // enforces: the point is to accept a shorthand, not to accept nothing.
@@ -271,18 +270,14 @@ export function parseAmount(text: string): bigint {
   // characters of whatever was typed into a 360px popup. Repeating the typo is
   // useless anyway: it is still in the field the user is looking at.
   if (!m) {
-    throw new InvalidAmountError(
-      "That is not an amount Pocket can read. Use digits and at most one decimal point.",
-    );
+    throw new InvalidAmountError("Enter digits and one decimal point.");
   }
   const [, sign, whole = "", frac = ""] = m;
   if (whole.length + frac.length === 0) {
-    throw new InvalidAmountError(
-      "That is not an amount Pocket can read. Use digits and at most one decimal point.",
-    );
+    throw new InvalidAmountError("Enter digits and one decimal point.");
   }
   if (frac.length > 7) {
-    throw new InvalidAmountError("Amounts go to 7 decimal places and that has more.");
+    throw new InvalidAmountError("Maximum 7 decimal places.");
   }
   const raw = BigInt(whole || "0") * STROOPS_PER_UNIT + BigInt(frac.padEnd(7, "0") || "0");
   return sign === "-" ? -raw : raw;

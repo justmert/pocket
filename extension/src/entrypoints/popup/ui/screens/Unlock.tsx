@@ -65,9 +65,9 @@ export function Unlock({
               one screen with no other content competing for the eye, and it is
               the screen a returning user sees more often than any other. */}
           <div style={{ textAlign: "center" }}>
-            {/* The wordmark, decorative: the product's name is already spoken by
-                the sentence under the heading, so announcing it here would say
-                "Pocket" twice to a screen reader and add nothing.
+            {/* The wordmark, decorative: it is the same mark the browser's own
+                toolbar button already carries, and announcing it would put a
+                second name in front of the heading a reader lands on.
 
                 The drawn logo itself, packaged. The accent wash lives in the
                 `Cover` behind it, so the mark stays the mark.
@@ -92,6 +92,8 @@ export function Unlock({
                 filter: t.dark ? "invert(1)" : "none",
               }}
             />
+            {/* "Locked" was the old heading. It is a state, not a greeting, and
+                it read as an error on a screen that is simply the front door. */}
             <h1
               style={{
                 ...text.screenTitle,
@@ -101,8 +103,6 @@ export function Unlock({
             >
               Welcome back
             </h1>
-            {/* "Locked" was the old heading. It is a state, not a greeting, and
-                it read as an error on a screen that is simply the front door. */}
             <p style={{ ...text.body, color: t.sub, margin: 0 }}>
               Enter your password to unlock Pocket.
             </p>

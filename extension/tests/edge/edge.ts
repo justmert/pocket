@@ -26,12 +26,11 @@ export const PASSWORD = "a-strong-password";
  * The message `describeError` gives an error whose NAME is not allowlisted.
  *
  * Matching it is how this slice tells "the wallet explained the problem" from
- * "the wallet gave up and blamed the network". Anything a user typed that comes
- * back as this is a finding: no amount of retrying fixes a typo, and the
- * sentence sends them to their router instead of to the field they got wrong.
+ * "the wallet gave up". Anything a user typed that comes back as this is a
+ * finding: no amount of retrying fixes a typo, and the sentence sends them
+ * nowhere near the field they got wrong.
  */
-export const GENERIC_FAILURE = /Something went wrong\. Try again, and check your connection\./;
-export const BLAMES_THE_NETWORK = /check your connection/i;
+export const GENERIC_FAILURE = /Something went wrong\. Try again\./;
 
 /** Create a wallet and land on home. Returns the 24 words. */
 export async function onboard(page: Page, password = PASSWORD): Promise<string> {
@@ -49,7 +48,7 @@ export async function onboard(page: Page, password = PASSWORD): Promise<string> 
   await page.getByRole("button", { name: "I have written it down" }).click();
   await answerBackupCheck(page, phrase);
   await passOnboardingReady(page);
-  await expect(page.getByRole("button", { name: "Public Pocket" })).toBeVisible({ timeout: SLOW });
+  await expect(page.getByRole("button", { name: "Public" })).toBeVisible({ timeout: SLOW });
   return phrase;
 }
 
@@ -98,18 +97,11 @@ export async function compose(
   await expect(recipient).toBeVisible();
   if (fields.to !== undefined) await recipient.fill(fields.to);
   if (fields.amount !== undefined) await page.getByLabel("Amount (XLM)").fill(fields.amount);
-  if (fields.memo !== undefined) await page.getByLabel("Memo (optional)").fill(fields.memo);
+  if (fields.memo !== undefined) await page.getByLabel("Memo").fill(fields.memo);
 }
 
 /** Furniture on the compose screen: present whatever the wallet decides. */
-const COMPOSE_CHROME = new Set([
-  "Send",
-  "Close",
-  "To",
-  "Amount (XLM)",
-  "Memo (optional)",
-  "Review",
-]);
+const COMPOSE_CHROME = new Set(["Send", "Close", "To", "Amount (XLM)", "Memo", "Review"]);
 
 /**
  * Every line the open sheet says that is not its own furniture.

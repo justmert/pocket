@@ -92,16 +92,9 @@ describe("the private list while the archive catches up", () => {
     const c = await worker();
     tip = 1_600; // 600 ledgers, about fifty minutes
     const page = await c.history(undefined, 30, "private");
-    expect(reasons(page), "the list was silent about being behind").toMatch(/archive is about 600/);
-  });
-
-  it("says the transaction still happened and the balance already has it", async () => {
-    // The point of the sentence: an absent row must not read as a lost
-    // transaction. The money is already accounted for locally.
-    const c = await worker();
-    tip = 1_600;
-    const page = await c.history(undefined, 30, "private");
-    expect(reasons(page)).toMatch(/balances already include it/i);
+    expect(reasons(page), "the list was silent about being behind").toMatch(
+      /may not be listed yet/i,
+    );
   });
 
   it("stays quiet when the archive is keeping up", async () => {

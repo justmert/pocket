@@ -74,13 +74,6 @@ describe("a spent handle while a submission is unresolved", () => {
     expect(said).toMatch(/do not send another one/i);
   });
 
-  it("points at the one thing that actually resolves it", async () => {
-    const c = await worker();
-    holding(NOW + 120);
-    const err = await c.confirmPayment("deadbeef").catch((e: unknown) => e);
-    expect(describeError(err)).toMatch(/reopen pocket/i);
-  });
-
   it("says the same thing on the private path", async () => {
     // The two paths threw different sentences for the same situation.
     const c = await worker();

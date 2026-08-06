@@ -61,7 +61,7 @@ test("session 1b: what the two odd things actually do", async ({ wallet }) => {
   await look(page, "A settled home unfunded");
 
   // B. Press "Send privately" on a pocket that does not exist.
-  await page.getByRole("button", { name: "Private pocket" }).click();
+  await page.getByRole("button", { name: "Private", exact: true }).click();
   await page.waitForTimeout(400);
   const nav = page.getByRole("button", { name: "Send privately" });
   const reachable = await nav.isVisible().catch(() => false);

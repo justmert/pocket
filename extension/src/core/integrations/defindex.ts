@@ -79,17 +79,19 @@ export function moveBody(
   what: "deposit" | "withdraw",
 ): { caller: string; amounts: number[]; slippageBps?: number } {
   const amounts = p.amounts.map((a) => {
-    if (a < 0n) throw new DefindexError(`Cannot ${what} a negative amount.`);
+    // `DefindexError` is on `dispatch.ts` SAFE_ERRORS, so whatever is written
+    // here is drawn verbatim in the danger colour. These three are assertions
+    // no user can trip through the UI, so they are said in the wallet's voice
+    // rather than in the API's.
+    if (a < 0n) throw new DefindexError("Enter an amount greater than zero.");
     if (a > BigInt(Number.MAX_SAFE_INTEGER)) {
-      throw new DefindexError(
-        `That ${what} amount is too large to send to the yield service without losing precision.`,
-      );
+      throw new DefindexError(`That ${what} amount is too large to send without losing precision.`);
     }
     return Number(a);
   });
-  if (amounts.length === 0) throw new DefindexError(`a ${what} needs at least one amount`);
+  if (amounts.length === 0) throw new DefindexError("Enter an amount.");
   if (p.slippageBps !== undefined && (p.slippageBps < 0 || p.slippageBps > 10_000)) {
-    throw new DefindexError("slippageBps must be between 0 and 10000");
+    throw new DefindexError("Slippage must be between 0 and 100%.");
   }
   return {
     // NOT `from`. The DTO has no such property, so a body carrying it is
@@ -121,12 +123,18 @@ export function moveBody(
  * not send one, and inventing a limit here would be worse than naming none.
  */
 const DEFINDEX_ERRORS: Record<number, string> = {
-  10: "That is more than this account holds, so the deposit cannot be made. Try a smaller amount.",
-  13: "You need a trustline for this vault's asset before you can deposit or withdraw.",
-  124:
-    "That is more than you have in the vault, so the withdrawal cannot be made. " +
-    "Try a smaller amount, or use the maximum.",
+  10: "More than this account holds. Try a smaller amount.",
+  13: "You need a trustline for this vault's asset.",
+  124: "More than you have in the vault. Try a smaller amount.",
 };
+
+/**
+ * Two sentences for everything this service can do to us that is not mapped
+ * above: it did not answer, or it refused. Both are drawn verbatim, so there is
+ * one of each rather than one per call site.
+ */
+const NOT_ANSWERING = "The yield service is not answering. Try again in a moment.";
+const REFUSED = "The yield service refused that request. Check the amount and try again.";
 
 export class DefindexError extends Error {
   constructor(
@@ -180,9 +188,8 @@ export class DefindexClient {
       // Written for a user, not a reader of this file. `DefindexError` is on
       // `dispatch.ts` SAFE_ERRORS, so whatever is written here is drawn verbatim
       // in the danger colour, and "carried no readable dfTokens" names an API
-      // field nobody outside this module has heard of. The module's own register
-      // three lines away already had it right.
-      throw new DefindexError("The yield service sent a balance Pocket could not read.");
+      // field nobody outside this module has heard of.
+      throw new DefindexError("Unreadable balance from the yield service.");
     }
     const underlying = Array.isArray(body.underlyingBalance)
       ? body.underlyingBalance[0]
@@ -244,14 +251,11 @@ export class DefindexClient {
         },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
-    } catch (e) {
-      const why =
-        e instanceof Error
-          ? e.name === "TimeoutError" || e.name === "AbortError"
-            ? `no answer within ${(this.cfg.timeoutMs ?? SERVICE_HTTP_TIMEOUT_MS) / 1000}s`
-            : e.message
-          : "network error";
-      throw new DefindexError(`Could not reach the yield service (${why}).`);
+    } catch {
+      // Unreachable, timed out and 5xx are three wordings of one fact, and the
+      // `why` this used to carry was `e.message`: a fetch-authored string, on a
+      // list that renders verbatim.
+      throw new DefindexError(NOT_ANSWERING);
     }
     if (!res.ok) {
       // Map a KNOWN, actionable failure to an authored message, without leaking
@@ -270,12 +274,7 @@ export class DefindexClient {
       // returns 10 and 124 for ordinary mistakes, all of which arrived as "The
       // yield service returned 400." The status is still carried on the error for
       // anything that wants to branch on it; it is simply not the user's line.
-      throw new DefindexError(
-        res.status >= 500
-          ? "The yield service is not answering right now. Try again in a moment."
-          : "The yield service refused that request. Check the amount and try again.",
-        res.status,
-      );
+      throw new DefindexError(res.status >= 500 ? NOT_ANSWERING : REFUSED, res.status);
     }
     try {
       return (await res.json()) as T;
@@ -283,7 +282,7 @@ export class DefindexClient {
       // A proxy error page served with a 200 would otherwise escape as a bare
       // SyntaxError, which is neither this module's error type nor anything a
       // caller can distinguish from a bug in our own code.
-      throw new DefindexError("The yield service sent a response Pocket could not read.");
+      throw new DefindexError(NOT_ANSWERING);
     }
   }
 }

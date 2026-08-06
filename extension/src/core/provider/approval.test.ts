@@ -211,8 +211,7 @@ describe("a site cannot get a signature without a person answering", () => {
     // And the refusal says whose limitation it is. The generic sentence reads
     // as "this envelope is broken", which would send a site re-encoding a
     // perfectly good transaction.
-    expect(summary.warning).toMatch(/calls a smart contract/i);
-    expect(summary.warning).toMatch(/arguments/i);
+    expect(summary.warning).toMatch(/cannot describe contract calls/i);
 
     // End to end: it never reaches the approval queue, so no screen can offer
     // an Approve button over it.

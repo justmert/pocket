@@ -26,6 +26,8 @@ function transportError(e: unknown): Error {
   // The extension was reloaded, updated, or disabled while this page stayed open.
   // The page is now orphaned and no message from it will ever arrive.
   if (/context invalidated|Extension context/i.test(raw)) {
+    // the cause stays on this one branch: it is the only case where nothing is
+    // wrong, so the sentence says why the window has to be reopened.
     return new Error("Pocket was updated or reloaded. Close this window and open it again.");
   }
   // No listener on the other end: the service worker is starting, or has died and

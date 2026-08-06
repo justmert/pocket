@@ -17,20 +17,30 @@
 //   offset inside a 384x600 frame with `overflow: hidden`, with its own buttons
 //   below the bottom edge.
 //
-// Driven through Settings > Auto-lock rather than a confirm sheet, because both
-// properties belong to `Sheet` and `InfoTip` themselves and this one needs no
-// funded account: a Continue that is correctly greyed out on an empty wallet
-// would make the test about funding rather than about sheets.
+// Driven through Settings rather than a confirm sheet, because both properties
+// belong to `Sheet` and `InfoTip` themselves and these need no funded account: a
+// Continue that is correctly greyed out on an empty wallet would make the test
+// about funding rather than about sheets.
 import { test, expect } from "../support/fixtures";
 import { WAITS } from "../support/wallet";
 
 const PASSWORD = "a-strong-test-password";
 
-/** Settings > Auto-lock: a sheet with an InfoTip, reachable with no balance. */
+/** Settings > Auto-lock: a sheet reachable with no balance. */
 async function openAutoLock(page: import("@playwright/test").Page) {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page
     .getByRole("button", { name: /Auto-lock/ })
+    .first()
+    .click();
+  await expect(page.locator("[role='dialog']")).toHaveCount(1, { timeout: WAITS.ledgerRead });
+}
+
+/** Settings > Network: the same, and it still carries an InfoTip. */
+async function openNetwork(page: import("@playwright/test").Page) {
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page
+    .getByRole("button", { name: /^Network/ })
     .first()
     .click();
   await expect(page.locator("[role='dialog']")).toHaveCount(1, { timeout: WAITS.ledgerRead });
@@ -41,11 +51,11 @@ test("Escape aimed at a tooltip does not close the sheet underneath it", async (
   const page = wallet.page;
   await wallet.createWallet(PASSWORD);
   await wallet.waitForHome(WAITS.ledgerRead);
-  await openAutoLock(page);
+  await openNetwork(page);
 
   // The bubble is portaled to document.body, which is exactly what makes the
   // two Escape listeners siblings on `window` rather than nested.
-  const tip = page.getByRole("button", { name: /About auto-lock/i }).first();
+  const tip = page.getByRole("button", { name: /About switching networks/i }).first();
   await expect(tip).toBeVisible();
   // HOVER, not click. A click is a toggle, and moving the mouse onto the
   // control opens the tip on the way in, so clicking opens and then closes it:

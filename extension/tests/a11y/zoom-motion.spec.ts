@@ -52,7 +52,7 @@ test.describe("reduced motion", () => {
     expect(px(anim, "animation-duration")).toBeLessThan(5);
 
     // Everything else really does stop.
-    const button = await computed(wallet.page.getByRole("menuitem", { name: "Lock wallet" }), [
+    const button = await computed(wallet.page.getByRole("menuitem", { name: "Lock" }), [
       "transition-duration",
     ]);
     expect(px(button, "transition-duration")).toBeLessThan(0.01);
@@ -88,7 +88,7 @@ test.describe("reduced motion", () => {
     // 140ms, from the press transition `style.css` puts on the element
     // selector so that every button answers a press, not only the ones built
     // out of the Button primitive.
-    const button = await computed(wallet.page.getByRole("menuitem", { name: "Lock wallet" }), [
+    const button = await computed(wallet.page.getByRole("menuitem", { name: "Lock" }), [
       "transition-duration",
     ]);
     expect(px(button, "transition-duration")).toBeCloseTo(0.14, 2);
@@ -139,7 +139,7 @@ test.describe("zoom", () => {
     // Scoped to the sheet: the home screen stays mounted behind it, and an
     // unscoped `getByLabel` would happily resolve against something underneath.
     const sheet = wallet.page.getByRole("dialog", { name: "Send" });
-    for (const label of ["To", "Amount (XLM)", "Memo (optional)"]) {
+    for (const label of ["To", "Amount (XLM)", "Memo"]) {
       const field = sheet.getByLabel(label, { exact: true });
       await field.scrollIntoViewIfNeeded();
       await expect(field).toBeInViewport();

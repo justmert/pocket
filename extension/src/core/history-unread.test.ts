@@ -108,7 +108,7 @@ describe("a history half that could not be read", () => {
     const page = await c.history();
     expect(page.unread).toHaveLength(1);
     expect(page.unread?.[0]?.pocket).toBe("private");
-    expect(page.unread?.[0]?.reason).toMatch(/archive/i);
+    expect(page.unread?.[0]?.reason).toMatch(/private history could not be loaded/i);
   });
 
   it("reports the public half when Horizon does not answer", async () => {
@@ -132,7 +132,7 @@ describe("a history half that could not be read", () => {
 
     const page = await c.history();
     expect(page.unread?.[0]?.reason).not.toMatch(/archive\.internal|8080|refused/);
-    expect(page.unread?.[0]?.reason).toMatch(/could not be read/i);
+    expect(page.unread?.[0]?.reason).toMatch(/could not be loaded/i);
   });
 
   it("does not memoise a failure, so a recovered read is not shadowed for 20s", async () => {
@@ -169,7 +169,7 @@ describe("the REAL private read, not a stub standing in for it", () => {
     expect(page.unread?.[0]?.pocket).toBe("private");
   });
 
-  it("names the assets it could not read, and nothing the archive said", async () => {
+  it("says nothing the archive itself said", async () => {
     const c = await worker();
     archiveRead = async () => {
       throw new Error("https://archive.invalid:8080 refused the connection");
@@ -177,7 +177,6 @@ describe("the REAL private read, not a stub standing in for it", () => {
 
     const page = await c.history(undefined, 30, "private");
     const reason = page.unread?.[0]?.reason ?? "";
-    expect(reason).toMatch(/XLM/);
     expect(reason, "the archive's own words reached the screen").not.toMatch(
       /archive\.invalid|8080|refused/,
     );
@@ -195,7 +194,7 @@ describe("the REAL private read, not a stub standing in for it", () => {
 
     const page = await c.history(undefined, 30, "private");
     expect(page.unread).toHaveLength(1);
-    expect(page.unread?.[0]?.reason).toMatch(/incomplete/i);
+    expect(page.unread?.[0]?.reason).toMatch(/some private activity could not be read/i);
   });
 
   it("does not pin a partial answer in the memo for twenty seconds", async () => {
@@ -244,7 +243,7 @@ describe("the REAL private read, not a stub standing in for it", () => {
     const page = await c2.history(undefined, 30, "private");
     expect(page.entries).toEqual([]);
     expect(page.unread, "a build with no archive claimed the account was empty").toHaveLength(1);
-    expect(page.unread?.[0]?.reason).toMatch(/archive/i);
+    expect(page.unread?.[0]?.reason).toMatch(/not available in this build/i);
     vi.doUnmock("./config");
     vi.resetModules();
   });

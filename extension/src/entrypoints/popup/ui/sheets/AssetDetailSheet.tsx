@@ -20,8 +20,9 @@ import { Button, ButtonRow, IconDisc, Sheet, Skeleton, useRetained } from "../pr
 import { ChangeChip, ValueChartBlock, useValueChart } from "../Chart";
 import { AssetMark } from "../screens/Home";
 import { InfoTip } from "../Tooltip";
+import { Lock } from "../icons";
 import { compactUsd, price as priceUsd, usdOf } from "../money";
-import { FRAME, fontSizes, space, text, type Theme } from "../theme";
+import { FRAME, chipPad, fontSizes, radius, space, text, type Theme } from "../theme";
 import type { AssetMarketView, PublicBalance } from "../../../../core/messages";
 
 /**
@@ -139,7 +140,7 @@ export function AssetDetailSheet({
 
   const [market, setMarket] = useState<AssetMarketView | null>(null);
   // whether the market fetch has come back yet, so the price can shimmer while
-  // it is in flight rather than reading "Price unavailable" before it has tried.
+  // it is in flight rather than drawing its absent mark before it has tried.
   const [marketLoaded, setMarketLoaded] = useState(false);
   const [scrubAt, setScrubAt] = useState<number | null>(null);
 
@@ -213,8 +214,11 @@ export function AssetDetailSheet({
           <Button t={t} variant="soft" disabled={!shown.authorized} onClick={() => onSwap(shown)}>
             Swap
           </Button>
+          {/* the label does not change with the state: a primary button whose
+              word swaps is a notice wearing a button. the chip in the header
+              carries the reason, the disabled button carries the consequence. */}
           <Button t={t} disabled={!shown.authorized} onClick={() => onSend(shown)}>
-            {shown.authorized ? "Send" : "Not authorised by the issuer"}
+            Send
           </Button>
         </ButtonRow>
       }
@@ -232,8 +236,28 @@ export function AssetDetailSheet({
               gap: space.md,
             }}
           >
-            <div style={{ ...text.screenTitle, color: t.text, lineHeight: 1.1, minWidth: 0 }}>
-              {code}
+            <div style={{ display: "flex", alignItems: "center", gap: space.sm, minWidth: 0 }}>
+              <span style={{ ...text.screenTitle, color: t.text, lineHeight: 1.1, minWidth: 0 }}>
+                {code}
+              </span>
+              {/* the same two words Home and Manage assets put on the row, on the
+                  sheet that opens from it, so the state is stated once and the
+                  Send button below stays a button. */}
+              {!shown.authorized && (
+                <span
+                  style={{
+                    ...text.caption,
+                    padding: chipPad.badge,
+                    borderRadius: radius.pill,
+                    background: t.field,
+                    color: t.sub,
+                    flex: "0 0 auto",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Not authorised by the issuer
+                </span>
+              )}
             </div>
             <ChangeChip
               t={t}
@@ -260,7 +284,8 @@ export function AssetDetailSheet({
                 <RollingFigure value={priceUsd(price)} />
               </span>
             ) : marketLoaded ? (
-              <span style={{ ...text.heading, color: t.faint }}>Price unavailable</span>
+              // the same absent mark the rows below use, not a sentence.
+              <span style={{ ...text.heading, color: t.faint }}>—</span>
             ) : (
               // shimmer while the price is in flight, the same as the home hero.
               <Skeleton width={120} height={26} />
@@ -295,7 +320,7 @@ export function AssetDetailSheet({
               in a beat late. once loaded, a row we could not source is simply
               absent. */}
           {/* the RESERVE, on the one sheet that shows a single asset's whole
-              story and did not mention it. "Your holdings" is the SPENDABLE
+              story and did not mention it. "Holdings" is the SPENDABLE
               figure, so on native XLM an explorer shows 10 where this shows
               8.5, and the difference is a protocol rule rather than a
               discrepancy. The worker has published `reserved` on every native
@@ -307,19 +332,19 @@ export function AssetDetailSheet({
           {shown.reserved && /[1-9]/.test(shown.reserved) && (
             <MarketRow
               t={t}
-              icon={<RowIcon t={t}>~</RowIcon>}
-              label="Held as network reserve"
-              labelTip={
-                "Stellar locks a small amount of XLM per account and per asset you hold. " +
-                "It stays yours and is released if you remove the asset, but it cannot be spent " +
-                "or sent while it is locked."
+              icon={
+                <RowIcon t={t}>
+                  <Lock size={14} />
+                </RowIcon>
               }
+              label="Held as network reserve"
+              labelTip="Locked by Stellar per account and per asset. Still yours, not spendable."
             >
               <Amount t={t} value={shown.reserved} code={code} size="row" />
             </MarketRow>
           )}
 
-          <MarketRow t={t} icon={<RowIcon t={t}>$</RowIcon>} label="Holdings value">
+          <MarketRow t={t} icon={<RowIcon t={t}>$</RowIcon>} label="Value">
             {holdingsValue !== null ? (
               <Figure value={holdingsValue} />
             ) : marketLoaded ? (

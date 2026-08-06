@@ -12,7 +12,7 @@
 //      network fee" for a Soroban invocation whose real fee measured 59,475 to
 //      165,852 stroops, and named a spendable figure the same build then refused.
 //   3. A price move past the slippage between review and confirm produced
-//      "Something went wrong. Try again, and check your connection."
+//      "Something went wrong. Try again."
 //   4. The receipt named no amount at all, though the delivered figure rides on
 //      the very reply the confirmation poll already reads.
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -200,7 +200,7 @@ describe("price impact", () => {
 
     expect(summary.impactBps).not.toBeNull();
     expect(summary.warning, "a 40%+ impact reached the signature with no warning").toBeTruthy();
-    expect(summary.warning!).toMatch(/worse than the price/i);
+    expect(summary.warning!).toMatch(/worse than the pool's price/i);
   });
 
   it("leaves the confirm screen unmarked when the rate is fine", async () => {
@@ -223,7 +223,6 @@ describe("the balance refusal before anything is simulated", () => {
     const said = (err as Error).message;
     expect(said).toMatch(/more than you can send/i);
     expect(said, "quoted BASE_FEE as a swap's network fee").not.toContain("0.0000100 XLM");
-    expect(said).toMatch(/held back for the network fee/i);
   });
 
   it("still states the exact fee once one has been measured", async () => {
@@ -238,7 +237,10 @@ describe("the balance refusal before anything is simulated", () => {
         amount: "9999",
       })
       .catch((e: unknown) => e);
-    expect((err as Error).message).toMatch(/0\.0000100 XLM pays the network fee/);
+    // The figure the refusal names is computed from the real 100-stroop fee,
+    // not from the 0.5 XLM reserve the unpriced Soroban path has to hold back:
+    // the same balance produces 8.0000000 there and 8.4999900 here.
+    expect((err as Error).message).toMatch(/8\.4999900 XLM is available/);
   });
 });
 
@@ -256,7 +258,7 @@ describe("the price moving between review and confirm", () => {
     const err = await c.confirmSwap(handle).catch((e: unknown) => e);
 
     const said = describeError(err);
-    expect(said, "a price move read as a network problem").not.toMatch(/check your connection/i);
+    expect(said, "a price move read as a generic failure").not.toMatch(/Something went wrong/i);
     expect(said).toMatch(/fresh quote/i);
     // And the RPC's own text never crosses: it can carry a URL or a stack.
     expect(said).not.toMatch(/HostError|simulation failed/);

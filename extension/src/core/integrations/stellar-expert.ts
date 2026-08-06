@@ -56,20 +56,21 @@ export class StellarExpertClient {
         headers: { accept: "application/json" },
       });
     } catch (e) {
-      const why =
-        e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")
-          ? "the search timed out"
-          : "the search could not be reached";
-      throw new StellarExpertError(`Could not search the asset directory (${why}).`);
+      // A timeout is the one distinction worth keeping: it is the only branch
+      // where waiting and trying again is the right move. Everything else the
+      // directory can do to us is one fact, "no search", and an HTTP status is
+      // not something a user can act on.
+      const timedOut = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+      throw new StellarExpertError(timedOut ? "Search timed out." : "Search unavailable.");
     }
     if (!res.ok) {
-      throw new StellarExpertError(`The asset directory returned ${res.status}.`);
+      throw new StellarExpertError("Search unavailable.");
     }
     let body: { _embedded?: { records?: unknown } };
     try {
       body = (await res.json()) as { _embedded?: { records?: unknown } };
     } catch {
-      throw new StellarExpertError("The asset directory sent a response Pocket could not read.");
+      throw new StellarExpertError("Search unavailable.");
     }
     const records = body._embedded?.records;
     if (!Array.isArray(records)) return [];

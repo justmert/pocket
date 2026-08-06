@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { DATE_LOCALE } from "../period";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import {
   Button,
   ButtonRow,
   ButtonStack,
+  Chip,
   Field,
-  Label,
   Notice,
   Row,
   Sheet,
@@ -20,9 +19,9 @@ import { fontSizes, COPY_HOLD_MS, fonts, radius, space, text } from "../theme";
 import { privateLossAfterErase, archiveReadiness, canRebuild } from "../copy";
 import type { NetworkId } from "../../../../core/config";
 
-const NETWORKS: { id: NetworkId; label: string; sub: string }[] = [
-  { id: "testnet", label: "Testnet", sub: "Free test funds, reset periodically" },
-  { id: "mainnet", label: "Mainnet", sub: "Real funds" },
+const NETWORKS: { id: NetworkId; label: string }[] = [
+  { id: "testnet", label: "Testnet" },
+  { id: "mainnet", label: "Mainnet" },
 ];
 
 export function NetworkSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -68,7 +67,8 @@ export function NetworkSheet({ open, onClose }: { open: boolean; onClose: () => 
         // row whose only outcome was an error, on the ONE surface that tells a
         // user this build is testnet-only, and only after they pressed it. `Row`
         // carries `tone: "inert"` documented for exactly this: present, explained,
-        // not pressable.
+        // not pressable. the chip is what says why, in the value slot where the
+        // live row shows its tick.
         const usable = n.id === "testnet";
         return (
           <Row
@@ -78,11 +78,10 @@ export function NetworkSheet({ open, onClose }: { open: boolean; onClose: () => 
             tone={usable ? "plain" : "inert"}
             icon={<External size={19} />}
             title={n.label}
-            // the `sub` strings that distinguish the rows were being dropped
-            // entirely; they are the whole reason a user can tell them apart.
-            sub={usable ? n.sub : `${n.sub}. Not available in this build.`}
             value={
-              w.status?.network === n.id ? (
+              !usable ? (
+                <Chip t={t}>Soon</Chip>
+              ) : w.status?.network === n.id ? (
                 <Check size={19} sw={2.4} />
               ) : busy === n.id ? (
                 // an action in progress reads as motion, not as an absent value:
@@ -148,18 +147,7 @@ export function AutoLockSheet({ open, onClose }: { open: boolean; onClose: () =>
   };
 
   return (
-    <Sheet
-      t={t}
-      open={open}
-      onClose={onClose}
-      title="Auto-lock"
-      info={
-        <InfoTip t={t} label="About auto-lock">
-          Pocket locks itself after this long with no activity, and whenever the browser closes. You
-          need your password to unlock it again.
-        </InfoTip>
-      }
-    >
+    <Sheet t={t} open={open} onClose={onClose} title="Auto-lock">
       {error && (
         <Notice t={t} tone="danger">
           {error}
@@ -230,16 +218,7 @@ export function ConnectionsSheet({ open, onClose }: { open: boolean; onClose: ()
       {sessions === null && !error ? (
         <Skeleton width="100%" height={44} />
       ) : sessions === null ? null : sessions.length === 0 ? (
-        <div style={{ ...text.body, color: t.sub, lineHeight: 1.5 }}>
-          {/* this said "a site asks to connect the first time it needs your
-              address", which describes a flow that does not exist: nothing in
-              the popup calls `connectDapp`, so no origin can obtain a grant in
-              this build. the surface fails closed, which is why it is not a
-              defect, but the sentence was still telling the user to expect
-              something that can never happen. */}
-          No site is connected. Connecting is not available in this build, so nothing will appear
-          here yet.
-        </div>
+        <div style={{ ...text.body, color: t.sub, lineHeight: 1.5 }}>No sites connected.</div>
       ) : (
         sessions.map((s, i) => (
           <Row
@@ -247,7 +226,6 @@ export function ConnectionsSheet({ open, onClose }: { open: boolean; onClose: ()
             t={t}
             index={i}
             title={s.origin}
-            sub={`Connected ${new Date(s.connectedAt).toLocaleDateString(DATE_LOCALE, { month: "short", day: "numeric", year: "numeric" })}`}
             value={<Trash size={17} />}
             tone="danger"
             onClick={() => void disconnect(s.origin)}
@@ -291,10 +269,6 @@ export function RebuildSheet({ open, onClose }: { open: boolean; onClose: () => 
 
   return (
     <Sheet t={t} open={open} onClose={onClose} title="Rebuild from history">
-      <Notice t={t}>
-        Replays your event history and checks the result against what the contract holds. An
-        incomplete history is refused rather than accepted.
-      </Notice>
       {error && (
         <Notice t={t} tone="danger">
           {error}
@@ -342,8 +316,8 @@ export function EraseSheet({ open, onClose }: { open: boolean; onClose: () => vo
   // `Sheet` unmounts its own subtree when it closes, but this state does not
   // live there: it lives here, in the component App renders unconditionally, so
   // closing the sheet left the vault password sitting in a useState cell and
-  // `confirmed` still true. Reopening then skipped the "What survives" panel
-  // entirely and arrived with the field pre-filled and focused, one Enter from
+  // `confirmed` still true. Reopening then skipped the first step entirely and
+  // arrived with the field pre-filled and focused, one Enter from
   // erasing the wallet. The two-step gate exists precisely because this is the
   // one irreversible act in the product, and it was only ever asked once.
   // the same opening generation PhraseSheet keeps, for the same reason: the reset
@@ -408,32 +382,54 @@ export function EraseSheet({ open, onClose }: { open: boolean; onClose: () => vo
 
       {!confirmed ? (
         <>
-          <Label t={t}>What survives</Label>
-          <ul
+          {/* both halves. this screen stated only what is LOST, and read as
+              though erasing loses everything: the public balance is on the
+              ledger and the phrase brings it back on any wallet, which is the
+              fact the decision is actually made on. the private half is the
+              only one that does not survive. */}
+          <div
             style={{
               ...text.body,
               color: t.text,
-              paddingLeft: space.gutter,
-              margin: `0 0 ${space.md}px`,
               lineHeight: 1.55,
+              marginBottom: space.sm,
             }}
           >
-            <li style={{ marginBottom: 6 }}>
-              Your public balance is on the ledger. Your recovery phrase brings it back on any
-              wallet.
-            </li>
-            <li>{privateLossAfterErase(network)}</li>
-            {/* what the archive ACTUALLY reports, read live. the line above
-                states a dependency and this is the only thing that can say
-                whether it holds: a configured URL is not a reachable archive,
-                and a reachable one is not a current one. all three end the same
-                way, with the rebuild refusing after the keys are gone. */}
-            {canRebuild(network) && (
-              <li style={{ marginTop: 6, color: readiness && !readiness.ok ? t.danger : t.sub }}>
-                {readiness ? readiness.sentence : "Checking the archive…"}
-              </li>
-            )}
-          </ul>
+            Your public balance is on the ledger. Your recovery phrase brings it back on any wallet.
+          </div>
+          <div
+            style={{
+              ...text.body,
+              color: t.text,
+              lineHeight: 1.55,
+              marginBottom: space.sm,
+            }}
+          >
+            {privateLossAfterErase(network)}
+          </div>
+          {/* what the archive ACTUALLY reports, read live. the line above
+              states a dependency and this is the only thing that can say
+              whether it holds: a configured URL is not a reachable archive,
+              and a reachable one is not a current one. all three end the same
+              way, with the rebuild refusing after the keys are gone. ready is a
+              tick chip rather than a sentence: on the normal path it is saying
+              that nothing changes. */}
+          {canRebuild(network) && (
+            <div
+              style={{ ...text.body, color: t.danger, lineHeight: 1.55, marginBottom: space.md }}
+            >
+              {readiness === null ? (
+                <Skeleton width="100%" height={16} />
+              ) : readiness.ok ? (
+                <Chip t={t}>
+                  <Check size={13} sw={2.6} />
+                  {readiness.sentence}
+                </Chip>
+              ) : (
+                readiness.sentence
+              )}
+            </div>
+          )}
           <ButtonStack>
             {/* the safe exit is the recommended action on a destructive confirm,
                 so it carries the primary weight, matching the erase-and-recover
@@ -579,8 +575,7 @@ export function PhraseSheet({ open, onClose }: { open: boolean; onClose: () => v
               screen. a filled panel here read as an alert before anything was
               shown. */}
           <div style={{ ...text.body, color: t.sub, lineHeight: 1.5, marginBottom: space.md }}>
-            Your recovery phrase restores this wallet on any device, and anyone who reads it can
-            take your funds. Enter your password to show it, and only where no one is watching.
+            Anyone who reads your phrase can take your funds.
           </div>
           <Field
             t={t}
@@ -611,8 +606,8 @@ export function PhraseSheet({ open, onClose }: { open: boolean; onClose: () => v
               the grid below, so the warning reads beside them rather than a filled
               panel competing with them for the eye. */}
           <div style={{ ...text.body, color: t.sub, lineHeight: 1.5, marginBottom: space.md }}>
-            Write these {words.length} words down and keep them offline. Never type them into a
-            website or hand them to anyone, Pocket included.
+            Write these {words.length} words down and keep them offline. Never hand them to anyone,
+            Pocket included.
           </div>
           {/* the same numbered mono grid the onboarding backup screen draws, so a
               user re-reads their phrase in exactly the shape they first saw it.
@@ -654,7 +649,7 @@ export function PhraseSheet({ open, onClose }: { open: boolean; onClose: () => v
           </div>
           {copy === "failed" && (
             <Notice t={t} tone="danger">
-              Could not reach the clipboard. Select the words above, or write them down.
+              Copy failed. Select the words instead.
             </Notice>
           )}
           {/* copy and done side by side: the same quiet+primary pair every confirm

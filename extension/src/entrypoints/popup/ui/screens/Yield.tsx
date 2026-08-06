@@ -23,7 +23,7 @@ import {
   displayAmount,
   SOROBAN_FEE_RESERVE_STROOPS,
 } from "../../../../core/chain/balances";
-import { radius, space, text, type Theme } from "../theme";
+import { fonts, radius, space, text, type Theme } from "../theme";
 import type { YieldMoveSummary } from "../../../../core/messages";
 
 type Kind = "deposit" | "withdraw";
@@ -222,19 +222,24 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
                 onBack={onClose}
                 right={
                   <InfoTip t={t} label="About the yield vault">
-                    A non-custodial DeFindex vault. Deposits and withdrawals are in the PUBLIC
-                    pocket and are visible on the ledger.
+                    DeFindex vault. Public, so amounts are on the ledger.
                     {/* WHICH vault. `YieldPosition.vault` is fetched, typed and
                         carried across the wire, and nothing drew it: the contract
                         the funds actually go to was the one fact the screen did
-                        not state. */}
-                    {y?.vault ? ` The vault is ${y.vault}.` : ""}
-                    {/* the whole disclosure, once. it used to interpolate a
-                        sentence into a sentence: "The vault reports 19.41% over
-                        the last 7 days, variable and not guaranteed; it is
-                        variable and not guaranteed." and with nothing reported
-                        it read "The vault reports Yield not reported". */}
-                    {y?.apy ? ` The vault reports ${y.apy.sentence}.` : ""}
+                        not state. on its own line, as an address rather than
+                        inside a sentence. */}
+                    {y?.vault && (
+                      <div
+                        style={{
+                          ...text.caption,
+                          fontFamily: fonts.mono,
+                          marginTop: space.sm,
+                          overflowWrap: "anywhere",
+                        }}
+                      >
+                        {y.vault}
+                      </div>
+                    )}
                   </InfoTip>
                 }
               />
@@ -315,7 +320,7 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
                         ) : y.balance ? (
                           <Figure value={`${displayAmount(y.balance)} shares`} />
                         ) : (
-                          "None yet"
+                          "None"
                         )}
                       </span>
                       {/* the FORMATTED dollar value ("$21.93"), like every other
@@ -352,8 +357,7 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {/* just the figure; "variable, not guaranteed" lives in the
-                            header tip rather than wrapping across the card. */}
+                        {/* just the figure, which is what the row is for. */}
                         {y.apy.figure ?? "Not reported"}
                       </span>
                     </div>
@@ -387,14 +391,15 @@ export function Yield({ kind: initial, onClose }: { kind: Kind; onClose: () => v
                 onPercent={(pc) => setFraction(BigInt(pc), 100n)}
               />
 
-              {kind === "withdraw" && (
+              {/* only where nothing else bounds the field. with an underlying
+                  balance the "In the vault" row above states it, and this line
+                  repeated it in raw figures. */}
+              {kind === "withdraw" && !y?.underlyingBalance && (
                 <div style={{ marginTop: space.md }}>
                   <Notice t={t} tone="neutral" bare>
-                    {y?.underlyingBalance
-                      ? `About ${y.underlyingBalance} ${code} is in the vault${y.balance ? ` (${y.balance} shares)` : ""}.`
-                      : y?.balance
-                        ? `You have ${y.balance} shares in the vault. Enter the ${code} amount to withdraw.`
-                        : `Enter the ${code} amount to withdraw from the vault.`}
+                    {y?.balance
+                      ? `Amount in ${code}, not shares.`
+                      : `Enter the ${code} amount to withdraw from the vault.`}
                   </Notice>
                 </div>
               )}

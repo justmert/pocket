@@ -38,7 +38,7 @@ const TOKEN = "CDMXZEFOM5DN2GSHQKNOOW242RJZGCEM5LOOAPGRQE35GGHB7ALDK2Y6";
 const VERIFIER = "CBERRYPR34G2MB3EOUNO3JGWOAWFVBUPINJ42JP7XVVB3AHKIPVPPWYH";
 const REGISTRY = "CDE5JETGXV7TOUUDQPUTGLJB6TCUUIIWJJTLWFX4RNH36XABKCEPNTEV";
 const PASSPHRASE = "Test SDF Network ; September 2015";
-const GENERIC = "Something went wrong. Try again, and check your connection.";
+const GENERIC = "Something went wrong. Try again.";
 
 const SOROBAN_DATA = new SorobanDataBuilder().build().toXDR("base64");
 const source = () => new Account(ACCOUNT, "100");
@@ -317,7 +317,7 @@ describe("trap 14 fails closed when the RPC is degraded", () => {
       },
       (e) => describeError(e),
     );
-    expect(said).toMatch(/not the one Pocket proves against/i);
+    expect(said).toMatch(/out of date for this network/i);
     expect(said).not.toBe(GENERIC);
   });
 

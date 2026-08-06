@@ -63,7 +63,7 @@ test("a wallet can be created with the keyboard alone", async ({ wallet }) => {
 
 test("a locked wallet can be unlocked with the keyboard alone", async ({ wallet }) => {
   await wallet.createWallet(PASSWORD);
-  expect(await tabTo(wallet.page, "Lock wallet")).toBe(true);
+  expect(await tabTo(wallet.page, "Lock")).toBe(true);
   await wallet.page.keyboard.press("Enter");
   await expect(wallet.lockedNotice()).toBeVisible();
 
@@ -119,9 +119,9 @@ test("the private pocket can be opened and its set-up reached with the keyboard 
 
   // The pocket is a tab now, not a screen, so opening it is one press on the
   // home screen rather than a navigation.
-  expect(await tabTo(wallet.page, "Private pocket")).toBe(true);
+  expect(await tabTo(wallet.page, "Private")).toBe(true);
   await wallet.page.keyboard.press("Enter");
-  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
+  await expect(wallet.page.getByText("Not open yet").first()).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
 
@@ -169,11 +169,11 @@ test("focus order follows the order things are read on the home screen", async (
   // The header's three controls in the order they are drawn, then the pocket
   // tabs. A tab order that jumps is a tab order that strands somebody mid-form.
   expect(order).toEqual([
-    "BUTTON:Copy your address",
+    "BUTTON:Copy address",
     "BUTTON:Refresh",
-    "BUTTON:Lock wallet",
-    "BUTTON:Public pocket",
-    "BUTTON:Private pocket",
+    "BUTTON:Lock",
+    "BUTTON:Public",
+    "BUTTON:Private",
   ]);
 });
 

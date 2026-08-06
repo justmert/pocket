@@ -20,6 +20,7 @@ import { shortAddress } from "../Address";
 import { AmountComposer, AmountSlider, sliderPercent, amountReady } from "../AmountComposer";
 import { ConfirmSheet, useOnce } from "../flow";
 import { privateAbsence } from "../holdings";
+import { PRIVATE_NOT_READY } from "../copy";
 import { AssetMark, privateMarkId } from "./Home";
 import { PrivateAssetPicker } from "../sheets/PrivateAssetPicker";
 import {
@@ -33,23 +34,6 @@ import type { PrivateOpSummary, PublicBalance, TransferSummary } from "../../../
 
 /** what a payment costs, in stroops. read from the sdk so "max" matches what chain/payment.ts charges. */
 const BASE_FEE_STROOPS = BigInt(BASE_FEE);
-
-/**
- * why there is nothing to send yet, in the words the rest of the product uses.
- */
-const PRIVATE_NOT_READY: Record<string, string> = {
-  unavailable: "This network has no private pocket, so there is nothing to send from.",
-  unfunded:
-    "This account does not exist on the network yet. Receive some XLM first, then you can open a private pocket.",
-  unregistered:
-    "The private pocket is not open yet. Setting it up takes two transactions, and you review the second one.",
-  archived: "The private pocket went dormant from not being used. Reactivate it before sending.",
-  needsRecovery:
-    "This device's record of the private balances has to be rebuilt before anything can be sent.",
-  diverged:
-    "This device disagrees with the contract about the private balances, so it refuses to spend until that is rebuilt.",
-  ready: "",
-};
 
 export function Send({ onClose }: { onClose: () => void }) {
   const w = useWallet();
@@ -315,7 +299,7 @@ export function Send({ onClose }: { onClose: () => void }) {
                 right={
                   isPrivate ? (
                     <InfoTip t={t} label="About sending privately">
-                      The amount is hidden. Both addresses stay public on the ledger.
+                      Amounts are hidden. Addresses are not.
                     </InfoTip>
                   ) : undefined
                 }
@@ -334,11 +318,7 @@ export function Send({ onClose }: { onClose: () => void }) {
               {blocked ? (
                 <Notice t={t}>
                   {localPriv
-                    ? localPriv.state === "unregistered" && privSymbol !== "XLM"
-                      ? // registration is PER ASSET: name the asset rather than implying
-                        // the whole pocket is closed when another asset is already live.
-                        `Setting up ${privSymbol} in your private pocket takes two transactions, and you review the second one.`
-                      : PRIVATE_NOT_READY[localPriv.state]
+                    ? PRIVATE_NOT_READY[localPriv.state]
                     : // three unrelated facts produce a null pocket and only one of
                       // them is "still reading". this asserted that one always, so a
                       // failed read and a network with no private pocket at all both
@@ -406,57 +386,61 @@ export function Send({ onClose }: { onClose: () => void }) {
                       the chip is truncated (a convenience, not an approval); tapping
                       fills the field with the full address. */}
                   {to === "" && w.savedAddresses.length > 0 && (
-                    <div style={{ marginTop: space.sm }}>
-                      <div style={{ ...text.caption, color: t.faint, marginBottom: 6 }}>Saved</div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: space.xs }}>
-                        {w.savedAddresses.slice(0, 4).map((addr) => (
-                          <span
-                            key={addr}
+                    <div
+                      style={{
+                        marginTop: space.sm,
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: space.xs,
+                      }}
+                    >
+                      {w.savedAddresses.slice(0, 4).map((addr) => (
+                        <span
+                          key={addr}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            background: t.field,
+                            borderRadius: radius.pill,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setTo(addr)}
+                            className="pk-tap"
                             style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              background: t.field,
+                              all: "unset",
+                              cursor: "pointer",
+                              ...text.chip,
+                              fontFamily: fonts.mono,
+                              color: t.accent,
+                              borderRadius: radius.pill,
+                              padding: chipPad.pill,
+                            }}
+                          >
+                            {shortAddress(addr)}
+                          </button>
+                          {/* forget ONE. the only way to remove a saved recipient
+                                was erasing the wallet, and two near-identical
+                                addresses render as the identical chip. */}
+                          <button
+                            type="button"
+                            aria-label={`Forget ${shortAddress(addr)}`}
+                            onClick={() => w.forgetAddress(addr)}
+                            className="pk-tap"
+                            style={{
+                              all: "unset",
+                              cursor: "pointer",
+                              display: "flex",
+                              color: t.faint,
+                              padding: `0 ${space.sm}px 0 0`,
                               borderRadius: radius.pill,
                             }}
                           >
-                            <button
-                              type="button"
-                              onClick={() => setTo(addr)}
-                              className="pk-tap"
-                              style={{
-                                all: "unset",
-                                cursor: "pointer",
-                                ...text.chip,
-                                fontFamily: fonts.mono,
-                                color: t.accent,
-                                borderRadius: radius.pill,
-                                padding: chipPad.pill,
-                              }}
-                            >
-                              {shortAddress(addr)}
-                            </button>
-                            {/* forget ONE. the only way to remove a saved recipient
-                                was erasing the wallet, and two near-identical
-                                addresses render as the identical chip. */}
-                            <button
-                              type="button"
-                              aria-label={`Forget ${shortAddress(addr)}`}
-                              onClick={() => w.forgetAddress(addr)}
-                              className="pk-tap"
-                              style={{
-                                all: "unset",
-                                cursor: "pointer",
-                                display: "flex",
-                                color: t.faint,
-                                padding: `0 ${space.sm}px 0 0`,
-                                borderRadius: radius.pill,
-                              }}
-                            >
-                              <Close size={14} />
-                            </button>
-                          </span>
-                        ))}
-                      </div>
+                            <Close size={14} />
+                          </button>
+                        </span>
+                      ))}
                     </div>
                   )}
 
@@ -602,16 +586,12 @@ function RecipientField({
     <Field
       t={t}
       label="To"
+      placeholder="Recipient address"
       value={value}
       onChange={onChange}
-      placeholder="Recipient address"
       mono
       invalid={invalid}
-      hint={
-        invalid
-          ? "That is not a Stellar address. They are 56 characters and begin with G, C or M."
-          : undefined
-      }
+      hint={invalid ? "Not a Stellar address." : undefined}
       trailing={
         <Button t={t} size="pill" onClick={onPaste}>
           Paste
@@ -631,15 +611,7 @@ function MemoField({
   value: string;
   onChange: (v: string) => void;
 }) {
-  return (
-    <Field
-      t={t}
-      label="Memo (optional)"
-      value={value}
-      onChange={onChange}
-      placeholder="For exchanges that ask for one"
-    />
-  );
+  return <Field t={t} label="Memo (optional)" value={value} onChange={onChange} />;
 }
 
 /** which asset is being sent. a sheet, because it is an aside from composing. */
@@ -674,13 +646,7 @@ function AssetPicker({
             // with the reason instead of hidden, because hiding an asset Home
             // lists would be its own confusion.
             tone={b.authorized ? "plain" : "inert"}
-            sub={
-              !b.authorized
-                ? "Not authorised by the issuer"
-                : b.id === "native"
-                  ? "Stellar Lumens"
-                  : undefined
-            }
+            sub={b.authorized ? undefined : "Not authorised by the issuer"}
             value={<Figure value={b.amount} />}
             {...(b.authorized ? { onClick: () => onPick(b) } : {})}
           />

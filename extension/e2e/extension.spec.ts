@@ -44,7 +44,9 @@ async function onboard(page: Page): Promise<void> {
   const phrase = cells.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
   await answerBackupCheck(page, phrase);
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
 }
 
 test("the extension loads and the service worker starts", async () => {
@@ -52,7 +54,7 @@ test("the extension loads and the service worker starts", async () => {
   try {
     expect(id).toMatch(/^[a-z]{32}$/);
     const page = await popup(ctx, id);
-    await expect(page.getByText("Two pockets on Stellar")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Create a new wallet" })).toBeVisible();
     // The honest framing must be on the first screen a user ever sees.
     await expect(page.getByText(/hides.*amounts.*not addresses/i)).toBeVisible();
   } finally {
@@ -78,7 +80,7 @@ test("onboarding creates a wallet and shows exactly 24 words", async () => {
       .count();
     expect(words).toBe(24);
     // The backup warning has to say the two things that actually matter.
-    await expect(page.getByText(/only way to recover/i)).toBeVisible();
+    await expect(page.getByText(/anyone with these words owns your wallet/i)).toBeVisible();
     await expect(page.getByText(/cannot show them to you again/i)).toBeVisible();
   } finally {
     await ctx.close();
@@ -92,7 +94,7 @@ test("locks, rejects a wrong password, then unlocks", async () => {
     const page = await popup(ctx, id);
     await onboard(page);
 
-    await page.getByRole("button", { name: "Lock wallet" }).click();
+    await page.getByRole("button", { name: "Lock" }).click();
     await expect(page.getByText(/Enter your password to continue/)).toBeVisible();
 
     await page.getByRole("textbox", { name: "Password", exact: true }).fill("wrong");
@@ -101,7 +103,9 @@ test("locks, rejects a wrong password, then unlocks", async () => {
 
     await page.getByRole("textbox", { name: "Password", exact: true }).fill(PASSWORD);
     await page.getByRole("button", { name: "Unlock" }).click();
-    await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+      timeout: 30_000,
+    });
   } finally {
     await ctx.close();
     rmSync(dir, { recursive: true, force: true });
@@ -116,7 +120,12 @@ test("shows the receive address in full, never truncated", async () => {
     await page.getByRole("button", { name: "Receive" }).click();
     await expect(page.getByRole("dialog", { name: "Receive" })).toBeVisible();
 
-    const shown = (await page.getByText(/^G[A-Z2-7]{55}$/).first().innerText()).replace(/\s/g, "");
+    const shown = (
+      await page
+        .getByText(/^G[A-Z2-7]{55}$/)
+        .first()
+        .innerText()
+    ).replace(/\s/g, "");
     // A G-address is 56 characters. Anything shorter means it was truncated,
     // which is exactly what the address layer exists to prevent: matching the
     // first and last four costs about an hour on a laptop.
@@ -167,7 +176,7 @@ test("surfaces the private pocket honestly on the home screen", async () => {
     const page = await popup(ctx, id);
     await onboard(page);
 
-    await expect(page.getByRole("button", { name: "Private pocket" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Private", exact: true })).toBeVisible();
     // The claim must be on the surface, not buried in a settings page.
     await expect(page.getByText(/Hides amounts, never addresses/i)).toBeVisible();
     await expect(page.getByText(/Who you pay stays public/i)).toBeVisible();
@@ -184,12 +193,12 @@ test("states what registration costs before offering the button", async () => {
   try {
     const page = await popup(ctx, id);
     await onboard(page);
-    await page.getByRole("button", { name: "Private pocket" }).click();
+    await page.getByRole("button", { name: "Private", exact: true }).click();
 
     // A brand-new wallet is unfunded, which is a state and not a crash.
-    await expect(
-      page.getByText(/Fund this account first|Private pocket not set up/),
-    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(/Fund first|Not open yet/).first()).toBeVisible({
+      timeout: 30_000,
+    });
     // Whatever the state, no balance may be invented for it.
     await expect(page.getByText(/^0\.0000000$/)).toHaveCount(0);
   } finally {
@@ -211,12 +220,20 @@ test("an imported phrase reproduces the same address", async () => {
     await page.getByRole("button", { name: "Create wallet" }).click();
     await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: "Show the phrase" }).click();
-    const words = await page.locator("span").filter({ hasText: /^\d+\.\s\w+\s*$/ }).allInnerTexts();
+    const words = await page
+      .locator("span")
+      .filter({ hasText: /^\d+\.\s\w+\s*$/ })
+      .allInnerTexts();
     const phrase = words.map((w) => w.replace(/^\d+\.\s*/, "").trim()).join(" ");
     await page.getByRole("button", { name: "I have written it down" }).click();
     await answerBackupCheck(page, phrase);
     await page.getByRole("button", { name: "Receive" }).click();
-    const expected = (await page.getByText(/^G[A-Z2-7]{55}$/).first().innerText()).replace(/\s/g, "");
+    const expected = (
+      await page
+        .getByText(/^G[A-Z2-7]{55}$/)
+        .first()
+        .innerText()
+    ).replace(/\s/g, "");
 
     await ctx.close();
     rmSync(dir, { recursive: true, force: true });
@@ -232,9 +249,16 @@ test("an imported phrase reproduces the same address", async () => {
       await p2.getByRole("textbox", { name: "New password", exact: true }).fill(PASSWORD);
       await p2.getByRole("button", { name: "Import wallet" }).click();
 
-      await expect(p2.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
+      await expect(p2.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+        timeout: 30_000,
+      });
       await p2.getByRole("button", { name: "Receive" }).click();
-      const restored = (await p2.getByText(/^G[A-Z2-7]{55}$/).first().innerText()).replace(/\s/g, "");
+      const restored = (
+        await p2
+          .getByText(/^G[A-Z2-7]{55}$/)
+          .first()
+          .innerText()
+      ).replace(/\s/g, "");
       expect(restored).toBe(expected);
     } finally {
       await second.ctx.close();

@@ -27,14 +27,10 @@ const NAMED: [string, Error, RegExp][] = [
   ],
   [
     "LedgerReadError",
-    new LedgerReadError("the ledger did not answer the question"),
-    /did not answer/i,
+    new LedgerReadError("Could not read the ledger. Try again."),
+    /could not read the ledger/i,
   ],
-  [
-    "InvalidAmountError",
-    new InvalidAmountError("Amounts go to 7 decimal places and that has more."),
-    /7 decimal places/i,
-  ],
+  ["InvalidAmountError", new InvalidAmountError("Maximum 7 decimal places."), /7 decimal places/i],
   [
     "StaleHandleError",
     new StaleHandleError("That transaction is no longer pending confirmation."),
@@ -76,19 +72,19 @@ describe("an authored refusal reaches the user, not a network excuse", () => {
       expect(err.name, "the class name must match the allowlist entry").toBe(name);
       const shown = describeError(err);
       expect(shown).toMatch(expected);
-      // The failure this catches: the name falls off the allowlist, the
-      // message is replaced, and the user is sent to check their network over
-      // something no amount of retrying fixes.
-      expect(shown).not.toMatch(/check your connection/i);
+      // The failure this catches: the name falls off the allowlist and the
+      // message is replaced by the generic one, over something no amount of
+      // retrying fixes.
+      expect(shown).not.toMatch(/Something went wrong/i);
     });
   }
 
   it("an unnamed error is still replaced, so the allowlist is not weakened", () => {
     // The allowlist exists to keep RPC-authored strings off the screen. Adding
     // names must not turn it into a pass-through.
-    expect(describeError(new Error("Error(Contract, #3506)."))).toMatch(/check your connection/i);
+    expect(describeError(new Error("Error(Contract, #3506)."))).toMatch(/Something went wrong/i);
     expect(describeError(new Error("ECONNREFUSED 127.0.0.1:8000"))).toMatch(
-      /check your connection/i,
+      /Something went wrong/i,
     );
   });
 

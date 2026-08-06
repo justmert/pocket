@@ -220,7 +220,7 @@ test.describe("an ordinary website, with the wallet installed", () => {
         // branch; "not connected" is the one that would mean the grant never
         // took, and neither of these is that.
         expect(res.error!.message, `${method} refused for the wrong reason`).toMatch(
-          /does not sign|cannot show you|could not read this transaction/i,
+          /does not sign|cannot show you|unreadable transaction/i,
         );
       }
 

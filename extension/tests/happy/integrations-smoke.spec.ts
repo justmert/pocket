@@ -32,7 +32,7 @@ test("the actions menu opens the swap and cross-chain screens", async ({ wallet 
   await openMenu();
   await page.getByRole("menuitem", { name: "Swap", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Swap", exact: true })).toBeVisible();
-  await expect(page.getByText("You receive (estimate)")).toBeVisible();
+  await expect(page.getByText("Estimated", { exact: true })).toBeVisible();
   await back();
 
   // CCTP outbound: chain picker + EVM recipient. With no USDC held, Continue stays

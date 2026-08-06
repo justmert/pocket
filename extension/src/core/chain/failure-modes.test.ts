@@ -22,7 +22,7 @@ import { describeError } from "../dispatch";
 const ACCOUNT = "GBZXN7PIRZGNMHGA7MUUUF4GWPY5AYPV6LY4UV2GL6VJGIQRXFDNMADI";
 
 /** The generic string describeError falls back to. Nothing may be more specific. */
-const GENERIC = "Something went wrong. Try again, and check your connection.";
+const GENERIC = "Something went wrong. Try again.";
 
 const servers: http.Server[] = [];
 afterEach(() => {

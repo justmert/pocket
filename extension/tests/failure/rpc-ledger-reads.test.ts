@@ -41,7 +41,7 @@ const TOKEN = "CDMXZEFOM5DN2GSHQKNOOW242RJZGCEM5LOOAPGRQE35GGHB7ALDK2Y6";
 const USDC = new Asset("USDC", "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5");
 
 /** What describeError falls back to. Nothing from the wire may be more specific. */
-const GENERIC = "Something went wrong. Try again, and check your connection.";
+const GENERIC = "Something went wrong. Try again.";
 
 const open: FaultServer[] = [];
 afterEach(async () => {

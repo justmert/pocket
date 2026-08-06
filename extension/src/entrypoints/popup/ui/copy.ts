@@ -24,15 +24,10 @@ export function privateLossAfterErase(network: NetworkId): string {
     ? // NOT a promise, and it used to be one: "they can be rebuilt afterwards"
       // was returned on `Boolean(archiveUrl)` alone, which says only that a URL
       // is configured. It does not say the archive is reachable, that it is
-      // current, or that it holds this account's history. Measured against the
-      // archive this checkout configures: ingested_through 4033277 against a
-      // chain at 4035534, about three hours behind, so any private movement in
-      // that window would meet RecoveryMismatchError and come back with
-      // nothing. This is the last sentence a user reads before the one
-      // irreversible act in the product, so it states the dependency instead of
-      // guaranteeing the outcome.
-      "Your private balances are on the ledger too, but only this device holds the keys that unlock them. Erasing deletes those keys. Rebuilding them afterwards replays your history from the archive, which works only if the archive is reachable and has already recorded everything you have done. Check below before you erase."
-    : "Your private balances are on the ledger too, but only this device holds the keys that unlock them. Erasing deletes those keys, and rebuilding them would need a durable archive of your history to replay. This build has none, so those balances could not be recovered.";
+      // current, or that it holds this account's history. `archiveReadiness`
+      // below answers that from a live read, and it is drawn beside this line.
+      "Private balances come back only from the archive."
+    : "Private balances cannot be recovered.";
 }
 
 /**
@@ -52,16 +47,14 @@ export function archiveReadiness(
   if (!health) {
     return {
       ok: false,
-      sentence:
-        "Pocket could not reach the archive just now, so it cannot promise your private balances could be rebuilt. Try again before erasing.",
+      sentence: "Archive unreachable: private balances could not be rebuilt.",
     };
   }
   const through = health.ingestedThrough;
   if (through === null) {
     return {
       ok: false,
-      sentence:
-        "The archive has recorded nothing for this deployment yet, so there is nothing to rebuild from.",
+      sentence: "Nothing recorded yet: private balances could not be rebuilt.",
     };
   }
   // A lag in LEDGERS, not seconds: seconds is what the archive believes about
@@ -70,30 +63,27 @@ export function archiveReadiness(
   if (behind === null) {
     return {
       ok: false,
-      sentence: `The archive has recorded your history up to ledger ${through}. Pocket could not read the chain's own position to check whether that is current.`,
+      sentence: "Cannot confirm your private balances could be rebuilt.",
     };
   }
   if (behind > 0) {
     return {
       ok: false,
-      sentence: `The archive is ${behind} ledgers behind the chain. Anything you have done in that window could not be rebuilt after erasing.`,
+      sentence: "Archive is behind: recent private activity could not be rebuilt.",
     };
   }
-  return {
-    ok: true,
-    sentence:
-      "The archive is up to date with the chain, so your private balances could be rebuilt.",
-  };
+  return { ok: true, sentence: "Archive up to date" };
 }
 
 /**
  * what an absent memo means.
  *
- * the wallet's own review said this and the screen that authorises a site's
- * transaction said only "None.", which is the same fact with the consequence
- * removed on the screen where the wallet knows least about what it is signing.
+ * one string, because both confirm surfaces carry it: the wallet's own review
+ * and the screen that authorises a site's transaction, which is where the wallet
+ * knows least about what it is signing. the absence itself is the row's value
+ * ("None"), so this is only the consequence.
  */
-export const NO_MEMO = "None. Exchanges usually require one; a deposit without it can be lost.";
+export const NO_MEMO = "Exchanges usually need one; a deposit without it can be lost.";
 
 /**
  * whether this build can rebuild private balances at all.
@@ -141,6 +131,23 @@ export function phraseLengthList(): string {
   const all = PHRASE_LENGTHS;
   return `${all.slice(0, -1).join(", ")} or ${all[all.length - 1]}`;
 }
+
+/**
+ * why the private pocket cannot move value yet, one state to one sentence.
+ *
+ * one table, next to the actions it pairs with. Send and Move carried the same
+ * six sentences with one verb changed, twelve paragraphs for six facts, and
+ * they drifted.
+ */
+export const PRIVATE_NOT_READY: Record<PrivatePocketState, string> = {
+  unavailable: "This network has no private pocket.",
+  unfunded: "Receive some XLM first.",
+  unregistered: "Not set up yet.",
+  archived: "Dormant from disuse.",
+  needsRecovery: "Needs rebuilding on this device.",
+  diverged: "Balances do not match the network.",
+  ready: "",
+};
 
 /**
  * What a non-ready private pocket can do about itself, or null when it can do

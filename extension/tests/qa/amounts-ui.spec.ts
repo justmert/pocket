@@ -452,8 +452,8 @@ for (const locale of ["de-DE", "ar-EG"]) {
           "error",
         );
         const said = refused.stage === "error" ? refused.message : "";
-        expect(said, "a decimal comma must not be reported as a connection problem").not.toMatch(
-          /check your connection/i,
+        expect(said, "a decimal comma must not fall through to the generic refusal").not.toMatch(
+          /Something went wrong/i,
         );
         expect(said, "the refusal must name the amount, which is the thing to fix").toMatch(
           /amount|decimal|digits/i,

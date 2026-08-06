@@ -49,10 +49,7 @@ export class VerificationKeyMismatchError extends Error {
  */
 export class VerifierDormantError extends VerificationKeyMismatchError {
   constructor() {
-    super(
-      "The proof verifier this deployment uses is dormant and has to be reactivated before " +
-        "any private operation can be proved. Pocket will not build a proof until it is back.",
-    );
+    super("Private operations are unavailable: the verifier is dormant.");
   }
 }
 
@@ -194,10 +191,7 @@ export async function assertVerificationKey(
   const want = (PINNED as Record<string, string>)[circuit];
   const got = await sha256Hex(onChain);
   if (got !== want) {
-    throw new VerificationKeyMismatchError(
-      `This deployment's ${circuit} verification key is not the one Pocket proves against. ` +
-        `The extension and the contract are different versions; updating Pocket is the fix.`,
-    );
+    throw new VerificationKeyMismatchError("Pocket is out of date for this network. Update it.");
   }
 }
 

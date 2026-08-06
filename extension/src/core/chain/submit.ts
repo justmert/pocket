@@ -61,9 +61,8 @@ export const DEFAULT_TIMEOUT_SECONDS = 180;
  *
  * Named so `describeError`'s allowlist passes the message through. Without a
  * name on that list every one of these becomes "Something went wrong. Try
- * again, and check your connection.", which is the one instruction that must
- * never follow an unresolved submission: it invites the resend this whole
- * module exists to prevent.
+ * again.", which is the one instruction that must never follow an unresolved
+ * submission: it invites the resend this whole module exists to prevent.
  */
 export class SubmitOutcomeError extends Error {
   override readonly name = "SubmitOutcomeError";
@@ -85,33 +84,24 @@ export class SubmitOutcomeError extends Error {
 export function describeOutcome(outcome: SubmitOutcome): string {
   switch (outcome.kind) {
     case "succeeded":
-      return "The transaction succeeded.";
+      return "Confirmed.";
     case "failed":
-      return (
-        `The transaction was included but failed on chain (${outcome.reason}). ` +
-        `A fee was charged and the sequence number was used.`
-      );
+      return `Included but failed on chain (${outcome.reason}). The fee was charged.`;
     case "rejected":
-      return `The network rejected it (${outcome.reason}). Nothing was charged.`;
+      return `Rejected (${outcome.reason}). Nothing was charged.`;
     case "notAccepted":
       // TRY_AGAIN_LATER is core saying it cannot process this submission right
       // now, commonly because another transaction from the same source account
       // is still in its queue. The docs say to wait before resubmitting, so
       // "try again now" would be wrong advice as well as a wasted attempt.
-      return (
-        "The network could not take it just now, so nothing was charged and no sequence " +
-        "number was used. Wait a few seconds, then try again."
-      );
+      return "Network busy. Nothing was charged. Try again in a few seconds.";
     case "expired":
-      return (
-        "Its time window passed before it was included, so it can never be applied now. " +
-        "Nothing was charged. Build it again."
-      );
+      return "It expired unsent. Nothing was charged. Send it again.";
     case "pending":
-      return (
-        `It has not confirmed yet. It may still land, so do not resend: ` +
-        `check the hash ${outcome.hash} before trying again.`
-      );
+      // The hash stays on THIS path only. There is no InFlight screen printing
+      // it, so without it here the one identifier that lets someone check
+      // before resending exists nowhere.
+      return `Not confirmed yet. Do not resend. Check hash ${outcome.hash}.`;
   }
 }
 
@@ -374,7 +364,7 @@ export function hasExpired(tx: Transaction, nowSeconds = chainNow()): boolean {
  * guessing about the one thing this function exists to report.
  */
 const TX_REASON: Record<string, string> = {
-  txBadSeq: "the account's sequence number had already moved on, so this envelope was stale",
+  txBadSeq: "this transaction was already out of date",
   txTooLate: "its time window had already passed",
   txTooEarly: "its time window had not opened yet",
   txInsufficientBalance: "the account cannot cover the amount and the network fee together",

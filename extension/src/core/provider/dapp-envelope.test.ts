@@ -53,8 +53,8 @@ describe("the fee a site chose", () => {
         "1000000000",
       ),
     );
-    expect(s.warning ?? "", "a 100 XLM fee passed without a word").toMatch(/far more than/i);
-    expect(s.warning!).toMatch(/The site chose it/);
+    expect(s.warning ?? "", "a 100 XLM fee passed without a word").toMatch(/far above normal/i);
+    expect(s.warning!).toMatch(/The site set a fee of/);
   });
 
   it("says nothing about an ordinary fee", () => {
@@ -90,7 +90,7 @@ describe("the fee a site chose", () => {
     );
     expect(s.warning!).toMatch(/^This transaction changes who controls the account/);
     expect(s.warning!, "the fee warning was dropped for the security one").toMatch(
-      /far more than/i,
+      /far above normal/i,
     );
   });
 });
@@ -177,25 +177,6 @@ describe("an envelope carrying a contract call", () => {
     expect(s.effects, "an undecodable envelope must offer nothing to approve").toEqual([]);
     // Its own sentence, not the generic one: the envelope is fine and the
     // limitation is Pocket's, so a site is told that retrying will not help.
-    expect(s.warning ?? "").toMatch(/calls a smart contract/i);
-    expect(s.warning!).toMatch(/cannot yet put those into words/i);
-  });
-
-  it("says nothing was sent, which is the fact the user needs", () => {
-    const call = new TransactionBuilder(new Account(SOURCE, "100"), {
-      fee: "100",
-      networkPassphrase: Networks.TESTNET,
-    })
-      .addOperation(
-        Operation.invokeContractFunction({
-          contract: "CBIS5TEMTNNOTBE3WXPQUAGUEDYZZVIWAKTXEQCOUJ34OJJ3FJ5NLF2P",
-          function: "transfer",
-          args: [],
-        }),
-      )
-      .setTimeout(180)
-      .build()
-      .toXDR();
-    expect(summarise(call).warning!).toMatch(/Nothing has been sent/);
+    expect(s.warning ?? "").toMatch(/cannot describe contract calls/i);
   });
 });

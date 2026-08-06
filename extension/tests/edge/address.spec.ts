@@ -17,7 +17,6 @@ import {
   review,
   closeSend,
   saidBeyond,
-  BLAMES_THE_NETWORK,
   GENERIC_FAILURE,
   SLOW,
   surfaceText,
@@ -120,8 +119,8 @@ test("a contract address is refused for being a contract, not for the network", 
   const said = out.stage === "error" ? out.message : "";
   // Refusing is correct and intended: a classic PaymentOp cannot pay a
   // C-address. Telling the user their connection is at fault is not.
-  expect(said, "a contract address must not be reported as a connection problem").not.toMatch(
-    BLAMES_THE_NETWORK,
+  expect(said, "a contract address must not fall through to the generic refusal").not.toMatch(
+    GENERIC_FAILURE,
   );
   // And it must not be conflated with a string that is not an address at all.
   expect(said, "a contract address is a valid address of the wrong kind").not.toMatch(
@@ -141,8 +140,8 @@ test("a muxed address is either accepted or refused for a stated reason", async 
   await compose(page, { to: m, amount: "1" });
   const out = await review(page);
   const said = out.stage === "error" ? out.message : "accepted";
-  expect(said, "an M-address must not be reported as a connection problem").not.toMatch(
-    BLAMES_THE_NETWORK,
+  expect(said, "an M-address must not fall through to the generic refusal").not.toMatch(
+    GENERIC_FAILURE,
   );
   expect(said, "an M-address is a real Stellar address").not.toMatch(NOT_AN_ADDRESS);
 });
@@ -251,5 +250,5 @@ test("the empty-recipient path never reaches the ledger at all", async ({ wallet
   expect(failed).toMatch(NOT_AN_ADDRESS);
   expect(failed).not.toMatch(GENERIC_FAILURE);
   // And the screen the user is on has not been told anything went wrong.
-  expect(await saidBeyond(page, new Set())).not.toMatch(BLAMES_THE_NETWORK);
+  expect(await saidBeyond(page, new Set())).not.toMatch(GENERIC_FAILURE);
 });

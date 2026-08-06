@@ -934,60 +934,30 @@ export class WalletController {
         return {
           ...id,
           state: "archived",
-          message:
-            "Your private pocket is dormant. Reactivating it costs a small fee and restores access.",
+          message: "Reactivating costs a small fee.",
         };
       }
       return {
         ...id,
         state: "unregistered",
-        message:
-          // "an auditor" reads as a third party, and the post-commit screen then
-          // says the opposite: "Bind your OWN auditor key, derived from your
-          // recovery phrase. Nobody else can read your amounts." That sentence
-          // arrived one irreversible transaction too late, and the bullet it came
-          // from used to sit on the FIRST screen before it was removed. This is
-          // not a softening of the disclosure: the transaction really is public
-          // and really is permanent, and both still say so. It is the disclosure
-          // being specific about WHOSE key it is, which is the fact that decides
-          // whether the sentence is frightening or merely true.
-          "Hides your amounts, never your addresses. Setting it up is a one-time, " +
-          "publicly visible transaction that permanently binds an auditor key who can " +
-          "see your amounts. That key is YOUR OWN, derived from your recovery phrase, " +
-          "so nobody else can read them.",
+        message: "Hides your amounts, not your addresses.",
       };
     }
 
     this.readyAssets.add(cfg.token);
     const ttl = await readAccountTtl(this.server(), cfg.token, address, this.network);
 
-    // The account READ succeeded, so the entry is reachable. If its TTL says
-    // otherwise, the entry has archived and the network restored it to answer
-    // us. Both facts are true at once, and only one of them was being reported.
-    //
-    // This deployment is soroban-rpc 27.1.1 / protocol 27, where an archived
-    // persistent entry is AUTO-RESTORED into the readWrite footprint instead of
-    // coming back as a `restorePreamble`. Measured on a real archived entry
-    // (`liveUntilLedgerSeq: 0`, lastModified 3086116 against latest 4019256): no
-    // preamble, a real result, and `transactionData` carrying
-    // `archivedSorobanEntries`, which `assembleTransaction` copies verbatim so
-    // the network performs the restore as part of the transaction.
-    //
-    // Two consequences, and the second is the one that was missed. The first:
-    // `readConfidentialAccount` now returns a real account for an archived
-    // pocket, so the `state: "archived"` branch above is unreachable on this
-    // deployment, and reporting dormancy through it would be reporting a state
-    // the chain no longer produces. The second: the pocket therefore reads as
-    // fully READY, which is not wrong (it is genuinely spendable) and is not the
-    // whole truth either, because the next operation silently carries a restore
-    // and its fee.
-    //
-    // So the state stays `ready`, because forcing a usable pocket into a dormant
-    // dead end would be the worse error, and the fact is said in the message
-    // instead. `getLedgerEntries` omits an evicted entry entirely, which is why
-    // `absent` counts here: a registered account whose entry cannot be found has
-    // been evicted, and that is exactly the archived case.
-    const restored = ttl.kind === "archived" || ttl.kind === "absent";
+    // The account READ succeeded, so the entry is reachable even if its TTL says
+    // it has archived: this deployment is soroban-rpc 27.1.1 / protocol 27,
+    // where an archived persistent entry is AUTO-RESTORED into the readWrite
+    // footprint instead of coming back as a `restorePreamble`. Measured on a
+    // real archived entry (`liveUntilLedgerSeq: 0`, lastModified 3086116 against
+    // latest 4019256): no preamble, a real result, and `transactionData`
+    // carrying `archivedSorobanEntries`, which `assembleTransaction` copies
+    // verbatim so the network performs the restore as part of the transaction.
+    // So the state stays `ready`: forcing a usable pocket into a dormant dead
+    // end would be the worse error, and the restore's fee is a row on the next
+    // confirm.
 
     // Openings live in the encrypted vault; without them the commitments on
     // chain are visible but unspendable, which is precisely why that store is
@@ -999,16 +969,13 @@ export class WalletController {
         state: "needsRecovery",
         auditorId: account.auditorId,
         ...ttlFields(ttl),
-        // Says what is true, not what was planned. Rebuilding means replaying
-        // the event history from a durable archive, and no archive is
-        // configured in this build, so nothing here can do it. `core/sync.ts`
-        // implements the replay and is not reachable from any bundle. Naming a
-        // recovery the wallet cannot perform, in the one state where a user is
-        // deciding whether to panic, is the same defect as a fabricated
-        // balance.
-        message:
-          "This account has a private pocket but this device has no record of its balances. " +
-          `Your funds are safe on chain. ${rebuildAdvice(NETWORKS[this.network].archiveUrl)}`,
+        // Naming a recovery the wallet cannot perform, in the one state where a
+        // user is deciding whether to panic, is the same defect as a fabricated
+        // balance, so the advice branches on whether an archive exists.
+        ...messageOf([
+          "This device has no record of your private balances. Your funds are safe on chain.",
+          rebuildAdvice(NETWORKS[this.network].archiveUrl),
+        ]),
       };
     }
 
@@ -1024,11 +991,11 @@ export class WalletController {
         state: "diverged",
         auditorId: account.auditorId,
         ...ttlFields(ttl),
-        message:
-          `Local records for the ${check.which} balance do not match the ledger. ` +
-          (this.lastInboundFailure ? `${this.lastInboundFailure} ` : "") +
-          "Pocket will not spend from this state. Your funds are safe on chain. " +
+        ...messageOf([
+          "Your funds are safe on chain, but this device cannot spend them.",
+          this.lastInboundFailure,
           rebuildAdvice(NETWORKS[this.network].archiveUrl),
+        ]),
       };
     }
 
@@ -1048,19 +1015,10 @@ export class WalletController {
       mergeAvailable: b.mergeAvailable,
       auditorId: account.auditorId,
       ...ttlFields(ttl),
-      // Two things the pocket may have to say, and both matter. The dormancy
-      // one is about what the ledger did; the keep-alive one is about what
-      // Pocket could not do, which until now was said to nobody: the alarm runs
-      // with no popup in existence, so `KeepAlivePlan.notice` was written for a
-      // reader that cannot be there.
-      ...messageOf([
-        restored
-          ? "This private pocket went dormant and the network restored it to read it. " +
-            "Your balances are correct and still spendable. The next operation you make " +
-            "will restore the entry as part of itself and cost a little more in fees."
-          : null,
-        this.lastKeepAliveNotice,
-      ]),
+      // The keep-alive notice is about what Pocket could not do, which until now
+      // was said to nobody: the alarm runs with no popup in existence, so
+      // `KeepAlivePlan.notice` was written for a reader that cannot be there.
+      ...messageOf([this.lastKeepAliveNotice]),
     };
   }
 
@@ -1220,9 +1178,7 @@ export class WalletController {
     if (!cfg?.vault || !cfg.apiKey) {
       return {
         available: false,
-        reason:
-          "Yield is not configured for this network. Nothing is at risk; there is simply no " +
-          "vault to deposit into.",
+        reason: "Not available on this network.",
       };
     }
     const { DefindexClient, describeApy } = await import("./integrations/defindex");
@@ -1243,6 +1199,14 @@ export class WalletController {
     // guard passes through a value that is already decimal (the shape check permits
     // one) rather than feeding a "." to BigInt.
     const toUnits = (raw: string): string => (raw.includes(".") ? raw : formatAmount(BigInt(raw)));
+    // The DeFindex API reports XLM's underlying symbol as "native"; the rest of the
+    // wallet calls native XLM "XLM" (see `balances()`). This field is BOTH the code
+    // the yield row shows and the KEY Home prices the position by, and `prices` is
+    // keyed by display code, so "native" matched no entry: `publicTotalUsd` returned
+    // null, the hero dropped to a bare XLM figure, AND the value chart, which shares
+    // the hero's early return, never rendered. Verified live on 2026-08-09: a real
+    // XLM position reported `underlying: "native"`. Normalise to the display code.
+    const underlyingSymbol = vault.assets?.[0]?.symbol;
     return {
       available: true,
       vault: cfg.vault,
@@ -1250,7 +1214,8 @@ export class WalletController {
       // The API reports SHARES, not underlying. Calling it a balance would
       // invite a user to read it as XLM, which it is not.
       balance: toUnits(position.shares),
-      underlying: vault.assets?.[0]?.symbol ?? "XLM",
+      underlying:
+        underlyingSymbol == null || underlyingSymbol === "native" ? "XLM" : underlyingSymbol,
       // What those shares are worth in the underlying, when the vault reports it:
       // the withdrawable amount (a decimal amount), so the withdraw form can size a
       // MAX and refuse an over-withdrawal before it is built.
@@ -1439,8 +1404,6 @@ export class WalletController {
             kind === "deposit"
               ? `Deposit ${formatAmount(amount)} ${underlyingCode ?? "of the vault's asset"} into the yield vault`
               : `Withdraw ${formatAmount(amount)} ${underlyingCode ?? "of the vault's asset"} from the yield vault`,
-            "This is in the PUBLIC pocket and is visible on the ledger",
-            `Pay a network fee of ${formatAmount(BigInt(prepared.fee))} XLM`,
           ],
         },
       };
@@ -1507,11 +1470,7 @@ export class WalletController {
       // it then sat in the asset list beside the real one wearing the same three
       // letters, with only the issuer telling them apart and no screen showing it.
       if (assetCode.toUpperCase() === "XLM") {
-        throw new TrustlineError(
-          "That asset calls itself XLM but it is not the native asset: it is a token issued by " +
-            `${issuer}. Pocket will not add it, because it would sit in your assets wearing the ` +
-            "same name as your real balance.",
-        );
+        throw new TrustlineError("This is not real XLM.");
       }
 
       // Already held? `changeTrust` on an existing line SUCCEEDS and rewrites its
@@ -1519,9 +1478,7 @@ export class WalletController {
       // charged a fee to change nothing the user asked to change.
       const existing = await readTrustline(this.server(), address, asset);
       if (existing) {
-        throw new TrustlineError(
-          `Your account already holds ${assetCode} from this issuer, so there is nothing to add.`,
-        );
+        throw new TrustlineError("You already hold this asset.");
       }
 
       // A trustline is a SUBENTRY, and every subentry raises the account's
@@ -1542,10 +1499,7 @@ export class WalletController {
       // again, and check your connection." A connection that is working fine,
       // and a retry that can never succeed.
       if (!(await this.accountExists(address))) {
-        throw new TrustlineError(
-          `This account is not on the Stellar network yet, so it cannot hold ${assetCode} or ` +
-            `anything else. Receive some XLM first: the first payment creates the account.`,
-        );
+        throw new TrustlineError("Receive XLM to activate this account.");
       }
       const native = await readNative(this.server(), address);
       const after = minimumBalance(
@@ -1554,11 +1508,7 @@ export class WalletController {
       );
       const usable = native.raw - native.sellingLiabilities - BigInt(BASE_FEE);
       if (usable < after) {
-        throw new TrustlineError(
-          `Adding ${assetCode} raises this account's minimum balance to ` +
-            `${formatAmount(after)} XLM and it holds ${formatAmount(native.raw)}. ` +
-            `Add about ${formatAmount(after - usable)} XLM first.`,
-        );
+        throw new TrustlineError(`Add about ${formatAmount(after - usable)} XLM first.`);
       }
 
       const source = await this.server().getAccount(address);
@@ -1580,17 +1530,12 @@ export class WalletController {
           fee: formatAmount(BigInt(tx.fee)),
           effects: [
             `Open a trustline so this account can hold ${asset.getCode()}`,
-            // The ISSUER, in full, as its own effect. Testnet returns several
-            // assets all called USDC with different issuers, and the code is not
-            // identity: without this line the confirm for a genuine USDC and a
-            // counterfeit one were identical strings. `ChooseAsset` passes no
-            // `to`, so `WalletReview`'s full-address block never renders and this
-            // is the only place the issuer can reach the screen. Never truncated,
-            // for the same reason no address in this wallet is.
-            `Trust the issuer ${issuer}`,
-            "This locks 0.5 XLM as a reserve while the trustline is open; removing it later releases the reserve",
-            "This is in the PUBLIC pocket and is visible on the ledger",
-            `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
+            // The issuer is NOT here: it is an "Issuer" fact row on the confirm,
+            // drawn from `summary.issuer` in `AddressBlock`. Testnet returns
+            // several assets all called USDC with different issuers and the code
+            // is not identity, so it is the deciding field and a deciding field
+            // behind a hover is a blind signature.
+            "Locks 0.5 XLM as a reserve",
           ],
         },
       };
@@ -1734,10 +1679,7 @@ export class WalletController {
       }
       const tl = await readTrustline(this.server(), address, asset);
       if (tl && tl.raw > 0n) {
-        throw new TrustlineError(
-          `You still hold ${formatAmount(tl.raw)} ${assetCode}. Send or swap all of it out ` +
-            "before removing the trustline.",
-        );
+        throw new TrustlineError(`Send or swap all your ${assetCode} out first.`);
       }
 
       // The classic balance is not the only thing that needs this line.
@@ -1758,8 +1700,7 @@ export class WalletController {
         const held = (stored?.spendable.value ?? 0n) + (stored?.receiving.value ?? 0n);
         if (held > 0n) {
           throw new TrustlineError(
-            `Your private pocket still holds ${formatAmount(held)} ${assetCode}, and it comes ` +
-              `back out through this trustline. Unshield it first, then remove ${assetCode}.`,
+            `Your private pocket still holds ${formatAmount(held)} ${assetCode}. Unshield it first.`,
           );
         }
       }
@@ -1782,11 +1723,9 @@ export class WalletController {
           fee: formatAmount(BigInt(tx.fee)),
           effects: [
             `Remove the ${asset.getCode()} trustline; this account will no longer hold ${asset.getCode()}`,
-            // Which of several same-coded assets is being dropped.
-            `Stop trusting the issuer ${issuer}`,
+            // Which of several same-coded assets is being dropped is the
+            // "Issuer" fact row on the confirm, not a line in here.
             "This releases the 0.5 XLM reserve the trustline locked",
-            "This is in the PUBLIC pocket and is visible on the ledger",
-            `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
           ],
         },
       };
@@ -2012,16 +1951,13 @@ export class WalletController {
           // either screen saying so.
           warning:
             impact !== null && impact >= IMPACT_WARN_BPS
-              ? `This swap's rate is about ${(impact / 100).toFixed(1)}% worse than the price ` +
-                `the pool quotes for one ${inA.code}. That cost is in the estimate above and ` +
-                `it is not what the slippage setting protects. It usually means the pool is ` +
-                `thin for a trade this size.`
+              ? `Rate is ${(impact / 100).toFixed(1)}% worse than the pool's price.`
               : undefined,
+          // The minimum is a "Minimum" fact row on the confirm, not a line in
+          // here: it is the number the transaction enforces, and this file's
+          // rule is that a signed fact behind a hover is a blind signature.
           effects: [
             `Swap ${formatAmount(amount)} ${inA.code} for about ${formatAmount(path.amount)} ${outA.code}`,
-            `You receive at least ${formatAmount(outMin)} ${outA.code}, or the swap reverts`,
-            "This is in the PUBLIC pocket and is visible on the ledger",
-            `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
           ],
         },
       };
@@ -2126,7 +2062,7 @@ export class WalletController {
         );
       }
       const amount = parseAmount(amountStr);
-      if (amount <= 0n) throw new cctp.CctpParameterError("amount must be positive");
+      if (amount <= 0n) throw new cctp.CctpParameterError("Enter an amount greater than zero.");
       const mintRecipient = cctp.evmAddressToBytes32(recipient); // throws on a bad address
       const { cctpAmount, dust } = cctp.toCctpAmount(amount);
       if (cctpAmount <= 0n) {
@@ -2283,6 +2219,7 @@ export class WalletController {
         summary: {
           direction: "out",
           chain: chainName,
+          domain: destinationDomain,
           amount: formatAmount(bridged),
           // Decoded back out of the bytes just recorded, NOT the string the
           // form passed in. The sheet stated an amount and a chain and never
@@ -2299,7 +2236,7 @@ export class WalletController {
           fee: formatAmount(twoLegFee),
           effects: [
             `Bridge ${formatAmount(bridged)} USDC from Stellar to ${chainName}`,
-            "This burns the USDC on Stellar; the amount and both addresses are PUBLIC",
+            "One way. The amount and both addresses are public.",
             ...(dust > 0n
               ? [
                   `${formatAmount(dust)} USDC stays in this account: CCTP carries 6 decimals ` +
@@ -2393,24 +2330,21 @@ export class WalletController {
         const only = await this.signAndSubmit(staged, null, "cctpBurn").catch(
           async (e: unknown) => {
             throw new cctp.CctpParameterError(
-              `The burn was refused before it was sent (${
+              `The bridge was refused (${
                 e instanceof Error ? e.message : "unknown reason"
-              }). Nothing has been bridged and your USDC has not moved.`,
+              }). Your USDC has not moved.`,
             );
           },
         );
         if (only.kind === "pending") {
           throw new SubmitOutcomeError(
-            `The burn was submitted but has not confirmed. It may still land, so do not bridge ` +
-              `again yet: check ${only.hash} first.`,
+            `Submitted but not confirmed. Do not bridge again; check ${only.hash}.`,
             only,
           );
         }
         if (only.kind !== "succeeded") {
           throw new cctp.CctpParameterError(
-            `The burn did not go through (${describeOutcome(only)}). Nothing has been bridged. ` +
-              `The approval this account already had is untouched, so trying again costs one ` +
-              `transaction, not two.`,
+            `The bridge did not go through (${describeOutcome(only)}). Your USDC has not moved.`,
           );
         }
         // No approve was sent, so there is no second hash to report. The burn's
@@ -2434,18 +2368,15 @@ export class WalletController {
       );
       // A simulation failure THROWS rather than returning an outcome, so the
       // sentence below was unreachable for the commonest way the burn fails:
-      // the user saw a bare contract refusal with no mention of the approve
-      // they had already paid for. Caught here so every way the burn can fail
-      // ends in a sentence that accounts for both legs.
+      // the user saw a bare contract refusal. Caught here so every way the burn
+      // can fail ends in a sentence this wallet wrote.
       let burnOut: SubmitOutcome;
       try {
         burnOut = await this.signAndSubmit(burnTx, null, "cctpBurn");
       } catch (e) {
         throw new cctp.CctpParameterError(
-          `The approval landed and was charged for, and the burn was refused before it was ` +
-            `sent (${e instanceof Error ? e.message : "unknown reason"}). Nothing has been ` +
-            `bridged and your USDC has not moved. The approval stays valid, so fixing the ` +
-            `reason and bridging again does not pay for it twice.`,
+          `The bridge was refused (${e instanceof Error ? e.message : "unknown reason"}). ` +
+            `Your USDC has not moved.`,
         );
       }
       if (burnOut.kind === "pending") {
@@ -2454,22 +2385,16 @@ export class WalletController {
         // used to end with "try the bridge again": the one instruction that
         // turns an unresolved burn into a second one.
         throw new SubmitOutcomeError(
-          `The approval landed, and the burn was submitted but has not confirmed. It may still ` +
-            `land, so do not bridge again yet: check ${burnOut.hash} first.`,
+          `Submitted but not confirmed. Do not bridge again; check ${burnOut.hash}.`,
           burnOut,
         );
       }
       if (burnOut.kind !== "succeeded") {
-        // The approve landed, so the allowance stands. That used to be stated
-        // as "only the burn need retry" in a comment above a sentence that sent
-        // the user back to a flow with no burn-only path in it: the retry
-        // rebuilt both legs and paid for a second approve. `buildCctpSend` now
-        // reads the allowance and stages the burn alone when one is standing,
-        // so the sentence below is true of what actually happens.
+        // The approve landed, so the allowance stands, and `buildCctpSend`
+        // reads it and stages the burn alone when one is standing: a retry is
+        // one transaction rather than two.
         throw new cctp.CctpParameterError(
-          `The approval landed but the burn did not (${describeOutcome(burnOut)}). ` +
-            "Nothing has been bridged. The approval stays valid, so bridging the same amount " +
-            "again is one transaction rather than two.",
+          `The bridge did not go through (${describeOutcome(burnOut)}). Your USDC has not moved.`,
         );
       }
       return { approveHash: approveOut.hash, hash: burnOut.hash, ledger: burnOut.ledger };
@@ -2564,6 +2489,7 @@ export class WalletController {
         summary: {
           direction: "in",
           chain: chainName,
+          domain: sourceDomain,
           fee: formatAmount(BigInt(claimTx.fee)),
           // No `recipient`. Outbound, the destination is decoded back out of the
           // 32 bytes this wallet recorded, so the sheet can state it. Inbound it
@@ -2574,9 +2500,8 @@ export class WalletController {
           // a guess presented as a fact, on the one line that matters.
           effects: [
             `Claim the USDC you bridged from ${chainName}`,
-            "This completes the mint on Stellar; the amount is set by your source burn",
-            "It arrives at whichever Stellar account your original burn named, which Pocket " +
-              "cannot read out of Circle's attestation, so check it landed afterwards",
+            "The amount comes from your source burn.",
+            "It lands in whichever account your burn named.",
           ],
         },
       };
@@ -3009,7 +2934,7 @@ export class WalletController {
       // Re-read INSIDE the critical section. Checking outside it is what made
       // this a race rather than a guard.
       if (await readLocal<VaultHeader>(KEYS.vaultHeader)) {
-        throw new WalletExistsError("a wallet already exists on this device");
+        throw new WalletExistsError("A wallet already exists on this device.");
       }
       const mnemonic = generateMnemonic(wordlist, 256);
       const address = await this.installSeed(password, mnemonic);
@@ -3042,17 +2967,13 @@ export class WalletController {
     // material. Deliberate replacement goes through reset(), which requires
     // the current password.
     if (await readLocal<VaultHeader>(KEYS.vaultHeader)) {
-      throw new WalletExistsError(
-        "a wallet already exists on this device. Remove it first if you mean to replace it.",
-      );
+      throw new WalletExistsError("A wallet already exists on this device.");
     }
     const phrase = mnemonic.trim().toLowerCase().replace(/\s+/g, " ");
     if (!validateMnemonic(phrase, wordlist)) {
       // Named, like every other authored refusal. Unnamed it reached the user
       // as "check your connection", for a phrase they mistyped.
-      throw new RecoveryError(
-        "That is not a valid recovery phrase. Check the words and the order.",
-      );
+      throw new RecoveryError("Not a valid recovery phrase.");
     }
     return { address: await this.installSeed(password, phrase) };
   }
@@ -3210,6 +3131,7 @@ export class WalletController {
     this.readyAssets.clear();
     // Decrypted history entries must not outlive the session.
     this.privHistoryMemo = undefined;
+    this.valueSeriesMemo.clear();
     // Nor do built-but-unconfirmed envelopes. A staged private operation holds
     // its post-state openings in `pending` as plain decimal strings, value and
     // blinding both, alongside the unsigned envelope; a payment holds the
@@ -3386,9 +3308,7 @@ export class WalletController {
   private async doRecoverFromMnemonic(mnemonic: string, password: string): Promise<string> {
     const phrase = mnemonic.trim().toLowerCase().replace(/\s+/g, " ");
     if (!validateMnemonic(phrase, wordlist)) {
-      throw new RecoveryError(
-        "That is not a valid recovery phrase. Check the words and the order.",
-      );
+      throw new RecoveryError("Not a valid recovery phrase.");
     }
 
     // The authorisation, and it MUST fail closed.
@@ -3407,10 +3327,8 @@ export class WalletController {
     const existing = await readLocal<string>(KEYS.publicAddress);
     if (!existing) {
       throw new RecoveryError(
-        "Pocket cannot check that this phrase belongs to the wallet on this device, so it will " +
-          "not erase it. Unlock the wallet once with its password and this will work afterwards. " +
-          "If the password is genuinely lost, removing and reinstalling the extension clears the " +
-          "device deliberately, and your phrase restores the account from there.",
+        "Unlock once with your password first. If it is lost, reinstall the extension and " +
+          "recover from there.",
       );
     }
 
@@ -3560,6 +3478,17 @@ export class WalletController {
 
     try {
       const balances = await this.balances();
+      // The memo is keyed by the BALANCES, not just address+range. A reopen with
+      // nothing moved is served without re-walking the whole balance history, but
+      // the instant a send, swap, yield move or bridge changes a balance the key
+      // changes and the curve is recomputed fresh, so the refetch a balance change
+      // triggers in the popup is never served a stale figure. Reading balances is
+      // the cheap part; the per-asset history walk below is the slow part the memo
+      // actually skips. The short TTL still bounds a reopen where nothing moved.
+      const balSig = balances.map((b) => `${b.code}:${b.total ?? b.amount}`).join("|");
+      const memoKey = `${this.network}:${address}:${range}:${balSig}`;
+      const hit = this.valueSeriesMemo.get(memoKey);
+      if (hit && Date.now() - hit.at < 20_000) return hit.chart;
       const perAsset = await Promise.all(
         balances.map(async (b) => {
           if (!isPriceable(b.code)) return [];
@@ -3597,7 +3526,11 @@ export class WalletController {
         }),
       );
       const points = sumSeries(perAsset);
-      return { points, changePct: changePct(points) };
+      const chart = { points, changePct: changePct(points) };
+      // Only a real curve is worth pinning. An empty one is a failed read to
+      // retry, not a result to hold, the same rule `privHistoryMemo` follows.
+      if (points.length > 0) this.valueSeriesMemo.set(memoKey, { at: Date.now(), chart });
+      return chart;
     } catch {
       return empty;
     }
@@ -3640,6 +3573,19 @@ export class WalletController {
 
   /** Cached full private history, keyed by account+network, short-lived. */
   private privHistoryMemo?: { key: string; at: number; read: PrivateHistoryRead };
+
+  /**
+   * Recent value-series reads, per range, short-lived.
+   *
+   * The popup caches the drawn curve in its own page memory, which survives a tab
+   * switch but not a close-and-reopen: a reopened popup is a fresh document. The
+   * worker outlives the popup, so pinning the read here means a reopen draws its
+   * chart from a memo instead of re-walking balances and a per-asset history
+   * (uncached, the whole reason the read is slow). The TTL is short so a send or a
+   * swap shows in the curve on the next look; a public balance change also clears
+   * it outright below.
+   */
+  private valueSeriesMemo = new Map<string, { at: number; chart: ValueChart }>();
 
   /**
    * The account's transaction history, newest first, merged across both pockets.
@@ -3787,16 +3733,13 @@ export class WalletController {
     // needs one: register, shield, private transfer, merge and unshield all run
     // off local openings and Soroban RPC, and only the rebuild reads the
     // archive. So a build shipped without VITE_ARCHIVE_URL has a fully working
-    // private pocket whose Activity read "No activity yet. Your transactions
-    // will appear here." forever, which is a statement about the account and is
-    // false. `.env.production` ships the variable commented out, so this is not
-    // a hypothetical configuration.
+    // private pocket whose Activity read "No activity yet." forever, which is a
+    // statement about the account and is false. `.env.production` ships the
+    // variable commented out, so this is not a hypothetical configuration.
     if (!net.archiveUrl) {
       return {
         entries: [],
-        unreadable:
-          "Private activity needs the durable event archive, and this build has none configured. " +
-          "Your private transactions still happened and your balances are unaffected.",
+        unreadable: "Private activity is not available in this build.",
       };
     }
     const assets = asset
@@ -3851,10 +3794,18 @@ export class WalletController {
         // it pages under a budget rather than trusting the archive to stop
         // handing out cursors.
         const stored = await client.allEvents(cfg.token, address);
-        all.push(...privateHistory(stored, { vk, address }, cfg.symbol));
+        // Stamp the wrapped asset's classic issuer so the popup builds the logo
+        // key as CODE:ISSUER rather than a bare code. `privateHistory` only knows
+        // the display symbol, and without the issuer the private USDC rows keyed
+        // "USDC" instead of "USDC:G..." and fell back to the grey monogram, while
+        // the same token drew Circle's mark in the public list. The issuer lives
+        // in knownAssets; XLM is native, has none there, and resolves by code.
+        const issuer = (net.knownAssets ?? []).find((k) => k.code === cfg.symbol)?.issuer;
+        const entries = privateHistory(stored, { vk, address }, cfg.symbol);
+        all.push(...(issuer ? entries.map((e) => ({ ...e, issuer })) : entries));
       } catch {
-        // Named, not described: the symbol is ours and from a closed set, while
-        // an archive's own error text is not something to put in front of a user.
+        // Recorded so the read can say something failed. Never described: an
+        // archive's own error text is not something to put in front of a user.
         failed.push(cfg.symbol);
       }
     }
@@ -3863,19 +3814,11 @@ export class WalletController {
     // ignore the line. Twelve ledgers is about a minute on Stellar's five-second
     // close, which is the point at which "it should be there by now" becomes a
     // reasonable thing for someone to think.
-    const lagging =
-      behindBy > 12
-        ? `The event archive is about ${behindBy} ledgers behind the network, so a private ` +
-          `transaction from the last few minutes may not be listed yet. It has still happened ` +
-          `and your balances already include it.`
-        : undefined;
+    const lagging = behindBy > 12 ? "Recent private activity may not be listed yet." : undefined;
     if (failed.length === 0) return { entries: all, ...(lagging ? { unreadable: lagging } : {}) };
     return {
       entries: all,
-      unreadable:
-        `Pocket could not read the private activity for ${listOf(failed)}. ` +
-        `Anything shown below is incomplete. Your balances are unaffected.` +
-        (lagging ? ` ${lagging}` : ""),
+      unreadable: "Some private activity could not be read." + (lagging ? ` ${lagging}` : ""),
     };
   }
 
@@ -4044,9 +3987,7 @@ export class WalletController {
   ) {
     const { address } = requireSession();
     // Unknown means RESERVE, not guess: hold back the same figure "use max"
-    // holds back, which is rounded well past the largest fee measured, and say
-    // below that it is a reserve rather than the fee.
-    const estimated = feeStroops === null;
+    // holds back, which is rounded well past the largest fee measured.
     const fee = feeStroops ?? SOROBAN_FEE_RESERVE_STROOPS;
     if (asset.isNative()) {
       const native = await readNative(this.server(), address);
@@ -4063,12 +4004,8 @@ export class WalletController {
       const sendable = unreserved > fee ? unreserved - fee : 0n;
       if (amount > sendable) {
         throw new InsufficientBalanceError(
-          `That is more than you can send. Your balance is ${formatAmount(native.raw)} XLM, ` +
-            `of which ${formatAmount(reserve)} XLM is locked by the network as a reserve and ` +
-            (estimated
-              ? `up to ${formatAmount(fee)} XLM is held back for the network fee, which is ` +
-                `only known once the network has priced it, leaving ${formatAmount(sendable)} XLM.`
-              : `${formatAmount(fee)} XLM pays the network fee, leaving ${formatAmount(sendable)} XLM.`),
+          `More than you can send. ${formatAmount(sendable)} XLM is available after the ` +
+            `reserve and fee.`,
         );
       }
     } else {
@@ -4223,25 +4160,22 @@ export class WalletController {
                 "This address is your own, so this payment moves nothing: the balance ends " +
                 "where it started, less the network fee.",
             }
-          : {}),
+          : createDestination
+            ? {
+                // Visible, not inside the tip. Creating an account is a
+                // different act from paying one: the amount becomes the new
+                // account's whole balance and most of it is locked as its
+                // minimum reserve, which is the one surprise on this confirm.
+                warning: `New account: ${formatAmount(2n * BASE_RESERVE_STROOPS)} XLM stays locked`,
+              }
+            : {}),
         effects: [
           createDestination
             ? `CREATE this account on Stellar and fund it with ${formatAmount(amount)} XLM`
             : `Send ${formatAmount(amount)} ${asset.isNative() ? "XLM" : asset.getCode()} to this address`,
-          // Creating an account is a different act from paying one and the
-          // review has to say so: it is the signed operation, and the amount
-          // becomes the new account's whole balance, most of it locked as its
-          // minimum reserve.
-          ...(createDestination
-            ? [
-                `The account does not exist yet. ${formatAmount(2n * BASE_RESERVE_STROOPS)} XLM ` +
-                  `of this stays locked as its minimum balance`,
-              ]
-            : []),
           // The memo is signed, so it is an effect. Stating its absence too:
           // a missing memo is the usual way an exchange deposit is lost.
           req.memo ? `Attach the memo "${req.memo}"` : "Send with NO memo",
-          `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
         ],
       },
     };
@@ -4529,9 +4463,8 @@ export class WalletController {
               "Create a confidential account for this address",
               "Bind your OWN auditor key, derived from your recovery phrase. " +
                 "Nobody else can read your amounts",
-              "This binding is permanent and cannot be changed for this account",
-              "Publish that this address has a private pocket. This is not reversible",
-              `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
+              "Permanent.",
+              "Publishes, permanently, that this address has a private pocket.",
             ],
           },
           { resolve: openingsResolution({ ...openings, syncedThrough: 0 }) },
@@ -4583,9 +4516,8 @@ export class WalletController {
             amount: formatAmount(amount),
             effects: [
               `Move ${formatAmount(amount)} ${cfg.symbol} from the public pocket into the private one`,
-              "This deposit amount is PUBLIC on the ledger. Only later transfers hide amounts",
+              "This deposit amount is public.",
               "A second signature then makes it spendable",
-              `Pay a network fee of ${formatAmount(totalFee)} XLM across BOTH transactions`,
             ],
           },
           { resolve: { kind: "credit", amount: amount.toString() }, follow: true },
@@ -4607,7 +4539,6 @@ export class WalletController {
             effects: [
               "Fold everything you have received into your spendable balance",
               "Amounts stay hidden. This proves nothing and reveals nothing",
-              `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
             ],
           },
           { resolve: { kind: "merge" } },
@@ -4647,7 +4578,7 @@ export class WalletController {
             amount: formatAmount(amount),
             effects: [
               `Send ${formatAmount(amount)} ${cfg.symbol} privately to this address`,
-              "The AMOUNT is hidden. Both addresses are PUBLIC on the ledger, permanently",
+              "Amount hidden. Both addresses public.",
               // Under D8 each side's auditor is itself, so the honest statement
               // is who can read this, not two opaque integers. A7 found this
               // printing "Auditor #0 and auditor #0", which told the user
@@ -4655,7 +4586,6 @@ export class WalletController {
               recipient.auditorId === mine.auditorId
                 ? `You and the recipient share auditor #${mine.auditorId}, which can read this amount`
                 : "Your auditor key and the recipient's can each read this amount. Yours is your own",
-              `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
             ],
           },
           { resolve: spendResolution(newSpendable) },
@@ -4688,8 +4618,7 @@ export class WalletController {
             amount: formatAmount(amount),
             effects: [
               `Move ${formatAmount(amount)} ${cfg.symbol} from the private pocket back to the public one`,
-              "This withdrawal amount becomes PUBLIC on the ledger",
-              `Pay a network fee of ${formatAmount(BigInt(tx.fee))} XLM`,
+              "This withdrawal amount becomes public.",
             ],
           },
           { resolve: spendResolution(newSpendable) },
@@ -4749,8 +4678,13 @@ export class WalletController {
     const stored = await this.readOpenings(address, token);
     if (!stored) {
       throw new PrivatePocketError(
-        "This device has no record of your private balances, so it cannot spend them. " +
-          `Your funds are safe on chain. ${rebuildAdvice(NETWORKS[this.network].archiveUrl)}`,
+        [
+          "This device has no record of your private balances, so it cannot spend them. " +
+            "Your funds are safe on chain.",
+          rebuildAdvice(NETWORKS[this.network].archiveUrl),
+        ]
+          .filter(Boolean)
+          .join(" "),
       );
     }
     return stored;
@@ -4848,8 +4782,10 @@ export class WalletController {
     if (outcome.kind !== "succeeded")
       throw new SubmitOutcomeError(describeOutcome(outcome), outcome);
     // A new confidential event exists now; the cached history is stale (it will
-    // repopulate from the archive once that event is ingested).
+    // repopulate from the archive once that event is ingested). A shield or
+    // unshield also moved the public balance, so the value curve is stale too.
     this.privHistoryMemo = undefined;
+    this.valueSeriesMemo.clear();
 
     if (!entry.private.follow) return { hash: outcome.hash, ledger: outcome.ledger };
 
@@ -4871,38 +4807,12 @@ export class WalletController {
     this.setPhase("Deposit confirmed. Making it spendable, one more transaction…");
     const second = await this.submitStaged(mergeTx, { kind: "merge" }, "merge", entry.token);
     if (second.kind !== "succeeded") {
-      const deposited =
-        entry.private.resolve.kind === "credit"
-          ? formatAmount(BigInt(entry.private.resolve.amount))
-          : null;
-      // The asset that was actually shielded, never a hardcoded "XLM". A wrapper
-      // binds ONE underlying, so the symbol belongs to the deployment this
-      // operation ran against; with USDC configured, the literal named the wrong
-      // asset in the one message a user reads after a half-completed shield.
-      // Safe to look up: opContext above resolved the same token and would
-      // already have thrown if it were not a configured deployment.
-      const symbol = this.confidentialConfig(entry.token).symbol;
-      // What to do next depends on whether the merge is DEAD or merely UNKNOWN,
-      // and telling the user the wrong one is how this became a dead end before.
-      //
-      // A terminal failure clears the in-flight record, so "Make spendable"
-      // builds normally and saying so is correct. A `pending` outcome leaves the
-      // record in place, because the merge may still land; pressing again would
-      // be refused, and if it were not it would take that merge's sequence
-      // number. So that case is sent to reopen Pocket, which reconciles the
-      // record: if the merge landed, its openings are written and nothing more
-      // is needed; if it did not, the record clears and the button works.
-      const unknown = second.kind === "pending";
+      // Survivable either way, and reopening is the instruction for both. A
+      // terminal failure clears the in-flight record, so "Make spendable" builds
+      // normally; a `pending` outcome leaves it in place, because the merge may
+      // still land, and reopening reconciles it.
       throw new PrivatePocketError(
-        `The deposit succeeded (${outcome.hash}) but making it spendable did not. ` +
-          (deposited
-            ? `Your ${deposited} ${symbol} is in the receiving balance`
-            : "Your funds are in the receiving balance") +
-          `, and Pocket has recorded it. ` +
-          (unknown
-            ? "Pocket does not yet know whether that second transaction landed, so reopen it: " +
-              "it will check, and offer to finish if it did not."
-            : `Press "Make spendable" to finish.`),
+        "Your deposit landed but is not spendable yet. Reopen Pocket to finish it.",
       );
     }
     return { hash: outcome.hash, ledger: outcome.ledger, followed: second.hash };
@@ -5117,12 +5027,16 @@ export class WalletController {
       // record sends them looking for a problem that is not there.
       const advice = rebuildAdvice(NETWORKS[this.network].archiveUrl);
       throw new PrivatePocketError(
-        hadRecord
-          ? `The transaction landed, but the ${check.which} balance this device computed does not ` +
-            `match what the contract now holds. Your funds are safe on chain. Pocket will not ` +
-            `spend from a state it cannot verify. ${advice}`
-          : `The transaction landed, but this device has no record of your private balances, so ` +
-            `it cannot work out what you now hold. Your funds are safe on chain. ${advice}`,
+        [
+          hadRecord
+            ? "The transaction landed but your balances no longer match the ledger. Your funds " +
+              "are safe on chain."
+            : "The transaction landed, but this device has no record of your private balances, " +
+              "so it cannot work out what you now hold. Your funds are safe on chain.",
+          advice,
+        ]
+          .filter(Boolean)
+          .join(" "),
       );
     }
     await this.writeOpenings(address, cfg.token, state);
@@ -5427,10 +5341,8 @@ export class WalletController {
       // that Pocket does not know. The marker stays on disk, so the next open
       // asks the chain rather than paying again.
       throw new PrivatePocketError(
-        `Pocket sent the transaction that registers your auditor key and did not learn whether ` +
-          `it landed, so it will not send another one: that would register a second key and pay ` +
-          `for it twice. Pocket has recorded this attempt (${outcome.hash}). Reopen the private ` +
-          `pocket and it will check with the network and carry on from whatever it finds.`,
+        "Pocket does not know whether your setup landed. Reopen the private pocket and it will " +
+          "check.",
       );
     }
     if (outcome.kind !== "succeeded") {
@@ -5643,15 +5555,7 @@ export class WalletController {
         // Not an error, and it must not read as one. It means the search ran
         // and the window held nothing for us, which for a diverged pocket
         // points at history older than the RPC keeps.
-        // Says "transfer or deposit" because the scan now looks for both, and
-        // the sentence is the wallet's whole explanation of a diverged pocket.
-        // While it only looked for transfers it named a cause that was often
-        // not the cause: a third-party deposit needs no permission from the
-        // recipient, was invisible to this search, and sent the user after
-        // history older than a week that was not missing.
-        this.lastInboundFailure =
-          "Pocket searched the last week of ledger history and found no transfer or deposit " +
-          "addressed to this account, so the difference is older than that.";
+        this.lastInboundFailure = null;
         return stored;
       }
 
@@ -5800,11 +5704,11 @@ export class WalletController {
    * "Build it again and review it" is right for an ordinary expired handle and
    * WRONG one press after an unresolved submission, which is exactly when it
    * used to be said. The measured sequence on the most dangerous screen in the
-   * product: the first Confirm answers "It has not confirmed yet. It may still
-   * land, so do not resend: check the hash <64 hex> before trying again." The
-   * second press answers "Build it again and review it", which contradicts it,
-   * and the build the user is then told to do is itself refused with a third
-   * sentence ("A transaction submitted earlier has not resolved yet").
+   * product: the first Confirm answers "Not confirmed yet. Do not resend. Check
+   * hash <64 hex>." The second press answers "Build it again and review it",
+   * which contradicts it, and the build the user is then told to do is itself
+   * refused with a third sentence ("A transaction submitted earlier has not
+   * resolved yet").
    *
    * A record that is decidably EXPIRED is not unresolved: the envelope can
    * never be included, so rebuilding is both safe and the right advice.
@@ -5812,11 +5716,7 @@ export class WalletController {
   private async staleHandleMessage(what: string): Promise<string> {
     const held = await this.inFlight();
     if (held && !held.expired) {
-      return (
-        `${what} is no longer pending confirmation, and Pocket is still waiting to hear whether ` +
-        `the transaction it already submitted landed. Do not send another one. Reopen Pocket: ` +
-        `it will check with the network and tell you where things stand.`
-      );
+      return "Pocket is still waiting on an earlier transaction. Do not send another one.";
     }
     return `${what} is no longer pending confirmation. Build it again and review it.`;
   }
@@ -5941,17 +5841,6 @@ function spendResolution(spendable: Opening): StagedResolution {
 }
 
 /**
- * Asset symbols as a readable list: "XLM", "XLM and USDC", "XLM, USDC and EURC".
- *
- * Symbols only, and symbols come from `config.ts`, so nothing an archive or an
- * RPC authored can reach a user through this sentence.
- */
-export function listOf(names: string[]): string {
-  if (names.length <= 1) return names[0] ?? "";
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
-
-/**
  * What a private-history read produced, including what it could not read.
  *
  * Two fields because a partial answer is a real outcome and had no way to be
@@ -5969,22 +5858,14 @@ interface PrivateHistoryRead {
  * How to recover a private balance this device cannot account for, phrased for
  * whether recovery is actually available.
  *
- * Five worker-authored sentences asserted "this build has none configured" as a
- * flat constant, none of them reading `archiveUrl`. That was written when no
- * build had one, and it is the same defect D-009 recorded and closed on the UI
- * side: the popup learned to branch on `canRebuild` and the worker's own
- * sentences did not. On a build WITH an archive the wallet therefore states
- * that rebuilding is impossible directly above a working Rebuild button, and
- * the user can only find out which is true by pressing it.
- *
- * One function so the two halves cannot drift apart again: the popup gates the
- * CONTROL on `archiveUrl` and this gates the SENTENCE on the same fact.
+ * Nothing to say when an archive is configured: the Rebuild control is on the
+ * screen already. Without one, `canRebuild` hides that control, so this sentence
+ * is the only thing between a state called Needs rebuilding and no way to
+ * rebuild it. One function so the two halves cannot drift apart: the popup gates
+ * the CONTROL on `archiveUrl` and this gates the SENTENCE on the same fact.
  */
 export function rebuildAdvice(archiveUrl: string | undefined): string {
-  return archiveUrl
-    ? "Rebuilding the record replays your event history from this build's archive, which you " +
-        "can start from Settings."
-    : "Rebuilding the record needs a durable event archive, and this build has none configured.";
+  return archiveUrl ? "" : "This version cannot rebuild them.";
 }
 
 /**
@@ -5998,21 +5879,10 @@ export function rebuildAdvice(archiveUrl: string | undefined): string {
  */
 function describeHistoryFailure(e: unknown, pocket: "public" | "private"): string {
   const name = e instanceof Error ? e.name : "";
-  if (name === "ArchiveUnavailableError") {
-    return "The durable archive did not answer, so your private history could not be replayed.";
-  }
-  if (name === "IncompleteHistoryError") {
-    return (
-      "The archive could not serve an unbroken run of events, so Pocket will not show a " +
-      "private history it knows has a gap in it."
-    );
-  }
-  if (name === "RecoveryUnavailableError" || name === "MalformedEventError") {
-    return "Your private history could not be read from the archive.";
-  }
+  if (name === "IncompleteHistoryError") return "Part of your private history is missing.";
   return pocket === "private"
-    ? "Your private history could not be read just now."
-    : "Your public history could not be read just now.";
+    ? "Private history could not be loaded."
+    : "Public history could not be loaded.";
 }
 
 /** An absolute post-state, in the string form the staged record holds. */

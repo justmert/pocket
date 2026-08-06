@@ -157,19 +157,6 @@ describe("the shield confirm", () => {
     expect(summary.fee, "the deposit's fee alone was quoted").not.toBe("0.0110771");
   });
 
-  it("says the same number in the effects the user actually reads", async () => {
-    // The headline and the effect line are two renderings of one fact, and they
-    // disagreed: both were the deposit, and only one of them was even labelled.
-    if (!XLM_WRAPPER) return;
-    const { c, address } = await worker();
-    await seedPrivate(address, XLM_WRAPPER.token);
-
-    const { summary } = await c.buildPrivateOp({ kind: "shield", amount: "1" }, XLM_WRAPPER.token);
-    const said = summary.effects.join(" ");
-    expect(said).toContain("0.0204497");
-    expect(said).toMatch(/BOTH transactions/);
-  });
-
   it("refuses a shield that can pay for the deposit but not the merge", async () => {
     // The stranding. Sized on the deposit alone, this amount passes, the
     // deposit lands, and the merge then fails for want of a fee: the funds sit

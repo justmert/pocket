@@ -13,6 +13,7 @@ import { DATE_LOCALE } from "./period";
 import type { CSSProperties } from "react";
 import { chipPad, motion, radius, space, text, type Theme } from "./theme";
 import { Skeleton } from "./primitives";
+import { useWallet } from "./WalletProvider";
 import type { ValueChart } from "../../../core/messages";
 
 export const RANGE_IDS = ["1D", "1W", "1M", "6M", "1Y"] as const;
@@ -604,19 +605,35 @@ export function ValueChartBlock({
  * array literal is a new value on every render, so a hook keyed on one refetches
  * forever. the caller names what it is charting ("home", "XLM") and the effect
  * runs when that name or the range changes, and at no other time.
+ *
+ * The last curve per subject+range is cached on the WalletProvider (see
+ * `valueChartCache`), which never unmounts, so leaving Home for another tab and
+ * coming back paints the last curve at once instead of refetching from a skeleton.
+ * A module variable was doing this and did not hold across the round trip; a ref
+ * on a component that outlives the screen is React state that is guaranteed to.
  */
 export function useValueChart(
   subject: string,
   fetcher: (range: RangeId) => Promise<ValueChart>,
+  /** a value that changes when the underlying data does (e.g. a balance
+   *  signature). when it changes the curve is refetched IN PLACE: the current
+   *  curve stays on screen while the new one loads, so a balance-changing action
+   *  refreshes the chart without a skeleton. tab switches do not change it, so
+   *  they never trigger a refetch. */
+  revalidate?: string,
 ): {
   chart: ValueChart | null;
   loading: boolean;
   range: RangeId;
   setRange: (r: RangeId) => void;
 } {
+  const chartCache = useWallet().valueChartCache;
   const [range, setRange] = useState<RangeId>(DEFAULT_RANGE);
-  const [chart, setChart] = useState<ValueChart | null>(null);
-  const [loading, setLoading] = useState(true);
+  // seed from the cache so a remount paints the last curve at once, no skeleton.
+  const [chart, setChart] = useState<ValueChart | null>(
+    () => chartCache.get(`${subject}:${DEFAULT_RANGE}`) ?? null,
+  );
+  const [loading, setLoading] = useState(!chartCache.has(`${subject}:${DEFAULT_RANGE}`));
   // held in a ref so a caller passing an inline arrow does not restart the
   // effect on every render.
   const fetch = useRef(fetcher);
@@ -624,22 +641,33 @@ export function useValueChart(
 
   useEffect(() => {
     let live = true;
-    setLoading(true);
-    // the PREVIOUS range's curve goes with the request. it only ever set `chart`
-    // on success, so `!drawable` was never true once any chart existed: switching
-    // 1W to 1M left the old curve and its percentage on screen, unlabelled, for
-    // the whole wait, and the wait is never zero (`valueSeries` awaits `balances`
-    // and a per-asset history on every call, uncached).
-    setChart(null);
+    const key = `${subject}:${range}`;
+    const cached = chartCache.get(key);
+    // a cached curve STAYS on screen while the refresh runs, so a remount or a
+    // return to an already-seen range does not flash the skeleton. only a range
+    // with nothing cached clears to a blank first, which is the original behaviour
+    // for a first visit and still keeps a stale range's curve from lingering
+    // unlabelled: each range has its own cache entry, so switching 1W to a
+    // never-seen 1M shows loading, not 1W's line.
+    setChart(cached ?? null);
+    setLoading(!cached);
     fetch
       .current(range)
       .then((c) => {
-        // a late answer for a range the user has already left must not paint
-        // over the one they are looking at.
-        if (live) setChart(decimateChart(c, range));
+        // CACHE FIRST, unconditionally: writing a module Map is safe on an
+        // unmounted instance, and doing it before the `live` gate is what lets a
+        // fetch that was still in flight when the user left Home finish and seed
+        // the cache anyway, so returning finds a curve instead of refetching from
+        // empty. only the state update is gated: a late answer for a range the
+        // user has already left must not paint over the one they are looking at.
+        const next = decimateChart(c, range);
+        chartCache.set(key, next);
+        if (live) setChart(next);
       })
       .catch(() => {
-        if (live) setChart(null);
+        // keep a good cached curve through a transient failure; only blank when
+        // there was nothing cached to show.
+        if (live && !cached) setChart(null);
       })
       .finally(() => {
         if (live) setLoading(false);
@@ -647,7 +675,7 @@ export function useValueChart(
     return () => {
       live = false;
     };
-  }, [range, subject]);
+  }, [range, subject, revalidate]);
 
   return { chart, loading, range, setRange };
 }

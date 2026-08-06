@@ -17,7 +17,7 @@ import { fiatOf } from "../money";
 import { AmountComposer, AmountSlider, sliderPercent, amountReady } from "../AmountComposer";
 import { ConfirmSheet, useOnce } from "../flow";
 import { privateAbsence } from "../holdings";
-import { privateStateAction } from "../copy";
+import { PRIVATE_NOT_READY, privateStateAction } from "../copy";
 import { AssetMark, privateMarkId } from "./Home";
 import { PrivateAssetPicker } from "../sheets/PrivateAssetPicker";
 import {
@@ -28,21 +28,6 @@ import {
 } from "../../../../core/chain/balances";
 import { space } from "../theme";
 import type { PrivateOpSummary } from "../../../../core/messages";
-
-/** why there is nothing to move yet, in the words the rest of the product uses. */
-const NOT_READY: Record<string, string> = {
-  unavailable: "This network has no private pocket, so there is nothing to move.",
-  unfunded:
-    "This account does not exist on the network yet. Receive some XLM first, then you can open a private pocket.",
-  unregistered:
-    "The private pocket is not open yet. Setting it up takes two transactions, and you review the second one.",
-  archived: "The private pocket went dormant from not being used. Reactivate it before moving.",
-  needsRecovery:
-    "This device's record of the private balances has to be rebuilt before anything can move.",
-  diverged:
-    "This device disagrees with the contract about the private balances, so it refuses to move until that is rebuilt.",
-  ready: "",
-};
 
 export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: () => void }) {
   const w = useWallet();
@@ -287,9 +272,7 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
                 onBack={onClose}
                 right={
                   <InfoTip t={t} label={movingIn ? "About shielding" : "About unshielding"}>
-                    {movingIn
-                      ? "The amount you shield is public. Only what you do inside the private pocket after that is hidden."
-                      : "The amount you unshield becomes public when it lands in your public pocket."}
+                    {movingIn ? "This amount is public." : "This amount becomes public."}
                   </InfoTip>
                 }
               />
@@ -307,20 +290,15 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
               {blocked ? (
                 <Notice t={t}>
                   {localPriv
-                    ? localPriv.state === "unregistered" && !isNativeAsset
-                      ? // registration is PER ASSET: a not-open USDC pocket is not "the
-                        // private pocket is not set up" when XLM is already live, so name
-                        // the asset rather than implying the whole pocket is closed.
-                        `Setting up ${symbol} in your private pocket takes two transactions, and you review the second one.`
-                      : // The WORKER's own sentence first, and this table only when
-                        // there is none. `privatePocket` sets `message` for every
-                        // state a user must act on, and it is the half that carries
-                        // `rebuildAdvice`: whether a rebuild is possible on this
-                        // build at all. Dropping it left "has to be rebuilt before
-                        // anything can move" next to no way to rebuild, on a build
-                        // that cannot. The table stays as the fallback, because a
-                        // state with no message still needs a sentence.
-                        (localPriv.message ?? NOT_READY[localPriv.state])
+                    ? // The WORKER's own sentence first, and the table only when
+                      // there is none. `privatePocket` sets `message` for every
+                      // state a user must act on, and it is the half that carries
+                      // `rebuildAdvice`: whether a rebuild is possible on this
+                      // build at all. Dropping it left a needs-rebuilding state
+                      // next to no way to rebuild, on a build that cannot. The
+                      // table stays as the fallback, because a state with no
+                      // message still needs a sentence.
+                      (localPriv.message ?? PRIVATE_NOT_READY[localPriv.state])
                     : // three unrelated facts produce a null pocket and only one of
                       // them is "still reading". this asserted that one always, so a
                       // failed read and a network with no private pocket at all both
@@ -356,7 +334,6 @@ export function Move({ kind, onClose }: { kind: "shield" | "unshield"; onClose: 
                     disabled={!spendable}
                     percent={percent}
                     onPercent={(p) => setFraction(BigInt(p), 100n)}
-                    verb="Move"
                   />
 
                   {error && !confirming && (

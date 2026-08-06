@@ -56,12 +56,14 @@ test("the register review never calls its way out a cancel", async ({ wallet }) 
 
   await wallet.openMove();
   await wallet.page.getByRole("button", { name: "Set up the private pocket" }).click();
-  await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+  await expect(wallet.page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: WAITS.proving,
+  });
 
   // What has already happened is stated on the screen that could otherwise be
   // read as "nothing has happened yet".
   await expect(
-    wallet.page.getByText(/auditor key is already registered on the ledger/i),
+    wallet.page.getByText("Your auditor key is already registered and paid for."),
     "the review must say what pressing the previous button already did",
   ).toBeVisible();
 

@@ -48,8 +48,7 @@ export function Onboarding({
       <div style={{ textAlign: "center", marginBottom: space.xl }}>
         {fullPage && step === "choose" ? (
           // the front door leads with the real wordmark (packaged, so img-src 'self'
-          // allows it) and what the product is FOR, not the small drawn tile and the
-          // "two pockets" build detail. that line is a fact for later; this is the promise.
+          // allows it) and what the product is FOR, not the small drawn tile.
           <>
             {/* big: the tab has the room, and this is the brand's front door. */}
             <Logo t={t} width={320} />
@@ -64,42 +63,35 @@ export function Onboarding({
             >
               {"Your balance is nobody's business."}
             </h1>
-            <p style={{ ...text.heading, color: t.sub, margin: 0, fontWeight: 500 }}>
-              So we built one that keeps quiet.
-            </p>
-            {/* WHAT IT DOES NOT HIDE, on the first screen a user ever sees.
-                The brand line above is a promise about amounts, and read alone
-                it claims more privacy than this wallet delivers: confidential
-                transfers hide amounts, and both addresses stay on the public
-                ledger permanently. The redesign moved the honest line off this
-                screen and nothing else on the way in says it. The project's own
-                rule is that the product states this rather than softening it,
-                so it belongs here, under the promise it qualifies, and not in a
-                settings page nobody opens. */}
-            <p style={{ ...text.body, color: t.sub, margin: `${space.md}px 0 0`, lineHeight: 1.5 }}>
-              Pocket hides amounts, not addresses. Who you pay stays public on the Stellar ledger,
-              permanently.
-            </p>
           </>
         ) : (
           <>
             <Logo t={t} width={fullPage ? 168 : 120} />
-            <h1
-              style={{
-                ...text.screenTitle,
-                color: t.text,
-                margin: `${space.gutter}px 0 ${space.xs}px`,
-              }}
-            >
-              {step === "choose" ? "Pocket" : step === "create" ? "New wallet" : "Restore wallet"}
-            </h1>
-            <p style={{ ...text.body, color: t.sub, margin: 0, lineHeight: 1.5 }}>
-              {step === "choose"
-                ? "Two pockets on Stellar. One public, one private."
-                : step === "create"
-                  ? "Choose a password for this device."
-                  : "Enter your recovery phrase."}
-            </p>
+            {/* no heading on the choose step: the wordmark above it is the
+                wordmark, and printing "Pocket" under it says it twice. */}
+            {step === "choose" && (
+              <p
+                style={{
+                  ...text.body,
+                  color: t.sub,
+                  margin: `${space.md}px 0 0`,
+                  textAlign: "center",
+                }}
+              >
+                Two pockets on Stellar. One public, one private.
+              </p>
+            )}
+            {step !== "choose" && (
+              <h1
+                style={{
+                  ...text.screenTitle,
+                  color: t.text,
+                  margin: `${space.gutter}px 0 ${space.xs}px`,
+                }}
+              >
+                {step === "create" ? "New wallet" : "Restore wallet"}
+              </h1>
+            )}
           </>
         )}
       </div>
@@ -353,7 +345,6 @@ function Create({
         placeholder="At least 8 characters"
         autoFocus
         invalid={short}
-        hint={short ? "Use at least eight characters." : undefined}
       />
       <Field
         t={t}
@@ -365,7 +356,6 @@ function Create({
         hint={mismatch ? "The two passwords do not match." : undefined}
         onSubmit={() => void submit()}
       />
-      <Notice t={t}>This password unlocks this device. It is not a backup.</Notice>
       {error && (
         <Notice t={t} tone="danger">
           {error}
@@ -473,30 +463,15 @@ function Backup({
       {/* plain text under the heading, not a boxed notice: it reads as the screen's
           own instruction rather than an alert stacked above the words. */}
       <p style={{ ...text.body, color: t.sub, margin: `0 0 ${space.md}px`, lineHeight: 1.5 }}>
-        These {words.length} words are the only way to recover this wallet. Anyone who has them owns
-        your funds. Write them down now
-        {/* the flow runs in a tab precisely so the popup's warning is not true
-            here. but the replacement promised more than the platform delivers:
-            "this page stays open" is true of a blur and of nothing else, and a
-            user who reads it as "the words are safe while i find a pen" has been
-            told the opposite of what they need. so the tab branch names what the
-            user must not do rather than what the page will do. */}
-        {ephemeral
-          ? // ". " like the other branch. this joined a warning to an imperative
-            // with ", and", which reads as one instruction rather than two facts.
-            ". This window closes the moment you click anything outside it."
-          : ". Do not close this tab until you have confirmed the words."}
+        Anyone with these words owns your wallet. Write them down now.
+        {/* only the popup fallback adds a sentence: it is the one window that
+            disappears the moment the user clicks anything outside it, and the
+            tab does not. */}
+        {ephemeral && " This window closes the moment you click anything outside it."}
       </p>
-      {/* the SAME warnings the Settings sheet gives, on the screen that gives the
-          phrase for the first time. "keep them offline", "never type them into a
-          website or hand them to anyone, Pocket included" and "only where no one
-          is watching" were all on the repeat path and none was here, in front of
-          the reader who has never seen twelve words before. */}
       <p style={{ ...text.body, color: t.sub, margin: `0 0 ${space.md}px`, lineHeight: 1.5 }}>
-        Keep them offline, and read them only where no one is watching. Never type them into a
-        website or hand them to anyone, Pocket included.
+        Keep them offline. Never hand them to anyone, Pocket included.
       </p>
-
       <div style={{ position: "relative", marginBottom: space.md }}>
         <div
           aria-hidden={!shown}
@@ -576,7 +551,7 @@ function Backup({
 
       {copy === "failed" && (
         <Notice t={t} tone="danger">
-          Could not reach the clipboard. Select the words above, or write them down.
+          Copy failed. Select the words instead.
         </Notice>
       )}
 
@@ -597,15 +572,14 @@ function Backup({
               machine can read it, and the label said only "Copy the phrase". */}
           {copy === "done" ? "Copied" : "Copy to clipboard"}
         </Button>
+        {copy === "done" && (
+          <div style={{ ...text.caption, color: t.sub, textAlign: "center" }}>
+            Other applications on this machine can read the clipboard.
+          </div>
+        )}
         <Button t={t} disabled={!shown} onClick={() => setChecking(true)}>
           I have written it down
         </Button>
-        {copy === "done" && (
-          <div style={{ ...text.caption, color: t.sub, textAlign: "center" }}>
-            Your phrase is on this machine&rsquo;s clipboard, where other applications can read it.
-            Paste it where you are keeping it, then copy something else.
-          </div>
-        )}
       </ButtonStack>
     </Shell>
   );
@@ -800,7 +774,7 @@ export function Verify({
 
       {wrong && (
         <Notice t={t} tone="danger">
-          That is not the right order. Tap a word to clear it, then try again.
+          Wrong words. Tap one to clear it.
         </Notice>
       )}
 
@@ -897,7 +871,7 @@ function Import({ t, onDone, onCancel }: { t: Theme; onDone: () => void; onCance
         }
         value={phrase}
         onChange={setPhrase}
-        placeholder="12 or 24 words, separated by spaces"
+        placeholder="words separated by spaces"
         multiline
         mono
         autoFocus
@@ -910,7 +884,6 @@ function Import({ t, onDone, onCancel }: { t: Theme; onDone: () => void; onCance
         onChange={setPassword}
         placeholder="At least 8 characters"
         invalid={short}
-        hint={short ? "Use at least eight characters." : undefined}
       />
       {/* CONFIRMED, as the other two password doors already do. Create and
           Recover both gate on `password === confirm`; this one took a single
@@ -925,12 +898,10 @@ function Import({ t, onDone, onCancel }: { t: Theme; onDone: () => void; onCance
         type="password"
         value={confirm}
         onChange={setConfirm}
-        placeholder="Type it again"
         invalid={mismatch}
         hint={mismatch ? "The two passwords do not match." : undefined}
         onSubmit={() => void submit()}
       />
-      <Notice t={t}>This password unlocks this device. It is not a backup.</Notice>
       {error && (
         <Notice t={t} tone="danger">
           {error}

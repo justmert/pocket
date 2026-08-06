@@ -61,10 +61,9 @@ test("the yield row states the configuration it is actually in", async ({ wallet
     // The distinction this sentence has to carry: there is no vault, which is a
     // fact about the build, not about the user's money.
     expect(y.reason ?? "", "an absent vault must not be reported as a failed read").toMatch(
-      /not configured/i,
+      /not available on this network/i,
     );
-    expect(y.reason ?? "").toMatch(/nothing is at risk/i);
-    await expect(page.getByText(/Yield is not configured/)).toBeVisible();
+    await expect(page.getByText(/Not available on this network/)).toBeVisible();
     await expect(
       page.getByText(/shares/),
       "a build with no vault must not show a position",
@@ -93,11 +92,11 @@ test("the yield row states the configuration it is actually in", async ({ wallet
   expect(y.balance, "the position came back with no share count").toBeDefined();
   expect(y.balance ?? "", "shares must be an integral count").toMatch(/^\d+$/);
 
-  await expect(page.getByText("Vault position")).toBeVisible();
+  await expect(page.getByText("Deposited")).toBeVisible();
   await expect(page.getByText(`${y.balance} shares`)).toBeVisible();
-  // the RATE row draws the bare figure; "variable and not guaranteed" lives in the
-  // header tip. it used to draw the whole sentence with the word "reported"
-  // appended, producing "...variable and not guaranteed reported".
+  // the header CHIP draws the bare figure and its window; the caveat sentence is
+  // gone. it used to draw the whole sentence with the word "reported" appended,
+  // producing "...variable and not guaranteed reported".
   if (y.apy?.figure) {
     await expect(page.getByText(y.apy.figure, { exact: false })).toBeVisible();
   }

@@ -594,6 +594,12 @@ export interface CctpSummary {
   direction: "out" | "in";
   /** The other chain's display name. */
   chain: string;
+  /**
+   * The CCTP domain that name was read from, so the confirm's chain row can
+   * draw the logo from the same value the worker signed rather than from the
+   * screen's own picker state.
+   */
+  domain: number;
   /** Decimal amount, when known (out: what is bridged; in may be unknown). */
   amount?: string;
   /**

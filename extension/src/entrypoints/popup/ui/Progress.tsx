@@ -12,11 +12,12 @@ import { space, text, type Theme } from "./theme";
 export function Progress({
   t,
   title = "Processing",
-  subtitle = "Your transaction will continue in the background",
+  subtitle,
   onGoHome,
 }: {
   t: Theme;
   title?: string;
+  /** the worker's own sentence for the step it is on, when it has one. */
   subtitle?: string;
   /** leaves for home while the worker finishes. absent for a step not yet
    *  submitted (a build), where there is nothing to continue in the background. */
@@ -46,7 +47,9 @@ export function Progress({
         }}
       >
         <span style={{ ...text.screenTitle, color: t.text }}>{title}</span>
-        <span style={{ ...text.body, fontWeight: 600, color: t.sub }}>{subtitle}</span>
+        {subtitle && (
+          <span style={{ ...text.body, fontWeight: 600, color: t.sub }}>{subtitle}</span>
+        )}
       </div>
 
       {onGoHome && (

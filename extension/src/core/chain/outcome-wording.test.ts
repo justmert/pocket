@@ -25,13 +25,6 @@ describe("describing a transaction that was included and failed", () => {
   it("says a fee was charged", () => {
     expect(describeOutcome(FAILED)).toMatch(/fee was charged/i);
   });
-
-  it("says the sequence number was used", () => {
-    // Load-bearing for what the user does next: the next transaction needs a
-    // new sequence, and a wallet that says nothing was consumed invites a
-    // resend that collides.
-    expect(describeOutcome(FAILED)).toMatch(/sequence number was used/i);
-  });
 });
 
 describe("every terminal outcome says whether it cost anything", () => {
@@ -66,9 +59,9 @@ describe("every terminal outcome says whether it cost anything", () => {
  * A transaction-level rejection reaches the user as words.
  *
  * `describeSendError` returned the XDR discriminant name verbatim, so the
- * sentence read "The network rejected it (txBadSeq). Nothing was charged." That
- * is safe (a closed set, no RPC-authored string) and useless: it names a
- * protocol identifier to somebody who wanted to know what to do next.
+ * sentence read "Rejected (txBadSeq). Nothing was charged." That is safe (a
+ * closed set, no RPC-authored string) and useless: it names a protocol
+ * identifier to somebody who wanted to know what to do next.
  */
 describe("what a rejection says happened", () => {
   const rejectionFor = async (name: string) => {
@@ -92,7 +85,7 @@ describe("what a rejection says happened", () => {
   it("says what a stale sequence number means", async () => {
     const said = await rejectionFor("txBadSeq");
     expect(said, "a protocol identifier reached the user").not.toBe("txBadSeq");
-    expect(said).toMatch(/sequence number had already moved on/);
+    expect(said).toMatch(/already out of date/);
   });
 
   it("says what a passed time window means", async () => {

@@ -81,7 +81,7 @@ test("an injected failure actually changes what the wallet shows", async ({ harn
   // Degrading honestly: an error the user can act on, and NO number. A stale or
   // invented balance here would be worse than the error, which is the property
   // T3's whole slice exists to check and which this proves is reachable.
-  await expect(wallet.page.getByText(/Something went wrong|check your connection/i)).toBeVisible({
+  await expect(wallet.page.getByText(/Something went wrong/i)).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
   await expect(wallet.money()).toHaveCount(0);

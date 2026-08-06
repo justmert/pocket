@@ -75,7 +75,6 @@ describe("the account's public history", () => {
     records = [payment(false)];
     const { entries } = await read();
     expect(entries[0]!.failed).toBe(true);
-    expect(entries[0]!.failureReason).toMatch(/failed on the network/i);
   });
 
   it("says nothing moved, because nothing did", async () => {

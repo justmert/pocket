@@ -41,7 +41,7 @@ async function waitForReview(page: Page): Promise<void> {
 }
 
 async function openPocket(page: Page): Promise<void> {
-  await page.getByRole("button", { name: /private pocket/i }).click();
+  await page.getByRole("button", { name: "Private", exact: true }).click();
 }
 
 test("a wallet that lost its openings gets them back from the archive", async () => {
@@ -63,12 +63,12 @@ test("a wallet that lost its openings gets them back from the archive", async ()
   try {
     // A fresh account: register, deposit, merge.
     await openPocket(page);
-    await expect(page.getByText(/Private pocket not set up/)).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByText(/Not open yet/).first()).toBeVisible({ timeout: 120_000 });
     await openMoveAction(page, "Set up the private pocket");
     await waitForReview(page);
     await page.getByRole("button", { name: "Approve" }).click();
-    await expect(page.getByText("Transaction successful")).toBeVisible({ timeout: 300_000 });
-    await expect(page.getByRole("button", { name: "Private pocket" })).toBeVisible({
+    await expect(page.getByText("Success")).toBeVisible({ timeout: 300_000 });
+    await expect(page.getByRole("button", { name: "Private", exact: true })).toBeVisible({
       timeout: 180_000,
     });
 
@@ -77,7 +77,7 @@ test("a wallet that lost its openings gets them back from the archive", async ()
     await page.getByRole("button", { name: "Continue" }).click();
     await waitForReview(page);
     await page.getByRole("button", { name: "Approve" }).click();
-    await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({
+    await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
       timeout: 600_000,
     });
 
@@ -139,16 +139,16 @@ test("a wallet that lost its openings gets them back from the archive", async ()
       // Driven by the button's own name rather than the shared helper's
       // /private pocket/i locator, which did not resolve against this page.
       await payer.page.getByRole("button", { name: "Set up private pocket" }).click();
-      await expect(payer.page.getByText(/Private pocket not set up/)).toBeVisible({
+      await expect(payer.page.getByText(/Not open yet/).first()).toBeVisible({
         timeout: 120_000,
       });
       await openMoveAction(payer.page, "Set up the private pocket");
       await waitForReview(payer.page);
       await payer.page.getByRole("button", { name: "Approve" }).click();
-      await expect(payer.page.getByText("Transaction successful")).toBeVisible({
+      await expect(payer.page.getByText("Success")).toBeVisible({
         timeout: 300_000,
       });
-      await expect(payer.page.getByRole("button", { name: "Private pocket" })).toBeVisible({
+      await expect(payer.page.getByRole("button", { name: "Private", exact: true })).toBeVisible({
         timeout: 180_000,
       });
 
@@ -157,7 +157,7 @@ test("a wallet that lost its openings gets them back from the archive", async ()
       await payer.page.getByRole("button", { name: "Continue" }).click();
       await waitForReview(payer.page);
       await payer.page.getByRole("button", { name: "Approve" }).click();
-      await expect(payer.page.getByRole("button", { name: "Public pocket" })).toBeVisible({
+      await expect(payer.page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
         timeout: 600_000,
       });
 
@@ -168,14 +168,14 @@ test("a wallet that lost its openings gets them back from the archive", async ()
       await expect(payer.page.getByText(/Reading the ledger/)).toHaveCount(0, {
         timeout: WAITS.ledgerRead,
       });
-      await payer.page.getByRole("button", { name: "Private pocket" }).click();
+      await payer.page.getByRole("button", { name: "Private", exact: true }).click();
       await payer.page.getByRole("button", { name: "Send privately" }).click();
       await payer.page.getByRole("textbox", { name: "To" }).fill(address);
       await payer.page.getByRole("textbox", { name: "Amount" }).fill("12");
       await payer.page.getByRole("button", { name: "Continue" }).click();
       await waitForReview(payer.page);
       await payer.page.getByRole("button", { name: "Approve" }).click();
-      await expect(payer.page.getByText("Transaction successful")).toBeVisible({
+      await expect(payer.page.getByText("Success")).toBeVisible({
         timeout: 600_000,
       });
       received = 12;

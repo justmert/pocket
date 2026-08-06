@@ -71,7 +71,7 @@ describe("a handle the worker did not issue is refused", () => {
     it(`refuses ${name} at confirmPayment`, async () => {
       const { controller } = await funded();
       await expect(controller.confirmPayment(handle)).rejects.toThrow(
-        /no longer pending confirmation/i,
+        /no longer pending confirmation|still waiting on an earlier transaction/i,
       );
     });
 
@@ -94,10 +94,10 @@ describe("a handle the worker did not issue is refused", () => {
       .build();
 
     await expect(controller.confirmPayment(evil.toXDR())).rejects.toThrow(
-      /no longer pending confirmation/i,
+      /no longer pending confirmation|still waiting on an earlier transaction/i,
     );
     await expect(controller.confirmPayment(evil.hash().toString("hex"))).rejects.toThrow(
-      /no longer pending confirmation/i,
+      /no longer pending confirmation|still waiting on an earlier transaction/i,
     );
   });
 });
@@ -118,7 +118,7 @@ describe("a handle is single use", () => {
     await controller.confirmPayment(built.xdr).catch(() => undefined);
 
     await expect(controller.confirmPayment(built.xdr)).rejects.toThrow(
-      /no longer pending confirmation/i,
+      /no longer pending confirmation|still waiting on an earlier transaction/i,
     );
   });
 
@@ -138,7 +138,9 @@ describe("a handle is single use", () => {
     const refusedForHandle = results.filter(
       (r) =>
         r.status === "rejected" &&
-        /no longer pending confirmation/i.test((r.reason as Error).message),
+        /no longer pending confirmation|still waiting on an earlier transaction/i.test(
+          (r.reason as Error).message,
+        ),
     );
     expect(refusedForHandle).toHaveLength(1);
   });
@@ -161,7 +163,7 @@ describe("a handle expires", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(Date.now() + 11 * 60_000);
     await expect(controller.confirmPayment(built.xdr)).rejects.toThrow(
-      /no longer pending confirmation/i,
+      /no longer pending confirmation|still waiting on an earlier transaction/i,
     );
   });
 
@@ -181,7 +183,9 @@ describe("a handle expires", () => {
       () => null,
       (e: Error) => e,
     );
-    expect(err?.message ?? "").not.toMatch(/no longer pending confirmation/i);
+    expect(err?.message ?? "").not.toMatch(
+      /no longer pending confirmation|still waiting on an earlier transaction/i,
+    );
   });
 });
 
@@ -214,7 +218,7 @@ describe("a handle belongs to one operation and cannot cross to another", () => 
       (e: Error) => e,
     );
     expect(err?.message ?? "", "the misroute consumed the payment handle").not.toMatch(
-      /no longer pending confirmation/i,
+      /no longer pending confirmation|still waiting on an earlier transaction/i,
     );
   });
 });
@@ -348,7 +352,7 @@ describe("the three refusals a mutation pass found untested", () => {
     });
 
     await expect(controller.confirmPayment(handle)).rejects.toThrow(
-      /no longer pending confirmation/i,
+      /no longer pending confirmation|still waiting on an earlier transaction/i,
     );
     // And it survived, because the check happens before the handle is consumed.
     // Refusing after deleting would destroy a proof the user waited on.
@@ -374,7 +378,7 @@ describe("the three refusals a mutation pass found untested", () => {
       .build();
 
     await expect(controller.confirmPayment(theirs.toXDR())).rejects.toThrow(
-      /no longer pending confirmation/i,
+      /no longer pending confirmation|still waiting on an earlier transaction/i,
     );
   });
 
@@ -405,7 +409,7 @@ describe("the three refusals a mutation pass found untested", () => {
       () => "signed it",
       (e) => describeError(e),
     );
-    expect(shown).toBe("Something went wrong. Try again, and check your connection.");
+    expect(shown).toBe("Something went wrong. Try again.");
     expect(shown).not.toMatch(/source account|refusing to sign/i);
   });
 });

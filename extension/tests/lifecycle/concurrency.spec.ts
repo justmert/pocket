@@ -50,10 +50,10 @@ test("every recovery phrase Pocket shows must control the wallet it wrote", asyn
         phrases.push(await shownPhrase(p));
     }
 
-    // The backup screen says these words are the only way to recover the wallet
-    // and that Pocket cannot show them again. Every phrase shown under that
-    // sentence has to be true, or the user writes down twenty-four words that
-    // own nothing and finds out on the day they need them.
+    // The backup screen says anyone with these words owns the wallet. Every
+    // phrase shown under that sentence has to be true, or the user writes down
+    // twenty-four words that own nothing and finds out on the day they need
+    // them.
     expect(phrases.length, "two tabs must not both be handed a recovery phrase").toBe(1);
 
     // Exactly one vault, and the address on disk is the one the wallet reports.
@@ -122,8 +122,8 @@ test("repeated unlock clicks leave one unlocked wallet, not several sessions", a
     const page = await w.popup();
     await onboard(page);
     const address = await addressOf(page);
-    await page.getByRole("menuitem", { name: "Lock wallet" }).click();
-    await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
+    await page.getByRole("menuitem", { name: "Lock" }).click();
+    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
 
     // Five at once, which is what an impatient user's double-tap plus a slow
     // scrypt looks like from the worker's side.
@@ -162,8 +162,8 @@ test("a wrong password mixed in with right ones never unlocks, and never locks o
     const page = await w.popup();
     await onboard(page);
     const address = await addressOf(page);
-    await page.getByRole("menuitem", { name: "Lock wallet" }).click();
-    await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
+    await page.getByRole("menuitem", { name: "Lock" }).click();
+    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
 
     const replies = await Promise.all([
       send(page, { type: "unlock", password: "wrong-one" }),
@@ -190,8 +190,8 @@ test("two erase-and-restore submissions at once leave one wallet on the same add
     const page = await w.popup();
     const phrase = await onboard(page);
     const address = await addressOf(page);
-    await page.getByRole("menuitem", { name: "Lock wallet" }).click();
-    await expect(page.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
+    await page.getByRole("menuitem", { name: "Lock" }).click();
+    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
 
     const a = await w.popup();
     const b = await w.popup();
@@ -214,16 +214,16 @@ test("two erase-and-restore submissions at once leave one wallet on the same add
     // A successful restore leaves the wallet open, so the way to prove the
     // vault it wrote is the one the new password opens is to lock it first.
     const reopened = await w.popup();
-    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({
+    await expect(reopened.getByRole("button", { name: "Public", exact: true })).toBeVisible({
       timeout: 60_000,
     });
     expect(await addressOf(reopened), "the restored wallet must be the same account").toBe(address);
-    await reopened.getByRole("menuitem", { name: "Lock wallet" }).click();
-    await expect(reopened.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
+    await reopened.getByRole("menuitem", { name: "Lock" }).click();
+    await expect(reopened.getByRole("heading", { name: "Welcome back" })).toBeVisible();
     await reopened.getByRole("textbox", { name: "Password", exact: true }).fill("second-password");
     await reopened.getByRole("button", { name: "Unlock" }).click();
     await expect(
-      reopened.getByRole("button", { name: "Public pocket" }),
+      reopened.getByRole("button", { name: "Public", exact: true }),
       "the surviving vault must open with the password the restore was given",
     ).toBeVisible({ timeout: 60_000 });
     expect(await addressOf(reopened)).toBe(address);
@@ -240,7 +240,7 @@ test("erase-and-restore refuses a phrase belonging to a different wallet", async
     await onboard(page);
     const address = await addressOf(page);
     const keysBefore = await storageKeys(page);
-    await page.getByRole("menuitem", { name: "Lock wallet" }).click();
+    await page.getByRole("menuitem", { name: "Lock" }).click();
 
     const stranger = "legal winner thank year wave sausage worth useful legal winner thank yellow";
     const r = await send(page, {
@@ -256,7 +256,7 @@ test("erase-and-restore refuses a phrase belonging to a different wallet", async
     const reopened = await w.popup();
     await reopened.getByRole("textbox", { name: "Password", exact: true }).fill(PASSWORD);
     await reopened.getByRole("button", { name: "Unlock" }).click();
-    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({
+    await expect(reopened.getByRole("button", { name: "Public", exact: true })).toBeVisible({
       timeout: 60_000,
     });
     expect(await addressOf(reopened)).toBe(address);
@@ -278,12 +278,12 @@ test("closing the popup mid-compose loses the draft and nothing else", async () 
       .getByRole("textbox", { name: "To", exact: true })
       .fill("GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7");
     await page.getByRole("textbox", { name: "Amount (XLM)" }).fill("3");
-    await page.getByRole("textbox", { name: "Memo (optional)" }).fill("draft");
+    await page.getByRole("textbox", { name: "Memo" }).fill("draft");
     await page.close();
 
     const reopened = await w.popup();
     // Back at the start, with nothing carried over and nothing left behind.
-    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({
+    await expect(reopened.getByRole("button", { name: "Public", exact: true })).toBeVisible({
       timeout: 60_000,
     });
     await expect(reopened.getByText("Unfinished transaction")).toHaveCount(0);
@@ -292,7 +292,7 @@ test("closing the popup mid-compose loses the draft and nothing else", async () 
     await reopened.getByRole("button", { name: "Actions", exact: true }).click();
     await reopened.getByRole("menuitem", { name: "Send", exact: true }).click();
     await expect(reopened.getByRole("textbox", { name: "To", exact: true })).toHaveValue("");
-    await expect(reopened.getByRole("textbox", { name: "Memo (optional)" })).toHaveValue("");
+    await expect(reopened.getByRole("textbox", { name: "Memo" })).toHaveValue("");
   } finally {
     await w.close();
   }

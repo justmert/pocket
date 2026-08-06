@@ -12,7 +12,7 @@
 //      unlisted or not-yet-drawn chain still gets a clean, intentional mark rather
 //      than the one generic globe every chain used to share.
 import { fonts } from "./theme";
-import { cctpDomainName } from "../../../core/integrations/cctp";
+import { CCTP_DOMAIN_NAMES } from "../../../core/integrations/cctp";
 
 /** CCTP domain -> packaged svg slug (public/chains/<slug>.svg). */
 const CHAIN_LOGO_SLUG: Record<number, string> = {
@@ -56,7 +56,11 @@ export function ChainLogo({ domain, size = 34 }: { domain: number; size?: number
   // the packaged-file tier had nothing for this domain: a brand-tinted disc with the
   // chain's initial, the AssetMark equivalent for a chain.
   const color = CHAIN_BRAND[domain] ?? "#64748b";
-  const letter = cctpDomainName(domain).slice(0, 1).toUpperCase();
+  // an unnamed domain falls back to "domain 42", whose initial is "D": every
+  // unlisted chain drew the same disc. the number is the only thing that tells
+  // them apart, so the monogram carries it instead of a shared letter.
+  const name = CCTP_DOMAIN_NAMES[domain];
+  const letter = name ? name.slice(0, 1).toUpperCase() : String(domain);
   return (
     <span
       aria-hidden

@@ -471,7 +471,9 @@ test("a bidi override in a memo cannot reorder the address or the amount beside 
 
   await wallet.openSend();
   await wallet.composePayment({ to: REAL, amount: "1.2345678", memo });
-  await expect(page.getByText("What this does")).toBeVisible({ timeout: WAITS.ledgerRead });
+  await expect(page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: WAITS.ledgerRead,
+  });
 
   // the memo IS on screen: without this the rest would pass vacuously, and a
   // dropped memo on a signing screen is its own defect.
@@ -514,11 +516,13 @@ test("a bidi override in a memo cannot reorder the address or the amount beside 
   // which is where an override would have to land to change how much or to whom.
 
   // and the wallet's own words after the memo are still the right way round, so
-  // the override did not escape the block the memo was put in.
+  // the override did not escape the block the memo was put in. the button row is
+  // the wallet's own text below the memo now that the effects enumeration is the
+  // info button's accessible name rather than a painted label.
   expect(
-    await paintedOrder(page, "What this does"),
+    await paintedOrder(page, "Cancel"),
     "the override escaped the memo and reordered the wallet's own label",
-  ).toBe("What this does");
+  ).toBe("Cancel");
 });
 
 // ----------------------------------------------------- one-tap destinations
@@ -621,7 +625,7 @@ test("a signature request cannot borrow the wallet's voice through its origin, m
 
   // the screen's own title is still the wallet's, and the origin sits under the
   // wallet's own label rather than standing alone as a statement.
-  await expect(page.getByText("This site is asking")).toBeVisible();
+  await expect(page.getByText("From", { exact: true })).toBeVisible();
   expect(await parsedMarkup(page), "a payload in an effect line was parsed").toEqual(NO_MARKUP);
   expect(dialogs).toBe(0);
 

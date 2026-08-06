@@ -2,10 +2,10 @@ import { useState } from "react";
 import { call } from "../rpc";
 import { useWallet } from "../WalletProvider";
 import { OriginBlock } from "../Address";
-import { Button, ButtonRow, ButtonStack, Header, Label, Notice, Screen } from "../primitives";
+import { Button, ButtonRow, ButtonStack, Chip, Header, Label, Notice, Screen } from "../primitives";
 import { ConfirmBody, useOnce } from "../flow";
 import { formatAmount } from "../../../../core/chain/balances";
-import { space, text, type Theme } from "../theme";
+import { space, type Theme } from "../theme";
 import type { TxSummary } from "../../../../core/provider/describe-tx";
 
 export function DappApproval({
@@ -49,7 +49,7 @@ export function DappApproval({
       // there is no `beginOp`, nothing in Activity, and nothing to see if the tab
       // moved on. a wallet's own record of what it signed should not be the
       // signing party's alone.
-      w.showToast(`Signature sent to ${hostOf(request.origin)}`, "positive");
+      w.showToast(`Signed for ${hostOf(request.origin)}`, "positive");
       onDone();
     } catch (e) {
       // a refusal that failed to reach the worker must not close the screen: the
@@ -62,20 +62,20 @@ export function DappApproval({
 
   return (
     <Screen t={t} still>
-      <Header t={t} title="Signature request" />
+      {/* how many are parked, when it is more than this one, as a chip on the
+          header. the worker holds up to four and hands back only the head, so
+          answering this one used to leave no sign that another site was still
+          waiting: it sat there until its own timeout while the user believed
+          they had dealt with everything. */}
+      <Header
+        t={t}
+        title="Signature request"
+        right={
+          (request.waiting ?? 1) > 1 ? <Chip t={t}>{`1 of ${request.waiting}`}</Chip> : undefined
+        }
+      />
 
-      {/* how many are parked, when it is more than this one. the worker holds up
-          to four and hands back only the head, so answering this one used to
-          leave no sign that another site was still waiting: it sat there until
-          its own timeout while the user believed they had dealt with
-          everything. */}
-      {(request.waiting ?? 1) > 1 && (
-        <div style={{ ...text.body, color: t.sub, marginBottom: space.sm }}>
-          {`1 of ${request.waiting} requests waiting. The next one appears after you answer this.`}
-        </div>
-      )}
-
-      <Label t={t}>This site is asking</Label>
+      <Label t={t}>From</Label>
       <OriginBlock t={t} origin={request.origin} />
 
       {!summary.decoded ? (
@@ -122,18 +122,14 @@ export function DappApproval({
             error={error}
           />
 
-          {/* the one dApp-specific fact ConfirmBody has no slot for: this approval
-              is single-use and grants the site no standing signing power. */}
-          <Notice t={t}>
-            Approving signs this once. It does not let the site sign anything else.
-          </Notice>
-
           <ButtonRow>
             <Button t={t} variant="quiet" busy={busy} onClick={() => void answer(false)}>
               Reject
             </Button>
+            {/* one label in both states: `busy` is shared with Reject, so pressing
+                Reject relabelled Approve, and `Button` already draws a spinner. */}
             <Button t={t} busy={busy} onClick={() => void answer(true)}>
-              {busy ? "Signing" : "Approve"}
+              Approve
             </Button>
           </ButtonRow>
         </div>

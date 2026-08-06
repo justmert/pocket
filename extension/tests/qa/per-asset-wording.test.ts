@@ -2,14 +2,14 @@
 //
 // The private pocket held only XLM for most of the project's life, so several
 // messages were written with the symbol typed into the string. They are still
-// correct for XLM and wrong for everything else, and a wrong symbol in a
-// receipt is not cosmetic: after a half-completed shield it is the only
-// sentence that tells the user where their money went.
+// correct for XLM and wrong for everything else, and a wrong symbol is not
+// cosmetic: the refusal below stands in front of stranding a private balance
+// behind a trustline that is about to be closed.
 //
-// This is a source read rather than a behavioural test because the branches
-// concerned are reached by a SECOND transaction failing after a first one
-// succeeded, which no unit harness reproduces cheaply. What it pins is the
-// thing that actually regressed: a literal where an interpolation belongs.
+// This is a source read rather than a behavioural test because the branch
+// concerned needs a private balance and a closing trustline together, which no
+// unit harness reproduces cheaply. What it pins is the thing that actually
+// regressed: a literal where an interpolation belongs.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -29,9 +29,9 @@ const read = (rel: string) =>
 const PER_ASSET_SENTENCES = [
   {
     file: "src/core/controller.ts",
-    fragment: "is in the receiving balance",
-    names: "${symbol}",
-    why: "the half-landed shield: the deposit applied and the merge did not, so this sentence is the user's only record of what is sitting where",
+    fragment: "Unshield it first",
+    names: "${assetCode}",
+    why: "removing a trustline while the private pocket still holds that asset: the sentence is the only thing standing in front of a stranded private balance",
   },
 ];
 

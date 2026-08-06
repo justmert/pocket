@@ -3,9 +3,9 @@
 // `PublicBalance.reserved` is computed by the worker, documented in the message
 // contract as "Protocol-locked reserve. Present for native only", carried
 // across the boundary on every native balance, and for a long time read by
-// nothing at all. The consequence is arithmetic a user cannot close: "Your
-// holdings" is the SPENDABLE figure, so an explorer shows 10 XLM where this
-// sheet shows 8.5, and nothing on it says where 1.5 went.
+// nothing at all. The consequence is arithmetic a user cannot close: "Holdings"
+// is the SPENDABLE figure, so an explorer shows 10 XLM where this sheet shows
+// 8.5, and nothing on it says where 1.5 went.
 //
 // Home's asset row names it. This sheet, which is where someone goes when they
 // want to understand one asset, did not.
@@ -13,7 +13,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // The sheet fetches a market read on mount, through `rpc.call`, which speaks to
 // the worker over `chrome.runtime`. There is no browser here; the sheet renders
-// its "price unavailable" state, which is not what this file is about.
+// its no-price state, which is not what this file is about.
 vi.stubGlobal("chrome", {
   runtime: {
     sendMessage: async () => ({ ok: false, error: "no worker in this harness" }),
@@ -35,6 +35,11 @@ function render(asset: PublicBalance) {
     hidden: false,
     copy: () => undefined,
     copied: false,
+    // The sheet renders the value chart, which reads its cache off the context
+    // (Chart.tsx: `useWallet().valueChartCache`). The real provider supplies a
+    // Map; this hand-rolled stub must too, or the chart's `chartCache.get` on
+    // mount reads `.get` off undefined and every render here throws.
+    valueChartCache: new Map(),
   } as unknown as Wallet;
   return renderToStaticMarkup(
     <Ctx.Provider value={value}>
@@ -60,7 +65,7 @@ const NATIVE = (reserved?: string): PublicBalance => ({
 describe("the asset detail sheet for native XLM", () => {
   it("names the reserve, so the figures add up", () => {
     const html = render(NATIVE("1.5000000"));
-    expect(html).toMatch(/network reserve/i);
+    expect(html).toMatch(/Held as network reserve/);
     expect(html).toContain("1.5000000");
   });
 
@@ -75,7 +80,7 @@ describe("the asset detail sheet for native XLM", () => {
 
   it("draws no row when there is nothing locked", () => {
     // A zero reserve row is noise, and a non-native asset has no reserve at all.
-    expect(render(NATIVE("0.0000000"))).not.toMatch(/network reserve/i);
-    expect(render(NATIVE())).not.toMatch(/network reserve/i);
+    expect(render(NATIVE("0.0000000"))).not.toMatch(/Held as network reserve/);
+    expect(render(NATIVE())).not.toMatch(/Held as network reserve/);
   });
 });

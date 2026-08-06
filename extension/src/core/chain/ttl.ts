@@ -84,9 +84,7 @@ async function entriesOrRefuse(
     latestLedger?: unknown;
   };
   if (!Array.isArray(raw.entries) || typeof raw.latestLedger !== "number") {
-    throw new LedgerReadError(
-      "the ledger did not answer the question: the response carried no entries field",
-    );
+    throw new LedgerReadError("Could not read the ledger. Try again.");
   }
   return raw as { entries: { liveUntilLedgerSeq?: number }[]; latestLedger: number };
 }

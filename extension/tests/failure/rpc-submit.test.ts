@@ -41,7 +41,7 @@ import { describeError } from "../../src/core/dispatch";
 import { FaultServer, DEAD_ORIGIN, rpcOk, rpcError, type Fault } from "./_harness/faults";
 
 const PASSPHRASE = "Test SDF Network ; September 2015";
-const GENERIC = "Something went wrong. Try again, and check your connection.";
+const GENERIC = "Something went wrong. Try again.";
 
 // Real XDR, produced by the SDK's own encoders. See the probe in the report.
 const RESULT_SUCCESS = "AAAAAAAAAGQAAAAAAAAAAAAAAAA=";
@@ -235,7 +235,7 @@ describe("an unresolved submission never says try again", () => {
 
     const outcome = await submitAndConfirm(client, tx, { attempts: 2, sleepMs: 5 });
     const shown = describeError(new SubmitOutcomeError(describeOutcome(outcome), outcome));
-    expect(shown).toContain("do not resend");
+    expect(shown).toContain("Do not resend");
     expect(shown).toContain(hash);
     expect(shown).not.toContain("Try again");
     expect(shown).not.toBe(GENERIC);
@@ -252,8 +252,8 @@ describe("an unresolved submission never says try again", () => {
     const outcome = await submitAndConfirm(client, tx, { attempts: 2, sleepMs: 5 });
     expect(outcome.kind).toBe("notAccepted");
     const shown = describeError(new SubmitOutcomeError(describeOutcome(outcome), outcome));
-    expect(shown).toContain("nothing was charged");
-    expect(shown).toContain("no sequence");
+    expect(shown).toContain("Nothing was charged");
+    expect(shown).toContain("in a few seconds");
     expect(shown).not.toBe(GENERIC);
     // It never entered the network, so polling it would strand the caller for
     // the whole timeBounds window.
@@ -288,12 +288,11 @@ describe("an unresolved submission never says try again", () => {
     const outcome = await submitAndConfirm(client, tx, { attempts: 2, sleepMs: 5 });
     expect(outcome.kind).toBe("failed");
     const shown = describeError(new SubmitOutcomeError(describeOutcome(outcome), outcome));
-    expect(shown).toContain("A fee was charged");
-    expect(shown).toContain("sequence number was used");
+    expect(shown).toContain("The fee was charged");
     expect(shown).not.toBe(GENERIC);
   });
 
-  it("says it can never apply now once its time window has passed", async () => {
+  it("says it expired unsent once its time window has passed", async () => {
     const tx = past();
     const hash = tx.hash().toString("hex");
     const server = await FaultServer.start({
@@ -307,7 +306,7 @@ describe("an unresolved submission never says try again", () => {
     expect(outcome.kind).toBe("expired");
     const shown = describeError(new SubmitOutcomeError(describeOutcome(outcome), outcome));
     expect(shown).toContain("Nothing was charged");
-    expect(shown).toContain("Build it again");
+    expect(shown).toContain("Send it again");
     expect(shown).not.toBe(GENERIC);
   });
 
@@ -364,7 +363,7 @@ describe("an unresolved submission never says try again", () => {
     expect(server.countOf("sendTransaction")).toBe(1);
     const shown = describeError(new SubmitOutcomeError(describeOutcome(outcome), outcome));
     expect(shown).not.toContain("SECRET-RPC-STRING");
-    expect(shown).toContain("do not resend");
+    expect(shown).toContain("Do not resend");
   });
 });
 

@@ -225,7 +225,7 @@ export async function onboard(page: Page, password = PASSWORD): Promise<string> 
   const phrase = cells.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
   await answerBackupCheck(page, phrase);
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
     timeout: 60_000,
   });
   return phrase;

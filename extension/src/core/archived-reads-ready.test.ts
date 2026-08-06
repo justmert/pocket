@@ -118,13 +118,6 @@ describe("a pocket whose entry archived but still answers", () => {
     expect(p.spendable).toBe("4.0000000");
   });
 
-  it("says the entry was restored, and that the next operation costs more", async () => {
-    ttlKind = "archived";
-    const p = await (await readyWallet()).privatePocket();
-    expect(p.message).toMatch(/dormant/i);
-    expect(p.message).toMatch(/fees|cost/i);
-  });
-
   it("treats an EVICTED entry the same way, since the read proves it exists", async () => {
     // `getLedgerEntries` omits an evicted entry entirely, so the TTL read says
     // "absent". For an account whose confidential state just answered, absent
@@ -132,7 +125,6 @@ describe("a pocket whose entry archived but still answers", () => {
     ttlKind = "absent";
     const p = await (await readyWallet()).privatePocket();
     expect(p.state).toBe("ready");
-    expect(p.message).toMatch(/dormant/i);
   });
 
   it("says nothing extra about a healthy pocket", async () => {

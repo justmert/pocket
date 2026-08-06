@@ -298,7 +298,7 @@ describe("a damaged vault is never reported as a wrong password", () => {
     const err = await unlockVault(damaged, PW).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(CorruptVaultError);
     const { describeError } = await import("../dispatch");
-    expect(describeError(err)).not.toMatch(/check your connection/i);
+    expect(describeError(err)).not.toMatch(/Something went wrong/i);
   });
 
   it("still reports an actual wrong password as one", async () => {

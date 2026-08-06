@@ -48,7 +48,7 @@ test("a worker eviction inside the idle window comes back unlocked", async () =>
 
     // A reopened page lands on Home, still unlocked, on the same account.
     const reopened = await w.popup();
-    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({
+    await expect(reopened.getByRole("button", { name: "Public", exact: true })).toBeVisible({
       timeout: 60_000,
     });
     expect(await addressOf(reopened)).toBe(address);
@@ -107,9 +107,9 @@ test("a wallet whose worker died before the backup was acknowledged is not orpha
     // offering onboarding here is how a user creates a SECOND seed over the one
     // whose phrase they just wrote down.
     const reopened = await w.popup();
-    await expect(reopened.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
+    await expect(reopened.getByRole("heading", { name: "Welcome back" })).toBeVisible();
     await unlockUi(reopened);
-    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({
+    await expect(reopened.getByRole("button", { name: "Public", exact: true })).toBeVisible({
       timeout: 60_000,
     });
     const address = await addressOf(reopened);
@@ -122,7 +122,7 @@ test("a wallet whose worker died before the backup was acknowledged is not orpha
     // The restore screen asks twice; one field leaves the submit disabled.
     await p2.getByRole("textbox", { name: "Confirm new password", exact: true }).fill(PASSWORD);
     await p2.getByRole("button", { name: "Restore wallet" }).click();
-    await expect(p2.getByRole("button", { name: "Public pocket" })).toBeVisible({
+    await expect(p2.getByRole("button", { name: "Public", exact: true })).toBeVisible({
       timeout: 60_000,
     });
     expect(await addressOf(p2)).toBe(address);
@@ -147,7 +147,7 @@ test("worker death with nothing submitted leaves no in-flight or staged record",
     // wallet that has never submitted anything.
     const reopened = await w.popup();
     await unlockUi(reopened);
-    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({
+    await expect(reopened.getByRole("button", { name: "Public", exact: true })).toBeVisible({
       timeout: 60_000,
     });
     await expect(reopened.getByText("Unfinished transaction")).toHaveCount(0);
@@ -162,11 +162,13 @@ test("a second tab left on Home after the first locked cannot spend", async () =
     const a = await w.popup();
     await onboard(a);
     const b = await w.popup();
-    await expect(b.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
+    await expect(b.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+      timeout: 60_000,
+    });
 
     await a.getByRole("button", { name: "More" }).click();
-    await a.getByRole("menuitem", { name: "Lock wallet" }).click();
-    await expect(a.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
+    await a.getByRole("menuitem", { name: "Lock" }).click();
+    await expect(a.getByRole("heading", { name: "Welcome back" })).toBeVisible();
 
     // Tab B still renders Home. That is stale UI, which is survivable; what is
     // not survivable is a stale tab still being able to act.
@@ -201,10 +203,10 @@ test("a browser restart keeps the wallet exactly as it was", async () => {
     const again = await relaunch(dir);
     try {
       const page2 = await again.popup();
-      await expect(page2.getByText(/Enter your password to unlock Pocket/)).toBeVisible();
+      await expect(page2.getByRole("heading", { name: "Welcome back" })).toBeVisible();
       expect(await storageKeys(page2)).toEqual(keys);
       await unlockUi(page2);
-      await expect(page2.getByRole("button", { name: "Public pocket" })).toBeVisible({
+      await expect(page2.getByRole("button", { name: "Public", exact: true })).toBeVisible({
         timeout: 60_000,
       });
       expect(await addressOf(page2)).toBe(address);
@@ -296,7 +298,7 @@ test("the idle lock fires, and a status poll does not hold it off", async () => 
     // And the lock is a real one: the vault is intact and the password gets in.
     const reopened = await w.popup();
     await unlockUi(reopened);
-    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({
+    await expect(reopened.getByRole("button", { name: "Public", exact: true })).toBeVisible({
       timeout: 60_000,
     });
   } finally {

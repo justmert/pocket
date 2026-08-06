@@ -300,9 +300,7 @@ export function CctpSend({ onClose }: { onClose: () => void }) {
                 onBack={onClose}
                 right={
                   <InfoTip t={t} label="About cross-chain USDC">
-                    This burns USDC on Stellar and mints it on the chosen chain via Circle's CCTP.
-                    Pocket signs the Stellar side; the mint on the other chain is a separate
-                    transaction there, which needs gas on that chain or a relayer.
+                    You finish the mint on the other chain, and need gas there.
                   </InfoTip>
                 }
               />
@@ -447,8 +445,8 @@ export function CctpSend({ onClose }: { onClose: () => void }) {
                   invalid={recipient !== "" && !recipientValid}
                   hint={
                     recipient !== "" && !recipientValid
-                      ? "That is not a 20-byte EVM address (0x followed by 40 hex characters)."
-                      : "The EVM address that receives the USDC on the other chain."
+                      ? "Needs 0x and 40 hex characters."
+                      : undefined
                   }
                   onSubmit={() => ready && void review()}
                 />
@@ -504,19 +502,31 @@ export function CctpSend({ onClose }: { onClose: () => void }) {
         // only a fallback for the frame before the summary lands.
         to={summary?.recipient ?? recipient.trim()}
         fee={summary?.fee}
-        // the destination chain and the dust are SIGNED and were drawn nowhere.
         // an EVM address is valid on every EVM chain, so the Base sheet and the
-        // Arbitrum sheet were identical except for an address that is correct on
-        // both: the one fact that decides where the money lands was missing from
-        // the screen whose job is to state it. the dust is the remainder the
-        // 7dp->6dp scale cannot carry, and the sheet said it "stays on Stellar"
-        // in an effects line behind a tap.
-        facts={[
-          ...(summary?.chain ? [{ label: "To chain", value: summary.chain }] : []),
-          ...(summary?.dust && Number(summary.dust) > 0
-            ? [{ label: "Stays on Stellar", value: `${summary.dust} USDC` }]
-            : []),
-        ]}
+        // Arbitrum sheet are identical except for an address correct on both:
+        // the one fact deciding where the money lands. a standing row, from the
+        // worker's own reading, not the picker's state.
+        facts={
+          summary
+            ? [
+                {
+                  label: "To chain",
+                  value: (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      <ChainLogo domain={summary.domain} size={18} />
+                      {summary.chain}
+                    </span>
+                  ),
+                },
+                // `/[1-9]/`, not `Number(...) > 0`: the same non-zero test the rest
+                // of the wallet uses on a decimal string, and no float in the path
+                // of a figure the user is about to sign.
+                ...(summary.dust && /[1-9]/.test(summary.dust)
+                  ? [{ label: "Stays on Stellar", value: `${summary.dust} USDC` }]
+                  : []),
+              ]
+            : []
+        }
         effects={summary?.effects ?? []}
         error={error}
         unresolved={unresolved}

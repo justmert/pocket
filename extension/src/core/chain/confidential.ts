@@ -17,12 +17,19 @@ import type { rpc } from "@stellar/stellar-sdk";
 import { decodePoint, type Point } from "../crypto/grumpkin";
 import type { ConfidentialAccount } from "../witness/types";
 
-/** Contract error codes, mapped to what a user can actually do about them. */
 /** A read that failed for a reason we can state. Never carries an RPC string. */
 export class ConfidentialReadError extends Error {
   override readonly name = "ConfidentialReadError";
 }
 
+/**
+ * 3508 to 3514 all say one thing: this deployment was wired up wrong. A user
+ * can neither cause nor fix any of them, so seven wordings of the same dead end
+ * are seven ways of telling someone to go away. One sentence, one meaning.
+ */
+const MISCONFIGURED = "This network's private pocket is misconfigured.";
+
+/** Contract error codes, mapped to what a user can actually do about them. */
 export const CONTRACT_ERRORS: Record<number, string> = {
   3500: "This account already has a private pocket.",
   3501: "That account has no private pocket yet. Ask them to set one up first.",
@@ -32,13 +39,13 @@ export const CONTRACT_ERRORS: Record<number, string> = {
   3505: "That spending allowance has expired.",
   3506: "The proof was rejected.",
   3507: "The transaction data was malformed.",
-  3508: "This deployment has no underlying asset set.",
-  3509: "This deployment has no verifier set.",
-  3510: "This deployment has no auditor registry set.",
-  3511: "This deployment is not fully initialised.",
-  3512: "This deployment is already initialised.",
-  3513: "The underlying asset is already set.",
-  3514: "A value was not canonically encoded.",
+  3508: MISCONFIGURED,
+  3509: MISCONFIGURED,
+  3510: MISCONFIGURED,
+  3511: MISCONFIGURED,
+  3512: MISCONFIGURED,
+  3513: MISCONFIGURED,
+  3514: MISCONFIGURED,
 };
 
 /**
@@ -63,14 +70,13 @@ export class ContractRefusedError extends Error {
  * ledger, and stellar-sdk implements its failure as
  * `throw new Error(simResponse.error)` (rpc/server.js:1098). `name` is
  * therefore "Error", which is on neither allowlist in `dispatch.ts`, so EVERY
- * contract refusal on EVERY write path rendered as "Something went wrong. Try
- * again, and check your connection." Measured live: six of six real failures
- * produced that sentence, including #3506, for which the wallet already holds
- * the words "The proof was rejected."
+ * contract refusal on EVERY write path rendered as the generic fallback.
+ * Measured live: six of six real failures produced that sentence, including
+ * #3506, for which the wallet already holds the words "The proof was rejected."
  *
- * That sentence is worse than useless here. It names a cause that is not the
- * cause, and it invites a retry of something deterministic: a diverged private
- * transfer re-proves the same state and fails identically, forever.
+ * That sentence is worse than useless here. It invites a retry of something
+ * deterministic: a diverged private transfer re-proves the same state and fails
+ * identically, forever.
  *
  * The read path has done this correctly for a long time; only writes were
  * missed. `readConfidentialAccount` extracts the same code from the same shape
@@ -155,10 +161,7 @@ export async function readConfidentialAccount(
   // never collapse into the same branch.
   const result = (sim as { result?: { retval?: xdr.ScVal } }).result;
   if (!result || !result.retval) {
-    throw new ConfidentialReadError(
-      "The ledger did not answer whether this account has a private pocket, so Pocket will " +
-        "not guess. Try again in a moment.",
-    );
+    throw new ConfidentialReadError("Could not read your private pocket. Try again in a moment.");
   }
   return decodeConfidentialAccount(result.retval);
 }
@@ -191,8 +194,7 @@ export async function readAuditorKey(
   const sim = await server.simulateTransaction(tx);
   if ("restorePreamble" in sim && sim.restorePreamble) {
     throw new ConfidentialReadError(
-      "The auditor registry is dormant on this network and has to be reactivated before " +
-        "private transfers can be proved.",
+      "Private transfers are unavailable: the auditor registry is dormant.",
     );
   }
   if ("error" in sim) {

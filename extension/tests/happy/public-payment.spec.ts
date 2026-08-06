@@ -75,7 +75,7 @@ test("a payment leaves one wallet, arrives in another, and the ledger agrees", a
     await expect(wallet.page.getByText("pocket-t1", { exact: true })).toBeVisible();
     // the signed facts are rows now (the amount and memo above, the fee here); the
     // "what this does" enumeration moved into an info tip named by this label.
-    await expect(wallet.page.getByText("What this does")).toBeVisible();
+    await expect(wallet.page.getByRole("button", { name: "What this does" })).toBeVisible();
     await expect(wallet.page.getByText("Network fee", { exact: true })).toBeVisible();
     await expect(
       wallet.page.getByText(/could not determine what this transaction does/i),
@@ -83,7 +83,7 @@ test("a payment leaves one wallet, arrives in another, and the ledger agrees", a
 
     const hash = await wallet.confirmPayment();
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
-    await expect(wallet.page.getByText("Transaction successful")).toBeVisible();
+    await expect(wallet.page.getByText("Success")).toBeVisible();
 
     // "Sent" on a screen is a claim. This is the evidence.
     const tx = await ledger.waitForTransaction(hash);

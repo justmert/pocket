@@ -11,7 +11,7 @@ import { Button, Header, Notice, Spinner, EmptyState, Route } from "../primitive
 import { InfoTip } from "../Tooltip";
 import { ConfirmSheet, useOnce } from "../flow";
 import { AssetMark } from "./Home";
-import { shortAddress } from "../Address";
+import { AddressBlock, shortAddress } from "../Address";
 import { Search } from "../icons";
 import { NETWORKS } from "../../../../core/config";
 import { chipPad, fonts, radius, space, text, type Theme } from "../theme";
@@ -160,12 +160,11 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
   // TWO different claims, and they were one word.
   //
   // `known` is an asset THIS BUILD configures by code AND issuer, which is the
-  // only thing here the wallet can vouch for. `a.domain` is StellarExpert echoing
-  // the issuer's own `home_domain`, which is one `set_options` operation away for
-  // anybody, including the counterfeit sitting directly above or below in the same
-  // list. both wore one solid accent pill at weight 700, so on the exact screen
-  // whose job is "the code is not identity: check the domain", both candidates of
-  // that judgement carried the loudest mark in the product.
+  // only thing here the wallet can vouch for, so it is the only one that gets a
+  // mark. `a.domain` is StellarExpert echoing the issuer's own `home_domain`,
+  // which is one `set_options` operation away for anybody, including the
+  // counterfeit sitting directly above or below in the same list: it sorts a
+  // result up, and it is shown as the domain itself, never as a badge.
   const isKnown = (a: AssetSearchResult) =>
     known.some((k) => k.code === a.code && k.issuer === a.issuer);
   const isVerified = (a: AssetSearchResult) => Boolean(a.domain) || isKnown(a);
@@ -187,9 +186,7 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
             // outside service, had no tip at all.
             right={
               <InfoTip t={t} label="About the asset directory">
-                Search runs against StellarExpert&rsquo;s public asset directory, so what you type
-                here is sent to them. Adding an asset opens a trustline from your own account and is
-                signed by this wallet.
+                What you type goes to StellarExpert.
               </InfoTip>
             }
           />
@@ -233,22 +230,9 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
 
         {ambiguous && (
           <Notice t={t} tone="exposed">
-            Several assets share this code. The code is not identity: check the domain, and add the
-            issuer you trust.
+            Same code, different issuers. Check the domain.
           </Notice>
         )}
-
-        {/* what adding actually gets you, said BEFORE the 0.5 XLM reserve is
-                spent. an added asset now appears on Home and in the send picker
-                (`balances()` reads the account's real trustlines), but Pocket
-                carries a price feed only for the assets it ships, so an added one
-                shows its own balance and no dollar value. saying which is better
-                than letting a blank column read as zero. */}
-        <Notice t={t} tone="exposed" bare>
-          Adding an asset lets this account receive and hold it, and it appears on your home screen.
-          Pocket has no price for assets it does not ship, so it will show its balance without a
-          dollar value.
-        </Notice>
 
         {searchError && (
           <Notice t={t} tone="danger">
@@ -284,7 +268,7 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
             key={`${a.code}:${a.issuer}`}
             t={t}
             asset={a}
-            verified={isKnown(a) ? "known" : isVerified(a) ? "domain" : null}
+            known={isKnown(a)}
             onAdd={() => void startAdd(a)}
           />
         ))}
@@ -296,20 +280,21 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
         heading={`Add ${adding?.code ?? ""}`}
         code={adding?.code ?? "XLM"}
         fee={summary?.fee}
-        // the reserve is the largest number in this transaction by five orders of
-        // magnitude (0.5 XLM against a fee around 0.00001) and it was stated only
-        // inside the effects list, behind a tap. it is locked, not spent, and the
-        // row says which.
-        facts={[
-          // The ISSUER, on the one screen where the issuer IS the decision. A
-          // live directory search for USDC on testnet returns fourteen addable
-          // assets, and this sheet named none of them apart: the heading, the
-          // code and the effects were identical for the real one and for a
-          // stranger's. In full, never truncated, because it is the only
-          // distinguishing field.
-          ...(adding?.issuer ? [{ label: "Issued by", value: adding.issuer }] : []),
-          { label: "Reserve locked", value: "0.5 XLM, released if removed" },
-        ]}
+        // the issuer IS the decision here: a live directory search for USDC on
+        // testnet returns fourteen addable assets, and without this row the
+        // confirm for the real one and for a stranger's are identical strings.
+        // in full, never truncated, the same block the To row uses.
+        facts={
+          summary?.issuer
+            ? [
+                {
+                  label: "Issuer",
+                  value: <AddressBlock t={t} address={summary.issuer} compact />,
+                },
+                { label: "Reserve locked", value: "0.5 XLM, released if removed" },
+              ]
+            : []
+        }
         effects={summary?.effects ?? []}
         error={error}
         unresolved={unresolved}
@@ -329,14 +314,13 @@ export function ChooseAsset({ onClose }: { onClose: () => void }) {
 function ResultRow({
   t,
   asset,
-  verified,
+  known,
   onAdd,
 }: {
   t: Theme;
   asset: AssetSearchResult;
-  /** `known` is configured by this build, code AND issuer. `domain` is only that
-   *  the issuer published a home domain, which anyone can do. */
-  verified: "known" | "domain" | null;
+  /** configured by this build, code AND issuer: the one claim Pocket can make. */
+  known: boolean;
   onAdd: () => void;
 }) {
   // anchored to the END of the domain, the same layout-effect the approval
@@ -392,13 +376,12 @@ function ResultRow({
           <span style={{ ...text.rowTitle, color: t.text }}>{asset.code}</span>
           {/* the solid accent pill is kept for the ONE claim the wallet can make
               on its own: an asset this build configures by code and issuer. the
-              weaker fact, that the issuer published a home domain, gets a quiet
-              neutral chip that says what it actually means, because setting a
-              home domain is one operation and a counterfeit in the same list can
-              do it too. one word covering both was the defect: the loudest mark
-              in the product sat on both candidates of the identity judgement this
-              screen exists to help the user make. */}
-          {verified === "known" && (
+              weaker fact, that the issuer published a home domain, wears no mark
+              at all, because setting a home domain is one operation and a
+              counterfeit in the same list can do it too. both wearing the pill
+              was the defect: the loudest mark in the product sat on both
+              candidates of the identity judgement this screen exists for. */}
+          {known && (
             <span
               style={{
                 ...text.caption,
@@ -413,22 +396,6 @@ function ResultRow({
               title="Pocket ships this asset's issuer address"
             >
               Known to Pocket
-            </span>
-          )}
-          {verified === "domain" && (
-            <span
-              style={{
-                ...text.caption,
-                fontWeight: 600,
-                padding: chipPad.badge,
-                borderRadius: radius.pill,
-                background: t.field,
-                color: t.sub,
-                flex: "0 0 auto",
-                whiteSpace: "nowrap",
-              }}
-            >
-              Domain listed
             </span>
           )}
         </span>

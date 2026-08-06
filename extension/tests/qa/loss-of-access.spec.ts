@@ -498,7 +498,7 @@ test("no screen offers a rebuild this build cannot perform", async ({ wallet, ha
   // the sheet renders a skeleton until the pocket's state arrives, and a count
   // taken before then would report "nothing offered" for a screen that is about
   // to offer something.
-  await expect(card.getByText("Needs rebuilding"))
+  await expect(card.getByText("Needs rebuilding").first())
     .toBeVisible({ timeout: WAITS.ledgerRead })
     .catch(() => undefined);
   if ((await card.getByRole("button", { name: /Rebuild from history/i }).count()) > 0) {
@@ -1071,9 +1071,8 @@ test("the home screen shows received funds as held, with the control that releas
 
   await wallet.openPrivatePocket();
 
-  // "Received funds sit here until you make them spendable." is a claim the
-  // brief lists verbatim. The figure has to be there, named, and next to the
-  // one control that changes it.
+  // The figure has to be there, named, and next to the one control that
+  // changes it.
   await expect(page.getByText("Receiving", { exact: true })).toBeVisible({
     timeout: WAITS.ledgerRead,
   });

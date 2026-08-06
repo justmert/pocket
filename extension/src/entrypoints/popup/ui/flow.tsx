@@ -15,7 +15,7 @@ import { Check, Copy, External, Eye } from "./icons";
 import { explorerUrl } from "./explorer";
 import { usd } from "./money";
 import { NO_MEMO } from "./copy";
-import { COPY_HOLD_MS, fonts, radius, space, text, type Theme } from "./theme";
+import { COPY_HOLD_MS, fonts, space, text, type Theme } from "./theme";
 
 /**
  * the worker's current phase while an operation is running.
@@ -352,41 +352,25 @@ function FactRow({
 }
 
 /**
- * the review's one status line, the reference's pill in our terms.
+ * the full "what this does" enumeration, one tap away on the info button beside
+ * the review's heading.
  *
- * one pill under the facts, its tone saying what this transaction exposes, and the
- * full "what this does" enumeration one tap away on the info button ON THE LEFT.
- * there used to be a decorative shield beside the info button: two icons for the
- * one affordance, one of them doing nothing, so the shield is gone and the info
- * button stands where it was. a move, whose amount lands on the public ledger,
- * wears the pocket's "this is visible" accent so the one surprising thing is not
- * buried. the label stays "What this does" so the review is named and findable.
+ * it is the icon and nothing else: the pill it used to sit in spent 44px of a
+ * 384px screen on a section header for a section behind a tap, and read that
+ * header out twice to anyone listening (once as the icon's name, once as the
+ * text beside it).
  */
-function ReviewStatus({ t, exposed, effects }: { t: Theme; exposed: boolean; effects: string[] }) {
-  const fg = exposed ? t.exposed : t.sub;
-  const bg = exposed ? t.exposedSoft : t.field;
+function EffectsTip({ t, effects }: { t: Theme; effects: string[] }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: space.sm,
-        background: bg,
-        borderRadius: radius.pill,
-        padding: `10px ${space.md}px`,
-      }}
-    >
-      <InfoTip t={t} label="What this does">
-        <ul style={{ margin: 0, paddingLeft: space.md, lineHeight: 1.5 }}>
-          {effects.map((e, i) => (
-            <li key={i} style={{ marginBottom: 3, overflowWrap: "anywhere" }}>
-              {e}
-            </li>
-          ))}
-        </ul>
-      </InfoTip>
-      <span style={{ ...text.rowSub, fontWeight: 600, color: fg, flex: 1 }}>What this does</span>
-    </div>
+    <InfoTip t={t} label="What this does">
+      <ul style={{ margin: 0, paddingLeft: space.md, lineHeight: 1.5 }}>
+        {effects.map((e, i) => (
+          <li key={i} style={{ marginBottom: 3, overflowWrap: "anywhere" }}>
+            {e}
+          </li>
+        ))}
+      </ul>
+    </InfoTip>
   );
 }
 
@@ -435,7 +419,7 @@ export function WalletReview({
   to?: string;
   fee?: string;
   memo?: { value?: string; type?: "text" | "id" | "hash" | "return" };
-  /** a dollar figure for the amount, shown as its own "total value" row. */
+  /** a dollar figure for the amount, shown as its own "value" row. */
   fiat?: number | null;
   effects: string[];
   /** the amount row's label: "Send", "Shield", "Unshield". */
@@ -447,31 +431,35 @@ export function WalletReview({
   /**
    * extra SIGNED facts, one row each, for whatever a flow commits that the
    * amount/fee/memo table cannot name: the destination chain, a swap's minimum
-   * received, the dust a bridge cannot carry, a trustline's reserve.
-   *
-   * rows and not an `effects` line, because `effects` is drawn inside an InfoTip
-   * and this file's own rule is that "every SIGNED fact stays VISIBLE ... a fact
-   * behind a hover is a blind signature". Sending to Base put the word Base
-   * nowhere on the sheet, and the Arbitrum sheet was identical except for an
-   * address that is valid on both.
+   * received, a trustline's issuer. rows and not an `effects` line, because
+   * `effects` sits behind the info tip and this file's rule is that a fact
+   * behind a hover is a blind signature.
    */
-  facts?: { label: string; value: string }[];
+  facts?: { label: string; value: ReactNode }[];
   /** the error above is an UNRESOLVED submission, not a failure. see `OpVerdict`. */
   unresolved?: boolean;
 }) {
-  const exposed = treatment === "exposed";
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: space.lg }}>
       {/* the mark over the operation name: the reference leads its confirm with the
-          counterparty's avatar and a title, and so do we. */}
-      {(mark || heading) && (
+          counterparty's avatar and a title, and so do we. the effects tip stands
+          beside the heading, so the enumeration is one tap from the name of the
+          thing being signed rather than a band of its own further down. */}
+      {(mark || heading || effects.length > 0) && (
         <div style={{ display: "flex", flexDirection: "column", gap: space.sm }}>
           {mark && (
             <IconDisc t={t} size={52}>
               {mark}
             </IconDisc>
           )}
-          {heading && <h2 style={{ ...text.screenTitle, color: t.text, margin: 0 }}>{heading}</h2>}
+          {(heading || effects.length > 0) && (
+            <div style={{ display: "flex", alignItems: "center", gap: space.sm }}>
+              {heading && (
+                <h2 style={{ ...text.screenTitle, color: t.text, margin: 0 }}>{heading}</h2>
+              )}
+              {effects.length > 0 && <EffectsTip t={t} effects={effects} />}
+            </div>
+          )}
         </div>
       )}
 
@@ -553,8 +541,6 @@ export function WalletReview({
         </div>
       )}
 
-      {effects.length > 0 && <ReviewStatus t={t} exposed={exposed} effects={effects} />}
-
       {alreadyDone && (
         <Notice t={t} tone="exposed">
           {alreadyDone}
@@ -634,21 +620,11 @@ export function ReviewPanel({
   fiat?: number | null;
   effects: string[];
   warning?: string;
+  /** extra SIGNED facts, one row each. see `WalletReview`. */
+  facts?: { label: string; value: ReactNode }[];
   /** set when the wallet could not read what it is being asked to sign. */
   blocked?: string;
   error?: string | null;
-  /**
-   * extra SIGNED facts, one row each, for whatever a flow commits that the
-   * amount/fee/memo table cannot name: the destination chain, a swap's minimum
-   * received, the dust a bridge cannot carry, a trustline's reserve.
-   *
-   * rows and not an `effects` line, because `effects` is drawn inside an InfoTip
-   * and this file's own rule is that "every SIGNED fact stays VISIBLE ... a fact
-   * behind a hover is a blind signature". Sending to Base put the word Base
-   * nowhere on the sheet, and the Arbitrum sheet was identical except for an
-   * address that is valid on both.
-   */
-  facts?: { label: string; value: string }[];
   /** the error above is an UNRESOLVED submission, not a failure. see `OpVerdict`. */
   unresolved?: boolean;
   busy: boolean;
@@ -895,8 +871,7 @@ export function Receipt({
     <div style={{ display: "flex", flexDirection: "column", gap: space.lg }}>
       {/* the mark and the outcome, centred, the reference's success sheet. the
           claim is honest: confirm* only returns AFTER the ledger includes the
-          transaction, so "successful" is a confirmed fact, not one claimed before
-          it. the ledger line stays as the evidence a reader (and the suite) checks. */}
+          transaction, so "Success" is a confirmed fact, not one claimed before it. */}
       <div
         style={{
           display: "flex",
@@ -930,39 +905,41 @@ export function Receipt({
         )}
       </div>
 
-      {/* the hash and the explorer as rows, not a block: the row shows a label and
-          one control. the full hash is copied on tap and kept in the accessibility
-          tree, which is what preserves verifiability without printing hex. */}
+      {/* the hash as one row: a label, the copy control, and the explorer link
+          beside it, exactly as the second-transaction row below already does it.
+          the explorer had a 46px row of its own holding one label and one icon.
+          the full hash is copied on tap and kept in the accessibility tree, which
+          is what preserves verifiability without printing hex. */}
       <div style={{ display: "flex", flexDirection: "column" }}>
         <ReceiptRow t={t} label="Transaction ID">
-          <button
-            type="button"
-            aria-label={copied ? "Copied" : "Copy transaction ID"}
-            onClick={() =>
-              void navigator.clipboard.writeText(hash).then(
-                () => setCopied(true),
-                () => undefined,
-              )
-            }
-            style={{ all: "unset", cursor: "pointer", display: "flex", color: t.accent }}
-          >
-            {copied ? <Check size={18} sw={2.4} /> : <Copy size={18} />}
-            <span style={HIDDEN}>{hash}</span>
-          </button>
-        </ReceiptRow>
-        {network && (
-          <ReceiptRow t={t} label="Explorer">
-            <a
-              href={explorerUrl(network, "tx", hash)}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Open on stellar.expert"
-              style={{ color: t.accent, display: "flex" }}
+          <div style={{ display: "flex", alignItems: "center", gap: space.sm }}>
+            <button
+              type="button"
+              aria-label={copied ? "Copied" : "Copy transaction ID"}
+              onClick={() =>
+                void navigator.clipboard.writeText(hash).then(
+                  () => setCopied(true),
+                  () => undefined,
+                )
+              }
+              style={{ all: "unset", cursor: "pointer", display: "flex", color: t.accent }}
             >
-              <External size={18} />
-            </a>
-          </ReceiptRow>
-        )}
+              {copied ? <Check size={18} sw={2.4} /> : <Copy size={18} />}
+              <span style={HIDDEN}>{hash}</span>
+            </button>
+            {network && (
+              <a
+                href={explorerUrl(network, "tx", hash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Open on stellar.expert"
+                style={{ color: t.accent, display: "flex" }}
+              >
+                <External size={18} />
+              </a>
+            )}
+          </div>
+        </ReceiptRow>
         {/* the second transaction, when the operation signed two. one row
             rather than the pair above, so a one-transaction receipt is drawn
             exactly as it always was. */}
@@ -988,7 +965,7 @@ export function Receipt({
           </Button>
         )}
         <Button t={t} onClick={onDone}>
-          Go to Home
+          Done
         </Button>
       </ButtonStack>
     </div>
@@ -1007,10 +984,10 @@ export function Receipt({
  *   about an hour of brute force, so a shortened address is not what anyone
  *   approves.
  *
- *   WHAT THIS DOES is listed. it is the anti-blind-signing surface: the bytes
- *   that leave the machine have to be the bytes the screen described, and
- *   tests/qa/signed-equals-shown.spec.ts reconstructs the envelope from this
- *   list. it is kept compact rather than removed.
+ *   WHAT THIS DOES is listed, on the info button beside the heading. it is the
+ *   anti-blind-signing surface: the bytes that leave the machine have to be the
+ *   bytes the screen described. every SIGNED fact is a visible row; only the
+ *   enumeration of them sits behind the icon.
  *
  * the prose the old screen wrote inline (the memo caveat especially) moves into
  * an info tooltip, which is the rule now: the screen states the fact, the tip
@@ -1068,20 +1045,10 @@ export function ConfirmSheet({
   fiat?: number | null;
   effects: string[];
   warning?: string;
+  /** extra SIGNED facts, one row each. see `WalletReview`. */
+  facts?: { label: string; value: ReactNode }[];
   blocked?: string;
   error?: string | null;
-  /**
-   * extra SIGNED facts, one row each, for whatever a flow commits that the
-   * amount/fee/memo table cannot name: the destination chain, a swap's minimum
-   * received, the dust a bridge cannot carry, a trustline's reserve.
-   *
-   * rows and not an `effects` line, because `effects` is drawn inside an InfoTip
-   * and this file's own rule is that "every SIGNED fact stays VISIBLE ... a fact
-   * behind a hover is a blind signature". Sending to Base put the word Base
-   * nowhere on the sheet, and the Arbitrum sheet was identical except for an
-   * address that is valid on both.
-   */
-  facts?: { label: string; value: string }[];
   /** the error above is an UNRESOLVED submission, not a failure. see `OpVerdict`. */
   unresolved?: boolean;
   busy: boolean;
@@ -1128,7 +1095,7 @@ export function ConfirmSheet({
       // its content, with the compose screen dimmed above it, not a page that
       // replaces it. the sheet slides up over the dimmed backdrop, exactly like
       // the receive sheet does.
-      // no X: Cancel (review), Go to Home (working) and Done (receipt) are the ways
+      // no X: Cancel (review), Go home (working) and Done (receipt) are the ways
       // out, and while working the backdrop is inert (onClose is a no-op above), so
       // an approved transaction is never dismissed by a stray tap.
       hideClose

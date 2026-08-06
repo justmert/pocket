@@ -28,6 +28,7 @@ import { COPY_HOLD_MS, motion, theme, type Pocket, type Theme } from "./theme";
 import type {
   PrivatePocket,
   PublicBalance,
+  ValueChart,
   WalletStatus,
   YieldPosition,
 } from "../../../core/messages";
@@ -158,6 +159,18 @@ export interface Wallet {
    *  remembered across reopens. a display flag only; nothing here is secret. */
   hidden: boolean;
   toggleHidden(): void;
+
+  /**
+   * the popup's cache of drawn value curves, keyed `subject:range`.
+   *
+   * held HERE, on the provider, because it never unmounts: leaving Home for
+   * Settings unmounts Home and drops any state the chart hook kept, so a module
+   * variable was the only thing surviving the round trip, and that did not hold
+   * for reasons that never reproduced in isolation. a ref on the provider is React
+   * state that is guaranteed to outlive a child screen, so a return paints the
+   * last curve at once instead of a skeleton while the worker re-answers.
+   */
+  valueChartCache: Map<string, ValueChart>;
 
   /** saved recipient addresses (a local address book), most-recent first. */
   savedAddresses: string[];
@@ -367,6 +380,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // to be pure and react is free to run it more than once per update.
   const opsRef = useRef<BgOp[]>(backgroundOps);
   opsRef.current = backgroundOps;
+  // created once, lives as long as the provider (the whole session), so the value
+  // chart survives a trip to Settings and back. see the `valueChartCache` doc.
+  const valueChartCache = useRef(new Map<string, ValueChart>()).current;
   // same reason: `loadPrivate` is a `useCallback` with empty deps (adding one
   // would re-run every effect that depends on its identity), and it has to know
   // how many private assets this deployment actually has.
@@ -992,6 +1008,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     toast,
     toastTone,
     showToast,
+    valueChartCache,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

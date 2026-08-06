@@ -278,7 +278,7 @@ describe("a rebuilt balance is checked against the contract, not trusted", () =>
     ).rejects.toThrow(RecoveryMismatchError);
   });
 
-  it("names the side that disagreed, and says the funds are safe", async () => {
+  it("refuses a mismatch in the wallet's own words", async () => {
     const url = await archiveServing([depositEvent(ACCOUNT, 1n, 100)]);
     const err = await recoverOpenings(url, TOKEN, ACCOUNT, VK, {
       spendableCommitment: IDENTITY,
@@ -288,10 +288,8 @@ describe("a rebuilt balance is checked against the contract, not trusted", () =>
     const shown = describeError(err);
     // The refusal reaches the user in our words. A "check your connection" here
     // would send someone to retry a thing that will never succeed.
-    expect(shown).toMatch(/does not match/i);
-    expect(shown).toMatch(/receiving/i);
-    expect(shown).toMatch(/safe on chain/i);
-    expect(shown).not.toMatch(/check your connection/i);
+    expect(shown).toMatch(/does not match the ledger/i);
+    expect(shown).not.toMatch(/Something went wrong/i);
   });
 
   it("refuses before contacting anything when no archive is configured", async () => {
@@ -339,10 +337,10 @@ describe("a rebuilt balance is checked against the contract, not trusted", () =>
     } as never).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(RecoveryUnavailableError);
     const shown = describeError(err);
-    expect(shown).toMatch(/missing the transaction details/i);
+    expect(shown).toMatch(/missing details/i);
     expect(shown).toMatch(/received/i);
     expect(shown).toMatch(/safe on chain/i);
-    expect(shown).not.toMatch(/check your connection/i);
+    expect(shown).not.toMatch(/Something went wrong/i);
     // And not the internal wording, which names circuit variables.
     expect(shown).not.toMatch(/r_e_point|v_tilde|sigma/);
   });
@@ -351,7 +349,7 @@ describe("a rebuilt balance is checked against the contract, not trusted", () =>
     // The sibling of the case above, and it escaped the same translation. A
     // `MalformedEventError` is an archive serving a shape the contract does not
     // emit, which no retry can affect, and it reached the screen as "Something
-    // went wrong. Try again, and check your connection."
+    // went wrong. Try again."
     //
     // Truncating the event body is the cheapest faithful way to produce one: the
     // field decoders in sync.ts throw exactly this when a value is the wrong
@@ -370,7 +368,7 @@ describe("a rebuilt balance is checked against the contract, not trusted", () =>
     // The two failures this closes: the generic network excuse, and the raw
     // archive-authored detail (an event id, a field name, a byte length) that
     // the allowlist exists to keep off the screen.
-    expect(shown).not.toMatch(/check your connection/i);
+    expect(shown).not.toMatch(/Something went wrong/i);
     expect(shown).not.toMatch(/\bbytes\b|b_tilde|event \d/i);
   });
 
@@ -395,7 +393,7 @@ describe("a rebuilt balance is checked against the contract, not trusted", () =>
  * contract holds, which produces the identical mismatch and needs nothing but
  * time. Measured live: the archive reported ingested_through 4,033,277 against
  * a chain tip of 4,037,058, five hours behind, which is the ordinary state of a
- * catching-up indexer. The refusal called it "incomplete or wrong" either way.
+ * catching-up indexer. The refusal blamed the history either way.
  */
 describe("why the rebuilt balance did not match", () => {
   it("says the archive is behind when it is behind", async () => {
@@ -415,12 +413,11 @@ describe("why the rebuilt balance did not match", () => {
     ).catch((e: unknown) => e);
 
     const said = (err as Error).message;
-    expect(said, "blamed the history for a lag").not.toMatch(/incomplete or wrong/i);
     expect(said).toMatch(/800 ledgers behind/);
-    expect(said).toMatch(/wait for it to catch up/i);
+    expect(said).toMatch(/wait and try again/i);
   });
 
-  it("still says the history is wrong when the archive is current", async () => {
+  it("claims no lag when the archive is current", async () => {
     // Ingested through 900, chain at 900: nothing outstanding, so the replay
     // really does disagree with the contract and that is worth stopping for.
     const url = await archiveServing([depositEvent(ACCOUNT, 10_000_000n, 100)], 900);
@@ -435,21 +432,21 @@ describe("why the rebuilt balance did not match", () => {
       } as never,
       900,
     ).catch((e: unknown) => e);
-    expect((err as Error).message).toMatch(/incomplete or wrong/i);
+    expect((err as Error).message).toBe("The rebuild does not match the ledger.");
   });
 
-  it("falls back to the old sentence when the chain's position is unknown", async () => {
+  it("claims no lag when the chain's position is unknown", async () => {
     // The caller could not read the tip. Claiming a lag it cannot measure would
-    // be an invention; the older, vaguer sentence is the honest one.
+    // be an invention, so the bare sentence is the honest one.
     const url = await archiveServing([depositEvent(ACCOUNT, 10_000_000n, 100)], 100);
     const err = await recoverOpenings(url, TOKEN, ACCOUNT, VK, {
       spendableCommitment: IDENTITY,
       receivingCommitment: receivingCommitmentFor(42_500_000n),
     } as never).catch((e: unknown) => e);
-    expect((err as Error).message).toMatch(/incomplete or wrong/i);
+    expect((err as Error).message).toBe("The rebuild does not match the ledger.");
   });
 
-  it("never claims the funds are at risk, whichever cause it names", async () => {
+  it("leads with the mismatch itself, never with an alarm", async () => {
     const url = await archiveServing([depositEvent(ACCOUNT, 10_000_000n, 100)], 100);
     const err = await recoverOpenings(
       url,
@@ -462,6 +459,6 @@ describe("why the rebuilt balance did not match", () => {
       } as never,
       900,
     ).catch((e: unknown) => e);
-    expect((err as Error).message).toMatch(/funds are safe on chain/i);
+    expect((err as Error).message).toMatch(/^The rebuild does not match the ledger\./);
   });
 });

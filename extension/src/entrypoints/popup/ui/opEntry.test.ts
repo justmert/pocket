@@ -1,6 +1,6 @@
 // What a completed operation claims about the user's money.
 import { describe, it, expect } from "vitest";
-import { opToEntry, OP_SHAPE } from "./opEntry";
+import { opToEntry, OP_SHAPE, isPlainReason } from "./opEntry";
 import type { BgOp } from "./WalletProvider";
 
 const op = (verb: string, extra: Partial<BgOp> = {}): BgOp => ({
@@ -64,5 +64,19 @@ describe("a watched operation drawn as its settled row", () => {
     // disagreed and the badge flipped when the archive caught up.
     expect(OP_SHAPE["Shield"]!.direction).toBe("in");
     expect(OP_SHAPE["Unshield"]!.direction).toBe("out");
+  });
+});
+
+describe("which failure reasons a row may print", () => {
+  it("takes a translated reason", () => {
+    expect(isPlainReason("the destination account does not exist yet")).toBe(true);
+  });
+
+  it("refuses a raw XDR discriminant, so the row says only Failed", () => {
+    // `OP_REASON` and `TX_REASON` pass through codes they do not know, and the
+    // row then read "Failed · txBadSeq" beside a red alert badge.
+    expect(isPlainReason("txBadSeq")).toBe(false);
+    expect(isPlainReason("op_underfunded")).toBe(false);
+    expect(isPlainReason(undefined)).toBe(false);
   });
 });

@@ -9,28 +9,24 @@ import { Progress } from "../Progress";
 import { space, text } from "../theme";
 import type { PrivateOpRequest, PrivateOpSummary } from "../../../../core/messages";
 
-type Kind = PrivateOpRequest["kind"];
 // move-in and move-out are their own pages now (screens/Move.tsx); this sheet is
 // only the states that are not a plain amount: setup, make-spendable, rebuild.
+// so the ONLY kinds it builds are those two, and the shield/transfer/unshield
+// entries these tables used to carry were words no screen could reach.
+type Kind = Extract<PrivateOpRequest["kind"], "register" | "merge">;
 type Stage = "menu" | "review" | "running" | "done";
 
 /** the words the user sees. the protocol's own names never reach a screen. */
 const HEADING: Record<Kind, string> = {
   register: "Setting up",
-  shield: "Shielding",
   merge: "Making spendable",
-  transfer: "Sending privately",
-  unshield: "Unshielding",
 };
 
 /** the verb for the processing-list row, so a backgrounded setup or make-spendable
  *  reads as itself rather than borrowing a send's words. */
 const VERB: Record<Kind, string> = {
   register: "Set up private pocket",
-  shield: "Shield",
   merge: "Make spendable",
-  transfer: "Send privately",
-  unshield: "Unshield",
 };
 
 export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -137,7 +133,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     // made this unbounded.
   }, [open, stage, priv?.state, refresh]);
 
-  const build = async (op: PrivateOpRequest) => {
+  const build = async (op: Extract<PrivateOpRequest, { kind: Kind }>) => {
     setKind(op.kind);
     setError(null);
     setBuilding(true);
@@ -263,7 +259,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
             effects={summary.effects}
             alreadyDone={
               summary.kind === "register"
-                ? "Your auditor key is already registered on the ledger, and the fee for it is paid. This step creates the confidential account."
+                ? "Your auditor key is already registered and paid for."
                 : undefined
             }
             // "Leave this for now", the string `ux/decisions.md` D2 chose and
@@ -285,14 +281,9 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
         )}
 
         {stage === "done" && result && (
-          <Receipt
-            t={t}
-            hash={result.hash}
-            also={result.followed ? { label: "Made spendable", hash: result.followed } : undefined}
-            note={result.followed ? "Made spendable in a second transaction." : undefined}
-            network={w.status?.network}
-            onDone={close}
-          />
+          // no `also` and no `note`: a second transaction is only ever followed
+          // for a shield, and this sheet builds register and merge only.
+          <Receipt t={t} hash={result.hash} network={w.status?.network} onDone={close} />
         )}
       </div>
     </Sheet>
@@ -337,7 +328,7 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
     }
 
     if (building) {
-      // no "Go to Home" while building: nothing is submitted yet, so there is nothing
+      // no "Go home" while building: nothing is submitted yet, so there is nothing
       // to continue in the background. a comfortable min-height so the mark sits in a
       // medium bottom sheet, centred, rather than a short strip clinging to the very
       // bottom of the frame (the earlier complaint) OR filling the whole page.
@@ -386,8 +377,8 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
                 style={{ ...text.body, color: t.sub, margin: `0 0 ${space.md}px`, lineHeight: 1.5 }}
               >
                 {registerStarted
-                  ? "The first transaction is already sent: your auditor key is registered and paid for. This finishes by creating the confidential account."
-                  : "This takes two transactions. The button below sends the first now (it registers your auditor key and pays a fee); you review the second before it signs."}
+                  ? "The first transaction is already sent. You review this one."
+                  : "Sends the first of two transactions now. You review the second."}
               </p>
               <ButtonStack>
                 <Button t={t} onClick={onRegister}>
@@ -423,7 +414,9 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
               label="Dormant"
               amount={priv.spendable}
               code={symbol}
-              holding="This pocket went dormant from not being used. Reactivating wakes it up. Your balance is on the ledger either way; it is this device's access to it that has lapsed."
+              // no `holding`: the label says Dormant, the button says Reactivate,
+              // and the worker's own `priv.message` below states the one fact
+              // that is money ("Reactivating costs a small fee.").
               action={{ label: "Reactivate", onClick: onMerge }}
             >
               {priv.message && (
@@ -442,10 +435,15 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
               label={priv.state === "diverged" ? "Out of step" : "Needs rebuilding"}
               amount={priv.spendable}
               code={symbol}
+              // nothing where a rebuild is possible: the button is labelled
+              // Rebuild and a note on the verification strategy above it is a
+              // design document. where it is not possible, `canRebuild` hides
+              // the button, so the screen would otherwise show a state called
+              // Needs rebuilding, no way to rebuild, and no word about why.
               holding={
                 canRebuild(w.status?.network ?? "testnet")
-                  ? "Rebuilding replays your history and checks the result against what the contract holds, so an incomplete history is refused rather than accepted."
-                  : "Rebuilding would replay your history from a durable archive, and this build has none configured. Your balance is on the ledger and is not lost; this device cannot reach it until a build with an archive does the replay."
+                  ? undefined
+                  : "This version cannot rebuild them."
               }
               // no button where there is no archive. the worker refuses with the
               // right words, but a primary control three lines under a sentence

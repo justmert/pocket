@@ -46,9 +46,9 @@ export class Wallet {
 
   /** The splash the very first run shows. */
   splash(): Locator {
-    // The front door's own words. "Two pockets on Stellar" is what the COMPACT
-    // header says, and the full-page first run leads with the brand line
-    // instead, so the old marker matched nothing on the screen it named.
+    // The front door's own words. The compact popup fallback carries no
+    // sentence at all now, so this marker names the full-page first run, which
+    // is what the harness drives.
     return this.page.getByText("Your balance is nobody's business.");
   }
 
@@ -171,7 +171,7 @@ export class Wallet {
 
   /** The pocket tabs are the one thing every unlocked home screen carries. */
   homeMarker(): Locator {
-    return this.page.getByRole("button", { name: "Public Pocket" });
+    return this.page.getByRole("button", { name: "Public" });
   }
 
   async waitForHome(timeout = WAITS.onboarding): Promise<void> {
@@ -179,14 +179,14 @@ export class Wallet {
   }
 
   async lock(): Promise<void> {
-    // "Lock wallet" lives in the header's overflow (the ⋮ "More" menu), not on
+    // "Lock" lives in the header's overflow (the ⋮ "More" menu), not on
     // the home screen directly, so the menu has to be opened first.
     await this.page.getByRole("button", { name: "More" }).click();
     // MENUITEM, not button. The items live inside `role="menu"`, and the ARIA
     // owned-element rules map a <button> in that context to `menuitem`, so a
     // `getByRole("button")` for one of them matches nothing at all. Every spec
     // that locked a wallet waited out a 60s timeout on it.
-    await this.page.getByRole("menuitem", { name: "Lock wallet" }).click();
+    await this.page.getByRole("menuitem", { name: "Lock" }).click();
     await expect(this.lockedNotice()).toBeVisible();
   }
 
@@ -196,7 +196,10 @@ export class Wallet {
   }
 
   lockedNotice(): Locator {
-    return this.page.getByText("Enter your password to unlock Pocket.");
+    // The lock screen's own heading. The sentence under it ("Enter your
+    // password to unlock Pocket.") restated the field and the button and was
+    // cut, so the heading is what says this screen is the lock screen.
+    return this.page.getByRole("heading", { name: "Welcome back" });
   }
 
   /** The way out of a forgotten password. */
@@ -233,9 +236,13 @@ export class Wallet {
    */
   async openPocket(which: "Public pocket" | "Private pocket"): Promise<void> {
     // `exact`: the pocket's InfoTip is a button named "About the private pocket",
-    // and a non-exact match on "Private pocket" is a substring of that, so the
-    // tab and its tooltip both resolve.
-    // the label capitalises "Pocket"; callers still pass the lower-case name.
+    // and a non-exact match on "Private" is a substring of that, so the tab and
+    // its tooltip both resolve.
+    //
+    // The tab reads "Public Pocket" / "Private Pocket" (screens/Home.tsx
+    // `pocketTab`). This said "Public" / "Private", which the UX pass had
+    // already renamed, so an exact match found nothing and every spec that
+    // opened a pocket timed out at 60s on a button that does not exist.
     const label = which === "Public pocket" ? "Public Pocket" : "Private Pocket";
     const tab = this.page.getByRole("button", { name: label, exact: true });
     await expect(tab).toBeVisible({ timeout: WAITS.ledgerRead });
@@ -304,7 +311,7 @@ export class Wallet {
   async composePayment(p: { to: string; amount: string; memo?: string }): Promise<void> {
     await this.page.getByLabel("To", { exact: true }).fill(p.to);
     await this.page.getByLabel("Amount (XLM)").fill(p.amount);
-    if (p.memo !== undefined) await this.page.getByLabel("Memo (optional)").fill(p.memo);
+    if (p.memo !== undefined) await this.page.getByLabel("Memo").fill(p.memo);
     // "Continue", not "Review": the compose screens were rebuilt and the submit
     // took the word every other step uses. This helper is the shared entry to
     // most of the sending specs, so the old name cost each of them a 60s
@@ -320,10 +327,10 @@ export class Wallet {
   }
 
   /** The heading that only appears once the ledger has included a transaction:
-   *  confirm* resolves after inclusion, so "Transaction successful" is a confirmed
-   *  fact. (The "Confirmed in ledger N" line it used to carry was removed.) */
+   *  confirm* resolves after inclusion, so "Success" is a confirmed fact. (The
+   *  "Confirmed in ledger N" line it used to carry was removed.) */
   receipt(): Locator {
-    return this.page.getByText("Transaction successful");
+    return this.page.getByText("Success");
   }
 
   /**
@@ -333,7 +340,7 @@ export class Wallet {
    * modal and nothing on it is what the user is looking at.
    */
   async dismissReceipt(): Promise<void> {
-    await this.page.getByRole("button", { name: "Go to Home" }).click();
+    await this.page.getByRole("button", { name: "Done" }).click();
     await expect(this.page.getByRole("dialog")).toHaveCount(0);
   }
 
@@ -389,8 +396,30 @@ export class Wallet {
         return;
       }
     }
+
+    // The private pocket is a per-asset LIST now, so the state's action is not
+    // a top-level prompt: it lives in the asset's own sheet
+    // (`sheets/PrivateAssetSheet.tsx`). A `Row`'s accessible name is its whole
+    // text, so the row reads "XLM Not set up yet Set up" and an exact match on
+    // "Set up" finds nothing. Same fallback as `openMoveAction` below, and for
+    // the same reason: tried second, so a build with a top-level prompt still
+    // takes the short path.
+    const row = this.page.getByRole("button", { name: /^(XLM|USDC)\b/ }).first();
+    if ((await row.count()) > 0) {
+      await row.click();
+      const sheet = this.page.getByRole("dialog").last();
+      await expect(sheet).toBeVisible();
+      for (const name of ways) {
+        const control = sheet.getByRole("button", { name, exact: true });
+        if ((await control.count()) > 0) {
+          await control.first().click();
+          await expect(menu).toBeVisible();
+          return;
+        }
+      }
+    }
     throw new Error(
-      `no way into the Move sheet: the private pocket offered none of ${ways.join(", ")}`,
+      `no way into the Move sheet: the private pocket offered none of ${ways.join(", ")}, on the page or in an asset sheet`,
     );
   }
 
@@ -403,7 +432,7 @@ export class Wallet {
     await this.page.getByRole("button", { name: "Set up the private pocket" }).click();
     await this.approve();
     await expect(this.receipt()).toBeVisible({ timeout: WAITS.submission });
-    await this.page.getByRole("button", { name: "Go to Home" }).click();
+    await this.page.getByRole("button", { name: "Done" }).click();
     // a sheet is on screen for the length of its exit, and anything read while
     // it is still there is read from the sheet rather than from the screen.
     await expect(this.page.getByRole("dialog")).toHaveCount(0);
@@ -417,7 +446,9 @@ export class Wallet {
    * know which flow it is in.
    */
   async approve(label?: "Approve" | "Confirm"): Promise<void> {
-    await expect(this.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+    await expect(this.page.getByRole("button", { name: "What this does" })).toBeVisible({
+      timeout: WAITS.proving,
+    });
     if (label) {
       await this.page.getByRole("button", { name: label }).click();
       return;
@@ -491,7 +522,7 @@ export class Wallet {
    * produces "why can't I send my own money".
    */
   async privateBalances(): Promise<{ spendable: number | null; receiving: number | null }> {
-    await expect(this.page.getByRole("button", { name: "Private pocket" })).toBeVisible({
+    await expect(this.page.getByRole("button", { name: "Private", exact: true })).toBeVisible({
       timeout: WAITS.ledgerRead,
     });
     const amounts = this.money();
@@ -557,13 +588,66 @@ export async function openMoveAction(page: Page, name: string): Promise<void> {
       }
     }
     if (!opened) {
-      throw new Error(`no way into the Move sheet for "${name}": none of ${ways.join(", ")} is up`);
+      // The private pocket is a per-asset LIST now, so there is no top-level
+      // prompt to press: setting up, reactivating and rebuilding are decided
+      // per wrapper and live inside that asset's own sheet
+      // (`sheets/PrivateAssetSheet.tsx`, whose action comes from
+      // `copy.privateStateAction`). A `Row`'s accessible name is its title, so
+      // the row is the asset symbol.
+      //
+      // Tried only after the top-level labels, so a build that still shows one
+      // takes the cheaper path and this stays a fallback rather than a rewrite.
+      //
+      // A regex `name` is matched against the WHOLE accessible name, and a
+      // row's is everything in it: "XLM Not set up yet Set up". So this
+      // anchors on the symbol and lets the rest of the row follow, rather than
+      // demanding the symbol alone.
+      const row = page.getByRole("button", { name: /^(XLM|USDC)\b/ }).first();
+      if ((await row.count()) === 0) {
+        throw new Error(
+          `no way into the Move sheet for "${name}": none of ${ways.join(", ")} is up, and no private asset row either`,
+        );
+      }
+      await row.click();
+      await expect(dialog).toBeVisible();
+      for (const label of ways) {
+        const control = dialog.getByRole("button", { name: label, exact: true });
+        if ((await control.count()) > 0) {
+          await control.first().click();
+          opened = true;
+          break;
+        }
+      }
+      if (!opened) {
+        const said = await dialog.innerText().catch(() => "(unreadable)");
+        throw new Error(
+          `the private asset sheet offered no way to "${name}". It says: ${said.replace(/\n/g, " | ")}`,
+        );
+      }
     }
-    await expect(dialog).toBeVisible();
+    await expect(dialog.last()).toBeVisible();
   }
   // Already there when the prompt's own label WAS the action (Set up, Rebuild).
-  const action = dialog.getByRole("button", { name, exact: true });
-  if ((await action.count()) > 0) await action.click();
+  const panel = dialog.last();
+  const action = panel.getByRole("button", { name, exact: true });
+  if ((await action.count()) > 0) {
+    await action.click();
+    return;
+  }
+  // The action is named per ASSET now: the move sheet's button reads "Set up
+  // XLM", not "Set up the private pocket", because the private pocket is a
+  // wrapper per asset and one sheet can only set up one of them. Callers still
+  // pass the whole-pocket name, so match on the verb and let the asset follow.
+  const verb = name.replace(/ the private pocket$/, "").trim();
+  const byVerb = panel.getByRole("button", { name: new RegExp(`^${verb}\\b`, "i") });
+  if ((await byVerb.count()) > 0) {
+    await byVerb.first().click();
+    return;
+  }
+  const said = await panel.innerText().catch(() => "(unreadable)");
+  throw new Error(
+    `the move sheet has no "${name}" and nothing starting "${verb}". It says: ${said.replace(/\n/g, " | ")}`,
+  );
 }
 
 /**
@@ -605,7 +689,7 @@ export async function answerBackupCheck(page: Page, phrase: string): Promise<voi
  */
 export async function passOnboardingReady(page: Page): Promise<void> {
   const ready = page.getByRole("heading", { name: "Your wallet is ready!" });
-  const home = page.getByRole("button", { name: "Public Pocket" });
+  const home = page.getByRole("button", { name: "Public" });
   await expect(ready.or(home).first()).toBeVisible({ timeout: WAITS.onboarding });
   if ((await ready.count()) > 0) await page.reload();
 }

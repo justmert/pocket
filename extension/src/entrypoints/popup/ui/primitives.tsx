@@ -215,6 +215,7 @@ export function Header({
   subtitle,
   onBack,
   right,
+  dense = false,
 }: {
   t: Theme;
   title?: string;
@@ -222,6 +223,11 @@ export function Header({
   subtitle?: ReactNode;
   onBack?: () => void;
   right?: ReactNode;
+  /** a title-only header in a PINNED band (Activity, Settings), where the 44px
+   *  back-button row and the full bottom margin are dead height that push the
+   *  content-cut line down. drops both; the pinned block's own padding sets the
+   *  gap, and there is no back button to keep the 44px target for. */
+  dense?: boolean;
 }) {
   return (
     <div
@@ -229,8 +235,8 @@ export function Header({
         display: "flex",
         alignItems: "center",
         gap: space.md,
-        minHeight: 44,
-        marginBottom: space.gutter,
+        minHeight: dense ? undefined : 44,
+        marginBottom: dense ? 0 : space.gutter,
       }}
     >
       {onBack && <IconButton t={t} glyph="back" onClick={onBack} label="Back" />}
@@ -1237,7 +1243,13 @@ export function Toast({
         background: tone === "positive" ? t.accentFill : t.text,
         color: tone === "positive" ? t.onAccent : t.bg,
         padding: "11px 18px",
-        borderRadius: radius.pill,
+        // NOT radius.pill. a pill radius (999) rounds a one-line toast into a clean
+        // capsule, but a WRAPPED multi-line message (the fund-testnet result, "this
+        // account already exists...") is a tall box, and 999 rounds it into an
+        // ellipse/blob. xl (24) is more than half a single line's height, so a short
+        // toast still reads as a capsule while a multi-line one gets honest rounded
+        // corners instead of a blob.
+        borderRadius: radius.xl,
         zIndex: 60,
         maxWidth: FRAME.width - 48,
         textAlign: "center",
@@ -1323,7 +1335,7 @@ export function Sheet({
    *  route) rather than during it, so the close animates instead of being cut. */
   onClosed,
   /** drop the close X. for a sheet whose own buttons are the only way out (a
-   *  confirm: Cancel while reviewing, Go to Home while it works, Done after), so a
+   *  confirm: Cancel while reviewing, Go home while it works, Done after), so a
    *  stray X does not offer a fourth, ambiguous exit. the backdrop still obeys
    *  `onClose`, which the confirm makes a no-op while it is working. */
   hideClose = false,
@@ -1399,7 +1411,7 @@ export function Sheet({
     // flight, so a >90px pull took the dismiss branch, called a no-op, skipped
     // `setY(0)`, and left the panel parked at its dragged offset: the mount
     // effect that resets `y` keys on `[open, mounted]` and neither had changed.
-    // inside a 384x600 frame with `overflow: hidden`, that pushes "Go to Home"
+    // inside a 384x600 frame with `overflow: hidden`, that pushes "Go home"
     // off the bottom during the one window where the product deliberately
     // removes every other exit, and the receipt then draws in the same displaced
     // panel. refusing the grab is better than always calling `setY(0)`, which
@@ -1608,8 +1620,10 @@ export function Sheet({
             position: "relative",
             // one horizontal gutter shared with every full page (Screen/Home/
             // Settings all pad with space.gutter), so a Row inside a sheet sits
-            // the same distance from the frame edge as the same Row on a page.
-            padding: `${space.sm}px ${space.gutter}px 0`,
+            // the same distance from the frame edge as the same Row on a page. a
+            // headerless sheet adds a little bottom room so the thin handle keeps a
+            // comfortable drag target; a titled sheet's title row already has height.
+            padding: `${space.sm}px ${space.gutter}px ${hasTitle ? 0 : space.xs}px`,
             flex: "0 0 auto",
           }}
         >
@@ -1617,24 +1631,13 @@ export function Sheet({
               handle says so. the grab area holds ONLY the handle, so the whole
               strip drags: an interactive control here (the close X used to sit on
               this line) makes part of the drag strip refuse the drag. */}
-          {/* on a TITLED sheet the title row sits inside this drag strip, so the
-              target is ~58px tall. on a headerless one the strip is `space.sm`
-              plus a 4px handle: 14px, for one of the two documented ways out of
-              a sheet. the handle keeps its own 4px bar and grows its hit area
-              instead, so nothing moves on the sheets that were already fine. */}
-          <div
-            aria-hidden
-            style={{
-              ...grabHandle(t),
-              ...(hasTitle
-                ? {}
-                : {
-                    height: 4 + space.md * 2,
-                    paddingBlock: space.md,
-                    backgroundClip: "content-box",
-                  }),
-            }}
-          />
+          {/* a crisp thin bar in every sheet. it used to be inflated to a 32px box
+              on a headerless sheet (paddingBlock + backgroundClip) to enlarge the
+              drag target, but a pill radius on that tall box rendered as an ellipse
+              rather than a line and stacked empty space above the close X. the whole
+              strip is already the drag target (the handlers sit on it), so the strip
+              carries the height and the bar stays a bar. */}
+          <div aria-hidden style={grabHandle(t)} />
           {hasTitle && (
             // the close X rides the SAME row as the title, right-aligned, so a
             // title'd sheet keeps one header row, now with a way out.
@@ -1681,7 +1684,10 @@ export function Sheet({
             style={{
               display: "flex",
               justifyContent: "flex-end",
-              padding: `${space.xs}px ${space.gutter}px 0`,
+              // no top padding: the drag strip's own bottom padding already sets the
+              // gap to the handle, and the old top pad added to the empty band above
+              // the X that made a headerless sheet's top read as wasted space.
+              padding: `0 ${space.gutter}px 0`,
               flex: "0 0 auto",
             }}
           >

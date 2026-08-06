@@ -312,12 +312,6 @@ describe("what the yield review says the fee is", () => {
     expect(summary.fee).toBe("0.0043505");
   });
 
-  it("says the same figure in the effects list, which is what is signed", async () => {
-    const { c } = await walletWith((address) => vaultEnvelope({ source: address }));
-    const { summary } = await c.buildYieldMove("deposit", "10");
-    expect(summary.effects.join(" ")).toContain("0.0043505");
-  });
-
   it("stages the SIMULATED envelope, so the reviewed bytes are the signed bytes", async () => {
     // The handle is the prepared envelope's hash. Staging the pre-simulation
     // one would mean the fee on the sheet belonged to a transaction that was

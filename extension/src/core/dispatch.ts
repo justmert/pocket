@@ -68,9 +68,8 @@ function optionalStr(v: unknown, field: string): string | undefined {
  * downstream. A fractional one used to pass: `slippageBps` of 100.5 cleared the
  * range check in `buildSwap` and then reached `BigInt(10_000 - 100.5)`, which
  * throws a RangeError. `RangeError` is not in SAFE_ERRORS, so a malformed
- * message surfaced as "Something went wrong. Try again, and check your
- * connection." instead of being named at the boundary, which is the whole point
- * of these helpers.
+ * message surfaced as "Something went wrong. Try again." instead of being named
+ * at the boundary, which is the whole point of these helpers.
  */
 /**
  * A network this build actually knows.
@@ -353,31 +352,29 @@ const SAFE_ERRORS = new Set([
   // remedy is one button away. Its message names only the asset code.
   "TrustlineRequiredError",
   // Every contract refusal on every WRITE path. prepareTransaction throws a
-  // bare `Error`, so all fifteen authored CONTRACT_ERRORS sentences were
-  // unreachable and the user was told to check their connection about a
-  // deterministic refusal. Its message is always one of ours; the RPC's own
+  // bare `Error`, so every authored CONTRACT_ERRORS sentence was unreachable
+  // and the user got the generic message about a deterministic refusal. Its
+  // message is always one of ours; the RPC's own
   // text, which runs to hundreds of characters and can carry an address decoded
   // from the reply, never crosses.
   "ContractRefusedError",
   // The prover's three failure points threw bare `Error`s, so `e.name` was
-  // "Error" and all of them fell through to "Something went wrong. Try again,
-  // and check your connection." The prover is an offscreen document inside this
-  // extension and touches no network, so that sentence named a cause that can
-  // never be the cause, on the wallet's slowest and most fragile step. Its
-  // messages are authored in `prover/protocol.ts` and never carry bb's own text.
+  // "Error" and all of them fell through to the generic message, on the
+  // wallet's slowest and most fragile step. Its messages are authored in
+  // `prover/protocol.ts` and never carry bb's own text.
   "ProverError",
   "IrisError",
   // The fourth service client, and it was the one omission on this list that no
   // comment argued for. Its absence was not cosmetic: every sentence the yield
-  // path authors for a user reached the screen as "Something went wrong. Try
-  // again, and check your connection." Measured against the built extension,
-  // `buildYieldMove` answered with that generic line while `confirmSwap`,
+  // path authors for a user reached the screen as the generic message.
+  // Measured against the built extension, `buildYieldMove` answered with that
+  // generic line while `confirmSwap`,
   // `confirmCctpSend`, `confirmCctpClaim` and `confirmPayment` all answered with
   // their own words. Among the sentences it swallowed: "Yield is not configured
   // for this network." (a permanent property of the build, so the retry the
   // generic line suggests can never work) and "You need a trustline for this
-  // vault's asset before you can deposit or withdraw." (the one actionable
-  // failure the client goes out of its way to map from errorCode 13).
+  // vault's asset." (the one actionable failure the client goes out of its way
+  // to map from errorCode 13).
   //
   // Its message surface is the same shape as the two above it, which is why it
   // belongs in the same place: authored prose, plus a `${res.status}` integer,
@@ -419,15 +416,18 @@ const SAFE_ERRORS = new Set([
   "FriendbotError",
 ]);
 
-/** Messages we author ourselves and vet, matched exactly. */
+/**
+ * Messages we author ourselves and vet, matched exactly.
+ *
+ * "wallet is locked" and "no wallet to unlock" are deliberately NOT here. They
+ * are state assertions, not sentences: the popup already routes to the lock
+ * screen off `status.locked`, and a lock screen says the same thing with a
+ * password field under it.
+ */
 const SAFE_MESSAGES = new Set([
-  "wallet is locked",
-  "no wallet to unlock",
-  "a wallet already exists on this device",
   // the network sheet offers Mainnet, and this build refuses it. without this
-  // line the refusal fell through to the generic branch and told the user to
-  // check their connection — for a refusal that is a permanent property of the
-  // build, so the only action that message suggests can never work.
+  // line the refusal fell through to the generic branch, which says nothing at
+  // all about a refusal that is a permanent property of the build.
   "Pocket is testnet-only in this build.",
 ]);
 
@@ -445,7 +445,7 @@ export function describeError(e: unknown): string {
     // and ends with a stop" is trivially satisfied by an RPC-authored or
     // attacker-influenced string, which is precisely what the allowlist exists
     // to keep out. An error that should reach a user gets a name on the list.
-    return "Something went wrong. Try again, and check your connection.";
+    return "Something went wrong. Try again.";
   }
   return "Something went wrong.";
 }

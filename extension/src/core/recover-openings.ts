@@ -204,22 +204,20 @@ export async function recoverOpenings(
     // So this is reached by an archive that predates payload storage, or one whose
     // Horizon lookup failed for that transaction. `replay` refuses rather than
     // credit an unverifiable amount, which is right, and the refusal has to be
-    // readable: without this it reached the screen as "check your connection",
-    // sending someone to retry a network problem that does not exist.
+    // readable: without this it reached the screen as the generic message,
+    // sending someone to retry a fault no retry can affect.
     state = replay(INITIAL_STATE, events, { vk, address: account });
   } catch (e) {
     if (e instanceof UnreplayableEventError) {
       throw new RecoveryUnavailableError(
-        "The archive is missing the transaction details for a payment this account received, " +
-          "so Pocket cannot confirm the amount is yours and will not credit one it cannot " +
-          "verify. Your funds are safe on chain. An archive that has re-indexed this contract " +
-          "since it started keeping transaction details can rebuild this account.",
+        "The archive is missing details for a payment you received, so Pocket cannot rebuild. " +
+          "Your funds are safe on chain.",
       );
     }
     // Its sibling, four lines away in sync.ts, and it escaped this translation
     // while the argument above applies to it word for word: the rebuild stopped,
-    // and the reason reached the screen as "Something went wrong. Try again, and
-    // check your connection." for a fault no retry can affect.
+    // and the reason reached the screen as the generic message, for a fault no
+    // retry can affect.
     //
     // Translated rather than allowlisted, and the difference matters. A
     // `MalformedEventError` message names the event id, the field and a byte
@@ -229,10 +227,8 @@ export async function recoverOpenings(
     // sentence the wallet wrote, which is the same shape the line above takes.
     if (e instanceof MalformedEventError) {
       throw new RecoveryUnavailableError(
-        "The archive returned an event Pocket could not read, so it stopped rather than " +
-          "rebuild a balance from history it does not understand. Your funds are safe on " +
-          "chain. This is a fault in the archive, not in this wallet, and retrying will not " +
-          "change it until that archive re-indexes the contract.",
+        "The archive returned data Pocket could not read, so the rebuild stopped. " +
+          "Your funds are safe on chain.",
       );
     }
     throw e;
@@ -279,13 +275,10 @@ export async function recoverOpenings(
     const behind =
       chainLedger != null && through != null && chainLedger > through ? chainLedger - through : 0;
     throw new RecoveryMismatchError(
-      `The rebuilt ${check.which} balance does not match what the contract holds, so Pocket ` +
-        `will not use it. Your funds are safe on chain. ` +
-        (behind > 0
-          ? `The archive has recorded up to ledger ${through} and the network is at ` +
-            `${chainLedger}, so it is ${behind} ledgers behind and has not seen everything yet. ` +
-            `Wait for it to catch up and try again.`
-          : `This means the history it was given is incomplete or wrong.`),
+      behind > 0
+        ? `The rebuild does not match the ledger. The archive is ${behind} ledgers behind; ` +
+          `wait and try again.`
+        : "The rebuild does not match the ledger.",
     );
   }
   return rebuilt;

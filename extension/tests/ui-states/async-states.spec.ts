@@ -83,7 +83,7 @@ test.describe("home balance", () => {
     await offline(harness.context, RPC_HOST);
     await wallet.reopen();
     await wallet.waitForHome(WAITS.ledgerRead);
-    await expect(wallet.page.getByText(/Something went wrong|check your connection/i)).toBeVisible({
+    await expect(wallet.page.getByText(/Something went wrong/i)).toBeVisible({
       timeout: WAITS.ledgerRead,
     });
     // The whole point. A funded account showing 0.0000000 because the network
@@ -116,7 +116,7 @@ test.describe("private pocket", () => {
     // The hero carries no label at all now, so the check is that no state has
     // been claimed either: an unread pocket must not be described as set up,
     // dormant, or anything else.
-    for (const claim of ["Private pocket not set up", "Private pocket is dormant", "Receiving"]) {
+    for (const claim of ["Not open yet", "Dormant", "Receiving"]) {
       await expect(wallet.page.getByText(claim, { exact: true })).toHaveCount(0);
     }
   });
@@ -133,11 +133,11 @@ test.describe("private pocket", () => {
     await offline(harness.context, RPC_HOST);
     await wallet.openPrivatePocket();
 
-    await expect(wallet.page.getByText(/Something went wrong|check your connection/i)).toBeVisible({
+    await expect(wallet.page.getByText(/Something went wrong/i)).toBeVisible({
       timeout: WAITS.ledgerRead,
     });
     await expect(wallet.money()).toHaveCount(0);
-    await expect(wallet.page.getByText("Private pocket not set up")).toHaveCount(0);
+    await expect(wallet.page.getByText("Not open yet")).toHaveCount(0);
   });
 
   test("unfunded: a state, not a failure", async ({ wallet }) => {
@@ -147,7 +147,7 @@ test.describe("private pocket", () => {
     await wallet.waitForHome(WAITS.ledgerRead);
     await wallet.openPrivatePocket();
 
-    await expect(wallet.page.getByText("Fund this account first")).toBeVisible({
+    await expect(wallet.page.getByText("Fund first").first()).toBeVisible({
       timeout: WAITS.ledgerRead,
     });
     await expect(wallet.page.getByText(/Receive some XLM first/)).toBeVisible();
@@ -166,7 +166,7 @@ test.describe("private pocket", () => {
     await wallet.waitForHome(WAITS.ledgerRead);
     await wallet.openPrivatePocket();
 
-    await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
+    await expect(wallet.page.getByText("Not open yet").first()).toBeVisible({
       timeout: WAITS.ledgerRead,
     });
     await expect(wallet.money()).toHaveCount(0);
@@ -280,11 +280,7 @@ test.describe("yield", () => {
     // user to retry. Collapsing them is the same class of defect as a
     // fabricated balance, so the specific sentence is asserted rather than
     // either-or.
-    await expect(
-      wallet.page.getByText(
-        "Yield is not configured for this network. Nothing is at risk; there is simply no vault to deposit into.",
-      ),
-    ).toBeVisible();
+    await expect(wallet.page.getByText("Not available on this network.")).toBeVisible();
     await expect(wallet.page.getByText(/could not be read/)).toHaveCount(0);
 
     // And an unavailable yield puts no number on screen. A zero here would be

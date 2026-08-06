@@ -155,7 +155,7 @@ test("injection payloads in the recovery phrase field are refused without being 
     // Whatever the wallet says, it must not be the phrase read back: a
     // recovery phrase is the one string that must never be re-rendered, and a
     // payload is just the case where that is visible.
-    await expect(page.getByRole("button", { name: "Public pocket" })).toBeHidden();
+    await expect(page.getByRole("button", { name: "Public", exact: true })).toBeHidden();
     const body = await page.locator("body").innerText();
     expect(body, `${p.name} must not be echoed into the page`).not.toContain(p.value);
   }

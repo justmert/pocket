@@ -6,8 +6,8 @@
 // mid-confirm re-mounts the tree, finds the record and, before this gate,
 // replaced the wallet with the full-screen "Unfinished transaction" blocker.
 // Nothing on that screen is false; it is written for the crash case, reads as
-// one, contradicts the "this will continue in the background" the processing
-// view promised seconds earlier, and removes every other control.
+// one, removes every other control, and lands seconds after the processing view
+// offered the way home.
 import { describe, it, expect } from "vitest";
 import { blockingInFlight } from "./App";
 

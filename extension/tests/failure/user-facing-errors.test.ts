@@ -42,7 +42,7 @@ const { InvalidAddressError } = await import("../../src/core/chain/address");
 const { PrivatePocketError, RecoveryError, InsufficientBalanceError, UnresolvedTransactionError } =
   await import("../../src/core/controller");
 
-const GENERIC = "Something went wrong. Try again, and check your connection.";
+const GENERIC = "Something went wrong. Try again.";
 const AUTHORED = "AUTHORED-MESSAGE-THAT-MUST-SURVIVE";
 
 describe("every terminal submit outcome reaches the user intact", () => {
@@ -62,7 +62,7 @@ describe("every terminal submit outcome reaches the user intact", () => {
       hash: "d1",
       ledger: 7,
       reason: "txFailed",
-      must: [/a fee was charged/i, /sequence number was used/i, /txFailed/],
+      must: [/the fee was charged/i, /txFailed/],
       mustNot: [],
     },
     {
@@ -75,13 +75,13 @@ describe("every terminal submit outcome reaches the user intact", () => {
     {
       kind: "notAccepted" as const,
       hash: "d3",
-      must: [/nothing was charged/i, /no sequence number was used/i, /wait a few seconds/i],
+      must: [/nothing was charged/i, /in a few seconds/i],
       mustNot: [],
     },
     {
       kind: "expired" as const,
       hash: "d4",
-      must: [/can never be applied/i, /nothing was charged/i, /build it again/i],
+      must: [/expired unsent/i, /nothing was charged/i, /send it again/i],
       mustNot: [],
     },
   ];
@@ -98,7 +98,7 @@ describe("every terminal submit outcome reaches the user intact", () => {
     });
   }
 
-  it("says the transaction succeeded only for a succeeded outcome", () => {
+  it("says it confirmed only for a succeeded outcome", () => {
     expect(
       describeOutcome({
         kind: "succeeded",
@@ -106,7 +106,7 @@ describe("every terminal submit outcome reaches the user intact", () => {
         ledger: 1,
         applicationOrder: 1,
       } as never),
-    ).toBe("The transaction succeeded.");
+    ).toBe("Confirmed.");
   });
 });
 

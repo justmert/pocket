@@ -6,7 +6,7 @@
 // buildCctpClaim fetches Circle's attestation and builds the mint. it refuses,
 // with a clear message, if the attestation is not published yet, so the compose
 // screen surfaces that rather than pretending the claim is ready.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWallet } from "../WalletProvider";
 import { call } from "../rpc";
 import { Button, Field, Frame, Header, Notice } from "../primitives";
@@ -19,8 +19,6 @@ import { CLAIM_DOMAINS, ChainPicker, isTxId, SOLANA_DOMAIN } from "./CctpSend";
 import { cctpDomainName } from "../../../../core/integrations/cctp";
 import { radius, space, text } from "../theme";
 import type { CctpSummary } from "../../../../core/messages";
-
-/** a source-chain burn tx hash is 32 bytes; mirror the shape for live feedback. */
 
 export function CctpClaim({ onClose }: { onClose: () => void }) {
   const w = useWallet();
@@ -152,9 +150,7 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
                 onBack={onClose}
                 right={
                   <InfoTip t={t} label="About claiming cross-chain USDC">
-                    Completes a CCTP transfer that was burned on another chain and addressed to this
-                    account. Paste that chain and the burn transaction hash; the USDC arrives in
-                    your public pocket. It can only be claimed once Circle has attested the burn.
+                    Only claimable once Circle has attested the burn.
                   </InfoTip>
                 }
               />
@@ -232,11 +228,7 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
                   t={t}
                   label="Burn transaction hash"
                   value={txHash}
-                  onChange={(v) => {
-                    setTxHash(v);
-                    // clear a prior build error so Continue re-enables on a new hash
-                    // (the input-keyed effect above does the clearing now).
-                  }}
+                  onChange={setTxHash}
                   // the SHAPE follows the chain, exactly as the validator beside it
                   // does. `isTxId` branches on the domain because Solana signs in
                   // base58 and everything else in hex, and both the placeholder and
@@ -250,9 +242,9 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
                   hint={
                     txHash !== "" && !txValid
                       ? domain === SOLANA_DOMAIN
-                        ? "That is not a Solana transaction signature (base58, 64 to 90 characters)."
-                        : "That is not a 32-byte transaction hash (0x followed by 64 hex characters)."
-                      : "The hash of the burn transaction on the source chain."
+                        ? "Needs base58, 64 to 90 characters."
+                        : "Needs 0x and 64 hex characters."
+                      : undefined
                   }
                 />
               </div>
@@ -301,10 +293,24 @@ export function CctpClaim({ onClose }: { onClose: () => void }) {
         mark={<AssetMark t={t} id={markId} code="USDC" />}
         code="USDC"
         fee={summary?.fee}
-        // which chain this claim is FROM. the same fact the outbound sheet was
-        // missing: it is signed, and an inbound sheet without it is identical for
-        // every source chain.
-        facts={summary?.chain ? [{ label: "From chain", value: summary.chain }] : []}
+        // which chain this claim is FROM. the sheet renders no amount and no
+        // recipient, so without it an inbound claim is identical for every
+        // source chain.
+        facts={
+          summary
+            ? [
+                {
+                  label: "From chain",
+                  value: (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      <ChainLogo domain={summary.domain} size={18} />
+                      {summary.chain}
+                    </span>
+                  ),
+                },
+              ]
+            : []
+        }
         effects={summary?.effects ?? []}
         error={error}
         unresolved={unresolved}

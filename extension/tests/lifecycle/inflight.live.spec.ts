@@ -135,7 +135,7 @@ test("the worker dying mid-poll leaves the hash on disk and the wallet never res
     await expect(reopened.getByText(/Do not send it again/)).toBeVisible();
 
     await reopened.getByRole("button", { name: "Check now" }).click();
-    await expect(reopened.getByRole("button", { name: "Public pocket" })).toBeVisible({
+    await expect(reopened.getByRole("button", { name: "Public", exact: true })).toBeVisible({
       timeout: 120_000,
     });
     expect(await storageKeys(reopened)).not.toContain("pocket.inflight");
@@ -219,7 +219,9 @@ test("confirming the same reviewed payment twice at once sends it once", async (
     const refused = replies.filter((r) => !r.ok);
     expect(ok, "exactly one confirmation may succeed").toHaveLength(1);
     expect(refused).toHaveLength(1);
-    expect(refused[0]?.error).toMatch(/no longer pending confirmation/);
+    expect(refused[0]?.error).toMatch(
+      /no longer pending confirmation|still waiting on an earlier transaction/,
+    );
 
     const paid = (await ledgerPayments(address)).filter((p) => p.to === to);
     expect(paid, "a double confirm must not pay twice").toHaveLength(1);
@@ -236,7 +238,9 @@ test("two tabs sending at the same time never pay twice", async () => {
   try {
     const to = await fundedStranger();
     const b = await w.popup();
-    await expect(b.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 60_000 });
+    await expect(b.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+      timeout: 60_000,
+    });
 
     // Two DIFFERENT payments, so two genuinely distinct envelopes competing for
     // one account sequence. Identical amounts produce a byte-identical envelope
@@ -324,7 +328,7 @@ test("reloading the popup mid-payment does not send it again", async () => {
     blindPolls = false;
 
     await page.getByRole("button", { name: "Check now" }).click();
-    await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({
+    await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
       timeout: 120_000,
     });
 

@@ -270,9 +270,7 @@ function mapPayment(r: PaymentRecord, me: string, exclude: ReadonlySet<string>):
     at,
     hash: r.transaction_hash,
     fee: feeOf(r, me),
-    ...(failed
-      ? { failed: true, failureReason: "This transaction failed on the network. Nothing moved." }
-      : {}),
+    ...(failed ? { failed: true, failureReason: "Nothing moved." } : {}),
   };
 
   if (r.type === "create_account") {

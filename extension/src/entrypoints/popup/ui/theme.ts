@@ -415,17 +415,16 @@ export interface Theme {
   /**
    * ink drawn on top of the accent.
    *
-   * NEAR-BLACK, which is what "both accents are light" was always an argument
-   * for and not what the value was. It was `warm[0]` #fcfdfe in both pockets:
-   * 2.30:1 on sky[400] and 3.46:1 on teal[400], so no accent-filled control in
-   * the product cleared 4.5:1 and the public one missed even the 3:1 floor for a
-   * graphical object. `text.button` is 16/600 and `text.pocketTab` 16/700, and
-   * neither is WCAG "large". Darkening the FILL instead is not available: white
-   * needs a luminance at or below 0.179 and sky[400] is 0.399.
-   *
-   * This is the most visible single change in the palette, and it is the one the
-   * file's own claim at the top of `PUBLIC` ("contrast was verified against the
-   * surface each colour is actually drawn on") required all along.
+   * NEAR-WHITE (`warm[0]` #fcfdfe) in both pockets: the light ink is the brand
+   * look the accent buttons and chips are meant to wear, and it is a deliberate
+   * product choice made with the tradeoff on the table. The tradeoff is contrast:
+   * white is 2.30:1 on sky[400] and 3.46:1 on teal[400], so accent-filled
+   * controls do NOT clear WCAG 4.5:1, and the public one is under the 3:1
+   * graphical floor. Darkening the ink to near-black would clear it (7.19:1 /
+   * 4.77:1) but is not the look wanted here; darkening the FILL instead is not
+   * available while the accent stays this light, since white needs a luminance at
+   * or below 0.179 and sky[400] is 0.399. Kept white on purpose; the numbers are
+   * recorded so the choice stays an eyes-open one and not silent drift.
    */
   onAccent: string;
   /** accent at low opacity, for icon circles, active tiles and soft cards. */
@@ -520,8 +519,9 @@ const PUBLIC: Theme = {
   pocket: "public",
   dark: false,
   accent: sky[400],
-  // 7.19:1 on sky[400].
-  onAccent: ink[900],
+  // near-white ink on the accent, by choice. 2.30:1 on sky[400]; see the
+  // `onAccent` doc on the Theme interface for the contrast tradeoff this accepts.
+  onAccent: warm[0],
   // the accent-tint stop: a soft accent fill for icon circles, tiles and cards.
   accentSoft: sky[100],
   accentOnSoft: ink[900],
@@ -593,8 +593,9 @@ const PRIVATE: Theme = {
   pocket: "private",
   dark: true,
   accent: teal[400],
-  // 4.77:1 on teal[400].
-  onAccent: ink[900],
+  // near-white ink on the accent, by choice. 3.46:1 on teal[400]; see the
+  // `onAccent` doc on the Theme interface for the contrast tradeoff this accepts.
+  onAccent: warm[0],
   accentSoft: teal[800],
   // a light teal, NOT the raw accent: teal[400] on teal[800] is only ~3.2:1.
   accentOnSoft: teal[200],

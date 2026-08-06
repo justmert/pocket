@@ -56,7 +56,7 @@ export function evmAddressToBytes32(address: string): Uint8Array {
   if (!/^[0-9a-fA-F]{40}$/.test(hex)) {
     throw new CctpParameterError(`not a 20-byte EVM address: ${address}`);
   }
-  assertEip55(hex, address);
+  assertEip55(hex);
   const out = new Uint8Array(32);
   for (let i = 0; i < 20; i++) out[12 + i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   return out;
@@ -78,7 +78,7 @@ export function evmAddressToBytes32(address: string): Uint8Array {
  * address that was then corrupted) and cannot catch a lowercase typo, which is
  * worth stating rather than implying it is a complete guard.
  */
-function assertEip55(hex: string, original: string): void {
+function assertEip55(hex: string): void {
   const lower = hex.toLowerCase();
   const upper = hex.toUpperCase();
   // No checksum to verify: the address is in a case-insensitive form.
@@ -86,8 +86,7 @@ function assertEip55(hex: string, original: string): void {
 
   if (eip55(lower) !== hex) {
     throw new CctpParameterError(
-      `That EVM address fails its own checksum, so it has been mistyped or altered: ${original}. ` +
-        `USDC bridged to a wrong address cannot be recovered.`,
+      "That address fails its checksum. Bridged USDC cannot be recovered.",
     );
   }
 }
@@ -174,7 +173,10 @@ export const CCTP_DOMAIN_NAMES: Record<number, string> = {
 };
 
 export function cctpDomainName(domain: number): string {
-  return CCTP_DOMAIN_NAMES[domain] ?? `domain ${domain}`;
+  // The NUMBER alone, not "domain 42". `ChainLogo` builds its monogram from the
+  // first character of this string, so the prefixed form drew every unnamed
+  // chain as a disc reading "D".
+  return CCTP_DOMAIN_NAMES[domain] ?? String(domain);
 }
 
 /**

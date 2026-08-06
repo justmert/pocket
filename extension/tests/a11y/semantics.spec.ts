@@ -114,7 +114,7 @@ test("every button has an accessible name, on every screen and every sheet", asy
   const unnamedIn = async (snapshot: string) =>
     snapshot
       .split("\n")
-      // `- button "Lock wallet"` is named; a bare `- button` or `- button:` is not.
+      // `- button "Lock"` is named; a bare `- button` or `- button:` is not.
       .filter((line) => /^\s*-\s+button\s*:?\s*$/.test(line));
 
   const home = await wallet.page.locator("body").ariaSnapshot();
@@ -190,7 +190,7 @@ test("every text field is programmatically labelled", async ({ wallet }) => {
   // label, not the visual proximity of some text.
   await expect(wallet.page.getByLabel("To", { exact: true })).toBeVisible();
   await expect(wallet.page.getByLabel("Amount (XLM)")).toBeVisible();
-  await expect(wallet.page.getByLabel("Memo (optional)")).toBeVisible();
+  await expect(wallet.page.getByLabel("Memo")).toBeVisible();
 
   const unlabelled = await wallet.page.evaluate(() =>
     Array.from(document.querySelectorAll("input, textarea"))
@@ -304,7 +304,7 @@ test("a failed balance read is announced", async ({ harness, wallet }) => {
   await wallet.reopen();
   await wallet.waitForHome(WAITS.ledgerRead);
 
-  const error = wallet.page.getByText(/Something went wrong|check your connection/i);
+  const error = wallet.page.getByText(/Something went wrong/i);
   await expect(error).toBeVisible({ timeout: WAITS.ledgerRead });
   const region = await inLiveRegion(error);
   expect(region.live, "the balance failure is not announced").toBe(true);

@@ -82,7 +82,7 @@ test("a received transfer is found by scanning the retained window, and the scre
     await wallet.page.getByLabel("Amount (XLM)").fill("5");
     await wallet.page.getByRole("button", { name: "Continue" }).click();
     await wallet.approve();
-    await expect(wallet.page.getByText("Transaction successful")).toBeVisible({
+    await expect(wallet.page.getByText("Success")).toBeVisible({
       timeout: WAITS.submission,
     });
     await wallet.dismissReceipt();
@@ -95,7 +95,7 @@ test("a received transfer is found by scanning the retained window, and the scre
     await arm(other.page);
     const t0 = await now(other.page);
     await other.openPrivatePocket();
-    await expect(other.page.getByRole("button", { name: "Private pocket" })).toBeVisible({
+    await expect(other.page.getByRole("button", { name: "Private", exact: true })).toBeVisible({
       timeout: WAITS.ledgerRead,
     });
     const t1 = await now(other.page);

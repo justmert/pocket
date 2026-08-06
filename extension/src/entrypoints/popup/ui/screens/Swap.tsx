@@ -68,12 +68,6 @@ export function Swap({ onClose }: { onClose: () => void }) {
   const [slippageBps, setSlippageBps] = useState(100);
 
   const [quote, setQuote] = useState<SwapQuoteView | null>(null);
-  // WHEN this quote was read. a pool price moves, and the screen showed an
-  // estimate with nothing saying how old it was: the binding numbers come from
-  // `buildSwap` at review, so a stale one can never be signed, but a figure a
-  // decision is made on should say when it was true.
-  const [quotedAt, setQuotedAt] = useState<number | null>(null);
-  const [quoteAge, setQuoteAge] = useState(0);
   const [quoting, setQuoting] = useState(false);
   const [price, setPrice] = useState<number | null>(null);
 
@@ -135,17 +129,6 @@ export function Swap({ onClose }: { onClose: () => void }) {
     };
   }, [inAsset.code]);
 
-  // tick while a quote is on screen, so its age is stated rather than implied.
-  useEffect(() => {
-    if (quotedAt === null) {
-      setQuoteAge(0);
-      return;
-    }
-    setQuoteAge(0);
-    const id = setInterval(() => setQuoteAge(Math.round((Date.now() - quotedAt) / 1000)), 1000);
-    return () => clearInterval(id);
-  }, [quotedAt]);
-
   // a live quote as the user types: a read, debounced, so every keystroke does not
   // hit Aquarius. it shows the estimated out and the route; the binding numbers
   // (minimum received, fee) come from buildSwap at review.
@@ -162,7 +145,6 @@ export function Swap({ onClose }: { onClose: () => void }) {
         .then((q) => {
           if (live) {
             setQuote(q);
-            setQuotedAt(Date.now());
             setQuoting(false);
           }
         })
@@ -316,9 +298,7 @@ export function Swap({ onClose }: { onClose: () => void }) {
                 onBack={onClose}
                 right={
                   <InfoTip t={t} label="About swapping">
-                    Swaps route through Aquarius pools on Stellar. Both the amount and your address
-                    are public on the ledger. You receive at least the minimum shown, or the swap
-                    reverts.
+                    Aquarius pools. Amount and address are public.
                   </InfoTip>
                 }
               />
@@ -432,7 +412,6 @@ export function Swap({ onClose }: { onClose: () => void }) {
                 asset={outAsset}
                 quote={quote}
                 quoting={quoting}
-                quoteAge={quoteAge}
                 onPick={() => setPicking("out")}
               />
 
@@ -451,8 +430,7 @@ export function Swap({ onClose }: { onClose: () => void }) {
                 >
                   Max slippage
                   <InfoTip t={t} label="About slippage">
-                    The most the price may move against you before the swap reverts instead of
-                    filling. A wider tolerance fills more often but can receive less.
+                    How far the price may move before the swap reverts.
                   </InfoTip>
                 </div>
                 <div style={{ display: "flex", gap: space.sm }}>
@@ -521,35 +499,22 @@ export function Swap({ onClose }: { onClose: () => void }) {
         code={summary?.assetIn ?? inAsset.code}
         fee={summary?.fee}
         fiat={fiat}
-        // `minOut` is the number the transaction ENFORCES: below it the swap
-        // reverts. the screen's own header tip already promises "you receive at
-        // least the minimum shown, or the swap reverts", and no minimum was shown
-        // anywhere in the flow. `estOut` is the expectation; this is the floor.
+        // the binding number the slippage setting produces: below it the swap
+        // reverts. a row and not an effects line, because this file's rule is
+        // that a fact behind a hover is a blind signature.
         facts={[
           ...(summary?.estOut
             ? [{ label: "Estimated", value: `${summary.estOut} ${summary.assetOut}` }]
             : []),
           ...(summary?.minOut
-            ? [{ label: "Minimum received", value: `${summary.minOut} ${summary.assetOut}` }]
-            : []),
-          // a VISIBLE row, not an effects line: this file's own rule is that a
-          // fact behind a hover is a blind signature, and the rate is the whole
-          // decision. stated as "not measured" rather than omitted, so an
-          // unmeasured impact cannot read as a measured small one.
-          ...(summary
-            ? [
-                {
-                  label: "Price impact",
-                  value:
-                    summary.impactBps === null
-                      ? "could not be measured"
-                      : `${(summary.impactBps / 100).toFixed(2)}%`,
-                },
-              ]
+            ? [{ label: "Minimum", value: `${summary.minOut} ${summary.assetOut}` }]
             : []),
         ]}
-        warning={summary?.warning}
         effects={summary?.effects ?? []}
+        // the rate warning the worker measures and writes: a routable pair on
+        // this deployment quoted 62% and later 81% below the pool's near-spot
+        // rate, and slippage does not bound a cost the quote already carries.
+        warning={summary?.warning}
         error={error}
         unresolved={unresolved}
         busy={busy}
@@ -578,22 +543,19 @@ function ReceiveCard({
   asset,
   quote,
   quoting,
-  quoteAge,
   onPick,
 }: {
   t: Theme;
   asset: SwapAsset;
   quote: SwapQuoteView | null;
   quoting: boolean;
-  /** seconds since this quote was read. */
-  quoteAge: number;
   onPick: () => void;
 }) {
   const est = quote?.estOut ?? null;
   return (
     <div style={{ background: t.field, borderRadius: radius.lg, padding: space.gutter }}>
       <div style={{ display: "flex", alignItems: "center", gap: space.sm }}>
-        <span style={{ ...text.rowSub, color: t.sub, flex: 1 }}>You receive (estimate)</span>
+        <span style={{ ...text.rowSub, color: t.sub, flex: 1 }}>Estimated</span>
         <button
           type="button"
           onClick={onPick}
@@ -637,17 +599,6 @@ function ReceiveCard({
         {est ? `${est}` : quoting ? "…" : "—"}
       </div>
       {quote && quote.route.length > 2 && <AssetPath t={t} route={quote.route} />}
-      {/* how old this estimate is. a pool price moves and the figure above it was
-          drawn with nothing saying when it was read. the minimum received and the
-          fee still come from `buildSwap` at review, so a stale quote can never be
-          SIGNED; this is about the number the decision is made on. */}
-      {est && !quoting && (
-        <div style={{ ...text.caption, color: t.faint, textAlign: "center", marginTop: 4 }}>
-          {quoteAge < 5
-            ? "Live estimate"
-            : `Estimate from ${quoteAge}s ago. The exact amount is set when you review.`}
-        </div>
-      )}
       {/* the price you are actually getting, against the price the pool quotes
           for one unit. an estimate and a slippage floor say nothing about this:
           slippage bounds movement AFTER the quote, and this is a cost the quote
@@ -670,7 +621,7 @@ function ReceiveCard({
           }}
         >
           {quote?.impactBps === null || quote?.impactBps === undefined
-            ? "Price impact could not be measured"
+            ? "Price impact —"
             : `Price impact ${(quote.impactBps / 100).toFixed(2)}%`}
         </div>
       )}
@@ -752,7 +703,6 @@ function SwapAssetPicker({
               iconRing
               icon={<AssetMark t={t} id={a.id} code={a.code} />}
               title={a.code}
-              sub={a.id === "native" ? "Stellar Lumens" : undefined}
               value={amount !== null ? <Figure value={amount} /> : undefined}
               // an unauthorised trustline is held and unusable, which is a third
               // thing again. Send's picker already draws it inert with the reason;
@@ -765,7 +715,7 @@ function SwapAssetPicker({
                   : amount !== null
                     ? undefined
                     : h.kind === "loading"
-                      ? "Reading"
+                      ? "…"
                       : h.kind === "unreadable"
                         ? "Balance unavailable"
                         : "Not held"

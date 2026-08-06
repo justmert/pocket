@@ -90,7 +90,7 @@ async function onboard(page: Page): Promise<void> {
   const shownPhraseText = shownWords.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
   await answerBackupCheck(page, shownPhraseText);
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
     timeout: 30_000,
   });
 }

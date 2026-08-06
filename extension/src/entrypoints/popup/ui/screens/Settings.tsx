@@ -31,9 +31,23 @@ export function Settings() {
 
   return (
     <ScrollArea className="pocket-page" background={t.canvas}>
-      <div style={{ padding: `${space.gutter}px ${space.gutter}px ${NAV_SPACE}px` }}>
-        <Header t={t} title="Settings" />
-
+      {/* the title is PINNED, the way Activity pins its header: it stays while the
+          rows scroll under it. opaque (the solid pocket colour under the hue wash,
+          reading `var(--pocket-bg)` like the ScrollArea) so rows do not ghost
+          through, matching the History header exactly. */}
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 5,
+          backgroundColor: "var(--pocket-bg)",
+          backgroundImage: t.canvas,
+          padding: `${space.gutter}px ${space.gutter}px ${space.md}px`,
+        }}
+      >
+        <Header t={t} title="Settings" dense />
+      </div>
+      <div style={{ padding: `0 ${space.gutter}px ${NAV_SPACE}px` }}>
         <Overline t={t}>Connection</Overline>
         <Row
           t={t}
@@ -58,8 +72,8 @@ export function Settings() {
               t={t}
               index={i++}
               icon={<Coins size={19} />}
-              title="Fund account"
-              sub="Get free testnet XLM from friendbot"
+              title="Get testnet XLM"
+              sub="Free XLM from friendbot"
               value={funding ? <Refresh size={17} className="pocket-spinner" /> : undefined}
               onClick={runFund}
             />

@@ -121,7 +121,7 @@ describe("a staged handle dies with its envelope", () => {
     const { describeError } = await import("../../src/core/dispatch");
     const shown = describeError(err);
     expect(shown).toMatch(/build it again|review/i);
-    expect(shown).not.toMatch(/check your connection/i);
+    expect(shown).not.toMatch(/Something went wrong/i);
   });
 
   it("keeps the window tied to the envelope rather than to a number typed here", () => {

@@ -143,7 +143,7 @@ describe("a registration the wallet never got an answer about", () => {
     expect(said, "claimed nothing was bound about an unknown outcome").not.toMatch(
       /Nothing was bound/i,
     );
-    expect(said).toMatch(/did not learn whether it landed/i);
+    expect(said).toMatch(/does not know whether your setup landed/i);
   });
 
   it("records the attempt, so the next open can ask about it", async () => {

@@ -75,7 +75,9 @@ test("an unconnected site is told nothing about the account", async () => {
   await popup.getByRole("textbox", { name: "Confirm password" }).fill(PASSWORD);
   await popup.getByRole("button", { name: "Create wallet" }).click();
   await popup.getByRole("button", { name: "I have written it down" }).click();
-  await expect(popup.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
+  await expect(popup.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 
   const page = await site("https://evil.example");
   const res = (await page.evaluate(() =>
@@ -95,9 +97,8 @@ test("a connected site learns the address, and only that", async () => {
   await popup.evaluate(
     () =>
       new Promise((res) =>
-        chrome.runtime.sendMessage(
-          { type: "connectDapp", origin: "https://app.example" },
-          (r) => res(r),
+        chrome.runtime.sendMessage({ type: "connectDapp", origin: "https://app.example" }, (r) =>
+          res(r),
         ),
       ),
   );
@@ -111,9 +112,11 @@ test("a connected site learns the address, and only that", async () => {
   // A connection is not a signing grant. Signing must still be refused
   // outright rather than silently performed.
   const signed = (await page.evaluate(() =>
-    (window as never as {
-      pocket: { signMessage(m: string): Promise<unknown> };
-    }).pocket.signMessage("hello"),
+    (
+      window as never as {
+        pocket: { signMessage(m: string): Promise<unknown> };
+      }
+    ).pocket.signMessage("hello"),
   )) as { error?: { message: string }; signedMessage?: string };
   expect(signed.signedMessage).toBeUndefined();
   expect(signed.error).toBeDefined();
@@ -125,7 +128,7 @@ test("a connected site learns the address, and only that", async () => {
 test("a locked wallet reveals nothing, even to a connected site", async () => {
   const popup = await ctx.newPage();
   await popup.goto(`chrome-extension://${id}/popup.html`);
-  await popup.getByRole("button", { name: "Lock wallet" }).click();
+  await popup.getByRole("button", { name: "Lock" }).click();
   await expect(popup.getByText(/Enter your password to continue/)).toBeVisible();
 
   const page = await site("https://app.example");

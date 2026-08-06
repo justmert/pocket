@@ -72,7 +72,9 @@ test("the move review does not repeat the sheet's own title", async ({ wallet })
   await page.getByRole("button", { name: /Shield/ }).click();
   await page.getByRole("textbox", { name: /Amount/ }).fill("3");
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+  await expect(page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: WAITS.proving,
+  });
 
   // The operation is named once on the screen, by the sheet that contains it.
   await expect(
@@ -93,7 +95,9 @@ test("leaving the move review returns to the form, not past it", async ({ wallet
   const amount = page.getByRole("textbox", { name: /Amount/ });
   await amount.fill("3");
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+  await expect(page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: WAITS.proving,
+  });
 
   await page.getByRole("button", { name: "Back" }).click();
   await expect(
@@ -161,7 +165,7 @@ test("the dapp approval says what an absent memo costs", async ({ wallet }) => {
 
   await expect(page.getByText("example.test")).toBeVisible({ timeout: WAITS.ledgerRead });
   await expect(
-    page.getByText(/Exchanges usually require one; a deposit without it can be lost/),
+    page.getByText(/Exchanges usually need one; a deposit without it can be lost/),
     "the screen that knows least about what it is signing said the least about it",
   ).toBeVisible();
 });

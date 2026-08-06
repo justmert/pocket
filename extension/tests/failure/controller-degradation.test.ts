@@ -46,7 +46,7 @@ import type { xdr as xdrTypes } from "@stellar/stellar-sdk/base";
 const { SorobanDataBuilder, xdr } = await import("@stellar/stellar-sdk/base");
 const { G, H, IDENTITY, encodePoint } = await import("../../src/core/crypto/grumpkin");
 
-const GENERIC = "Something went wrong. Try again, and check your connection.";
+const GENERIC = "Something went wrong. Try again.";
 const REAL_RPC = NETWORKS.testnet.rpcUrl;
 const SOROBAN_DATA = new SorobanDataBuilder().build().toXDR("base64");
 const RECIPIENT = "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7";
@@ -317,7 +317,9 @@ describe("privatePocket(): four sentences, one of them irreversible", () => {
 
     const p = await controller.privatePocket();
     expect(p.state).toBe("archived");
-    expect(p.message).toMatch(/dormant/i);
+    // The state word carries "dormant" on screen; the message carries the one
+    // fact the card does not, which is that reactivating costs money.
+    expect(p.message).toMatch(/reactivating costs/i);
   });
 
   it("never puts the RPC's own words on the private pocket screen", async () => {

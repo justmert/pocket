@@ -47,7 +47,7 @@ describe("what the wallet says about a memo that is too long", () => {
   it("names the memo as the problem, rather than a generic failure", async () => {
     // Memo.text throws a bare Error from inside the SDK, and describeError's
     // allowlist is by NAME, so an unnamed throw becomes "Something went wrong.
-    // Try again, and check your connection." That sends a user to check their
+    // Try again." That sends a user to check their
     // network over a string they typed, and no amount of retrying fixes it.
     const { describeError } = await import("./dispatch");
     const { MemoTooLongError } = await import("./chain/payment");
@@ -58,6 +58,6 @@ describe("what the wallet says about a memo that is too long", () => {
     expect(err).toBeTruthy();
     const shown = describeError(err);
     expect(shown.toLowerCase()).toMatch(/memo/);
-    expect(shown).not.toMatch(/check your connection/);
+    expect(shown).not.toMatch(/Something went wrong/);
   });
 });

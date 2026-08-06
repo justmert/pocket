@@ -13,7 +13,7 @@ import { ArrowDown } from "./icons";
 import { usd } from "./money";
 import { useHidden } from "./WalletProvider";
 import { displayAmount, parseAmount } from "../../../core/chain/balances";
-import { fontSizes, radius, space, text, type Theme } from "./theme";
+import { chipPad, fontSizes, radius, space, text, type Theme } from "./theme";
 
 /** the fraction a typed amount is of the spendable balance, 0..100, for the slider. */
 /**
@@ -385,31 +385,42 @@ export function AmountSlider({
   disabled,
   percent,
   onPercent,
-  verb = "Send",
 }: {
   t: Theme;
   code: string;
   disabled: boolean;
   percent: number;
   onPercent: (p: number) => void;
-  /** the action word in the readout: "Send" on the send screen, "Move" on move. */
-  verb?: string;
 }) {
+  // the percentage rides the thumb as a bubble WHILE dragging, instead of a static
+  // "0%" that sat on its own line above the track: on the compose screens that are
+  // already tall (swap, yield, the bridge) that line was a permanent ~28px the page
+  // did not have to spend, and a resting "0%" says nothing a user needs. it fades
+  // in on grab (or keyboard focus) and out on release. the thumb is 18px, so the
+  // bubble is nudged from +9px at 0% to -9px at 100% to stay centred over it.
+  const [active, setActive] = useState(false);
   return (
-    <div style={{ marginTop: space.lg }}>
+    <div style={{ marginTop: space.lg, position: "relative" }}>
       <div
+        aria-hidden
         style={{
-          display: "flex",
-          justifyContent: "space-between",
-          ...text.rowSub,
-          color: t.sub,
-          marginBottom: space.sm,
+          position: "absolute",
+          bottom: "100%",
+          left: `calc(${percent}% + ${9 - (percent / 100) * 18}px)`,
+          transform: "translateX(-50%)",
+          marginBottom: 4,
+          background: t.accentSoft,
+          color: t.accentOnSoft,
+          ...text.caption,
+          padding: chipPad.badge,
+          borderRadius: radius.pill,
+          whiteSpace: "nowrap",
+          pointerEvents: "none",
+          opacity: active ? 1 : 0,
+          transition: `opacity var(--pocket-instant) var(--pocket-enter)`,
         }}
       >
-        <span>
-          {verb} {percent}%
-        </span>
-        <span>100%</span>
+        {percent}%
       </div>
       <input
         className="pocket-bare pocket-slider"
@@ -418,7 +429,12 @@ export function AmountSlider({
         max={100}
         value={percent}
         disabled={disabled}
-        aria-label={`${verb} ${percent}% of your ${code}`}
+        aria-label={`${percent}% of your ${code}`}
+        onPointerDown={() => setActive(true)}
+        onPointerUp={() => setActive(false)}
+        onPointerCancel={() => setActive(false)}
+        onFocus={() => setActive(true)}
+        onBlur={() => setActive(false)}
         onChange={(e) => onPercent(Number(e.target.value))}
       />
     </div>

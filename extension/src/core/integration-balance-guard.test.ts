@@ -167,7 +167,7 @@ async function worker() {
 describe("a swap for more than the account holds", () => {
   it("is refused before a route is even requested", async () => {
     const c = await worker();
-    await expect(c.buildSwap("native", USDC, "9999")).rejects.toThrow(/more than you can send/);
+    await expect(c.buildSwap("native", USDC, "9999")).rejects.toThrow(/more than you can send/i);
   });
 
   it("names the IN asset when that is the one short", async () => {
@@ -180,7 +180,7 @@ describe("a swap for more than the account holds", () => {
 describe("a yield deposit for more than the account holds", () => {
   it("is refused before the vault is asked to build anything", async () => {
     const c = await worker();
-    await expect(c.buildYieldMove("deposit", "9999")).rejects.toThrow(/more than you can send/);
+    await expect(c.buildYieldMove("deposit", "9999")).rejects.toThrow(/more than you can send/i);
   });
 
   it("does not guard a withdrawal, which spends vault shares and not a balance", async () => {
@@ -196,7 +196,7 @@ describe("a CCTP bridge for more USDC than the account holds", () => {
     // The approve requires no balance, so it would have succeeded and been
     // charged for, and only the burn would have failed.
     const c = await worker();
-    await expect(c.buildCctpSend(0, EVM, "9999")).rejects.toThrow(/more than you can send/);
+    await expect(c.buildCctpSend(0, EVM, "9999")).rejects.toThrow(/more than you can send/i);
   });
 
   it("says the account holds no USDC at all when that is the reason", async () => {
@@ -235,7 +235,7 @@ describe("the fee a Soroban operation actually costs", () => {
     await expect(inner.assertCanSpend(native, amount)).resolves.toBeUndefined();
     // ...and fails once the fee is real.
     await expect(inner.assertCanAffordFee({ fee: SIM_FEE }, native, amount)).rejects.toThrow(
-      /more than you can send/,
+      /more than you can send/i,
     );
   });
 

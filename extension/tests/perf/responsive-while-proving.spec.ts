@@ -56,6 +56,21 @@ const MAX_PAINT_GAP_MS = 500;
  */
 const MAX_INPUT_MS = 1_000;
 
+/**
+ * The label the move sheet shows while it is working, as a gate for "the proof
+ * has started".
+ *
+ * This spec waited on /Building/, which the sheet has not said for some time:
+ * it now draws `Progress title="Preparing" subtitle="Checking this against the
+ * ledger."` (sheets/MoveSheet.tsx). The gate is only a starting pistol for the
+ * measurement below, so a stale one does not weaken what is measured, it stops
+ * the measurement happening at all.
+ *
+ * `.first()` at the call sites: the title and the subtitle both match, and two
+ * matches is a strict-mode violation rather than a pass.
+ */
+const WORKING = /Preparing|Checking this against the ledger/;
+
 async function fundedPocket(wallet: import("../support/wallet").Wallet): Promise<void> {
   await wallet.page.reload();
   await expect(wallet.splash()).toBeVisible({ timeout: WAITS.onboarding });
@@ -65,7 +80,7 @@ async function fundedPocket(wallet: import("../support/wallet").Wallet): Promise
   await wallet.page.reload();
   await wallet.waitForHome(WAITS.ledgerRead);
   await wallet.openPrivatePocket();
-  await expect(wallet.page.getByText("Private pocket not set up")).toBeVisible({
+  await expect(wallet.page.getByText("Not open yet").first()).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
 }
@@ -86,8 +101,10 @@ test("the popup keeps painting while a proof runs in the offscreen document", as
   const t0 = await now(wallet.page);
   await openMoveAction(wallet.page, "Set up the private pocket");
   // The wait must be on screen, or what follows is not measuring a proof.
-  await expect(wallet.page.getByText(/Building/)).toBeVisible();
-  await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+  await expect(wallet.page.getByText(WORKING).first()).toBeVisible();
+  await expect(wallet.page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: WAITS.proving,
+  });
   const t1 = await now(wallet.page);
   const p = await read(wallet.page);
 
@@ -123,14 +140,14 @@ test("the popup still obeys a click while a proof runs", async ({ wallet }) => {
   await fundedPocket(wallet);
 
   await openMoveAction(wallet.page, "Set up the private pocket");
-  await expect(wallet.page.getByText(/Building/)).toBeVisible();
+  await expect(wallet.page.getByText(WORKING).first()).toBeVisible();
 
   // Nothing is signed yet, so leaving is a real thing a bored user does, and it
   // is the only control the screen offers while it is busy. Timed from inside
   // the page so the number is the user's, not the test runner's.
   const t0 = await now(wallet.page);
   await wallet.page.getByRole("button", { name: "Close" }).click();
-  await expect(wallet.page.getByRole("button", { name: "Public pocket" })).toBeVisible({
+  await expect(wallet.page.getByRole("button", { name: "Public Pocket", exact: true })).toBeVisible({
     timeout: WAITS.proving,
   });
   const t1 = await now(wallet.page);

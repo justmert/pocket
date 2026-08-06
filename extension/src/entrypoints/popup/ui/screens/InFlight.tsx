@@ -89,21 +89,36 @@ export function InFlight({
     <Screen t={t} still>
       <Header t={t} title="Unfinished transaction" />
       <Notice t={t} tone="exposed">
-        Pocket submitted a transaction and did not see whether it confirmed. Do not send it again
-        until this is resolved.
+        Do not send it again until this is resolved.
       </Notice>
 
-      <Label t={t}>Transaction hash</Label>
+      <Label t={t}>Hash</Label>
       <MonoBlock t={t}>{record.hash}</MonoBlock>
 
-      <div style={{ ...text.body, color: t.sub, marginTop: space.md, lineHeight: 1.5 }}>
-        {record.windowPassed
-          ? record.answered
+      {/* the deadline is a fact, so it is a row rather than a sentence: the label
+          and the clock, under the hash it belongs to. the two passed-window cases
+          are not a time, so they stay as the line they always were. */}
+      {record.windowPassed ? (
+        <div style={{ ...text.body, color: t.sub, marginTop: space.md, lineHeight: 1.5 }}>
+          {record.answered
             ? "Its time window has passed and the ledger does not have it, so it can never be applied."
             : "Its time window has passed, so it can no longer be included. Pocket has not been " +
-              "able to reach the ledger to confirm whether it landed before then."
-          : `It can still be included until ${deadline(record.maxTime)}.`}
-      </div>
+              "able to reach the ledger to confirm whether it landed before then."}
+        </div>
+      ) : (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: space.md,
+            marginTop: space.md,
+          }}
+        >
+          <span style={{ ...text.rowSub, fontWeight: 600, color: t.accent }}>Open until</span>
+          <span style={{ ...text.value, color: t.text }}>{deadline(record.maxTime)}</span>
+        </div>
+      )}
 
       {outcome && (
         <div style={{ marginTop: space.md }}>
@@ -131,7 +146,7 @@ export function InFlight({
               is the wait it suits: the spinner says work is happening and the
               sentence breathes with it, rather than sitting dead beside a moving
               ring on the one screen a user is asked to sit through. */}
-          <span className="pocket-pulse">Checking the ledger</span>
+          <span className="pocket-pulse">Checking</span>
         </div>
       ) : (
         <ButtonStack>

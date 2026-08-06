@@ -137,6 +137,18 @@ async function deltasFor(
         continue;
       }
 
+      // ONLY the classic `account_` effects, NOT the Soroban `contract_credited` /
+      // `contract_debited` pair. When a SAC transfer moves a classic account's
+      // balance through a contract (a DeFindex deposit or withdrawal, an Aquarius
+      // swap, a CCTP mint), Horizon emits the classic effect for the balance change
+      // AND a `contract_` effect as the Soroban-side view of the same movement.
+      // They are not two movements; counting both DOUBLE-COUNTS. Measured against a
+      // live testnet account on 2026-08-09 that had used yield, swap and the bridge:
+      // summing `account_` effects alone reconciled to the current balance to the
+      // stroop for both XLM and USDC, while adding `contract_` effects put XLM
+      // +1672 XLM and USDC -618 USDC off and drove the walk transiently negative, so
+      // it returned null and the chart was withheld. So the `contract_` effects are
+      // deliberately ignored here; do not add them back.
       if (e.type === "account_credited" || e.type === "account_debited") {
         if (assetIdOf(e.asset_type, e.asset_code, e.asset_issuer) !== assetId) continue;
         const amount = stroops(e.amount);

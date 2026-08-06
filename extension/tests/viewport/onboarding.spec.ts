@@ -65,20 +65,19 @@ test("the first screen's two ways in are both reachable at every viewport", asyn
   }
 });
 
-test("the create form stays reachable with both of its rules on screen", async ({ wallet }) => {
+test("the create form stays reachable with its rule on screen", async ({ wallet }) => {
   const page = wallet.page;
   await expect(wallet.splash()).toBeVisible({ timeout: WAITS.onboarding });
   await page.getByRole("button", { name: "Create a new wallet" }).click();
 
-  // The tallest the form ever gets: both validation notices, which is what a
-  // user typing a short password into the first field and a different one into
-  // the second actually sees.
+  // The tallest the form ever gets: the mismatch notice, which is what a user
+  // typing a short password into the first field and a different one into the
+  // second actually sees. The length rule is the field's own placeholder now.
   await page.getByLabel("Password", { exact: true }).fill("short");
   await page.getByLabel("Confirm password").fill("different");
-  await expect(page.getByText("Use at least eight characters.")).toBeVisible();
   await expect(page.getByText("The two passwords do not match.")).toBeVisible();
 
-  await atEveryViewport(page, "onboarding/create (both rules shown)", async () => {
+  await atEveryViewport(page, "onboarding/create (the rule shown)", async () => {
     await expect(page.getByRole("button", { name: "Create wallet" })).toBeAttached();
   });
 });
@@ -139,7 +138,10 @@ test("the import form holds a full 24-word phrase without spilling sideways", as
   await page.getByRole("button", { name: "I have a recovery phrase" }).click();
   await page.getByLabel("Recovery phrase").fill(LONG_PHRASE);
   await page.getByLabel("New password", { exact: true }).fill("short");
-  await expect(page.getByText("Use at least eight characters.")).toBeVisible();
+  await expect(page.getByLabel("New password", { exact: true })).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
 
   await atEveryViewport(page, "onboarding/import (24 long words typed)", async () => {
     await expect(page.getByRole("button", { name: "Restore wallet" })).toBeAttached();
@@ -180,7 +182,7 @@ test("the erase warning page and its form both keep their buttons reachable", as
   await wallet.lock();
   await openRecover(page);
 
-  // The warning page: three bullets, two notices, two buttons. The most copy
+  // The warning page: two bullets, one notice, two buttons. The most copy
   // the wallet shows before it has any money in it.
   await atEveryViewport(page, "recover/warning", async () => {
     await expect(page.getByRole("button", { name: "I understand, continue" })).toBeAttached();
@@ -189,16 +191,15 @@ test("the erase warning page and its form both keep their buttons reachable", as
   await page.setViewportSize(FRAME);
   await page.getByRole("button", { name: "I understand, continue" }).click();
 
-  // The form at its tallest: every one of its three rules on screen at once,
-  // which is what a half-typed phrase and mismatched passwords produce.
+  // The form at its tallest: both of its hints on screen at once, which is what
+  // a half-typed phrase and mismatched passwords produce.
   await page.getByLabel(/Recovery phrase/).fill("one two three");
   await page.getByLabel("New password", { exact: true }).fill("short");
   await page.getByLabel("Confirm new password").fill("different");
-  await expect(page.getByText(/A recovery phrase is 12 or 24 words/)).toBeVisible();
-  await expect(page.getByText("Use at least eight characters.")).toBeVisible();
+  await expect(page.getByText("Must be 12, 15, 18, 21 or 24 words.")).toBeVisible();
   await expect(page.getByText("The two passwords do not match.")).toBeVisible();
 
-  await atEveryViewport(page, "recover/form (all three rules shown)", async () => {
+  await atEveryViewport(page, "recover/form (both hints shown)", async () => {
     await expect(page.getByRole("button", { name: "Erase and restore" })).toBeAttached();
   });
 });

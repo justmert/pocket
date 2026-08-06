@@ -62,12 +62,12 @@ test("a second window does not present the wallet while a phrase is unconfirmed"
 
   // And none of the wallet is on it.
   await expect(
-    second.getByRole("button", { name: "Public pocket" }),
+    second.getByRole("button", { name: "Public", exact: true }),
     "the second window presented the wallet mid-backup",
   ).toHaveCount(0);
   await expect(second.getByRole("button", { name: "Send" })).toHaveCount(0);
   await expect(
-    second.getByRole("button", { name: "Copy your address" }),
+    second.getByRole("button", { name: "Copy address" }),
     "the second window handed out an address for a wallet with no recorded phrase",
   ).toHaveCount(0);
 
@@ -92,7 +92,7 @@ test("once the phrase is confirmed, a second window shows the wallet again", asy
 
   const second = await harness.openPopup();
   await second.waitForLoadState("domcontentloaded");
-  await expect(second.getByRole("button", { name: "Public pocket" })).toBeVisible({
+  await expect(second.getByRole("button", { name: "Public", exact: true })).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
   await expect(second.getByText(/still open in another tab/i)).toHaveCount(0);
@@ -145,7 +145,7 @@ test("a closed onboarding tab still leaves a way into the wallet", async ({ wall
   await expect(on, "no way into the wallet from the blocking screen").toBeVisible();
 
   await on.click();
-  await expect(second.getByRole("button", { name: "Public Pocket" })).toBeVisible({
+  await expect(second.getByRole("button", { name: "Public" })).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
 
@@ -153,7 +153,7 @@ test("a closed onboarding tab still leaves a way into the wallet", async ({ wall
   // Continuing past a dead tab is not the user telling anyone they wrote the
   // words down.
   await expect(
-    second.getByText(/recovery phrase was never confirmed/i),
+    second.getByText(/never confirmed your recovery phrase/i),
     "the wallet forgot that the backup check had been skipped",
   ).toBeVisible({ timeout: WAITS.ledgerRead });
 

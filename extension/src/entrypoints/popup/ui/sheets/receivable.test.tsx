@@ -1,15 +1,12 @@
-// What the Receive sheet says can arrive.
+// What the Receive sheet shows.
 //
-// A Stellar account can only hold an asset it has a trustline for. A payment in
-// anything else is rejected by the network with `op_no_trust`: the sender pays
-// the fee and the money never moves, and the recipient hears nothing, because
-// from their side no payment happened.
-//
-// The wallet had the fact and could not say it. `controller.balances` does
-// `if (!tl) continue`, so an asset with no trustline is OMITTED rather than
-// shown at zero, and nothing in the wallet opens a trustline on its own. A
-// fresh Pocket account therefore has no USDC row anywhere, and the Receive
-// sheet handed out an address with no per-asset word of any kind.
+// It used to draw the set of assets the address can accept as chips under the
+// address, on the reasoning that a payment in an un-trustlined asset bounces
+// with `op_no_trust` and nothing on the recipient's side warns them. That was
+// removed deliberately: the wallet has ONE address, the sheet is the QR, the
+// address and a copy button, and no per-asset word of any kind. So the sheet no
+// longer makes an "accepts" claim at all, and these tests hold that line rather
+// than the old chip contract, so a revert that re-adds the chips goes red here.
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ReceiveSheet } from "./ReceiveSheet";
@@ -28,11 +25,11 @@ function held(...codes: string[]): PublicBalance[] {
   }));
 }
 
-function render(balances: PublicBalance[] | null) {
+function render(balances: PublicBalance[] | null, address: string | null = ADDRESS) {
   const value = {
     t: theme("public"),
     pocket: "public",
-    status: { address: ADDRESS, network: "testnet" },
+    status: address ? { address, network: "testnet" } : null,
     balances,
     copy: () => undefined,
     copied: false,
@@ -44,31 +41,25 @@ function render(balances: PublicBalance[] | null) {
   );
 }
 
-describe("the address the Receive sheet hands out", () => {
-  it("names what it can actually accept", () => {
+describe("the Receive sheet", () => {
+  it("shows the address and no per-asset chips", () => {
     const html = render(held("XLM", "USDC"));
-    expect(html).toMatch(/can receive XLM and USDC/);
+    expect(html).toContain(ADDRESS);
+    // The sheet makes no "accepts" claim: the asset codes are not drawn.
+    expect(html).not.toMatch(/>XLM</);
+    expect(html).not.toMatch(/>USDC</);
   });
 
-  it("says XLM alone when that is all the account holds", () => {
-    // The default state of a fresh wallet, and the one where a USDC payment
-    // bounces with nothing on screen having warned anyone.
+  it("shows the address whatever the account holds", () => {
     const html = render(held("XLM"));
-    expect(html).toMatch(/can receive XLM\b/);
-    expect(html).not.toMatch(/USDC/);
+    expect(html).toContain(ADDRESS);
+    expect(html).not.toMatch(/>XLM</);
   });
 
-  it("says what to do about it, not only that it is so", () => {
-    const html = render(held("XLM"));
-    expect(html).toMatch(/added first/i);
-    expect(html).toMatch(/Your assets/);
-  });
-
-  it("claims nothing while the balances are still being read", () => {
-    // Null is "not loaded yet", which is a different fact from "only XLM", and
-    // rendering the second for the first would be a claim the wallet cannot
-    // support.
-    const html = render(null);
-    expect(html).not.toMatch(/can receive/);
+  it("shows no address when the wallet has none", () => {
+    // With no address at all the sheet cannot hand one out: it shows the danger
+    // notice, and the address string appears nowhere.
+    const html = render(null, null);
+    expect(html).not.toContain(ADDRESS);
   });
 });

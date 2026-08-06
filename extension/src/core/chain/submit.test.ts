@@ -162,10 +162,9 @@ describe("what a user is told about a submission", () => {
     expect(said).toContain("deadbeef");
   });
 
-  it("says a failed inclusion cost a fee and a sequence number", () => {
+  it("says a failed inclusion cost a fee", () => {
     const said = describeOutcome({ kind: "failed", hash: "h", ledger: 1, reason: "txFailed" });
     expect(said).toMatch(/fee was charged/i);
-    expect(said).toMatch(/sequence number/i);
   });
 
   it("does not tell them to retry immediately after TRY_AGAIN_LATER", () => {
@@ -173,7 +172,7 @@ describe("what a user is told about a submission", () => {
     // because another transaction from the same source is still in its queue.
     // Stellar's guidance is to wait, so "try again now" is wrong advice.
     const said = describeOutcome({ kind: "notAccepted", hash: "h" });
-    expect(said).toMatch(/wait/i);
+    expect(said).toMatch(/in a few seconds/i);
     expect(said).not.toMatch(/try again now/i);
   });
 
@@ -187,6 +186,10 @@ describe("what a user is told about a submission", () => {
       { kind: "pending", hash: "h", answered: true },
       { kind: "pending", hash: "h", answered: false },
     ] as const;
-    for (const k of kinds) expect(describeOutcome(k).length).toBeGreaterThan(20);
+    const said = kinds.map((k) => describeOutcome(k));
+    // Every kind is a sentence, and the six distinct kinds say six different
+    // things: a fall-through would collapse two of them onto one string.
+    for (const s of said) expect(s).toMatch(/^[A-Z].*\.$/);
+    expect(new Set(said).size, "two outcome kinds share a sentence").toBe(6);
   });
 });

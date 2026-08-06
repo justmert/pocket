@@ -50,18 +50,23 @@ test("creates a wallet and funds it", async () => {
   await page.getByRole("textbox", { name: "Confirm password" }).fill(PASSWORD);
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
-    const shownWords = await page
+  const shownWords = await page
     .locator("span")
     .filter({ hasText: /^\d+\.\s\w+\s*$/ })
     .allInnerTexts();
   const shownPhraseText = shownWords.map((c) => c.replace(/^\d+\.\s*/, "").trim()).join(" ");
   await page.getByRole("button", { name: "I have written it down" }).click();
   await answerBackupCheck(page, shownPhraseText);
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 
   // Read the address the wallet actually derived, from its own receive view.
   await page.getByRole("button", { name: "Receive" }).click();
-  const text = await page.getByText(/^G[A-Z2-7]{55}$/).first().innerText();
+  const text = await page
+    .getByText(/^G[A-Z2-7]{55}$/)
+    .first()
+    .innerText();
   address = text.replace(/\s/g, "");
   expect(address).toMatch(/^G[A-Z2-7]{55}$/);
 
@@ -73,12 +78,14 @@ test("creates a wallet and funds it", async () => {
 test("registers a confidential account with a real proof", async () => {
   test.setTimeout(300_000);
   await page.reload();
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
-  await page.getByRole("button", { name: /private pocket/i }).click();
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+  await page.getByRole("button", { name: "Private", exact: true }).click();
 
   // A funded, unregistered account. The three permanent facts must be stated
   // before the button that commits to them.
-  await expect(page.getByText(/Private pocket not set up/)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(/Not open yet/).first()).toBeVisible({ timeout: 60_000 });
   // Stated twice on purpose: once in the summary, once in the list above the
   // button. Assert the list item, which is the one adjacent to the commitment.
   // The D8 promise, stated where the user commits to it permanently.
@@ -90,13 +97,17 @@ test("registers a confidential account with a real proof", async () => {
   await page.getByRole("button", { name: "Set up the private pocket" }).click();
 
   // Proving, then the review screen listing every effect.
-  await expect(page.getByText(/What this does/)).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: 120_000,
+  });
   await expect(page.getByText(/Bind your OWN auditor key/)).toBeVisible();
   await expect(page.getByText(/Nobody else can read your amounts/)).toBeVisible();
-  await expect(page.getByText(/not reversible/)).toBeVisible();
+  await expect(
+    page.getByText("Publishes, permanently, that this address has a private pocket."),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByText("Transaction successful")).toBeVisible({ timeout: 180_000 });
+  await expect(page.getByText("Success")).toBeVisible({ timeout: 180_000 });
 });
 
 test("shields XLM and makes it spendable", async () => {
@@ -109,7 +120,9 @@ test("shields XLM and makes it spendable", async () => {
   await expect(page.getByText(/This amount is public/i)).toBeVisible();
   await page.getByRole("button", { name: "Review" }).click();
 
-  await expect(page.getByText(/deposit amount is PUBLIC/)).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByText(/This deposit amount is public\./)).toBeVisible({
+    timeout: 120_000,
+  });
   await page.getByRole("button", { name: "Approve" }).click();
 
   // Shield is two transactions: the deposit credits RECEIVING, and the merge
@@ -132,13 +145,14 @@ test("sends a confidential transfer to another account", async () => {
   await page.getByRole("button", { name: "Review" }).click();
 
   // The honest framing, at the moment of signing: amount hidden, addresses not.
-  await expect(page.getByText(/AMOUNT is hidden/)).toBeVisible({ timeout: 120_000 });
-  await expect(page.getByText(/Both addresses are PUBLIC/)).toBeVisible();
+  await expect(page.getByText(/Amount hidden\. Both addresses public\./)).toBeVisible({
+    timeout: 120_000,
+  });
   // Never truncated at confirm: a 4+4 lookalike costs about an hour to grind.
   await expect(page.getByText(RECIPIENT.slice(0, 20))).toBeVisible();
 
   await page.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByText("Transaction successful")).toBeVisible({ timeout: 240_000 });
+  await expect(page.getByText("Success")).toBeVisible({ timeout: 240_000 });
 });
 
 test("the account bound its OWN auditor key, not the operator's", async () => {
@@ -174,9 +188,7 @@ test("the ledger agrees with what the UI claimed", async () => {
   test.setTimeout(120_000);
   // "Confirmed" on a screen is not evidence. This asks the public ledger,
   // through Horizon, sharing no code with the wallet's own read path.
-  const acc = await (
-    await fetch(`https://horizon-testnet.stellar.org/accounts/${address}`)
-  ).json();
+  const acc = await (await fetch(`https://horizon-testnet.stellar.org/accounts/${address}`)).json();
   const native = acc.balances.find((b: { asset_type: string }) => b.asset_type === "native");
   const moved = 10_000 - Number(native.balance);
 

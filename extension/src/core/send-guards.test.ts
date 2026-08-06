@@ -1,8 +1,8 @@
 // Two things the send path said, or did not say, about what the user typed.
 //
-//   ".5" was refused with "That is not an amount Pocket can read. Use digits
-//   and at most one decimal point.", about a string that is digits and one
-//   decimal point. A keypad that offers "." as its own key invites exactly it.
+//   ".5" was refused with "Enter digits and one decimal point.", about a string
+//   that is digits and one decimal point. A keypad that offers "." as its own
+//   key invites exactly it.
 //
 //   Paying your OWN address built, confirmed and succeeded in silence. It is
 //   legal on Stellar and it moves nothing: the balance ends where it started,

@@ -140,7 +140,7 @@ test("a slow ledger does not hold up the screen it is going to land on", async (
   });
 
   await wallet.page.reload();
-  await expect(wallet.page.getByRole("button", { name: "Public pocket" })).toBeVisible({
+  await expect(wallet.page.getByRole("button", { name: "Public Pocket", exact: true })).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
   // Feedback while it waits, not a blank space and not a fabricated zero.

@@ -8,8 +8,9 @@
 // from "your money is gone".
 //
 // so it is one shape, and the second time someone meets it they already know how
-// it ends: what the figure is, one line saying what is holding it, and one
-// control saying what releases it.
+// it ends: what the figure is, and one control saying what releases it. a line
+// saying what is holding it only where the label and that control do not say it
+// already.
 //
 // the figure is the part that has to be handled honestly. `spendable` and
 // `receiving` are optional on the wire, and in a dormant or unrebuilt pocket the
@@ -28,7 +29,7 @@ export function Held({
   /** the figure, when the wallet has actually read it. */
   amount,
   code,
-  /** one sentence: what is holding it. */
+  /** one sentence: what is holding it, where the label and the action do not say it. */
   holding,
   /** the control that releases it, where one exists. */
   action,
@@ -41,7 +42,7 @@ export function Held({
   label: string;
   amount?: string;
   code?: string;
-  holding: ReactNode;
+  holding?: ReactNode;
   /**
    * optional, because some states genuinely have no way out from here.
    *
@@ -71,11 +72,13 @@ export function Held({
           Not readable on this device yet
         </span>
       )}
-      <div
-        style={{ ...text.caption, color: t.accentOnSoft, marginTop: space.xs, lineHeight: 1.45 }}
-      >
-        {holding}
-      </div>
+      {holding && (
+        <div
+          style={{ ...text.caption, color: t.accentOnSoft, marginTop: space.xs, lineHeight: 1.45 }}
+        >
+          {holding}
+        </div>
+      )}
       {(action || secondary) && (
         <ButtonStack>
           {action && (

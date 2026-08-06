@@ -213,6 +213,43 @@ describe("balanceHistory", () => {
     expect(balanceAt(points!, now - 60_000)).toBe(30n * XLM);
   });
 
+  it("does not double-count a Soroban transfer also emitted as a contract effect", async () => {
+    // A SAC transfer that moves a classic account's balance through a contract
+    // (DeFindex, Aquarius, CCTP) is emitted BOTH as the classic account_ effect
+    // and as a Soroban contract_ effect describing the same movement. Counting
+    // both double-counts. Measured on a live testnet account on 2026-08-09,
+    // summing account_ effects alone reconciled to the balance to the stroop,
+    // while also counting contract_ effects put the total far off and drove the
+    // walk negative, withholding the chart. The contract_ effect is ignored.
+    stubHorizon([
+      {
+        type: "account_debited",
+        account: ACCOUNT,
+        created_at: iso(now - 60_000),
+        amount: "30.0000000",
+        asset_type: "native",
+      },
+      {
+        type: "contract_debited", // the Soroban view of the SAME 30 XLM. Ignored.
+        account: ACCOUNT,
+        created_at: iso(now - 60_000),
+        amount: "30.0000000",
+        asset_type: "native",
+        contract: "CCONTRACT",
+      },
+    ]);
+    const points = await balanceHistory({
+      horizonUrl: HORIZON,
+      account: ACCOUNT,
+      assetId: "native",
+      currentStroops: 70n * XLM,
+      since: now - 86_400_000,
+    });
+    // The 30 was debited ONCE, so before it the account held 100, not 130.
+    expect(balanceAt(points!, now - 120_000)).toBe(100n * XLM);
+    expect(balanceAt(points!, now - 60_000)).toBe(70n * XLM);
+  });
+
   it("refuses rather than drawing a curve that goes negative", async () => {
     // A walk that produces a negative balance missed a change, which means every
     // earlier point is wrong too. Fail closed, like the opening store does.

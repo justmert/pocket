@@ -67,7 +67,9 @@ test("a sub-one amount is set as one run, not as a giant zero", async ({ wallet 
   await wallet.page.getByRole("textbox", { name: "To", exact: true }).fill(TO);
   await wallet.page.getByRole("textbox", { name: /Amount/ }).fill("0.5");
   await wallet.page.getByRole("button", { name: "Continue" }).click();
-  await expect(wallet.page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+  await expect(wallet.page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: WAITS.proving,
+  });
 
   // The figure is announced whole regardless of how it is drawn, so the visual
   // half is measured on the drawn half: every glyph of a sub-one amount must be

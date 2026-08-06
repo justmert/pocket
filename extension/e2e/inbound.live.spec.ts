@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 //
 // Every component of the sending path was proven: the proof verifies, the
 // transfer lands, both auditor channels populate. Nobody had opened the wallet
-// that RECEIVED one. When they did, it read "Records do not match the ledger"
+// that RECEIVED one. When they did, it read "Out of step"
 // and the money was on chain and unreachable, because decryptIncomingTransfer
 // was written, tested, exported and called by nothing.
 const EXT = resolve(dirname(fileURLToPath(import.meta.url)), "../.output/chrome-mv3");
@@ -40,31 +40,44 @@ async function launchWallet(): Promise<Wallet> {
   await page.getByRole("button", { name: "Create wallet" }).click();
   await expect(page.getByText("Write this down")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "I have written it down" }).click();
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 
   await page.getByRole("button", { name: "Receive" }).click();
-  const address = (await page.getByText(/^G[A-Z2-7]{55}$/).first().innerText()).replace(/\s/g, "");
+  const address = (
+    await page
+      .getByText(/^G[A-Z2-7]{55}$/)
+      .first()
+      .innerText()
+  ).replace(/\s/g, "");
   const funded = await fetch(`${FRIENDBOT}?addr=${address}`);
   expect(funded.ok, `friendbot must fund ${address}`).toBe(true);
   await page.reload();
-  await expect(page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
   return { ctx, page, dir, address };
 }
 
 /** Register, shield and merge, so the wallet can send. */
 async function fundPrivate(w: Wallet, amount: string): Promise<void> {
-  await w.page.getByRole("button", { name: /private pocket/i }).click();
-  await expect(w.page.getByText(/Private pocket not set up/)).toBeVisible({ timeout: 60_000 });
+  await w.page.getByRole("button", { name: "Private", exact: true }).click();
+  await expect(w.page.getByText(/Not open yet/).first()).toBeVisible({ timeout: 60_000 });
   await w.page.getByRole("button", { name: "Set up the private pocket" }).click();
-  await expect(w.page.getByText(/What this does/)).toBeVisible({ timeout: 180_000 });
+  await expect(w.page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: 180_000,
+  });
   await w.page.getByRole("button", { name: "Approve" }).click();
-  await expect(w.page.getByText("Transaction successful")).toBeVisible({ timeout: 240_000 });
+  await expect(w.page.getByText("Success")).toBeVisible({ timeout: 240_000 });
 
   await expect(w.page.getByText(/SPENDABLE/)).toBeVisible({ timeout: 120_000 });
   await w.page.getByRole("button", { name: "Shield" }).click();
   await w.page.getByRole("textbox", { name: "Amount" }).fill(amount);
   await w.page.getByRole("button", { name: "Review" }).click();
-  await expect(w.page.getByText(/deposit amount is PUBLIC/)).toBeVisible({ timeout: 120_000 });
+  await expect(w.page.getByText(/This deposit amount is public\./)).toBeVisible({
+    timeout: 120_000,
+  });
   await w.page.getByRole("button", { name: "Approve" }).click();
   await expect(w.page.getByText(/Made spendable in a second transaction/)).toBeVisible({
     timeout: 240_000,
@@ -87,21 +100,25 @@ test("a received confidential transfer is credited, not reported as diverged", a
     await sender.page.getByRole("textbox", { name: "To", exact: true }).fill(recipient.address);
     await sender.page.getByRole("textbox", { name: "Amount" }).fill("7");
     await sender.page.getByRole("button", { name: "Review" }).click();
-    await expect(sender.page.getByText(/AMOUNT is hidden/)).toBeVisible({ timeout: 120_000 });
+    await expect(sender.page.getByText(/Amount hidden\. Both addresses public\./)).toBeVisible({
+      timeout: 120_000,
+    });
     await sender.page.getByRole("button", { name: "Approve" }).click();
-    await expect(sender.page.getByText("Transaction successful")).toBeVisible({
+    await expect(sender.page.getByText("Success")).toBeVisible({
       timeout: 240_000,
     });
 
     // THE ASSERTION. Reopen the recipient's pocket and look.
     await recipient.page.reload();
-    await expect(recipient.page.getByRole("button", { name: "Public pocket" })).toBeVisible({ timeout: 30_000 });
-    await recipient.page.getByRole("button", { name: /private pocket/i }).click();
+    await expect(recipient.page.getByRole("button", { name: "Public", exact: true })).toBeVisible({
+      timeout: 30_000,
+    });
+    await recipient.page.getByRole("button", { name: "Private", exact: true }).click();
 
     // It must NOT say the records disagree with the ledger. That was the bug:
     // the credit is on chain, the device knows nothing, and the pocket refuses
     // to spend from a state it cannot verify.
-    await expect(recipient.page.getByText(/Records do not match the ledger/)).toHaveCount(0);
+    await expect(recipient.page.getByText(/Out of step/)).toHaveCount(0);
     await expect(recipient.page.getByText(/SPENDABLE/)).toBeVisible({ timeout: 120_000 });
 
     // And the money must be there, in the receiving side, one signature from

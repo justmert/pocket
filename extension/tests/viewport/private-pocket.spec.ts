@@ -113,7 +113,7 @@ test("the unfunded and unregistered pockets keep their copy and their button on 
   // Unfunded first: a state that costs nothing to reach and that a real user
   // meets before anything else.
   await wallet.openPrivatePocket();
-  await expect(page.getByText("Fund this account first")).toBeVisible({
+  await expect(page.getByText("Fund first").first()).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
   await atEveryViewport(page, "private/unfunded", async () => {
@@ -124,7 +124,7 @@ test("the unfunded and unregistered pockets keep their copy and their button on 
   await wallet.reopen();
   await wallet.waitForHome(WAITS.ledgerRead);
   await wallet.openPrivatePocket();
-  await expect(page.getByText("Private pocket not set up")).toBeVisible({
+  await expect(page.getByText("Not open yet").first()).toBeVisible({
     timeout: WAITS.ledgerRead,
   });
 
@@ -161,7 +161,9 @@ test("the unfunded and unregistered pockets keep their copy and their button on 
   // written by the worker, so its height is the product's, not mine.
   await page.setViewportSize(FRAME);
   await openMoveAction(page, "Set up the private pocket");
-  await expect(page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+  await expect(page.getByRole("button", { name: "What this does" })).toBeVisible({
+    timeout: WAITS.proving,
+  });
 
   for (const vp of VIEWPORTS) {
     await page.setViewportSize({ width: vp.width, height: vp.height });
@@ -174,10 +176,11 @@ test("the unfunded and unregistered pockets keep their copy and their button on 
     for (let i = 0; i < n; i++) {
       await expectReachable(effects.nth(i), `private/review (register) @ ${vp.name}: effect ${i}`);
     }
-    // The cost, in the place it moved to. What is being paid for is permanent,
-    // so what it costs has to be legible next to the button that agrees to it.
+    // The cost, in the one place it is stated. What is being paid for is
+    // permanent, so what it costs has to be legible next to the button that
+    // agrees to it.
     await expectReachable(
-      page.getByText(/Pay a network fee/),
+      page.getByText("Network fee", { exact: true }),
       `private/review (register) @ ${vp.name}: the network fee`,
     );
     await expectReachable(
@@ -305,7 +308,7 @@ test("a ready pocket, its three op forms and the transfer review all fit the pop
     // The receipt, in the sheet it happened in: the confirmation line, the
     // Transaction ID row (its copy control), and the way out. the hash itself is
     // no longer printed as a block; it is copied from the row and read from the
-    // a11y tree, so what has to stay reachable is the confirmation and Go to Home.
+    // a11y tree, so what has to stay reachable is the confirmation and Done.
     await audit.check(async () => {
       for (const vp of VIEWPORTS) {
         await page.setViewportSize({ width: vp.width, height: vp.height });
@@ -316,14 +319,14 @@ test("a ready pocket, its three op forms and the transfer review all fit the pop
           `private/receipt @ ${vp.name}: the transaction id row`,
         );
         await expectReachable(
-          page.getByRole("button", { name: "Go to Home" }),
-          `private/receipt @ ${vp.name}: Go to Home`,
+          page.getByRole("button", { name: "Done" }),
+          `private/receipt @ ${vp.name}: Done`,
         );
       }
     });
 
     await page.setViewportSize(FRAME);
-    await page.getByRole("button", { name: "Go to Home" }).click();
+    await page.getByRole("button", { name: "Done" }).click();
     await expect(wallet.spendableMoney()).toHaveText(/^25\.0000000\s*XLM$/, {
       timeout: WAITS.ledgerRead,
     });
@@ -333,7 +336,9 @@ test("a ready pocket, its three op forms and the transfer review all fit the pop
     await wallet.nav("Send privately").click();
     await expect(page.getByLabel("To", { exact: true })).toBeVisible();
     await wallet.submitOp({ to: recipient, amount: "5" });
-    await expect(page.getByText("What this does")).toBeVisible({ timeout: WAITS.proving });
+    await expect(page.getByRole("button", { name: "What this does" })).toBeVisible({
+      timeout: WAITS.proving,
+    });
 
     await audit.check(async () => {
       for (const vp of VIEWPORTS) {

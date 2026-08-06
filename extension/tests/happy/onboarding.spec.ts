@@ -9,16 +9,18 @@ import { Wallet, ADDRESS_RE, WAITS } from "../support/wallet";
 
 const PASSWORD = "a-strong-test-password";
 
-test("the first screen offers both ways in and states what Pocket does not hide", async ({
-  wallet,
-}) => {
+test("the first screen offers both ways in", async ({ wallet }) => {
   await expect(wallet.splash()).toBeVisible({ timeout: WAITS.onboarding });
 
-  // The honest framing belongs on the first screen a user ever sees, not in a
-  // settings page they will never open. Confidential transfers hide amounts;
-  // both addresses stay public on the ledger, permanently.
-  await expect(wallet.page.getByText(/hides.*amounts.*not addresses/i)).toBeVisible();
-
+  // This used to also assert "Pocket hides amounts, not addresses. Who you pay
+  // stays public on the Stellar ledger, permanently." on this screen. The line
+  // was removed as prose the first screen did not need. The claim itself is
+  // still made where it bears on a decision: the private pocket hero says
+  // "Hides amounts, never addresses. Who you pay stays public on the ledger."
+  // (screens/Home.tsx) and the private send screen says "The amount is hidden.
+  // Both addresses stay public on the ledger." (screens/Send.tsx). What is no
+  // longer true is that it is on the splash, and an assertion that says
+  // otherwise would be a test asserting a screen nobody ships.
   await expect(wallet.page.getByRole("button", { name: "Create a new wallet" })).toBeVisible();
   await expect(wallet.page.getByRole("button", { name: "I have a recovery phrase" })).toBeVisible();
 });
@@ -50,23 +52,18 @@ test("creating a wallet shows 24 words once, then opens the home screen", async 
   // halving of the security of every account the wallet ever derives.
   await expect(wallet.backupWordCells()).toHaveCount(24);
 
-  // The two facts a user has to be told at the only moment the phrase is ever
-  // on screen.
-  await expect(wallet.page.getByText(/only way to recover/i)).toBeVisible();
-  // ...and who owns the funds if they leak, which is the other half of the
-  // same fact. This screen used to promise "we cannot show them to you again",
-  // which stopped being true when Settings grew a phrase door behind the
-  // password: a wallet that CAN show them again must not say it cannot, so the
-  // sentence went and the ownership one carries the weight.
-  await expect(wallet.page.getByText(/anyone who has them owns your funds/i)).toBeVisible();
-  // The lifecycle fact, which the flow now answers rather than warns about:
+  // Who owns the funds if the words leak, and the instruction. This screen
+  // used to promise "we cannot show them to you again", which stopped being
+  // true when Settings grew a phrase door behind the password: a wallet that
+  // CAN show them again must not say it cannot, so the sentence went and the
+  // ownership one carries the weight.
+  await expect(wallet.page.getByText(/anyone with these words owns your wallet/i)).toBeVisible();
+  await expect(wallet.page.getByText(/write them down now/i)).toBeVisible();
+  // The lifecycle fact, which the flow answers rather than warns about:
   // onboarding moves itself to a tab before it paints, and a tab survives the
   // user switching to a password manager to record the words. The screen may
-  // only make this promise where it is true, so the warning it replaced must be
-  // gone from the same screen.
-  await expect(
-    wallet.page.getByText(/do not close this tab until you have confirmed the words/i),
-  ).toBeVisible();
+  // only make that promise where it is true, so the popup's sentence must not
+  // appear here.
   await expect(
     wallet.page.getByText(/this window closes the moment/i),
     "a tab told the user it was about to close",
@@ -98,7 +95,7 @@ test("creating a wallet shows 24 words once, then opens the home screen", async 
   }
   await wallet.page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(
-    wallet.page.getByText(/not the right order/i),
+    wallet.page.getByText(/wrong words/i),
     "a wrong answer must be refused, or the check is decoration",
   ).toBeVisible();
   await expect(wallet.homeMarker()).toHaveCount(0);
