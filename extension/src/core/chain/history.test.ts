@@ -45,6 +45,8 @@ interface Rec {
   address?: string;
   function?: string;
   parameters?: { value?: string; type?: string }[];
+  // joined via ?join=transactions, and present on every real record.
+  transaction?: { fee_charged?: string; source_account?: string };
   asset_balance_changes?: {
     asset_type?: string;
     asset_code?: string;
@@ -480,6 +482,79 @@ describe("value moved by a contract call", () => {
         created_at: AUG1,
         transaction_hash: "tx13",
         ...invoke(TOKEN),
+        asset_balance_changes: [
+          { asset_type: "native", type: "transfer", from: ME, to: TOKEN, amount: "5.0000000" },
+        ],
+      },
+    ]);
+    expect((await history()).entries).toEqual([]);
+  });
+
+  it("shows an unshield SOMEBODY ELSE made into this account's public address", async () => {
+    // Both halves used to drop it. The public side suppressed it as the private
+    // pocket's story; the private side (`private-history.ts`, `case "withdraw":
+    // if (t[0] !== me) return null`) discarded it as a stranger's event. The
+    // XLM landed in the public balance with no row anywhere.
+    //
+    // Shape from the live chain, transaction
+    // a71432fbfc98d6c50290435f1362374b637ea3812bc4347e841e247e04939566
+    // (fetched 2026-08-08): one balance change out of the wrapper into this
+    // account, and a `source_account` that is the OTHER party.
+    stubHorizon([
+      {
+        id: "18",
+        type: "invoke_host_function",
+        created_at: AUG1,
+        transaction_hash: "tx18",
+        ...invoke(TOKEN, "withdraw"),
+        transaction: { source_account: THEM },
+        asset_balance_changes: [
+          { asset_type: "native", type: "transfer", from: TOKEN, to: ME, amount: "10.0000000" },
+        ],
+      },
+    ]);
+    const { entries } = await history();
+    expect(entries, "10 XLM arrived and neither pocket had a row for it").toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      kind: "receive",
+      direction: "in",
+      code: "XLM",
+      amount: "10.0000000",
+      counterparty: TOKEN,
+    });
+  });
+
+  it("still hides THIS account's own unshield, which the private side tells", async () => {
+    // Byte-identical to the case above apart from who submitted it. That is the
+    // whole discriminator, and it is the reason the exclusion cannot simply be
+    // dropped: without it an unshield would appear once in each pocket.
+    stubHorizon([
+      {
+        id: "19",
+        type: "invoke_host_function",
+        created_at: AUG1,
+        transaction_hash: "tx19",
+        ...invoke(TOKEN, "withdraw"),
+        transaction: { source_account: ME },
+        asset_balance_changes: [
+          { asset_type: "native", type: "transfer", from: TOKEN, to: ME, amount: "10.0000000" },
+        ],
+      },
+    ]);
+    expect((await history()).entries).toEqual([]);
+  });
+
+  it("hides a shield whoever Horizon says submitted it, because only we can debit us", async () => {
+    // The outgoing leg is never ambiguous: nobody else can move money out of
+    // this account, so it is this account's own shield regardless of the source
+    // field, and it must not start showing twice if that field ever goes away.
+    stubHorizon([
+      {
+        id: "20",
+        type: "invoke_host_function",
+        created_at: AUG1,
+        transaction_hash: "tx20",
+        ...invoke(TOKEN, "deposit"),
         asset_balance_changes: [
           { asset_type: "native", type: "transfer", from: ME, to: TOKEN, amount: "5.0000000" },
         ],

@@ -180,6 +180,8 @@ export function History() {
   const [range, setRange] = useState<DateRange>({ start: null, end: null });
   const [types, setTypes] = useState<Set<FilterCategory>>(new Set());
   const [showDate, setShowDate] = useState(false);
+  /** whether the collapsed zero-value inbound transfers are expanded. */
+  const [showSpam, setShowSpam] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [selected, setSelected] = useState<HistoryEntry | null>(null);
   // a processing op whose detail sheet is open.
@@ -350,7 +352,14 @@ export function History() {
   };
   // newest first: the just-completed synthetic rows sort in among the fetched
   // history by time, so they land at the top under "Today" like any settled row.
-  const shown = [...syntheticDone, ...(entries ?? [])].filter(match).sort((a, b) => b.at - a.at);
+  const matched = [...syntheticDone, ...(entries ?? [])].filter(match).sort((a, b) => b.at - a.at);
+  // zero-value transfers from addresses this account has never sent to (spec
+  // 18.7, decided in core/spam.ts). anyone can push endless "Received privately
+  // from G...  0 XLM" rows into a registered account's private Activity, so the
+  // default view collapses them into a count. hidden, never dropped: the button
+  // below shows them and the entry was never removed from the list.
+  const spam = matched.filter((e) => e.spam);
+  const shown = showSpam ? matched : matched.filter((e) => !e.spam);
 
   const filtersActive = range.start !== null || types.size > 0;
   // captured per render so day-relative headings ("Today", "Yesterday") stay
@@ -624,6 +633,27 @@ export function History() {
               )}
               {shown.length > 0 && <List t={t} entries={shown} now={now} onOpen={setSelected} />}
 
+              {/* zero-value transfers from addresses this account has never sent
+                  to. anyone can push endless "Received privately from G...  0 XLM"
+                  rows at a registered account, and each one costs the recipient
+                  replay work and archive storage. collapsed into a count, and
+                  reachable in one tap: nothing filtered may be unreachable, and
+                  the row still says plainly that they exist. */}
+              {spam.length > 0 && (
+                <div style={{ marginTop: space.md, display: "flex", justifyContent: "center" }}>
+                  <Button
+                    t={t}
+                    variant="quiet"
+                    size="pill"
+                    onClick={() => setShowSpam((v) => !v)}
+                  >
+                    {showSpam
+                      ? "Hide zero-value transfers"
+                      : `Show ${spam.length} zero-value ${spam.length === 1 ? "transfer" : "transfers"} from unknown senders`}
+                  </Button>
+                </div>
+              )}
+
               {shown.length === 0 && (q || filtersActive) && (
                 // filters hid the settled history: a filter glyph says why, and one
                 // tap clears them. the in-progress list above is not filtered.
@@ -645,25 +675,19 @@ export function History() {
                     </Button>
                   }
                 >
-                  {/* a SEARCH is not a filter. this branch is entered on
-                      `q || filtersActive` and every sentence in it was written for
-                      the second disjunct, so typing into the search box and matching
-                      nothing was reported as filters hiding things. */}
-                  {q && !filtersActive
-                    ? cursor == null
-                      ? `Nothing in your activity matches “${q}”.`
-                      : pagingGaveUp
-                        ? `Nothing matches “${q}” in the history read so far, and there is more that has not been read.`
-                        : `Nothing matches “${q}” yet. Still reading older history.`
-                    : cursor == null
-                      ? "Nothing matches those filters."
-                      : pagingGaveUp
-                        ? "Nothing matches those filters in the history read so far, and there is more that has not been read."
-                        : "Nothing matches those filters yet. Still reading older history."}
+                  {emptyMatchSentence({ q, filtersActive, readAll: cursor == null, pagingGaveUp })}
                 </EmptyState>
               )}
 
-              {shown.length === 0 && !q && !filtersActive && inProgress.length === 0 && (
+              {/* `spam.length === 0` too: an account whose ONLY private activity
+                  is collapsed zero-value transfers has activity, and "No activity
+                  yet" is a claim about the account. the button above says what is
+                  there and shows it in one tap. */}
+              {shown.length === 0 &&
+                spam.length === 0 &&
+                !q &&
+                !filtersActive &&
+                inProgress.length === 0 && (
                 // a warm anchor rather than a bare line, since this is often the
                 // first-run screen of a brand-new wallet.
                 <div
@@ -1326,6 +1350,52 @@ function ProcessingMark({ t, op, size = 40 }: { t: Theme; op: BgOp; size?: numbe
  * shows inline, gathered into a sheet so they are reachable from any screen without
  * leaving for Activity. one row opens the same detail the inline rows do.
  */
+/**
+ * What the screen may say when a search or a filter matches nothing.
+ *
+ * Three different facts, and a sentence for each, because the wrong one is a
+ * conclusion someone acts on:
+ *
+ *  - the whole history has been read, and nothing matches. A claim about the
+ *    ACCOUNT, and the only case where one may be made.
+ *  - older pages are unread and the pager is still walking them.
+ *  - older pages are unread and the pager has STOPPED. It gives up at
+ *    MAX_AUTO_PAGES, and an empty list has nothing to scroll, so `onScroll`
+ *    can never restart it. "Still reading older history" then stayed on screen
+ *    forever while nothing was reading.
+ *
+ * A search is not a filter, so each fact has both wordings: this branch is
+ * entered on `q || filtersActive`, and every sentence in it was once written
+ * for the second disjunct, which reported a search that matched nothing as
+ * filters hiding things.
+ *
+ * Pure and exported so the three-way choice can be tested without driving an
+ * effect that only stops after twenty network pages.
+ */
+export function emptyMatchSentence(s: {
+  q: string;
+  filtersActive: boolean;
+  /** The pager reached the end of the stream: `cursor == null`. */
+  readAll: boolean;
+  /** The pager stopped at its bound with older pages still unread. */
+  pagingGaveUp: boolean;
+}): string {
+  const searching = Boolean(s.q) && !s.filtersActive;
+  if (s.readAll) {
+    return searching
+      ? `Nothing in your activity matches “${s.q}”.`
+      : "Nothing matches those filters.";
+  }
+  if (s.pagingGaveUp) {
+    return searching
+      ? `Nothing matches “${s.q}” in the history read so far, and there is more that has not been read.`
+      : "Nothing matches those filters in the history read so far, and there is more that has not been read.";
+  }
+  return searching
+    ? `Nothing matches “${s.q}” yet. Still reading older history.`
+    : "Nothing matches those filters yet. Still reading older history.";
+}
+
 /**
  * A watched operation that is still open, for the "In progress" heading.
  *

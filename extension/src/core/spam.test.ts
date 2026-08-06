@@ -6,7 +6,7 @@ const t = (id: string, from: string, value: bigint | null, ledger = 1): InboundT
   eventId: id,
   from,
   ledger,
-  opening: value === null ? null : { value, randomness: 1n },
+  value,
 });
 
 const SPAMMER = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";

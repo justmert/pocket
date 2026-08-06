@@ -329,6 +329,7 @@ function mapPayment(r: PaymentRecord, me: string, exclude: ReadonlySet<string>):
   // account's own money.
   if (r.type === "invoke_host_function") {
     const invoked = invokedContract(r);
+    const iInitiated = r.transaction?.source_account === me;
     const mine: {
       index: number;
       toMe: boolean;
@@ -359,7 +360,35 @@ function mapPayment(r: PaymentRecord, me: string, exclude: ReadonlySet<string>):
       // never fire. A shield is an invocation whose balance change names the
       // wrapper, which is exactly this shape, so without this line shielding
       // would appear once in each pocket.
-      if (other && exclude.has(other)) return;
+      //
+      // But only when the private side really does tell it, which is when THIS
+      // account performed the operation. `private-history.ts` renders a
+      // `withdraw` only when the `from` topic is this account
+      // (`case "withdraw": if (t[0] !== me) return null`), so an unshield
+      // SOMEBODY ELSE made straight into this account's public address
+      // satisfied neither half: the public side suppressed it as private and
+      // the private side discarded it as a stranger's event. The XLM landed in
+      // the public balance with no row in either pocket.
+      //
+      // Measured on the live chain 2026-08-08, transaction
+      // a71432fbfc98d6c50290435f1362374b637ea3812bc4347e841e247e04939566:
+      // one balance change, {native, transfer, from: <wrapper>,
+      // to: GB43MNLS..., 10.0000000}, and `source_account`
+      // GDJWZOWKTJOQTK2LBQHGKUXRLFCHA4SXS7JRJ4VRXIIKMRFVK2OVN76J, which is the
+      // other party. The same account's own shield in transaction 965685d236
+      // carries its own address as the source. So the transaction's source is
+      // what separates the two, and it is on every record because the walk
+      // asks for ?join=transactions.
+      //
+      // Only the INCOMING leg is ambiguous: nobody but this account can debit
+      // it, so a leg leaving for a wrapper is always its own shield and is
+      // excluded whatever the source says. And when the source is missing
+      // entirely, an incoming leg is SHOWN: a duplicated row is visible and a
+      // reader can reconcile it against the private pocket, while a dropped one
+      // is money that arrived with no record anywhere.
+      const somebodyElseUnshielded =
+        toMe && (r.transaction?.source_account === undefined || !iInitiated);
+      if (other && exclude.has(other) && !somebodyElseUnshielded) return;
       mine.push({
         index: i,
         toMe,

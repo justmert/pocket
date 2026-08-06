@@ -399,6 +399,17 @@ export interface HistoryEntry {
     | "swap";
   /** Which way value moved, from this account's point of view. */
   direction: "in" | "out" | "self";
+  /**
+   * A zero-value inbound transfer from an address this account has never sent
+   * to. Spec 18.7, decided by `core/spam.ts`.
+   *
+   * Anyone can push one of these at any registered account, and each costs the
+   * recipient replay work and archive storage. Marked rather than dropped: the
+   * event still participates in the balance replay, the entry is still in this
+   * list, and Activity hides it behind a count the user can expand. Nothing
+   * filtered may be unreachable.
+   */
+  spam?: true;
   /** Asset code, e.g. "XLM" or "USDC". */
   code: string;
   /**

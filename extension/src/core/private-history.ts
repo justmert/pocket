@@ -36,6 +36,7 @@ import {
   type ReplayState,
 } from "./sync";
 import { decodeStored } from "./recover-openings";
+import { partitionForDisplay } from "./spam";
 import { formatAmount } from "./chain/balances";
 import type { StoredEvent } from "./chain/archive-types";
 import type { HistoryEntry } from "./messages";
@@ -226,7 +227,52 @@ export function deriveHistory(
 
   // Newest first, ties broken by id, matching the public source's order.
   out.sort((a, b) => b.at - a.at || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
-  return out;
+  return markSpam(out);
+}
+
+/**
+ * Mark the inbound transfers a default view hides. Spec 18.7.
+ *
+ * Anyone can send a zero-value confidential transfer to any registered account,
+ * and every one of them arrives here as an ordinary "Received privately from
+ * G... 0 XLM" row. `core/spam.ts` was written for exactly this and had no
+ * caller outside its own test, so an account being flooded got one row per spam
+ * event with nothing to collapse or hide them.
+ *
+ * MARKED, never dropped. The event still participates in the replay arithmetic
+ * above (the module's own rule: ingest everything, filter at display only), the
+ * entry is still in this list, and the screen offers to show it. Nothing
+ * filtered may be unreachable.
+ *
+ * "Known" is derived from this same stream rather than from an address book the
+ * wallet does not have: an address this account has itself sent to privately,
+ * or shielded from, is one the user chose to transact with, and a zero-value
+ * transfer back from it is not unsolicited.
+ */
+export function markSpam(entries: HistoryEntry[]): HistoryEntry[] {
+  const known = new Set<string>();
+  for (const e of entries) {
+    if (e.direction === "out" && e.counterparty) known.add(e.counterparty);
+  }
+  const inbound = entries.filter((e) => e.kind === "privateReceive" && e.counterparty);
+  if (inbound.length === 0) return entries;
+
+  const { hidden } = partitionForDisplay(
+    inbound.map((e) => ({
+      eventId: e.id,
+      from: e.counterparty!,
+      ledger: e.ledger ?? 0,
+      // A null amount is one this device could not read, which is NOT a zero.
+      // `parseAmount` is the wrong tool here: these are already this module's
+      // own `formatAmount` output, so a plain "is it all zeros" test is exact
+      // and cannot introduce a second decimal grammar.
+      value: e.amount === null ? null : /^0(\.0*)?$/.test(e.amount) ? 0n : 1n,
+    })),
+    known,
+  );
+  if (hidden.length === 0) return entries;
+  const ids = new Set(hidden.map((h) => h.eventId));
+  return entries.map((e) => (ids.has(e.id) ? { ...e, spam: true as const } : e));
 }
 
 /**

@@ -8,14 +8,20 @@
 // would break opening reconstruction, because replay must see every event in
 // emission order to arrive at the right accumulators. A "spam" event still
 // participates in the arithmetic.
-import type { Opening } from "./witness/types";
-
 export interface InboundTransfer {
   eventId: string;
   from: string;
   ledger: number;
-  /** Decrypted, when the transfer was addressed to us. */
-  opening: Opening | null;
+  /**
+   * Plaintext stroops, or null when this device could not determine them.
+   *
+   * This was the whole `Opening`, of which one field was ever read. It is the
+   * value alone now so the real display path can call this with what it has:
+   * `private-history.ts` has already turned each event into a decrypted amount
+   * by the time anything is shown, and it has no opening to hand back. The
+   * module was unreachable from any screen for as long as it demanded one.
+   */
+  value: bigint | null;
 }
 
 export interface DisplayPolicy {
@@ -57,7 +63,7 @@ export function partitionForDisplay(
   const hidden: InboundTransfer[] = [];
 
   for (const t of transfers) {
-    const isZero = t.opening !== null && t.opening.value === 0n;
+    const isZero = t.value !== null && t.value === 0n;
     const unknown = !knownSenders.has(t.from);
     if (policy.hideZeroValueFromUnknown && isZero && unknown) hidden.push(t);
     else shown.push(t);
@@ -73,7 +79,7 @@ export function partitionForDisplay(
       latestLedger: 0,
     };
     g.count++;
-    g.total += t.opening?.value ?? 0n;
+    g.total += t.value ?? 0n;
     g.latestLedger = Math.max(g.latestLedger, t.ledger);
     byS.set(t.from, g);
   }
