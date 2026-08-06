@@ -247,6 +247,21 @@ export function Amount({
   // `value` below and is what the worker signs. `full` lifts the cap where the
   // exact figure IS the point (the confirm, the receipt).
   const fraction = full ? rawFraction : rawFraction.slice(0, 4);
+  // BELOW the cap is not zero. A holding of 0.00009 XLM has nothing in its first
+  // four fraction digits, so the slice above rendered "0.0000": the screen
+  // asserting the account holds nothing when it holds something. History
+  // already got this right through `displayAmount`, so the same balance read
+  // "0.0000" on Home and "<0.0001" one tap away.
+  //
+  // Drawn as one run rather than through the split rendering below, because
+  // "<0.0001" is a statement and not a figure with a demoted tail: the whole of
+  // it is the point. The exact value is still what the screen reader is given.
+  const belowCap =
+    !full &&
+    !masked &&
+    /[1-9]/.test(rawFraction) &&
+    whole.replace(/[^0-9]/g, "") === "0" &&
+    !/[1-9]/.test(fraction);
   const big = size === "hero" || size === "display";
   // the mask: a fixed three-star run per part, keeping the sign in front, so a
   // hidden balance is "$***.***" rather than a length that leaks its magnitude.
@@ -316,7 +331,9 @@ export function Amount({
           can match. hidden: the value is not spoken either. */}
       <span style={EXACT}>{masked ? "Balance hidden" : code ? `${value} ${code}` : value}</span>
       <span aria-hidden style={{ display: "inline-flex", alignItems: "baseline" }}>
-        {oneRun && !masked ? (
+        {belowCap ? (
+          `<0.0001`
+        ) : oneRun && !masked ? (
           doAnimate ? (
             <Rolling value={`${whole}.${fraction}`} />
           ) : (
