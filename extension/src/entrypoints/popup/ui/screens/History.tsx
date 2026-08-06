@@ -295,10 +295,17 @@ export function History() {
   // like a done op, so a failed send does not hang under "In progress". a failed op
   // with no hash (rejected / expired / a build error: nothing was charged, nothing
   // landed) stays here, since there is no on-chain transaction to show in Activity.
-  const inProgress = w.backgroundOps.filter(
-    (o) =>
-      o.pocket === pocket && o.status !== "done" && !(o.status === "failed" && Boolean(o.hash)),
-  );
+  const inProgress = w.backgroundOps.filter((o) => stillOpen(o, pocket));
+  // ...and the ones that did NOT go through, which are a different fact and
+  // were sharing the "In progress" heading with the ones that still might.
+  //
+  // These are the failures with no hash: rejected, expired, or a build that
+  // never reached the network. Nothing landed and nothing was charged, so there
+  // is no on-chain transaction for Activity to show, and they cannot simply be
+  // dropped. What they are not is in progress: a heading that says so about a
+  // transaction that has finished failing tells the user to keep waiting for an
+  // answer that has already arrived.
+  const didNotSend = w.backgroundOps.filter((o) => neverSent(o, pocket));
   const doneOps = w.backgroundOps.filter((o) => o.pocket === pocket && o.status === "done");
   const failedLanded = w.backgroundOps.filter(
     (o) => o.pocket === pocket && o.status === "failed" && Boolean(o.hash),
@@ -559,10 +566,31 @@ export function History() {
           ) : (
             <>
               {inProgress.length > 0 && (
-                <div style={{ marginBottom: shown.length > 0 ? space.lg : 0 }}>
+                <div
+                  style={{
+                    marginBottom: didNotSend.length > 0 || shown.length > 0 ? space.lg : 0,
+                  }}
+                >
                   <Overline t={t}>In progress</Overline>
                   <div style={{ display: "grid", gap: space.sm }}>
                     {inProgress.map((op, i) => (
+                      <ProcessingRow
+                        key={op.id}
+                        t={t}
+                        op={op}
+                        index={i}
+                        onClick={() => setOpenOp(op)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {didNotSend.length > 0 && (
+                <div style={{ marginBottom: shown.length > 0 ? space.lg : 0 }}>
+                  <Overline t={t}>Did not go through</Overline>
+                  <div style={{ display: "grid", gap: space.sm }}>
+                    {didNotSend.map((op, i) => (
                       <ProcessingRow
                         key={op.id}
                         t={t}
@@ -1295,6 +1323,32 @@ function ProcessingMark({ t, op, size = 40 }: { t: Theme; op: BgOp; size?: numbe
  * shows inline, gathered into a sheet so they are reachable from any screen without
  * leaving for Activity. one row opens the same detail the inline rows do.
  */
+/**
+ * A watched operation that is still open, for the "In progress" heading.
+ *
+ * `processing` is still happening; `unresolved` is a submission whose outcome
+ * nobody has learned yet, which is also still open. Named and exported so the
+ * grouping can be tested against the screen's own rule rather than a copy of
+ * it: a test that reimplements the predicate passes while the screen is wrong.
+ */
+export function stillOpen(op: BgOp, pocket: string): boolean {
+  return op.pocket === pocket && (op.status === "processing" || op.status === "unresolved");
+}
+
+/**
+ * A watched operation that FINISHED failing without reaching the network.
+ *
+ * Rejected, expired, or a build error: nothing landed and nothing was charged,
+ * so there is no on-chain transaction for Activity to show and it cannot simply
+ * be dropped. It shared the "In progress" heading with the ones that still
+ * might land, which tells the user to keep waiting for an answer that has
+ * already arrived. A failure that DID land carries a hash and is drawn as a
+ * settled failed row instead.
+ */
+export function neverSent(op: BgOp, pocket: string): boolean {
+  return op.pocket === pocket && op.status === "failed" && !op.hash;
+}
+
 export function TransactionsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const w = useWallet();
   const t = w.t;
