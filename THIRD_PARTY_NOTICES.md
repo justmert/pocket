@@ -58,14 +58,3 @@ deliberately so: `@stellar/stellar-sdk`, `@noble/curves`, `@noble/hashes`,
 `@noble/hashes` is used for scrypt specifically, and that choice is deliberate:
 its `argon2` is explicitly **outside** the scope of the only independent audit
 the library has had (Cure53, 2022), while `scrypt` is inside it.
-
-## Design and UI
-
-The interface derives from Mert Köklü's own design work and his earlier prior
-privacy wallet, both his to relicense. No third-party design assets are included.
-
-Icon geometry, if any is carried across from that project, originates with
-HugeIcons under their free tier. **Verify the current terms before shipping**:
-the licence is asserted in a source comment rather than by a bundled licence
-file, and some icon sets' free tiers carry an attribution requirement that a
-comment does not satisfy.

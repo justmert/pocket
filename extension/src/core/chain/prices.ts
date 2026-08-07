@@ -14,10 +14,9 @@
 //
 // PRICE IS ALWAYS READ FROM MAINNET, whatever network the wallet is on. Testnet
 // has no real market, so a testnet price would be noise from a handful of test
-// trades. This is the same move the reference wallet makes pricing a testnet asset
-// off mainnet `prior`. It is also why this module does NOT take the active
-// network's horizonUrl: the two are different hosts with different jobs, and
-// collapsing them would price a testnet balance off testnet's empty order book.
+// trades. It is also why this module does NOT take the active network's
+// horizonUrl: the two are different hosts with different jobs, and collapsing
+// them would price a testnet balance off testnet's empty order book.
 //
 // PRIVACY: a request here names an ASSET, never an account and never an amount.
 // It is made for the assets the build is configured with, not for what the user
