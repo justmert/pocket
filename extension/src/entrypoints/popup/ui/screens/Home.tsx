@@ -1042,7 +1042,32 @@ export function Home() {
             </Notice>
           </div>
         )}
-        <Overline t={t}>Yield</Overline>
+        {/* the measurement-window rate rides on the header, the same figure the
+            Yield screen reports, so the section says what it earns at a glance
+            without reopening the flow. drawn only when a rate is actually
+            reported (apyChip is empty otherwise). */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: space.sm,
+          }}
+        >
+          <Overline t={t}>Yield</Overline>
+          {y.apy?.figure && (
+            <span
+              style={{
+                ...text.rowSub,
+                fontWeight: 600,
+                color: t.positive,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {apyChip(y.apy)}
+            </span>
+          )}
+        </div>
         {/* no position, no row: an empty vault has nothing to report, and a row
             saying so is the section header spelled out. */}
         {y.available ? (
