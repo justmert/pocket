@@ -1,0 +1,98 @@
+---
+title: What cannot be changed
+description: The decisions in this system that are permanent once made, what each one costs to get wrong, and what changing it would require.
+---
+
+Some choices here can be revised in a release. These cannot. Each one is either written to the chain permanently, or fixed by something outside this project.
+
+## Per account, forever
+
+### The auditor binding
+
+A confidential account binds an `auditor_id` at registration, and the field is immutable for the life of the account.
+
+**Cost of getting it wrong:** every amount that account ever sends or receives is readable by whoever holds that key, permanently. The reference demo binds every user to the operator's key.
+
+**To change it:** register a new confidential account, which means a new address.
+
+Pocket checks the registry holds **its own** key under the allocated id before naming that id in the permanent registration, and refuses if it does not.
+
+### The key derivation
+
+Two clients given the same recovery phrase must land on the same confidential account.
+
+**Cost of getting it wrong:** `register` is single-use, so a non-conformant derivation produces an account that no other wallet can ever open, and that a corrected version of Pocket could not open either.
+
+**To change it:** nothing. There is no migration path for an account already registered under a different derivation.
+
+## Per deployment, forever
+
+### One wrapper, one asset
+
+`set_underlying_asset` is one-shot.
+
+**To add an asset:** deploy another wrapper. Private XLM and private USDC are two deployments.
+
+### The confidential identity is bound to the wrapper address
+
+The wrapper's own address, as a field element, is stored at construction and every viewing key derived for that deployment depends on it.
+
+**Consequence:** redeploying a wrapper means every user registers again, and their old openings belong to a contract nobody uses.
+
+This is why contract addresses are configuration rather than constants, and why release gate 6 checks that every recorded contract id appears in the built bundle: openings are stored under a key containing the token address, so a build pointing elsewhere silently orphans them.
+
+### The verification keys
+
+Six keys, installed at construction, with no code path that can change them. Both mutation methods the trait requires refuse unconditionally.
+
+**Cost of getting it wrong:** a verification key that does not correspond to the audited circuit will verify **forged** proofs, including proofs that mint tokens or drain accounts. The on-chain bytes are opaque and nothing in the contract can detect a wrong replacement.
+
+**To change a circuit:** deploy a new verifier and a new wrapper, so every user re-registers. That is the correct cost.
+
+### No admin
+
+The wrapper takes no admin argument and exposes no setter. An admin able to swap the verifier could point the wrapper at a contract that accepts forged proofs.
+
+**Consequence:** nothing about a deployed wrapper can be changed by anyone, including Pocket.
+
+### Auditor ids are allocated, never chosen
+
+From a monotonic counter, and the caller-chosen forms refuse.
+
+**Why it matters:** a caller-chosen id collides with whoever already holds it, and there is no way to recover a taken one. Registration is open, so a race would otherwise bind a key to an id it was not derived under.
+
+## The wire contract
+
+None of these is Pocket's to choose, and a wrong value produces a well-formed artifact that fails silently rather than an error.
+
+| | Getting it wrong produces |
+| --- | --- |
+| The sixteen domain tags | a ciphertext that decrypts to nothing |
+| Public-input ordering | a valid proof of a different statement |
+| The keccak transcript | a proof of the right length that fails verification |
+| Two moduli, `r` and `q` | an opening off by `q − r` that no longer opens the on-chain point |
+| ECDH binding both coordinates | a key and its negation mapping to the same secret |
+| The two-lane squeeze order | auditor ciphertexts nobody can read |
+| The commitment encoding | rejection at the contract boundary |
+
+[Protocol invariants](/docs/protocol/invariants).
+
+## The toolchain
+
+`nargo 1.0.0-beta.11` and `bb 0.87.0`.
+
+The Soroban verifier hardcodes bb 0.87's proof byte layout, and bb 5.x cannot read beta.11's compiled circuit format. These are not preferences and neither can be bumped independently.
+
+**To upgrade:** replace the on-chain verifier first, which means a new deployment and every user re-registering. It is a protocol migration, not a dependency bump.
+
+The OpenZeppelin contract crates are pinned to a git **revision** rather than a branch, so an upstream force-push cannot silently change what is built. Bumping that revision requires reproducing the verification keys.
+
+Release gate 1 reads both proving versions from the binaries. Gate 2 reproduces the keys and pins them by hash, and asserts the proof is 14,592 bytes, because an accidental zero-knowledge flag produces 16,224 and the key hash cannot catch it.
+
+## What is deliberately easy to change
+
+- the auto-lock window, and any other device setting
+- which assets the public pocket surfaces, since that is configuration
+- an auditor key, which is rotatable by its owner, forward only
+- the archive, which is outside the trust boundary and can be replaced or run redundantly
+- every sentence the interface says, since none of them is written to the chain

@@ -1,0 +1,76 @@
+---
+title: Why there are two pockets
+description: The split between the public and private pocket follows from what a Pedersen commitment can and cannot do.
+---
+
+Pocket could have been one pocket with a privacy toggle. It is two pockets because the mathematics does not allow the first design, and understanding why explains most of the product.
+
+## What a confidential balance actually is
+
+In the private pocket your balance is a **Pedersen commitment**:
+
+```
+C = v·G + r·H
+```
+
+`v` is the amount and `r` is a random blinding factor. `G` and `H` are two fixed points on the Grumpkin curve with no known relationship between them. The chain stores `C`. Anyone can see it. Nobody can read `v` out of it.
+
+The one useful property this has is that it is **additively homomorphic**. Add two commitments and you get a commitment to the sum:
+
+```
+C₁ + C₂ = (v₁ + v₂)·G + (r₁ + r₂)·H
+```
+
+So a contract can add and subtract committed amounts without ever learning them. That is exactly enough to run a balance: credit a deposit, debit a transfer, fold one accumulator into another.
+
+## Where the maths stops
+
+Additive is the whole list. You cannot multiply two commitments. You cannot compare them. You cannot divide one by another to discover a rate.
+
+That rules out, structurally rather than for want of engineering:
+
+| Operation | Why it cannot run on a commitment |
+| --- | --- |
+| Yield | A vault has to compute a share price, which is a division |
+| Swapping | An AMM prices a trade from a product or a ratio of reserves |
+| Lending | A pool needs to compare a position against a collateral ratio |
+| Bridging | The destination chain needs a plaintext amount to mint |
+
+None of these becomes possible with a better circuit or a faster prover. They need the number.
+
+## So the pocket you are in decides what you can do
+
+| | Public pocket | Private pocket |
+| --- | --- | --- |
+| Send and receive | yes | yes, with the amount hidden |
+| Swap | yes, through Aquarius | no |
+| Yield | yes, through DeFindex | no |
+| Bridge to another chain | yes, through CCTP | no |
+| Connect a website | yes, over SEP-43 | no |
+
+To do any of the public-pocket things with private funds, you unshield first. That makes the amount public at the boundary, which is the honest cost and is stated on the screen that does it.
+
+## The colour is the mechanic
+
+Because being in the wrong pocket has real consequences, the interface never leaves it ambiguous. The pocket you are in is the colour of the whole app: the public pocket is a light surface with a sky-blue accent, the private pocket is a dark surface with a teal one, and switching flips everything at once.
+
+The colour is never decoration. It always says which pocket you are looking at, so you cannot mistake one for the other while sending money.
+
+[Working in a pocket](/docs/using-pocket/working-in-a-pocket).
+
+## Two accumulators, not one
+
+Inside the private pocket, each account holds **two** commitments rather than one.
+
+| Accumulator | Who can change it | What lands here |
+| --- | --- | --- |
+| `spendable` | only you | what you can send or withdraw right now |
+| `receiving` | anyone | deposits, and transfers other people send you |
+
+The split exists so that nobody else can interfere with a payment you are making. A spend proof references only `spendable`, so a transfer arriving while you are proving cannot invalidate the proof you are building. If there were one accumulator, any stranger could break your in-flight transaction by paying you.
+
+The cost is one extra step: value that arrives is not spendable until you fold it across. That fold is the `merge` operation, it needs your authorisation but no proof, and it is a single point addition, so it cannot be front-run either.
+
+This is why **shielding is two transactions**. A deposit credits `receiving`, so shielding without the follow-on merge would leave you with a zero spendable balance and no explanation. Pocket chains the merge for you and says so on the review screen.
+
+[What a commitment and an opening are, in more detail](/docs/concepts/confidential-tokens).

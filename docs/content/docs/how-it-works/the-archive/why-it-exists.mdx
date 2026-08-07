@@ -1,0 +1,70 @@
+---
+title: Why the archive exists
+description: Soroban RPC keeps events for about seven days. Past that, only a durable archive can rebuild the openings that make a confidential balance spendable.
+---
+
+The chain stores commitments. Only your device stores the openings that make them spendable. Rebuilding an opening means replaying the events that produced it.
+
+Soroban RPC retains events for a bounded window, about seven days on testnet. Past that they are gone from RPC, and nothing else in the default Stellar infrastructure holds them.
+
+Without a durable archive, a wallet that loses its local state beyond that window can see its confidential balances on chain and **cannot spend them, ever**. That is the failure the `indexer/` workspace exists to prevent.
+
+## What it is
+
+Node and SQLite, no framework. It ingests the confidential contract's events, stores them verbatim as XDR, attributes each one to every account it belongs to, and tracks which ledger ranges are gap-free so it can refuse to call an incomplete history complete.
+
+Three read routes, and nothing that writes.
+
+## Storing events was not enough
+
+This is the part that makes the archive more than a cache of `getEvents`.
+
+Rebuilding a payment **you sent** needs only your own viewing key: the checkpoint published in the event fully re-derives your new balance.
+
+Rebuilding a payment **you received** is different. The event body carries `r_e_point`, `v_tilde` and `sigma`, which are enough to **derive** a candidate amount and blinding, and nothing at all to **check** them with.
+
+That matters because nothing on chain marks an event as yours. A wrong viewing key does not produce an error; it produces a plausible field element. Crediting it would invent a balance.
+
+The thing that settles it is `c_transfer`, the commitment to the transferred amount. If your derived pair opens it, the transfer was yours.
+
+**`c_transfer` is passed in the transaction's invocation and is not published in the event.** So an archive holding only events must refuse every transfer its users ever received, which is most wallets that have been used.
+
+### The fix
+
+The archive stores the **invocation payload** alongside the event, for the two event types that need it: `transfer` and `spender_transfer`.
+
+It reads that payload from **Horizon**, not from Soroban RPC. RPC drops transactions on the same retention clock that drops the events, and the whole point of the archive is to outlive it. Horizon keeps full history.
+
+The wallet then verifies every credit as `commit(v, r) == c_transfer` and refuses anything that does not open, which is the same check the live path makes.
+
+Against an archive with no payload for an event, the wallet refuses that event exactly as it did before. Storing the payload turns a refusal into a recovery; it never turns a refusal into a guess.
+
+## The archive is outside the trust boundary
+
+This is the design decision that makes the archive safe to run and safe to trust with nothing.
+
+A recovery ends by **re-committing the replayed balances and comparing them against the commitments the contract holds**. The chain is the authority; the archive is a witness to it.
+
+So a broken or hostile archive can fail to help you. It cannot hand you a wrong balance and have it accepted. Integrity fails closed.
+
+Everything the archive serves is already public on chain, so it holds no secret and learns no amount. What it does see is **which account is asking about which account**, which is a deployment concern rather than a wallet one. [Running one](/docs/how-it-works/the-archive/running-one).
+
+## The wallet refuses to sync without it
+
+If a build has an archive configured and that archive cannot answer, the wallet **refuses** rather than falling back to the recent-history-only view.
+
+Falling back would advance the sync cursor past the gap. The events in that gap are the only thing that can reopen the balances behind them, they age out of RPC, and nothing else holds them, so the loss would be permanent and silent.
+
+Refusing is the feature. A wallet that says "I could not read your history" costs you a retry. A wallet that quietly skips a range costs you the money behind it.
+
+## The seam between the two sources
+
+RPC owns the recent tail: low latency, and it sees a just-submitted transaction immediately. The archive serves everything older.
+
+Two things about that seam are handled explicitly:
+
+**The retention floor moves while a request is in flight.** So the seam sits strictly **above** the floor by a margin of 1,000 ledgers, rather than exactly at it. A seam placed at the floor can be underneath it by the time the second request lands, leaving a range neither source covers.
+
+**Both sources use the same event id.** The id is `(ledger, transaction hash, event index)`, identical whether served from RPC or from the archive, which is what lets a client deduplicate across the boundary.
+
+If the archive has not ingested through the seam, the crossing range belongs to neither source, and the client treats it as incomplete rather than stitching over the hole.

@@ -1,0 +1,88 @@
+---
+title: Errors and what reaches you
+description: An allowlist by error name, why there is no shape heuristic, and the one instruction that must never be swallowed.
+---
+
+Two obligations meet here and pull in opposite directions.
+
+**An error Pocket wrote must reach you intact**, because some of those sentences carry the only instruction that keeps money safe.
+
+**An error Pocket did not write must not reach you at all**, because an arbitrary message can carry an RPC URL, a stack fragment, or material from a proof witness.
+
+## The mechanism
+
+`describeError` matches on the error's **name** against an allowlist. A name on the list means the message reaches you verbatim. Everything else becomes:
+
+> Something went wrong. Try again, and check your connection.
+
+An allowlist is the only version of this rule that cannot be forgotten. A new error class that nobody thinks about is silent by default rather than leaking by default.
+
+## There is deliberately no shape heuristic
+
+A rule like "starts with a capital letter and ends with a full stop" is trivially satisfied by an RPC-authored or attacker-influenced string, which is exactly what the allowlist exists to keep out.
+
+An error that should reach you gets a **name on the list**, which is a deliberate act somebody performs and a reviewer can see.
+
+## What is on the list, and why each earns it
+
+The list is about 30 names. The pattern is that every one of them carries **authored prose** that interpolates nothing from the wire, or interpolates only values from a closed set.
+
+| Family | Examples | Why it is safe |
+| --- | --- | --- |
+| Vault damage | corrupt vault, unreadable schema version | authored here; naming the damage is what stops a user with the right password being sent to the erase flow |
+| User-correctable input | invalid amount, memo too long, bad address kind, invalid phrase | the fix is in your hands, and a generic message would send you to your router over a typo |
+| Private-pocket states | needs rebuilding, records do not match, no auditor key registered | every sentence is written in this codebase |
+| Submission outcomes | the five terminal outcomes | interpolates only XDR enum discriminant names and a hash Pocket computed itself |
+| Service failures | the four integration clients | authored prose, plus an HTTP status integer |
+| Recovery refusals | archive unavailable, incomplete history, rebuilt balance mismatch | authored, and each says what would fix it |
+
+## What is deliberately absent
+
+**`LedgerEntryMismatchError`** is off the list on purpose, and the code says why: two of its messages interpolate an address decoded from the **RPC's own response**. Allowlisting it would let an RPC-chosen value reach the screen.
+
+You get the generic message instead, because "your RPC is lying about which account it answered for" is not something you can act on. What matters is that no number is rendered.
+
+**`WrongPasswordError`** is also absent, for a different reason. It is handled by an earlier branch that replaces the message outright rather than surfacing it. One mechanism per error: a typed branch for errors carrying structured causes, the name list for errors whose whole message is authored prose.
+
+**The internal chart failure** is absent because nothing about it should ever reach a screen. It exists so that a single unreadable asset abandons the whole total rather than being skipped, since a total quietly missing one of its parts is worse than no total at all.
+
+## The instruction that must never be swallowed
+
+When a submission does not resolve, the wallet's own sentence is:
+
+> It has not confirmed yet. It may still land, so do not resend: check the hash before trying again.
+
+Before the submission outcomes were named on the allowlist, that message was replaced with "Try again, and check your connection."
+
+**"Try again" is the one instruction that spends twice.** It is the worst possible sentence to show one moment after a payment may actually have succeeded.
+
+A test now holds every allowlisted name, so a name cannot be removed and a class cannot be renamed without something going red.
+
+## Foreign text is translated, not passed through
+
+Some failures come from outside with genuinely useful detail. Those are **translated** into an authored sentence rather than allowlisted:
+
+An archive returning an event Pocket cannot decode produces a message naming the event id, the field and a byte length, all read from the archive's own response. Allowlisting that class would put an outside string on the screen verbatim, so instead the wallet substitutes its own:
+
+> The archive returned an event Pocket could not read, so it stopped rather than rebuild a balance from history it does not understand. Your funds are safe on chain. This is a fault in the archive, not in this wallet, and retrying will not change it until that archive re-indexes the contract.
+
+The same discipline covers the diverged screen. Crediting inbound transfers wraps its whole body in a catch that replaces any foreign message, because without it an RPC's own "Request failed with status code 429" appeared on the screen telling somebody their balances did not match the ledger.
+
+## Nothing sensitive reaches a log either
+
+`no-console` is a lint **error** outside tests, allowing only `warn` and `error`.
+
+Amounts, openings and blinding factors must never reach a log, a telemetry sink or a crash report. There is no telemetry in the product to reach, and the lint rule keeps the local case closed too.
+
+A proof failure is diagnosable from public inputs alone, so diagnostics are built from those and never from the witness.
+
+## Two failures that look alike and are not
+
+Pocket separates these everywhere they occur, because the right action differs:
+
+| | |
+| --- | --- |
+| Not configured | a permanent property of the build. Retrying can never help |
+| Configured, unreachable | a fact about right now. Retrying can help |
+
+A catch that collapsed the second into the first removed an entire feature from the screen during an outage, which made a working build look like one that never had it.

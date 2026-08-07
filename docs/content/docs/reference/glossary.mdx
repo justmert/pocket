@@ -1,0 +1,148 @@
+---
+title: Glossary
+description: Every term the rest of these pages assumes, defined once.
+---
+
+## A
+
+**Accumulator.** One of the two Pedersen commitments a confidential account holds on chain. `spendable` is the one you can debit; `receiving` is the one anyone can add to. Neither reveals a number.
+
+**Address.** A Stellar account, starting with `G`. Public on every transaction, in both pockets, permanently.
+
+**Archive.** Pocket's durable event store. Soroban RPC keeps events for about seven days, and a private balance is rebuilt by replaying events, so a long-lived wallet needs a source that goes back further. It is deliberately outside the trust boundary: the wallet re-commits every replayed balance against the chain, so a broken or hostile archive can fail to help and cannot hand you a wrong balance.
+
+**Auditor.** A holder of a Grumpkin key registered in the auditor registry. Every confidential transfer includes ciphertexts that key can read, so an auditor sees amounts, in both directions.
+
+**Auditor id.** The integer a confidential account binds at registration, naming which key can read its amounts. **Immutable for the life of the account.** Allocated by the registry, never chosen by the caller. Pocket registers your own key and binds the id the registry allocates, so you are your own auditor.
+
+## B
+
+**bb (Barretenberg).** Aztec's proving backend. Pinned to 0.87.0, because the Soroban verifier hardcodes that version's proof byte layout.
+
+**BIP-39.** The standard behind the 24-word recovery phrase. 24 words carries 256 bits of entropy.
+
+**Blinding factor.** The random value `r` in a commitment `C = v·G + r·H`. It is what makes the commitment hide the amount. Reduces by `q`, not by `r`, which is one of the two-moduli traps.
+
+**BN254.** The elliptic curve pairing the proof system uses. Its scalar field is the modulus written `r` throughout this documentation, and it is also Grumpkin's coordinate field.
+
+## C
+
+**Checkpoint.** The sender's new spendable balance, published in an event as an encrypted value plus a salt. You need your viewing key to open it, and you do not need any earlier state to do so, which is what lets a replay start from a checkpoint rather than from the beginning.
+
+**Commitment.** A Pedersen commitment, `C = v·G + r·H`. A curve point that binds you to a value without revealing it. Encoded as 64 bytes, uncompressed affine, with the identity as `(0, 0)`.
+
+**Confidential, not anonymous.** Pocket's core claim. Amounts are hidden. Addresses are not, and neither is the fact that a transfer happened. [The privacy truth](/docs/overview/privacy-truth).
+
+**c_transfer.** The commitment to a transferred amount. It travels in the transaction's **invocation arguments**, not in the event body, which is why replaying an incoming transfer needs the invocation as well as the event.
+
+## D
+
+**Data key.** The symmetric key that actually encrypts the vault contents, itself wrapped by a key derived from your password. Changing the password would rewrap this key rather than re-encrypting everything, and it is the one value mirrored into RAM so that a worker restart does not force the password again.
+
+**Deposit.** The contract method behind shielding. Named `deposit` on the wire and in events; called **shield** in the interface.
+
+**Domain separation tag.** An integer, 1 to 16, absorbed first by every Poseidon2 call so that two hashes of the same inputs for different purposes cannot collide. A wrong tag produces a ciphertext that decrypts to nothing rather than an error.
+
+## E
+
+**ECDH.** The key agreement that lets a sender derive a secret only the recipient can also derive. Pocket extracts from **both** coordinates of the shared point, `Poseidon2(tag, S.x, S.y)`, never from `x` alone: a point and its negation share an `x`, so an x-only extraction maps a key and its negation to the same secret.
+
+## G
+
+**Grumpkin.** The curve the commitments live on, `y² = x³ − 17`. Its coordinate field is BN254's scalar field and its scalar field is BN254's base field, which is what makes commitment arithmetic cheap inside a BN254 circuit. Its group order is the modulus written `q`.
+
+## H
+
+**Handle.** An opaque string the worker returns from a `build…` request and accepts on the matching `confirm…`. The transaction envelope stays in the worker, so there is nothing for the interface to alter between the screen you approved and the bytes that were signed.
+
+**Homomorphic.** Pedersen commitments add: `C(v₁, r₁) + C(v₂, r₂) = C(v₁+v₂, r₁+r₂)`. That is what lets the contract fold a received balance into a spendable one without ever learning either number. It is **only** additive: nothing else about the hidden values can be computed on chain.
+
+## M
+
+**Merge.** Folding your receiving accumulator into your spendable one. It needs no proof, because correctness follows from the commitments adding. Only you can authorise it, so nobody can force merges on you. Called **make spendable** in the interface.
+
+## N
+
+**Noir.** The language the six circuits are written in. `nargo` compiles it. Pinned to 1.0.0-beta.11.
+
+## O
+
+**Offscreen document.** A hidden page an extension can open to do things a service worker cannot. Pocket uses one for proving, because the proving library always spawns a Worker and a Manifest V3 service worker cannot nest workers.
+
+**Opening.** The pair `(value, randomness)` that opens a commitment. **Only your device has it.** The chain stores the commitment; the opening is what makes it spendable. Discarding openings makes funds visible on chain and permanently unspendable, which is why they are never treated as a cache.
+
+## P
+
+**Poseidon2.** The hash used everywhere inside the circuits, chosen because it is cheap to prove. Pocket's parameters: width 4, rate 3, 8 full rounds, 56 partial rounds.
+
+**Private pocket.** Your balance inside the confidential wrapper. Amounts hidden, addresses public.
+
+**Proof.** An UltraHonk proof, 456 field elements, 14,592 bytes. Generated on your machine, verified by a contract on chain.
+
+**Public input.** A value a proof commits to that everyone can see, as opposed to the witness, which nobody can. Ordering is fixed by the circuit signature and must be verified against circuit source: a wrong order produces a valid proof of a different statement.
+
+**Public pocket.** Your ordinary Stellar balance. Everything visible, exactly as any other wallet would show it.
+
+## Q
+
+**q.** Grumpkin's group order. The modulus for commitment **blinding factors** only. It shares its top 17 hex digits with `r`, which is why the two have separate named arithmetic functions and why no bare arithmetic on these values is allowed above the field module.
+
+## R
+
+**r.** BN254's scalar field order, and Grumpkin's coordinate field. The modulus for spending keys, viewing keys, salts and coordinates.
+
+**Receiving balance.** The accumulator anyone can add to. Money arrives here and cannot be spent until you merge it.
+
+**Register.** Creating a confidential account. **Single-use per address**, which is why a wrong key derivation is unrepairable: no other wallet, and no corrected Pocket, could ever open that account.
+
+**Reserve.** XLM the network locks while an account or a trustline exists: 1 XLM for the account, 0.5 XLM per trustline. Not spent, and released when the trustline closes.
+
+## S
+
+**Salt.** Written `sigma`. A per-operation random field element that makes the derived checkpoint and its blinding factor unpredictable. Different circuits absorb different salts, which is the only difference between how a transfer and a spender transfer derive a recipient's opening.
+
+**SEP.** A Stellar Ecosystem Proposal. The ones that matter here: **SEP-5** for the public key derivation path, **SEP-41** for the token interface, **SEP-43** for the wallet-to-website interface, and **SEP-53** for the message signature that roots the confidential keys.
+
+**Service worker.** The extension's background process. It owns the encrypted vault, the unlocked session, every network call and every transaction it builds. Keys are dropped when it dies, which makes worker death an automatic lock rather than a bug.
+
+**Shield.** Moving money from the public pocket into the private pocket. The amount is **public** at this boundary.
+
+**Soroban.** Stellar's smart contract platform.
+
+**Spendable balance.** The accumulator only you can debit. What a transfer or unshield spends from.
+
+**Spender delegation.** An allowance escrowed from your spendable balance to another account, which that account can then spend confidentially. The contract supports it. Pocket's interface does not offer it, and the wallet replays the events so that a delegation created elsewhere cannot leave your balance stale.
+
+**Stellar Asset Contract.** The Soroban contract form of a classic Stellar asset. Written `SAC`. What a confidential wrapper actually holds.
+
+**Stroop.** The smallest unit of XLM, one ten-millionth. Every amount is a `bigint` count of these internally, and crosses the message boundary as a decimal string. Never a float.
+
+## T
+
+**TOID.** Stellar's 64-bit position identifier, packing ledger, transaction order and operation index into one integer. A Soroban event id is a TOID plus an event index, and parsing it is how events are ordered canonically rather than by arrival.
+
+**Transcript.** How a proof's challenges are derived from what has been committed so far. Pocket's is **keccak256**, because that is what the on-chain verifier uses. A mismatch produces a proof of exactly the right length that always fails.
+
+**Trustline.** Permission for your account to hold a specific non-XLM asset. Required before you can receive it, and it locks 0.5 XLM of reserve while open.
+
+## U
+
+**UltraHonk.** The proof system. Pocket uses the non-ZK `ultra_flavor`, which is what the on-chain verifier implements. Soundness holds, so nobody can mint or overspend. The zero-knowledge property is absent, which is one of the two things gating mainnet.
+
+**Unshield.** Moving money from the private pocket back out to the public one. The amount is **public** at this boundary.
+
+## V
+
+**Verification key.** The 1,760-byte value the verifier contract checks a proof against, one per circuit. Installed at construction with no path that can ever change them, because a key that does not correspond to the audited circuit would verify **forged** proofs.
+
+**Viewing key.** Written `vk`. Derived from your spending key and the wrapper's address. Decrypts your own balances. Does not authorise spending.
+
+## W
+
+**Witness.** Everything a proof knows and does not reveal: your spending key, the amounts, the openings. Never logged, never rendered, never sent anywhere. A proof failure is diagnosable from public inputs alone.
+
+**Wrapper.** A deployed confidential token contract, bound permanently to one underlying asset. Private XLM and private USDC are two of them.
+
+## X
+
+**XDR.** Stellar's binary encoding for transactions, contract values and events.

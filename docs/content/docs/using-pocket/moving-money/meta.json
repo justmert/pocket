@@ -1,0 +1,4 @@
+{
+  "title": "Moving money",
+  "pages": ["send", "send-privately", "shield-and-unshield", "swap", "yield", "bridge"]
+}

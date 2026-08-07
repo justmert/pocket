@@ -1,0 +1,67 @@
+---
+title: Dormancy and keep-alive
+description: A confidential account that goes unused for long enough is archived by the network. Pocket watches for it and bumps the clock before it happens.
+---
+
+Soroban stores your confidential account as a persistent ledger entry, and persistent entries carry a time-to-live. When it lapses, the network **archives** the entry.
+
+The confidential token library extends that TTL to 30 days whenever the entry is read or written, but only inside a **submitted transaction**. A simulated read, which is how Pocket checks your balance, bumps nothing.
+
+So an account that neither sends nor receives for 30 days goes dormant. That lands squarely on someone who shields value and holds it, which is exactly the person the private pocket is for.
+
+## What Pocket does about it
+
+Pocket reads the live TTL of each confidential account and reports it as a **date**, not a ledger number. "Expires 14 March" is something you can act on; `liveUntilLedgerSeq 3900347` is not.
+
+When an account drops below **seven days** remaining, Pocket submits a keep-alive.
+
+The keep-alive is a `merge`. It is the natural vehicle: it requires your authorisation, requires no proof, is a single point addition, and touches the account entry, which is what bumps the TTL. A merge on an empty receiving balance changes nothing and still writes the entry.
+
+### The schedule is jittered
+
+A keep-alive is a publicly visible transaction and its timing is observable. Every Pocket user bumping on the same clock would be a signature that identifies them as Pocket users by timing alone.
+
+So the schedule is randomised by up to a day, and real activity is always preferred over a synthetic bump: any operation you submit touches the entry, so an account you actually use never needs one.
+
+### It only works while unlocked
+
+The bump is a signed transaction, so a locked wallet cannot make one. A browser that stays closed for a month cannot either.
+
+Pocket states this rather than promising otherwise. Nothing about dormancy loses money, and the recovery is a fee.
+
+## Each asset has its own clock
+
+Every configured wrapper is its own confidential account with its own ledger entry and its own TTL. Bumping one does nothing for another.
+
+Pocket checks each asset separately and schedules against whichever needs looking at soonest, so a wrapper with plenty of headroom cannot mask one that is close.
+
+## If it does archive
+
+On the current testnet deployment, running protocol 27, an archived persistent entry is **automatically restored** into the transaction's footprint when something reads it. The network performs the restore as part of the next transaction.
+
+So a dormant pocket still reads correctly and its balances are still spendable. Pocket reports the other half of the fact rather than staying quiet about it:
+
+> This private pocket went dormant and the network restored it to read it. Your balances are correct and still spendable. The next operation you make will restore the entry as part of itself and cost a little more in fees.
+
+Both things are true at once, and only one of them was worth a warning: the pocket works, and your next operation carries a restore and its fee.
+
+## Testnet and mainnet have very different floors
+
+The minimum a fresh persistent entry gets is a network parameter, and the two networks are an order of magnitude apart:
+
+| Network | Minimum persistent TTL | Roughly |
+| --- | --- | --- |
+| Testnet | 120,960 ledgers | 7 days |
+| Mainnet | 2,073,600 ledgers | 133 days |
+
+Nothing about dormancy should ever be calibrated against the testnet figure, because the mainnet one is far more forgiving and a schedule tuned for testnet is merely conservative there.
+
+## The contracts have TTLs too
+
+The same archival rule applies to the contracts themselves, and one of them is a single point of failure.
+
+The verifier holds all six verification keys in its instance storage, and the library never extends that entry on its own. If the verifier's instance archives, **every confidential operation on every token pointing at it fails**.
+
+Because Pocket deployed that verifier, watching it is Pocket's job. `scripts/check-infrastructure.sh` runs on a schedule, reads the TTL of every contract the deployment record declares, and extends any that falls below 30 days remaining.
+
+The set is derived from the deployment record rather than hardcoded, so a wrapper added for a new asset is covered the day it lands.

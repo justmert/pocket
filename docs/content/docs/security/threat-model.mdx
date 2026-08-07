@@ -1,0 +1,105 @@
+---
+title: Threat model
+description: What is at risk, what losing each thing costs, and which defences are structural rather than conventional.
+---
+
+Scope: the wallet, the three contracts and the archive. The confidential token protocol's own threat model belongs upstream.
+
+## Assets, ranked by what losing them costs
+
+| Asset | Losing it means | Where it lives |
+| --- | --- | --- |
+| BIP-39 seed | total, irreversible loss of both pockets | encrypted vault; plaintext in worker memory only while unlocked |
+| Confidential `sk` | spend and view, for one deployment | derived on demand, never persisted |
+| Viewing key `vk` | **retroactively opens every transfer the account ever sent**, including amounts now inside other people's balances | derived on demand |
+| Balance openings | funds visible on chain and permanently unspendable | encrypted vault, per deployment and account |
+| Vault password | an offline attack on the vault, at scrypt cost | never stored |
+| Auditor key | reads amounts forward only, from the moment it was bound | derived from the same seed |
+
+`vk` deserves the emphasis. Its name suggests a read-only credential and it is not one: recomputing the ephemeral scalar from it yields the recipient shared scalar, hence the transfer blinding, hence a full opening of every transfer commitment the account created. Exporting it as a "view key" would be a serious mistake.
+
+## Spoofing
+
+| Threat | Defence |
+| --- | --- |
+| A web page impersonates the popup to the worker | no content script route to the wallet router, no `externally_connectable`, and the sender must be one of the extension's own pages |
+| A site claims another origin | the origin comes from `sender.origin`, filled in by Chrome from the frame, never from anything the page says |
+| A signer returns a signature from a **different** account, yielding a wrong but usable `sk` | the signature is verified against the expected public key before it is used, and registration is single-use so the mistake would be unrepairable |
+| A lookalike address substituted at paste | the full address is shown at every confirm step, chunked, in a monospace face, never truncated |
+
+### The lookalike measurement
+
+This one is quantified rather than assumed. Matching a Stellar address's first four and last four characters costs 2³² attempts, which at a measured 1.16 million candidates per second on a 12-core laptop is about **one hour**.
+
+Six characters each end is about 123 years on the same machine. So the cliff sits between four and six, and `GB43…Z3F7` is exactly the four-and-four shape most wallets show.
+
+The naive estimate of 32⁸ overstates the cost 256-fold, because character 0 is fixed by the version byte and character 1 carries only two free bits. The real number is much worse than the obvious one.
+
+Hence: lists may shorten an address, and a confirm step never does.
+
+## Tampering
+
+| Threat | Defence |
+| --- | --- |
+| The vault schema is downgraded on disk to reinterpret stored openings | the header is AES-GCM authenticated data, so a downgrade is a tag mismatch rather than a convention somebody has to remember to check |
+| Key-derivation parameters are weakened on disk | inside the same authenticated data, plus a floor that refuses weak parameters outright |
+| A malicious archive serves a partial history | recovery ends by re-committing against the on-chain commitments. Integrity **fails closed**: a tampered history produces a detectable mismatch rather than a wrong balance |
+| An archive serves an incomplete range as complete | the completeness signal is scoped to the range actually requested, and the client refuses a page that is not complete |
+| The worker is asked to sign something other than what was reviewed | confirming takes an opaque handle to an envelope the worker itself built, single-use, and re-asserts source, operation count and type before signing |
+| A verification key is replaced with one that verifies forged proofs | the verifier implements no mutation path; both trait methods refuse unconditionally, verified on chain |
+
+## Information disclosure
+
+| Threat | Defence |
+| --- | --- |
+| Amounts or openings reach a log or a crash report | `no-console` is a lint error outside tests, and error text reaching a screen is an allowlist rather than a pass-through |
+| Per-asset image requests leak your holdings | token logos are packaged, and the content security policy pins images to the extension's own origin, so a remote logo is browser-blocked rather than discouraged |
+| A website reaches the private pocket | a method **allowlist**, empty by default, plus the fact that a confidential operation needs a proof over the account's own viewing key |
+| Keep-alive transactions fingerprint Pocket users by their cadence | the schedule is jittered by up to a day, and real activity is preferred over a synthetic bump |
+| An archive operator learns who asks about which account | the query is visible to the operator. Mitigated operator-side: run more than one endpoint, keep no access logs |
+| The proofs are not zero-knowledge | not mitigable here. It is an upstream verifier change. Confidentiality rests on Pedersen hiding and Poseidon encryption, both formally hiding |
+
+## Denial of service
+
+| Threat | Defence |
+| --- | --- |
+| Inbound zero-value transfer spam inflates replay work | ingest everything, filter at **display** only. Dropping at ingestion would break opening reconstruction, because replay must see every event in emission order |
+| A site floods the wallet with signature prompts | one parked approval per origin, four overall, and a second request is **refused** rather than queued |
+| The confidential account archives after going unused | the TTL is monitored and reported as a date, and a keep-alive fires below seven days remaining |
+| The **verifier's** instance entry archives, breaking every confidential operation on every token pointing at it | monitored by a scheduled check that extends anything below 30 days |
+| An archive never stops paging | every cursor seen is remembered, a repeat is refused, and the loop is capped |
+| A prover job wedges the queue | three deadlines, and recovery by destroying a document whose state is entirely rebuildable |
+
+### Why the approval cap matters
+
+Unbounded, the failure is not memory, it is consent. The popup is handed the first parked entry, so a page looping a signature request parks a queue of its own requests ahead of anybody else's, opens the popup once per lap, and turns every answer you give into another identical prompt.
+
+Nothing crashes and nothing is refused; you are simply asked until one of the presses lands on Approve. That is click fatigue as an exploit, and the twentieth prompt is the one that gets signed.
+
+So a second request from the same origin is refused rather than remembered. A site denied a prompt is a far better outcome than a user worn into approving one.
+
+## Elevation of privilege
+
+| Threat | Defence |
+| --- | --- |
+| A message reaches a privileged operation while locked | an allowlist of six, each carrying its own authorisation. `reset` is deliberately not among them |
+| An unknown message type is treated as success and re-arms the idle lock | the router's default case throws |
+| An admin swaps the verifier under the token contract | the wrapper has no admin and no setters; everything binds at construction |
+| A caller takes an auditor id somebody else wanted | ids come from a monotonic counter, and the caller-chosen forms refuse |
+| Somebody rotates an auditor key they do not own | rotation checks the recorded owner and requires their authorisation |
+
+## Explicit non-goals
+
+Pocket does not defend against a compromised operating system, a malicious browser build, or a phrase exported somewhere untrusted.
+
+It also does not hide **who you pay**. [What is private](/docs/overview/privacy-truth).
+
+## Open items
+
+**The two upstream items that gate mainnet.** [The path to mainnet](/docs/reference/roadmap-to-mainnet).
+
+**Fee-payer linkage.** The account paying the fee is visible on every transaction, and fee abstraction is not built.
+
+**Archive redundancy.** A single archive cannot hand you a wrong balance, but it can withhold history. Redundancy is the only mitigation, and it is a deployment choice.
+
+[Audit status and scope](/docs/security/audit-status-and-scope).

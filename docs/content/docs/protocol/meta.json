@@ -1,0 +1,9 @@
+{
+  "title": "Protocol",
+  "pages": [
+    "key-derivation",
+    "invariants",
+    "witness-and-public-inputs",
+    "the-three-contracts"
+  ]
+}

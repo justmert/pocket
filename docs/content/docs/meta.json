@@ -1,0 +1,15 @@
+{
+  "title": "Pocket",
+  "root": true,
+  "pages": [
+    "index",
+    "overview",
+    "concepts",
+    "using-pocket",
+    "how-it-works",
+    "protocol",
+    "security",
+    "build",
+    "reference"
+  ]
+}

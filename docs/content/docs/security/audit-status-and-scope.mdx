@@ -1,0 +1,80 @@
+---
+title: Audit status and scope
+description: What has been audited, what has not, and which parts a review of this project should actually read.
+---
+
+## Where each part stands
+
+| Component | Written by | Audit status |
+| --- | --- | --- |
+| Confidential token contracts and the six circuits | OpenZeppelin | Audited by OpenZeppelin Security, remediation complete 27 July 2026. The report is not yet published |
+| UltraHonk verifier for Soroban | Nethermind | **Not audited.** The repository's own README says so |
+| Proving backend (`bb.js`) and the Ignition reference string | Aztec | Outside this project's scope |
+| Pocket's three contracts | Pocket | **Not externally audited** |
+| The Pocket wallet | Pocket | **Not externally audited** |
+| The archive | Pocket | **Not externally audited** |
+
+## What that means in practice
+
+**The client-side cryptography is Pocket's**, and it is the part where a mistake is unrepairable: `register` is single-use, so a wrong spending key produces an account that no wallet, including a corrected Pocket, can ever open. Pocket derives it conformantly, from the normative signer root rather than the shortcut, which is why an account opened here is openable by any conforming client. [Key derivation](/docs/protocol/key-derivation).
+
+**The witness assembly is Pocket's**: sixteen domain tags, two moduli, both-coordinate ECDH, and a public-input ordering checked against circuit source. A wrong value in any of them produces a well-formed artifact that fails silently. [Protocol invariants](/docs/protocol/invariants).
+
+**The three contracts are Pocket's**, and they are 337 lines whose entire content is refusals. [The three contracts](/docs/protocol/the-three-contracts).
+
+**The archive is Pocket's**, and it is deliberately outside the trust boundary: the wallet re-commits every replayed balance against the chain, so a broken or hostile archive can fail to help and cannot hand you a wrong balance. [Why the archive exists](/docs/how-it-works/the-archive/why-it-exists).
+
+The circuits, the proof system and the on-chain verifier come from upstream projects, linked above, so a review of that mathematics is a review of theirs.
+
+## Why Pocket runs its own deployment
+
+The upstream demo has a testnet instance, and using it would have been less work.
+
+It holds **pre-audit** verification keys. Building against it would mean inheriting five known audit findings, one of them a register replay that the account-binding public input exists to prevent.
+
+Pocket's deployment carries the keys from OpenZeppelin's post-audit revision, and the chain from circuit source to deployed contract is reproducible. [Verify it yourself](/docs/security/verify-it-yourself).
+
+## What is verified on every release
+
+**Seven release gates** run against the artifact a user would install, including reproducing every verification key from circuit source and running the browser suite against that exact package. [The gates](/docs/build/the-gate).
+
+**A test suite organised by risk rather than by module.** Tiers for failure injection, hostile input, accessibility, viewport, lifecycle, data integrity and release qualification, plus live tiers that submit real transactions. [Test tiers](/docs/build/test-tiers).
+
+**Mutation testing.** Deliberately broken builds are produced and the suite is run against them, to check that the tests fail when the product is wrong rather than merely passing when it is right. That is what `POCKET_EXT_PATH` exists for: it points the suite at a different build so a broken one can be tested without disturbing a shared checkout.
+
+**A scheduled infrastructure check** that watches every deployed contract's TTL and extends anything below 30 days.
+
+## What a review should read first
+
+<Cards>
+  <Card
+    title="Key derivation"
+    href="/docs/protocol/key-derivation"
+    description="The part that is unrepairable if wrong."
+  />
+  <Card
+    title="Witness and public inputs"
+    href="/docs/protocol/witness-and-public-inputs"
+    description="Ordering, slot counts, and the account binding that prevents a register replay."
+  />
+  <Card
+    title="Protocol invariants"
+    href="/docs/protocol/invariants"
+    description="Two moduli, sixteen domain tags, one transcript."
+  />
+  <Card
+    title="The three contracts"
+    href="/docs/protocol/the-three-contracts"
+    description="What binds at construction and what can never change."
+  />
+  <Card
+    title="Submitting and settling"
+    href="/docs/how-it-works/submitting-and-settling"
+    description="Where a wrong answer costs money rather than a reload."
+  />
+  <Card
+    title="Threat model"
+    href="/docs/security/threat-model"
+    description="Assets, defences, and the open items."
+  />
+</Cards>

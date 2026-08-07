@@ -1,0 +1,78 @@
+---
+title: Fees and reserves
+description: What each operation costs, why a private operation costs far more than a payment, and which part of your balance you cannot spend.
+---
+
+Two separate things keep XLM out of your spendable balance: the network **reserve**, which is locked while you hold things, and the **fee**, which is spent per transaction.
+
+## The reserve
+
+Stellar requires every account to hold a minimum balance. It is not a fee and it is not taken from you: it is locked while the account exists and released if the account is closed.
+
+```
+minimum = (2 + subentries + sponsoring − sponsored) × 0.5 XLM
+```
+
+So a plain account with nothing added locks **1 XLM**. Each trustline you open is one subentry and adds **0.5 XLM**, released when you remove it.
+
+Pocket subtracts the reserve everywhere it shows a spendable figure, so the number you see is the number you can actually send. It also subtracts **selling liabilities**: XLM committed to an open offer is locked just as firmly, and an offer made from any other wallet on the same account would otherwise make Pocket's figure too large.
+
+## The fees
+
+A classic Stellar payment costs **100 stroops** (0.00001 XLM). A Soroban contract invocation costs that plus a resource fee decided by simulation, which is three to four orders of magnitude more.
+
+Measured on this deployment, from real transactions on chain:
+
+| Operation | Fee charged |
+| --- | --- |
+| Classic payment | 0.0000100 XLM |
+| Make spendable (merge) | 0.0009266 XLM |
+| Register your auditor key | 0.0051934 XLM |
+| Swap | about 0.0179 XLM |
+| Create your confidential account | 0.0312027 XLM |
+| Shield | about 0.0350 XLM |
+| Confidential transfer | 0.0397523 XLM |
+
+The pattern is straightforward: an operation whose proof the contract has to **verify** costs the most. A merge carries no proof, which is why it is the cheapest thing the private pocket does.
+
+Every one of these is still a small fraction of one XLM.
+
+## Why the review shows the real fee
+
+The fee on a review screen is the fee that gets signed.
+
+That takes work, because a Soroban envelope leaves the transaction builder carrying only the base fee, and simulation is what rewrites it to include the resource fee. Pocket simulates **before** it shows you anything, so the figure on the screen is the figure on the envelope, rather than a base fee standing in front of a transaction that costs a thousand times more.
+
+## Use max
+
+**Use max** fills the field with everything you can send: your balance, minus the reserve, minus what the fee will cost.
+
+How much it holds back depends on the operation:
+
+| Screen | Held back for the fee |
+| --- | --- |
+| Send, a classic payment | the base fee |
+| Shield, unshield, swap, yield | 0.5 XLM |
+
+The larger reserve is deliberate. Those screens cannot simulate, so they cannot know the exact fee before the transaction exists, and reserving the classic 100 stroops would produce a "max" the account cannot pay for. Reserving too much leaves a fraction of an XLM in your account; reserving too little produces a transaction that fails after a review that said it was fine.
+
+The worker then re-checks against the real fee once simulation has produced one, so the compose-screen reserve only has to be close enough to keep the button honest.
+
+## Refused before it is built
+
+Pocket checks affordability at the worker, not on the screen, because a screen showing a spendable figure is display and anything calling the worker could go around it.
+
+Every build path checks the balance it is about to spend, and each refusal names the specific problem:
+
+| | |
+| --- | --- |
+| More than you can send | your balance, the locked reserve, the fee, and what is left |
+| An asset you do not hold | adding the asset creates a trustline for it |
+| A frozen trustline | the issuer controls whether it can move |
+| Enough of the asset, not enough XLM for the fee | how much XLM is free after the reserve |
+
+The last one catches a case that is easy to miss: an account holding plenty of USDC and almost no XLM can pass every check about USDC and still fail on chain, because the fee is paid in XLM whatever is moving.
+
+## The cross-chain exception
+
+A CCTP bridge submits two transactions, and the first is an approval, which needs no balance at all. Pocket checks your USDC balance before either one, so an over-balance bridge cannot pay for a successful approval and then fail on the burn.

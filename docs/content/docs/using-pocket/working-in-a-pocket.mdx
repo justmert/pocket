@@ -1,0 +1,92 @@
+---
+title: Working in a pocket
+description: How the interface tells you which pocket you are in, and what changes when you switch.
+---
+
+Pocket has one visual idea and everything follows from it: **the pocket you are in is the colour of the app.**
+
+| | Public pocket | Private pocket |
+| --- | --- | --- |
+| Surface | light | dark |
+| Accent | sky blue | teal |
+
+Switching pockets flips the entire surface, not a badge in a corner. The colour is never decoration: it always says which pocket you are looking at, so you cannot mistake one for the other while sending money.
+
+## Switching
+
+Two tabs sit under your address on the home screen, **Public Pocket** and **Private Pocket**. Tap either.
+
+Activity has the same switch, as a segmented control, because the two pockets keep separate histories.
+
+Switching while a compose form is open closes the form. A public send and a private send are different transactions with different privacy properties and different fees, so a form that silently changed which one it was would be a real hazard.
+
+## The home screen
+
+Scrolling collapses the balance block and leaves your address and the pocket tabs pinned, with a compact figure appearing beside them so the number never leaves the screen entirely.
+
+**In the public pocket** you get your total value, a chart of what the pocket has been worth, your assets with their individual balances and dollar values, and your yield position.
+
+**In the private pocket** you get your spendable balance and your assets. There is no chart, because there is no private history to draw one from: the opening store keeps only the current state, and confidential events carry a ledger number rather than a time. Pocket shows no chart rather than inventing one.
+
+## The bottom bar
+
+Five slots, the same five in both pockets, so switching never moves a control out from under your finger.
+
+| | |
+| --- | --- |
+| Home | the balance and asset list |
+| Receive | your address and a QR code |
+| **+** | the actions menu, which is where the pocket changes what is on offer |
+| Activity | your transaction history |
+| Settings | network, assets, sites, auto-lock, phrase, erase |
+
+The **+** button opens a menu whose contents depend on the pocket:
+
+| Public pocket | Private pocket |
+| --- | --- |
+| Send | Shield |
+| Swap | Send |
+| Yield | Unshield |
+| Send to a chain | |
+| Claim from a chain | |
+
+Swap appears where a swap venue is configured for the network, and Yield appears where a vault is.
+
+## The header
+
+Your address sits top left with one tap to copy it, shortened for recognition. A confirm step never shortens an address: [matching the first and last few characters is cheap to forge](/docs/security/never-blind-sign), so a shortened address is never what you approve.
+
+The **⋯** menu carries four items:
+
+| | |
+| --- | --- |
+| Receive | the same sheet the bottom bar opens |
+| Hide balance | replaces every figure on screen with a fixed run of asterisks |
+| Settings | |
+| Lock wallet | |
+
+**Hide balance** masks the magnitude as well as the value, so a hidden balance reads `$∗∗∗.∗∗∗` rather than a length that gives away how much you hold. It persists across reopening the popup, and it applies everywhere a figure is drawn, including Activity rows and detail sheets.
+
+It does not mask a figure you have just asked to see. The amount on a confirm screen and the amount on a receipt stay legible, because masking those would make the screen unusable rather than private.
+
+## Multiple assets
+
+Both pockets hold more than one asset, and they list them the same way.
+
+The private pocket is **per asset**. Private XLM and private USDC are separate wrapper deployments with separate confidential identities, so each is opened separately and each carries its own state. Tapping an asset opens its own sheet, with its own balance and its own actions.
+
+[Setting one up](/docs/using-pocket/set-up-a-private-asset).
+
+## What a figure means
+
+Pocket distinguishes three things that look alike on a screen and are not alike at all:
+
+| What you see | What it means |
+| --- | --- |
+| A shimmer | Not read yet. Wait |
+| A number | Read from the ledger |
+| A sentence | Something could not be read, and here is what |
+
+You will not see a zero standing in for an unread balance. "This could not be read" and "you have nothing" are different facts, and only one of them is about you, so Pocket never renders the first as the second.
+
+The same rule covers the chart. A stretch of time before your account existed is drawn at zero, because that is true. A stretch Pocket could not read is not drawn at all.

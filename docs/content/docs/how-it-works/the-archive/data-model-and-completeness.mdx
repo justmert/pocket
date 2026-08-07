@@ -1,0 +1,116 @@
+---
+title: Data model and completeness
+description: Three tables, attribution from event topics, and the completeness signal that decides whether a wallet can trust a replayed balance.
+---
+
+## Three tables
+
+```sql
+events        one row per in-scope event, stored as verbatim XDR
+attribution   which accounts each event belongs to
+ranges        the contiguous ledger ranges that have been ingested
+```
+
+### events
+
+Topics and data are stored as **verbatim base64 XDR**, exactly as the ledger published them.
+
+That is deliberate. A parse is a lossy, versioned interpretation, and an archive that stores its own reading of history cannot be re-checked against the chain later. Storing the wire form also survives field renames in the contract bindings with no schema migration.
+
+| Column | Notes |
+| --- | --- |
+| `id` | `(ledger, tx hash, event index)`. The **same** id RPC reports, so a hybrid client can deduplicate across the seam |
+| `ledger_seq`, `close_time`, `tx_hash` | |
+| `tx_application_order`, `event_index` | the canonical order, see below |
+| `event_type` | the snake_case name from topic 0 |
+| `topics_xdr`, `data_xdr` | verbatim |
+| `payload_xdr` | the invocation payload. Set for `transfer` and `spender_transfer`, null otherwise |
+
+`payload_xdr` is also null for a transfer whose transaction could not be fetched, and null is the honest answer: the wallet refuses that event rather than crediting an unverifiable amount.
+
+### attribution
+
+A many-to-many table rather than a column, because one event legitimately belongs to several accounts. A transfer belongs to both the sender's history and the recipient's; a spender transfer belongs to three.
+
+**Attribution comes from the event topics, never from the transaction source account.** The submitter may be neither party once a delegated spender or a fee sponsor is involved.
+
+The ingest checks the **arity** of the topics against a table of what each event type carries, and refuses an event whose shape does not match:
+
+| Event | Address topics after the name |
+| --- | --- |
+| `register` | 1 |
+| `deposit` | 2 |
+| `merge` | 1 |
+| `withdraw` | 2 |
+| `transfer` | 2 |
+| `spender_transfer` | 3 |
+| `set_spender` | 2 |
+| `revoke_spender` | 2 |
+
+Matching on "every topic that looks like an address" would match on shape rather than type. An upstream event that one day carried a non-party address topic would write a stranger into somebody's history, and one that dropped a topic would silently lose a party from theirs. Both produce a wrong replayed balance and neither reports anything.
+
+Only this contract can emit these events, so a mismatch is never an attacker and always a library change. It is refused loudly at ingest rather than served quietly at read.
+
+## Ordering
+
+Replay is only correct in emission order. A merge and a deposit in the same ledger produce different state depending on which goes first.
+
+The canonical order is `(ledger_seq, tx_application_order, event_index)`, and getting it out of the RPC takes care.
+
+A Soroban event id is `<TOID>-<n>`. The TOID is Stellar's 64-bit position marker: the ledger sequence in the high 32 bits, then the transaction's application order and the operation's index packed into the low 32. `n` counts events **within one operation** and restarts at zero for every operation.
+
+So `n` alone is not an ordinal within the ledger. Storing it as the transaction order with the event index left at zero collapsed every first-event-of-an-operation in a ledger onto one key. Measured on testnet ledger 4021819: seven distinct TOIDs, transaction orders 0, 1, 2, 3 and 8, one at operation index 2, all with `n` starting at 0, all collapsing to the same key.
+
+That is not a cosmetic ordering flaw. The read API pages with a keyset on exactly this triple, so a page boundary landing inside a collapsed group excluded the whole group: the paged read returned one of them and stopped, an unpaged read returned all of them, and every page still reported itself complete.
+
+The low 32 bits are extracted with BigInt and a mask rather than a shift, because they reach `0xFFFFF000` on the ledger-scoped marker the RPC emits, and a signed 32-bit shift reads that as −1, sorting it before every genuine event.
+
+## The completeness signal
+
+This is what makes the archive trustworthy rather than merely useful.
+
+`complete: true` means **gap-free across the entire requested window**, and nothing weaker.
+
+Serving an incomplete range as complete would let a wallet reconstruct a plausible wrong balance, which is precisely the failure the whole design exists to catch. So several things that look like conveniences are refused:
+
+| Situation | Answer |
+| --- | --- |
+| A window the archive only partly holds | reports the window that was **requested**, so `complete` can be false |
+| An inverted window | `complete: false`. It describes no ledgers at all |
+| `limit=0` | clamped to at least 1. Zero is not a page size, it is a request for no answer |
+| A cursor the archive did not issue | a 400, not a silent restart from the beginning |
+
+The narrowing case is the subtle one. Clamping to what the archive happens to hold and then reporting the narrowed range as complete is a **true statement about a question nobody asked**, and a client reading the flag alone inherits a silent gap.
+
+The bad-cursor case has the same shape. A malformed cursor parsed leniently becomes `NaN` and then "start from the beginning", and if the reply still says complete, a client that mangled its cursor is answered about a different window and told the answer is whole. So a cursor the archive did not issue is a `400`.
+
+## What the client does with it
+
+The wallet's archive client refuses a page that is not complete, and there is no flag to bypass the check. A caller who could opt out is a caller who will, and the cost is openings that can never be rebuilt.
+
+It also refuses an archive that will not finish paging. The loop's only other exit is a cursor the server chooses, so:
+
+- every cursor seen is remembered, and a repeat is refused as "it repeated a page cursor instead of advancing"
+- the whole loop is capped at 200 pages of 200 events
+
+Remembering **every** cursor rather than only the last one matters: an archive answering "a", "b", "a", "b" with `complete: true` and no events would spin forever against a check that only compared with the previous value.
+
+Spinning there is worse than it sounds. A rebuild counts as user activity, so the worker's activity counter would never return to zero, the idle-lock alarm would re-arm forever, and the wallet would never lock itself again.
+
+## The read API
+
+```
+GET /v1/health?contract_id=C…
+GET /v1/tokens/{contract}/accounts/{account}/events
+GET /v1/tokens/{contract}/accounts/{account}/checkpoint
+```
+
+**health** reports the latest ledger seen, how far ingestion is contiguous, and the lag in seconds. It is what lets a client bound its staleness and place the seam.
+
+**events** is the ordered, paginated history for one account, keyset-paginated on the canonical triple so a page boundary cannot skip or repeat an event even if new ones arrive between pages.
+
+**checkpoint** returns the most recent checkpoint event at or before a ledger. It is an optimisation rather than a correctness requirement: each checkpoint carries a self-contained pair that fully re-derives the spendable opening, so a client can always fall back to scanning the full history instead.
+
+Every response carries `cache-control: no-store`. Beyond the privacy of the query itself, a cached page carries a completeness flag that was true when it was served and may not be now, and a stale completeness claim is the one thing this service must never emit.
+
+Nothing writes. A `POST` is refused with a 405 rather than reaching a handler, so the service does not advertise a surface that does not exist.

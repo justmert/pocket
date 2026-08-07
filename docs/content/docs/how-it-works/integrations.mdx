@@ -1,0 +1,101 @@
+---
+title: Integrations
+description: Four external services, and the checks each one's answer has to pass before Pocket signs anything built from it.
+---
+
+Pocket integrates four services, all in the public pocket. Each one hands back something Pocket did not compute, and each therefore gets checked before it becomes a signature.
+
+| Service | What it supplies | What Pocket keeps control of |
+| --- | --- | --- |
+| **Aquarius** | a swap route | building and signing the contract call |
+| **DeFindex** | a complete transaction envelope | decoding it and pinning it to what you asked for |
+| **Circle CCTP** | contract addresses and an attestation | composing both Stellar transactions |
+| **StellarExpert** | an asset directory search | nothing is signed from it |
+
+## The general rule
+
+A third party can be down, slow, or wrong. Down and slow are handled by deadlines. **Wrong** is handled by reading the bytes.
+
+Every one of these clients has a request deadline of 15 seconds, maps its own failures to sentences you can act on, and refuses a response shape it cannot read rather than defaulting a field.
+
+## Aquarius: the route is decoded before it is signed
+
+Aquarius supplies only routing data. **Pocket builds the `swap_chained` invocation itself**, so no third party composes an envelope for the wallet to sign blind.
+
+That is the better shape, and on its own it is not enough. The route is passed through verbatim to avoid corrupting what was handed over, and passing something through unchanged says nothing about whether it was right on arrival.
+
+The specific hazard: `swap_chained` takes `(user, swaps_chain, token_in, in_amount, out_min)` and has **no `token_out` argument**. The delivered asset is decided entirely by the last hop of the route, and `out_min` is a bare scalar in that token's own units, so it bounds quantity and cannot bind identity. The asset name you chose was only ever a parameter to a query whose answer came from somebody else.
+
+So Pocket decodes the route and checks both ends:
+
+```
+hop = [ Vec<Address> pool pair, BytesN<32> pool id, Address delivered token ]
+```
+
+- the **last** hop's delivered token must be the asset the confirm screen is about to name
+- the **first** hop's pool pair must contain the asset being spent
+
+A pool names its pair sorted rather than as `(in, out)`, so which member is the input is not positional and membership is the only thing that can be checked.
+
+The shape was read off a live testnet route rather than from documentation. A real XLM to USDC route came back as two hops via AQUA: pair `[XLM, AQUA]` delivering AQUA, then pair `[USDC, AQUA]` delivering USDC.
+
+A route Pocket cannot read is a route it will not sign.
+
+## DeFindex: the envelope is pinned to the request
+
+DeFindex composes the transaction server-side, which means the service chooses the entry point and every argument, while the confirm screen states an amount and a direction taken from what **you** typed.
+
+Those are only the same thing if somebody checks. Five checks, and each closes a different hole:
+
+| Check | Without it |
+| --- | --- |
+| Exactly one contract call | anything else is a shape the review cannot describe |
+| On the configured vault | the call could target any contract |
+| Calling `deposit` or `withdraw`, matching your choice | the service could call `transfer` or `approve` and the screen would still read "Deposit N into the yield vault" |
+| Every address in the arguments is yours | the caller field is exactly what a hostile answer would repoint |
+| No quantity exceeds what you entered | the amount on the screen would not be the amount in the bytes |
+
+Arguments are walked **recursively**. A DeFindex deposit carries its amounts inside a `Vec<i128>` and its caller as a bare `Address`, so a check that looked only at the top level would miss every amount.
+
+The quantity check is an upper bound, not an equality, because a vault legitimately takes both a desired amount and a smaller slippage floor. What must never pass is a number larger than the one you typed.
+
+Two more details:
+
+**The response is read as a shape, then as a value.** The balance endpoint returns i128 subunits as strings, and the API declares no schema for that path at all, so there was nothing to check a cast against. A shape check alone let any string through to the screen, where it is printed as a balance, so the value is pattern-checked too and an unreadable one is refused rather than defaulted to zero.
+
+**The reported rate arrives already in percent.** Every APY field in the specification says so, with examples like 19.41. Multiplying by 100 rendered a real 19.41% vault as 1941.00%.
+
+## CCTP: two chains, two decimal scales
+
+The dangerous part of a bridge is that a mistake is not recoverable. Two of them are specific to this integration.
+
+**The address is checksummed.** A recipient is typed by hand and shown back verbatim, so a transposed pair of characters looks exactly like a correct address. Pocket verifies the EIP-55 capitalisation checksum where the address carries one, which catches a corrupted copy of a wallet-generated address and cannot catch an all-lowercase typo, and it says which of those it is doing.
+
+**The scales differ.** Stellar USDC carries seven decimals; a CCTP message carries six. So the last digit of an amount cannot cross, and something has to happen to it.
+
+Pocket **rounds down and never spends the remainder**. Whether Circle's contract truncates, refunds or consumes that digit is not knowable from this side, and it is not a thing to guess about with somebody's money. Rounding down removes the question instead of answering it: the dust stays in the account by construction rather than by claim, and one number describes the approval, the burn, the headline and the receipt.
+
+Down rather than up, because this is the amount you authorise and it must never exceed what you asked for.
+
+The destination is also decoded back **out of the bytes Pocket recorded**, rather than echoed from the form, and rendered in EIP-55 capitalisation computed from those bytes. What you compare against the far chain's explorer is derived from what gets signed.
+
+Inbound, the recipient is left **absent** rather than filled in. It sits inside Circle's attested message behind a header this module does not parse, and a claim mints to whoever the source burn named rather than to whoever pays for the claim. Filling that field with your own address would be a guess presented as a fact, on the one line that decides where the money goes.
+
+## Configuration decides availability, and absence is stated
+
+Two integrations need build-time configuration. When it is missing, the wallet says which situation you are in rather than showing an empty position:
+
+| | |
+| --- | --- |
+| Not configured | a permanent property of the build, so retrying can never help |
+| Configured, service unreachable | a fact about right now |
+
+Those are different sentences, because only one of them is worth waiting on. A catch that turned the second into the first removed the whole Yield section from the screen during an outage, which made a working build look like one that never had the feature.
+
+## Every build path checks the balance it spends
+
+All five build paths (payment, swap, yield deposit, bridge, shield) check the balance they are about to spend, before building anything.
+
+They also re-check once **simulation has produced the real fee**, because the pre-build check can only assume the base fee of 100 stroops and a Soroban invocation costs three to four orders of magnitude more. The first check catches the gross cases cheaply; the second catches an amount that fits the balance and leaves nothing for the fee.
+
+The bridge is the one where this matters most, because it submits two transactions and the first is an approval that requires no balance at all. Without a balance check, an over-balance bridge would pay for a successful approval and then fail on the burn.

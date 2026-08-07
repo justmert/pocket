@@ -1,0 +1,83 @@
+---
+title: Three processes
+description: The service worker, the offscreen document and the popup, why Manifest V3 forces the split, and how the worker stays alive long enough to finish a proof.
+---
+
+Pocket runs in three browser contexts, plus a relay that lives in web pages. The split is forced by the platform rather than chosen.
+
+| Context | Holds | Cannot |
+| --- | --- | --- |
+| **service worker** | the encrypted vault, the unlocked session, every network call, every transaction it builds | spawn a nested worker |
+| **offscreen document** | the UltraHonk prover | make network calls, see the vault |
+| **popup** | the interface | hold a key or build a transaction |
+| **content script** | a relay for SEP-43 | decide anything |
+
+## Why proving cannot live in the worker
+
+`bb.js` always spawns a `Worker` on its browser path, and a Manifest V3 service worker cannot nest workers. That alone settles it, independently of cross-origin isolation or performance.
+
+Chrome provides exactly one mechanism for this, the **offscreen document**, and it is created with the `WORKERS` justification: unlike the audio-playback justification, it carries no 30-second auto-close, so the document is created once and kept warm rather than paying wasm instantiation on every proof.
+
+The useful side effect is that a proof cannot block the interface. Measured during a real register proof: 1,006 frames painted across 8.4 seconds, with one worst frame gap of 91.6 ms. On the popup's own thread, the same proof would stall it for the entire multi-second run.
+
+## Why keys live in the worker
+
+The popup is a page. Pages are closed, reopened, inspected and reloaded. The worker is the only context in this extension that no page can read from.
+
+So the plaintext seed exists in service-worker memory and nowhere else. It is never written to disk, and never mirrored anywhere, not even into the session store.
+
+This also makes worker death useful rather than dangerous. Chrome evicts an idle service worker after about 30 seconds, and eviction drops everything in memory including the keys. That is an automatic lock rather than a bug.
+
+## Surviving eviction without asking for the password again
+
+Locking on every eviction would mean typing your password every few minutes, so one secret survives: the **data key** that reopens the vault is mirrored into `chrome.storage.session`.
+
+That store is RAM-backed, wiped when the browser closes, and pinned to trusted extension contexts, so a content script running inside a web page cannot read it. The mirror carries the data key and a deadline, and nothing else. **The seed is deliberately absent**: a restarting worker re-derives it from the vault.
+
+Two enforcers converge on the deadline:
+
+- the mirror itself refuses and purges an expired record, so it is authoritative on every worker start regardless of alarm timing
+- a `chrome.alarms` auto-lock fires while a worker is alive
+
+An alarm rather than a `setTimeout`, because a `setTimeout` dies with the worker and a wallet relying on one would silently stay unlocked across a restart it never noticed.
+
+A real lock (the button, the idle timeout, an erase, the browser closing) clears the mirror. A mere eviction does not, which is what lets a restart inside the window come back unlocked.
+
+## Keeping the worker warm
+
+Two situations make eviction actively harmful, and Pocket holds the worker open for exactly those:
+
+- **while an operation is in flight**, so a proof or a submission finishes in one worker lifetime. The session mirror restores a session, but not a half-finished operation
+- **while an unlocked wallet page is on screen**, so the popup stays responsive instead of paying a cold restore on every interaction
+
+The mechanism is a port the page holds while it is open, plus a timer that touches a no-op extension API every 20 seconds, comfortably inside the roughly 30-second eviction window. Only the extension's own pages may hold that port: a content script carries the same extension id and is explicitly rejected.
+
+When nothing needs the worker warm, the timer stops and Chrome may evict as usual.
+
+The idle lock also refuses to fire mid-operation. Locking between a submission and the write that records its consequence would strand a transaction whose money has already moved, because finishing the job needs the very keys the lock destroys. So the alarm re-arms for a minute and looks again.
+
+## Telling the other window
+
+Pocket ships an extension tab as well as the toolbar popup, so two pages open at once is ordinary.
+
+Whenever a session ends, every open page is told. This is keyed on the observed transition from unlocked to locked rather than on a list of message types, so any future request that happens to lock is covered by the same line.
+
+Without it, the second window would keep a full render of balances, history and your address on screen for a wallet whose keys no longer exist, and would only find out when you next touched it. The deliberate lock is the worse case of the two, not the better one: you pressed Lock, watched one window obey, and can see another that has not.
+
+## The content script holds nothing worth taking
+
+It runs at `document_start` in every `http` and `https` page, because that is the only way to put a SEP-43 provider where a website can find it. It runs inside pages Pocket does not control, so it is given nothing.
+
+It validates a message shape, forwards it, and posts the answer back. No keys, no decisions, nothing about accounts.
+
+Crucially, **the origin is never taken from anything the page claims**. Chrome fills in `sender.origin` on the worker side from the frame itself, so a page cannot claim to be somewhere it is not.
+
+The script also rate-limits: 4 relayed calls a second with a burst of 12. That is a cheap first line rather than the boundary, because a content script shares a process with a hostile page and can always be bypassed by one. Everything that matters is enforced in the worker. Over-budget calls are **answered** rather than dropped, because a dapp told to slow down can, and a dapp whose promise never settles just hangs.
+
+## What each context is allowed to import
+
+Two constraints in this codebase come from the platform and are easy to trip over.
+
+`lib/polyfill.ts` **must be the first import of the service worker**. The Stellar SDK reaches for Node's `Buffer` global at runtime; in a Manifest V3 worker the import succeeds and the first real call throws `Buffer is not defined`.
+
+The SDK is imported from `/base` and `/rpc` only, never `/axios/*`, because `XMLHttpRequest` does not exist in a service worker.

@@ -1,0 +1,61 @@
+---
+title: Self-custody and recovery
+description: Your recovery phrase restores your keys. Restoring your private balances takes one more thing, and this page explains what and why.
+---
+
+Pocket holds no account for you. There is no server that can move your money, freeze it, or restore it. That is the point, and it is also why recovery has two halves rather than one.
+
+## What you hold
+
+| | |
+| --- | --- |
+| Recovery phrase | 24 BIP-39 words, generated with 256 bits of entropy, shown once during setup and re-readable from Settings behind your password |
+| Device password | At least 8 characters. Unlocks this device. Not a backup |
+| Encrypted vault | The seed and the confidential openings, encrypted at rest on this device |
+
+Your password protects the vault with **scrypt** at OWASP's recommended parameters (N=131072, r=8, p=1), which is deliberately slow, so guessing passwords in bulk is expensive. The vault is sealed with AES-GCM, and the plaintext header (schema version, key-derivation parameters, salt) is fed in as authenticated data, so editing it on disk breaks decryption rather than being silently accepted.
+
+[The vault in detail](/docs/security/the-vault-and-locking).
+
+## The two halves of recovery
+
+<Callout type="warn" title="Your phrase recovers your keys. It does not, by itself, recover your private balances.">
+This is the single most important thing to understand about holding funds in the private pocket.
+</Callout>
+
+**Your public pocket comes back completely.** The phrase reproduces your Stellar keypair, the ledger holds your balance, and any Stellar wallet can read it. Nothing more is needed.
+
+**Your private pocket needs its openings back.** The chain holds commitments; only your device held the `(v, r)` pairs that make them spendable. Those are not derived from the seed for value you received, because the blinding came from whoever paid you. [Commitments and openings](/docs/concepts/confidential-tokens).
+
+So the phrase restores your ability to *derive keys* for the private pocket, and the openings are rebuilt separately, by replaying your transaction history.
+
+## Rebuilding from history
+
+Pocket replays every confidential event for your account, recomputes what your balances must be, and then **checks the result against what the contract actually holds**. If the replay does not reproduce the on-chain commitments, it is refused rather than stored.
+
+That last step is the entire security of the feature. An archive is a witness to history, not the authority on it. A broken or hostile one can fail to help you; it cannot hand you a wrong balance and have it accepted.
+
+Where the events come from depends on how far back you need to go:
+
+| Age | Source | Needs |
+| --- | --- | --- |
+| Recent | Soroban RPC's retained event window, about seven days | nothing extra |
+| Older | A durable event archive | an archive configured for the build |
+
+Pocket does not assume the retention window is a fixed constant. It asks the RPC where its window actually starts and clamps the scan to it, because a request one ledger outside retention returns zero events with no error, and silence is the worst possible answer here.
+
+[Why the archive exists and what it stores](/docs/how-it-works/the-archive/why-it-exists).
+
+## The wallet only offers what it can do
+
+Whether a rebuild is possible depends on the build having an archive configured. Where one is, the private pocket and Settings both carry **Rebuild from history**. Where none is, the control is absent and the wallet says rebuilding needs a durable archive, rather than offering a button whose only outcome is a refusal.
+
+## Two destructive paths, and why there are two
+
+**Erase this wallet** asks for your current password. **Reset with your phrase** asks for the phrase instead, and is the route out of a forgotten password.
+
+The second one needs an authorisation check of its own, because the thing that normally proves you own this wallet is exactly what is missing. So the phrase must derive the account this device already holds. A stranger's valid phrase is refused, and nobody holding your unlocked laptop can wipe your wallet with a phrase of their own.
+
+Both take the openings with them, deliberately. A new vault gets a fresh random data key, so a surviving opening blob would be undecryptable forever, and re-importing the same phrase would reproduce the same storage key and hit that dead blob instead of a clean slate.
+
+[What each path removes, and which one you are in](/docs/using-pocket/recovery).

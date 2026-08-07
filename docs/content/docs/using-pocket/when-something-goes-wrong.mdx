@@ -1,0 +1,95 @@
+---
+title: When something goes wrong
+description: The states Pocket can show you that are not an ordinary balance, what each one means, and what to do about it.
+---
+
+Pocket distinguishes states that look alike and are not alike. This page is the map.
+
+## An unfinished transaction
+
+Pocket submitted something and did not see whether it confirmed. This screen appears ahead of the whole wallet, because its job is to stop a second transaction being sent.
+
+> Pocket submitted a transaction and did not see whether it confirmed. Do not send it again until this is resolved.
+
+**Check now** polls the ledger by transaction hash and gives you one of five answers:
+
+| Answer | What it means |
+| --- | --- |
+| Succeeded | it landed. Nothing was lost |
+| Failed | it was included and failed. A fee was charged and the sequence number was used |
+| Rejected | the network refused it. Nothing was charged |
+| Could not be taken | the network declined to queue it. Nothing was charged, nothing was used. Wait a few seconds and try again |
+| Expired | its time window passed before it was included, so it can never apply now. Nothing was charged. Build it again |
+
+Until one of those arrives, the wallet refuses to build anything else. Two transactions in flight at once is how a payment gets made twice: the first may still land, and the second consumes the sequence number the first was built against.
+
+Once its time window has passed the envelope can never be included, and building again becomes safe.
+
+**Why "do not resend" is the instruction.** The transaction hash is computable before submission, so the right move is always to ask the ledger about that hash rather than to send a replacement. Pocket never blind-resubmits, and neither should you.
+
+## Not confirmed, in Activity
+
+The same fact, in the list rather than as a blocking screen. It reads *"Not confirmed yet. Do not send it again."*
+
+It is deliberately not drawn in the failure colour. An unresolved submission may still land, and a red banner saying "failed" above a live Approve button is an instruction to pay twice.
+
+## Records do not match the ledger
+
+The private pocket shows **Out of step with the ledger**, and refuses to spend.
+
+This means the openings on this device do not re-commit to the commitments the contract holds. Your funds are safe: the balance is on chain and unchanged. What is wrong is this device's record of how to open it, and spending from a state Pocket cannot verify would build a proof that fails at the verifier with nothing useful to say.
+
+Pocket will not silently resync, because a silent resync would mask exactly the integrity failure the design exists to catch.
+
+Before it reports this, Pocket looks for transfers and deposits you have received that this device has not seen, since an inbound payment is the ordinary reason a balance moves without you doing anything. If that search finds nothing, it says so, so you know the difference is older than the window it searched rather than something it overlooked.
+
+**The way out is a rebuild.** [Recovery](/docs/using-pocket/recovery).
+
+## Balances need rebuilding
+
+The private pocket shows **Needs rebuilding**.
+
+This account has a confidential account on chain and this device has no record of its balances at all, which is what a fresh install after a restore looks like. Your funds are safe on chain.
+
+The way out is the same rebuild.
+
+## Nothing spendable yet
+
+Not an error. Value has arrived and has not been folded into your spendable balance.
+
+The asset shows **Receiving** with a **Make spendable** control. One signature, no proof, and it is the cheapest operation the private pocket has.
+
+[Why there are two balances](/docs/concepts/two-pockets).
+
+## The ledger could not be read
+
+A balance already on screen stays there, with a note rather than a replacement:
+
+> Showing the last balance Pocket read. It could not reach the network just now, so this may be out of date.
+
+The previous figure was read from the ledger and is unconfirmed rather than wrong, so it is marked as stale instead of being replaced by a zero. A zero would be a lie, and a red banner over a balance that is fine reads as "your money is wrong".
+
+## A long wait
+
+A confidential operation runs several distinguishable steps, and each takes seconds. Pocket names the step it is in as that step starts:
+
+- Checking this deployment's verification key
+- Loading the circuit
+- Registering your auditor key
+- Building and proving. This is the slow part
+- Simulating against the ledger
+- Signing
+- Submitting, then waiting for the ledger to confirm
+- Deposit confirmed. Making it spendable, one more transaction
+
+There is no progress bar and no percentage, because both would be invented. A step is named only when it really begins.
+
+While it works you can press **Go to Home** and leave. The worker runs the operation to its terminal on-chain outcome whether or not the popup is open, and Activity picks it up.
+
+## An error that says to check your connection
+
+Pocket only shows an error message it wrote itself. Anything else is replaced with a general sentence, because an arbitrary error message can carry an RPC URL, a stack fragment, or material from a proof witness, and none of those belong on a screen.
+
+So a general message means the failure was not one of the situations Pocket has a specific sentence for. Reopening the wallet is the useful first move: it re-reads the ledger, reconciles any unresolved submission, and clears records for anything that turned out to have failed.
+
+[Why the wallet uses an allowlist for this](/docs/security/errors-and-what-reaches-you).

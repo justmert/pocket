@@ -1,0 +1,81 @@
+---
+title: What the proofs prove
+description: The six circuits, the constraints they enforce, and the precise meaning of the statement that these proofs are not zero-knowledge.
+---
+
+Every state-changing operation in the private pocket carries an UltraHonk proof that the on-chain verifier checks before it applies anything. This page says what those proofs actually assert.
+
+## The six circuits
+
+| Circuit | Public input slots | What it covers |
+| --- | --- | --- |
+| `register` | 6 | opening a confidential account |
+| `withdraw` | 15 | unshielding to ordinary tokens |
+| `transfer` | 24 | a confidential transfer |
+| `spender_transfer` | 24 | a transfer made by a delegated spender |
+| `set_spender` | 24 | granting a delegation |
+| `revoke_spender` | 19 | revoking one |
+
+Pocket's wallet uses the first three. The other three belong to the delegation feature of the underlying contract, and their verification keys are installed so the deployment is complete.
+
+Two operations carry **no** proof at all, and that is correct rather than a gap. A deposit is authorised, not proved: the amount is public and the arithmetic is checkable by anyone. A merge adds two commitments you already own, which reveals nothing and asserts nothing that needs proving.
+
+## What a transfer proof asserts
+
+These are the constraints the `transfer` circuit enforces. If any one fails, the proof cannot be produced.
+
+| | Constraint |
+| --- | --- |
+| T1 | Your spending public key really is `sk·H`, so you hold the key for this account |
+| T3 | Your claimed balance opens the commitment the contract holds: `C_spend = v·G + r·H` |
+| T4 | The balance, the amount, and the remainder are all in range `[0, 2¹²⁷)` |
+| T5 | The shared secret is a genuine ECDH against the recipient's published viewing key |
+| T6 | The published ephemeral point is `r_e·H` |
+| T7 | The transfer blinding is derived from the shared secret, not chosen freely |
+| T8 | The transferred commitment opens to the amount and that blinding |
+| T9 | The encrypted amount is the amount plus a pad derived from the shared secret |
+| T13 | The ephemeral scalar is not zero |
+
+Plus eight more constraints covering the two auditor channels, four per side.
+
+**T4 is what stops inflation.** Values are constrained to a 127-bit range, which is what prevents an attacker from "spending" a negative amount and minting money out of the wrap-around.
+
+**T7 is what makes a received transfer spendable.** Without it, a sender could commit to your incoming balance using randomness only they know, handing you a commitment you can see and can never open. Forcing the blinding to be a function of the ECDH secret means the recipient can always reconstruct it. It is the difference between receiving money and receiving a picture of money.
+
+`withdraw` enforces the same shape with the amount public instead of encrypted. `register` proves that your published keys are consistent with a spending key you hold, and binds the registering address into the public inputs so that published registration material cannot be replayed into a duplicate-key account.
+
+## What "not zero-knowledge" means here
+
+The on-chain verifier implements only the non-ZK `ultra_flavor` of UltraHonk.
+
+**What still holds.** Soundness. Nobody can produce a proof of a false statement, so nobody can mint tokens, spend more than they hold, or spend what is not theirs. Every constraint above is enforced exactly as it reads.
+
+**What does not hold.** The proof itself is not guaranteed to reveal nothing about the witness. A zero-knowledge proof system guarantees that the proof leaks no information about the private inputs beyond the truth of the statement. This one carries no such guarantee.
+
+**What your amounts rest on instead.** Confidentiality comes from two things that are formally hiding in their own right:
+
+- the **Pedersen commitment**, which is perfectly hiding: for any commitment, every possible amount has a blinding factor that produces it, so the commitment alone rules nothing out
+- the **Poseidon encryption** of the amount to the recipient and to the auditors
+
+So the amounts are hidden by the commitments and the encryption rather than by the proofs.
+
+A zero-knowledge flavour verifier for Soroban is one of the two upstream items that gate mainnet. [The path to mainnet](/docs/reference/roadmap-to-mainnet).
+
+## The proof, as bytes
+
+A non-ZK keccak UltraHonk proof at `bb 0.87.0` is a constant **456 field elements**, which is **14,592 bytes**. That is exactly what the on-chain verifier hardcodes, and exactly what the real transfer on chain carries.
+
+The transcript is **keccak256**. The prover and the on-chain verifier have to agree on this: a poseidon2-transcript proof is the same size, so a mismatch produces a proof of the right length that simply fails verification. Release gate 2 pins it by reproducing the verification keys from circuit source and comparing hashes, which is the only check that catches a wrong transcript.
+
+## How long it takes
+
+Proving runs on your own machine, in an isolated document, and it takes seconds rather than milliseconds. Measured on this build:
+
+| Stage | Measured |
+| --- | --- |
+| Building and proving a register operation | about 8 seconds |
+| Signing, submitting and waiting for the ledger | about 3.7 seconds |
+
+The popup stays responsive throughout. During a real register proof it painted 1,006 frames across 8.4 seconds, with a single worst frame gap of 91.6 ms. That is the whole reason proving lives in a separate document: on the popup's own thread it would stall the interface for the entire multi-second proof.
+
+Because the wait is long, the wallet names the phase it is in as each one starts, rather than showing one unchanging spinner. [What the screen says while it works](/docs/using-pocket/when-something-goes-wrong).

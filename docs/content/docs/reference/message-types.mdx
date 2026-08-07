@@ -1,0 +1,170 @@
+---
+title: Message types
+description: The 48 requests the popup can send the service worker, what each one answers with, and the three rules that govern the boundary.
+---
+
+The popup holds no keys and makes no network calls. Everything it does, it does by sending one of these requests to the service worker.
+
+`extension/src/core/messages.ts` is the single source of truth for the boundary. `WalletRequest` is a closed union, `ResponseMap` narrows each request type to its payload, and the popup calls through a wrapper typed off both, so a request that does not exist does not compile.
+
+## The envelope
+
+Every answer is one of two shapes:
+
+```ts
+type WalletResponse<T> = { ok: true; data: T } | { ok: false; error: string };
+```
+
+**Every payload must be structured-cloneable.** That is a platform constraint, not a style choice: `chrome.runtime.sendMessage` clones. So amounts cross as decimal **strings** and are parsed back to `bigint` stroops on arrival, never as floats and never as `bigint` on the wire.
+
+## The 48 requests
+
+### Wallet lifecycle
+
+| Request | Answers with |
+| --- | --- |
+| `status` | `WalletStatus` |
+| `create` `{ password }` | `{ mnemonic, address }` |
+| `import` `{ password, mnemonic }` | `{ address }` |
+| `unlock` `{ password }` | `WalletStatus` |
+| `lock` | `WalletStatus` |
+| `reset` `{ password }` | nothing |
+| `revealPhrase` `{ password }` | the phrase, as a string |
+| `recoverFromMnemonic` `{ mnemonic, password }` | the address |
+| `setNetwork` `{ network }` | `WalletStatus` |
+| `setAutoLock` `{ minutes }` | `WalletStatus` |
+| `fundTestnet` | `WalletStatus` |
+
+### Public pocket
+
+| Request | Answers with |
+| --- | --- |
+| `balances` | `PublicBalance[]` |
+| `buildPayment` `{ to, amount, assetId, memo? }` | `{ xdr, summary }` |
+| `confirmPayment` `{ handle }` | `{ hash, ledger }` |
+| `trustlines` | `Trustline[]` |
+| `assetSearch` `{ query }` | `AssetSearchResult[]` |
+| `buildAddTrustline` `{ assetCode, issuer }` | `{ handle, summary }` |
+| `buildRemoveTrustline` `{ assetCode, issuer }` | `{ handle, summary }` |
+| `confirmAddTrustline` `{ handle }` | `{ hash, ledger }` |
+
+One confirm signs both trustline directions, because each is a staged `changeTrust`.
+
+### Private pocket
+
+| Request | Answers with |
+| --- | --- |
+| `privatePocket` `{ asset? }` | `PrivatePocket` |
+| `privatePockets` | `PrivatePocket[]`, one per configured asset |
+| `rebuildFromHistory` `{ asset? }` | `PrivatePocket` |
+| `archiveReadiness` | `{ configured, reachable, ingestedThrough, chainLedger }` |
+| `buildPrivateOp` `{ op, asset? }` | `{ handle, summary }` |
+| `confirmPrivateOp` `{ handle }` | `{ hash, ledger, followed? }` |
+
+`op` is one of five: `register`, `shield`, `merge`, `transfer`, `unshield`.
+
+**There is no `auditorId` field on any of them.** The wallet registers the account's own auditor key and uses the id the registry allocates. Letting a caller name one is exactly how a hardcoded zero binds every user to the operator's key.
+
+`asset` selects which confidential wrapper. It takes the wrapper address (preferred, and what `status.privateAssets` hands you), the underlying asset contract, or the display symbol. Omitted means the first configured asset.
+
+`archiveReadiness` answers four separate facts rather than one boolean: whether an archive is configured at all (a build-time fact), whether it answered just now, the last ledger it has recorded, and where the chain is. The last two are returned together so "current" can be checked rather than assumed.
+
+### Integrations
+
+| Request | Answers with |
+| --- | --- |
+| `yieldPosition` | `YieldPosition` |
+| `buildYieldMove` `{ kind, amount }` | `{ handle, summary }` |
+| `confirmYieldMove` `{ handle }` | `{ hash, ledger }` |
+| `swapQuote` `{ assetIn, assetOut, amount }` | `SwapQuoteView` |
+| `buildSwap` `{ assetIn, assetOut, amount, slippageBps? }` | `{ handle, summary }` |
+| `confirmSwap` `{ handle }` | `{ hash, ledger }` |
+| `buildCctpSend` `{ destinationDomain, recipient, amount, fast? }` | `{ handle, summary }` |
+| `confirmCctpSend` `{ handle }` | `{ approveHash, hash, ledger }` |
+| `cctpAttestation` `{ sourceDomain, txHash }` | `{ status, ready }` |
+| `buildCctpClaim` `{ sourceDomain, txHash }` | `{ handle, summary }` |
+| `confirmCctpClaim` `{ handle }` | `{ hash, ledger }` |
+
+`confirmCctpSend` returns two hashes because the outbound leg is two transactions: an approval and then the burn.
+
+### Activity, prices and settlement
+
+| Request | Answers with |
+| --- | --- |
+| `history` `{ cursor?, limit?, pocket?, asset? }` | `HistoryPage` |
+| `valueSeries` `{ range }` | `ValueChart` |
+| `assetMarket` `{ symbol, issuer? }` | `AssetMarketView` |
+| `assetSeries` `{ symbol, range }` | `ValueChart` |
+| `currentPhase` | a phase string, or `null` |
+| `inFlight` | the unresolved transaction, or `null` |
+| `reconcileInFlight` | a `SubmitOutcome`, or `null` |
+
+`assetMarket` takes an `issuer` because an asset code alone is not an identity. Two issuers can both call their asset USDC.
+
+### Websites
+
+| Request | Answers with |
+| --- | --- |
+| `dappSessions` | the granted origins |
+| `connectDapp` `{ origin }` | `{ origin, connectedAt }` |
+| `disconnectDapp` `{ origin }` | nothing |
+| `pendingDappRequest` | the request awaiting approval, or `null` |
+| `resolveDappRequest` `{ id, approved }` | whether it resolved |
+
+[The closed website surface](/docs/security/closed-dapp-surface).
+
+## Three rules at the boundary
+
+`extension/src/core/dispatch.ts` is the only place a message becomes a controller call, and three things live there and nowhere else.
+
+### Allowed while locked
+
+Six requests, and only six:
+
+```
+status  create  import  unlock  lock  recoverFromMnemonic
+```
+
+The rule for adding one is not "is it harmless if the wallet is locked". It is stricter: **an operation belongs here only if it would still be safe with the lock removed entirely.** The lock is not the guard.
+
+### What counts as activity
+
+Real user activity postpones the idle lock. Polling does not.
+
+Every build, confirm, quote, balance read and private operation is activity, and so is unlocking, creating, importing and funding. Proving takes seconds and a transfer must not be interrupted mid-flight, which is why the private operations are in.
+
+`cctpAttestation` is deliberately **out**. It is a poll the interface repeats while waiting for the other chain, so counting it would keep the wallet unlocked indefinitely on a screen nobody is watching.
+
+### Which error text reaches you
+
+An **allowlist by error name**. An arbitrary `Error.message` can carry an RPC URL, a stack fragment, or witness material, so anything whose name is not on the list becomes a generic sentence.
+
+Add a name. Never add a shape heuristic.
+
+One name is deliberately absent: the error raised when the RPC answers for the wrong ledger entry. Two of its messages interpolate an address decoded from the RPC's **own** response, so allowlisting it would let a value the RPC chose reach the screen. You get the generic message, because "your RPC is lying about which account it answered for" is not something you can act on. What matters is that no number is rendered.
+
+[Errors and what reaches you](/docs/security/errors-and-what-reaches-you).
+
+## Validation
+
+The union describes what the popup is supposed to send, and it **erases at runtime**. Nothing downstream re-checks, so an absent password would reach the key derivation and an object would reach the address parser.
+
+Every field is therefore checked at the dispatcher with shape helpers that name the field:
+
+```
+malformed request: password must be a string
+```
+
+The sender is Pocket's own popup today, so this is defence in depth rather than a boundary against an attacker. It is the layer where a shape error should be named rather than surfacing three layers down.
+
+## Build, then confirm
+
+Anything that spends is two requests, never one.
+
+`build…` prepares the transaction, simulates it for the real fee, and returns an opaque **handle** plus a summary in plain words. `confirm…` signs and submits the envelope the worker retained under that handle.
+
+The envelope never crosses to the popup, so there is nothing for the interface to alter between the screen you approved and the bytes that were signed. [Never blind sign](/docs/security/never-blind-sign).
+
+## Adding one
+
+[How this code is written](/docs/build/how-this-code-is-written) has the four steps in order: the union and the response map, the dispatcher case with its validation and its activity decision, the controller call, and the error name.

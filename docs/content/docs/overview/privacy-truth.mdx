@@ -1,0 +1,77 @@
+---
+title: What is private
+description: Pocket hides amounts and does not hide addresses. This page states every fact that stays public, and shows a real transfer on chain.
+---
+
+**Confidential, not anonymous.**
+
+Pocket hides *how much*. It does not hide *who*. Both addresses on a private transfer appear on the public ledger in the clear, permanently, and anyone can read them.
+
+If you need your counterparty hidden, Pocket does not do that, and no configuration of it does.
+
+## The table
+
+| | Visible to anyone watching the chain |
+| --- | --- |
+| Your address | **yes, always** |
+| Who you paid, in a private transfer | **yes** |
+| How much you paid, in a private transfer | **no** |
+| Your private balance | **no** |
+| The amount you moved into the private pocket | **yes** |
+| The amount you moved out of the private pocket | **yes** |
+| The fact that your address has a private pocket at all | **yes** |
+| When each transaction happened | **yes** |
+| Which account paid the network fee | **yes** |
+| Everything in your public pocket | **yes**, as on any Stellar wallet |
+
+Two of those rows deserve more than a cell.
+
+**The boundary is public.** Putting value into the private pocket, or taking it out, is an ordinary public amount on the ledger. Only movement *inside* is hidden. If you shield exactly 1,000 XLM and later unshield exactly 1,000 XLM, an observer can join those two numbers.
+
+**Registering is public.** Opening a private pocket is a visible transaction. It tells the world that this address has a confidential account, though not what is in it.
+
+## A real transfer, decoded
+
+This is transaction [`391b5767…`](https://stellar.expert/explorer/testnet/tx/391b5767abb00a117b8f15a5639c1268776bdc60b6498181440630b26a2fa1bc) on testnet, read straight off the ledger. It moved 10 XLM privately.
+
+The operation is a single contract call:
+
+```
+contract : CDMXZEFOM5DN2GSHQKNOOW242RJZGCEM5LOOAPGRQE35GGHB7ALDK2Y6
+function : confidential_transfer
+arg[0]   : GC6JCCFWYPYIHOR7SYXEBRJ5RD32ULVXCQS2P5TDDDCR3AYT6V56CDMN
+arg[1]   : GB43MNLS6IL77FIZHOBLYILQIQP5MPQVF77O5JOAYCSWX3TUHAL6Z3F7
+arg[2]   : Bytes, 15356 bytes
+```
+
+`arg[0]` is the sender and `arg[1]` is the recipient, both plain Stellar addresses.
+
+`arg[2]` is where the amount went. It decodes to ten field elements and a proof:
+
+| Field | Size | What it is |
+| --- | --- | --- |
+| `c_transfer` | 64 B | the transferred amount, as a Pedersen commitment |
+| `c_spend_new` | 64 B | the sender's remaining balance, as a commitment |
+| `r_e_point` | 64 B | the ephemeral public key the recipient decrypts with |
+| `v_tilde` | 32 B | the amount, encrypted to the recipient |
+| `b_tilde` | 32 B | the sender's new balance, encrypted to the sender |
+| `sigma` | 32 B | the per-transfer salt |
+| `v_tilde_aud_r` | 32 B | the amount, encrypted to the recipient's auditor |
+| `r_tilde_aud_r` | 32 B | the transfer blinding, encrypted to the recipient's auditor |
+| `v_tilde_aud_s` | 32 B | the amount, encrypted to the sender's auditor |
+| `b_tilde_aud_s` | 32 B | the sender's new balance, encrypted to the sender's auditor |
+| proof | 14,592 B | the UltraHonk proof the contract verified |
+
+Every one of those is a field element that nobody but the recipient and the bound auditor can read. No number in that list is the amount in the clear.
+
+Note that both auditor channels are populated. They are not optional: the circuit constrains them, so a transfer cannot be built with them missing or malformed. [What that means, and who holds the key](/docs/concepts/auditability).
+
+## What "not zero-knowledge" changes here
+
+The proofs are cryptographic proofs of correctness. They stop anyone from creating money out of nothing or spending more than they hold. The proof system available on Stellar today is not a zero-knowledge one, so the proof layer contributes no zero-knowledge property of its own.
+
+Your amounts are hidden by the encryption and by the hiding property of the commitments, both of which are formally hiding. They are not hidden by the proofs.
+
+[The full explanation, and what gates a change](/docs/concepts/what-the-proofs-prove).
+
+[Every claim about Pocket, with the answer as it stands right now](/docs/reference/whats-true-today).

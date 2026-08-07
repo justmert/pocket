@@ -1,0 +1,101 @@
+---
+title: Commitments and openings
+description: The chain stores commitments. Your device stores the openings that make them spendable. That asymmetry drives most of Pocket's design.
+---
+
+This is the single most important idea in the private pocket, and it is the one that decides how recovery works.
+
+## The commitment is public, the opening is not
+
+Your private balance on chain is a commitment:
+
+```
+C = v·G + r·H
+```
+
+Everyone can read `C`. It reveals nothing about `v`.
+
+The pair `(v, r)` is called the **opening**. It is the only thing that lets you prove what `C` contains, and therefore the only thing that lets you spend it. The chain never sees it. **Only your device holds it.**
+
+<Callout type="warn" title="The opening store is not a cache">
+Losing your openings does not lose your money in the sense of someone else getting it. It means your balance is visible on chain and spendable by nobody, including you, until the openings are rebuilt.
+
+This is why the extension asks Chrome for `unlimitedStorage`, why the opening store is encrypted alongside the seed rather than treated as a cache, and why the archive exists at all.
+</Callout>
+
+## Your recovery phrase restores keys, not openings
+
+This is the part most easily got wrong.
+
+Your 24 words deterministically reproduce your Stellar keypair and your confidential spending key. What they do not reproduce is `r`, the blinding factor on each commitment, because `r` is not derived from the seed for balances you received. It came from whoever paid you.
+
+So a phrase alone restores your **public** pocket completely, and restores your **ability to derive keys** for the private one, but not the openings that make the private balances spendable. Those are rebuilt by replaying your transaction history.
+
+[How recovery actually works](/docs/concepts/self-custody-and-recovery).
+
+## What each operation does to your commitments
+
+<Steps>
+
+<Step>
+### Register
+
+Creates your confidential account. Both accumulators start at the identity point, which is the commitment to zero with zero blinding.
+
+Publishes your spending public key and your public viewing key, and permanently binds an auditor id.
+</Step>
+
+<Step>
+### Deposit (the first half of shielding)
+
+Moves ordinary tokens into the wrapper. The amount is **public**: a deposit commits `amount·G` with a blinding factor of exactly zero, and the amount rides in the event in the clear.
+
+It credits `receiving`, not `spendable`.
+</Step>
+
+<Step>
+### Merge
+
+Folds the whole `receiving` accumulator into `spendable` and zeroes `receiving`.
+
+Needs your authorisation. Needs no proof, because adding two commitments you already own reveals nothing and proves nothing.
+</Step>
+
+<Step>
+### Confidential transfer
+
+Debits your `spendable` and credits the recipient's `receiving`, both as commitments. The amount is hidden.
+
+Your new opening is deterministic: the value is what you had minus what you sent, and the new blinding is derived from your viewing key and the transfer's salt. That is what lets your wallet recompute it without storing anything extra.
+</Step>
+
+<Step>
+### Withdraw (unshielding)
+
+Debits your `spendable` and pays ordinary tokens out. The amount becomes **public** at this boundary, because the token being paid out is an ordinary token with a visible balance.
+</Step>
+
+</Steps>
+
+## Why a received transfer needs more than the event
+
+When someone pays you privately, the event on chain publishes enough for you to *derive* a candidate amount, and nothing at all to *check* it with.
+
+That matters more than it sounds. Nothing on chain marks an event as yours. If you try to open a transfer that was meant for somebody else, you do not get an error: you get a plausible-looking field element. Crediting it would inflate your balance by an arbitrary amount, and you would only find out much later, when your records stopped matching the chain.
+
+The thing that settles it is `c_transfer`, the commitment to the transferred amount. If your derived `(v, r)` opens it, the transfer was yours. If it does not, it was not.
+
+`c_transfer` travels in the transaction's invocation and is **not published in the event body**. So:
+
+- **Recent transfers** are credited by reading the accumulator directly: your new `receiving` commitment must equal your old one plus the transfer's commitment. Pocket refuses to credit anything that does not add up.
+- **Older transfers**, past what Soroban RPC retains, need the archive, which stores the invocation payload alongside the event precisely so this check is still possible.
+
+[How the archive solves it](/docs/how-it-works/the-archive/why-it-exists).
+
+## The rule this produces
+
+Every path in Pocket that touches an opening follows the same rule: **verify against the chain, or refuse.**
+
+A rebuilt balance is re-committed and compared against what the contract holds before it is stored. A credited transfer must reproduce the on-chain accumulator exactly. A landed operation's new opening is checked before it is written. When the check fails, the wallet reports it and declines to spend, rather than storing a balance that looks right and cannot be proved against.
+
+A wrong opening and a lost opening are indistinguishable later, and both make funds unspendable. So a state that cannot be verified is never treated as a state.

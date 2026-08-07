@@ -1,0 +1,122 @@
+---
+title: Install and unlock
+description: Build the extension, load it into Chrome, create or restore a wallet, and understand what the password does.
+---
+
+## Build and load it
+
+Pocket builds from source into an unpacked Chrome extension.
+
+```bash
+cd extension
+npm install
+npm run build
+```
+
+That produces `extension/.output/chrome-mv3`. The build vendors the proving backend, the trusted-setup data and the compiled circuits into the package first, so it needs no network access at runtime.
+
+Load it into Chrome:
+
+<Steps>
+
+<Step>
+Open `chrome://extensions`.
+</Step>
+
+<Step>
+Turn on **Developer mode**, top right.
+</Step>
+
+<Step>
+Choose **Load unpacked** and select `extension/.output/chrome-mv3`.
+</Step>
+
+<Step>
+Pin Pocket to the toolbar so you can reach it in one click.
+</Step>
+
+</Steps>
+
+`npm run zip` produces a packaged `.zip` of the same build.
+
+## First run happens in a tab
+
+When you click the toolbar icon on a fresh install, Pocket moves itself into a full browser tab before showing you anything.
+
+That is deliberate. Chrome dismisses a toolbar popup the moment the window loses focus, and setup is where your recovery phrase appears. Someone following the screen's own instruction, opening a password manager to write down 24 words, would dismiss the only window holding them. The vault is already installed by then, so the wallet would still open and nothing would look wrong until the day the phrase was the only way back.
+
+In the tab, the phrase survives you looking away. Pocket also intercepts an accidental tab close while the words are unconfirmed, and if you open the toolbar icon in the meantime it takes you back to the tab rather than showing you a working wallet.
+
+## Create a wallet
+
+<Steps>
+
+<Step>
+### Choose a password
+
+At least 8 characters, entered twice.
+
+This password unlocks Pocket **on this device**. It is not a backup, and the screen says so. If you lose it, the way back is your recovery phrase, not a reset link.
+</Step>
+
+<Step>
+### Save your recovery phrase
+
+Pocket shows you 24 words, generated with 256 bits of entropy.
+
+They start blurred behind a **Show the phrase** control, so they do not appear unannounced in whatever room you happen to be in. You choose the moment.
+
+Write them down. Anyone who has them owns your funds.
+</Step>
+
+<Step>
+### Confirm them
+
+Pocket blanks three words at random positions and asks you to place the right word in each, in order, by tapping from a shuffled set.
+
+You never retype the phrase, and the check never leaves the page: the words are already in the browser, so nothing is sent anywhere to verify them.
+</Step>
+
+<Step>
+### Done
+
+The tab confirms your wallet is ready and lets you close it. Pocket itself lives in the toolbar popup from then on.
+</Step>
+
+</Steps>
+
+You can see the phrase again later, from **Settings → Recovery phrase**, behind your password.
+
+## Restore a wallet
+
+Choose **I have a recovery phrase** instead, paste 12 or 24 words, and set a password for this device.
+
+Pocket refuses to import over an existing wallet. If a wallet is already installed here, remove it first through **Settings → Erase this wallet**, which asks for the current password.
+
+## Unlocking
+
+Open the toolbar icon and type your password.
+
+Pocket locks itself after a period of inactivity, and whenever the browser closes. The window is yours to set, from **Settings → Auto-lock**:
+
+| Options |
+| --- |
+| 1 minute, 5 minutes, **15 minutes** (default), 30 minutes, 1 hour, 4 hours, 8 hours |
+
+There is deliberately no "never". A funded wallet that never idle-locks is the single outcome the timer exists to prevent, and the worker clamps any value to between 1 minute and 8 hours regardless.
+
+**Lock now** in Settings, or **Lock wallet** in the header menu, locks it immediately.
+
+### What locking does
+
+Locking is more than hiding the screen. It drops the seed and the data key from memory, zeroing the buffers in place, clears the mirrored session so a restarting worker cannot come back unlocked, and drops every website connection, because a connection grants seeing your address and a locked wallet has no address to show.
+
+If you have Pocket open in two windows, locking one tells the other. It switches to the lock screen rather than sitting there displaying balances for a wallet whose keys are gone.
+
+[The session and lock model in detail](/docs/security/the-vault-and-locking).
+
+## Getting testnet funds
+
+On testnet, **Settings → Fund account** requests XLM from friendbot and waits for the account to exist on the ledger before it answers, so your balance is there when the screen returns.
+
+A brand-new account also shows a funding card on the home screen until it has been funded. An account has to exist on the ledger before it can hold a trustline, open a private pocket, or pay anyone.

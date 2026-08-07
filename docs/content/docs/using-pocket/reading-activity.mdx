@@ -1,0 +1,90 @@
+---
+title: Reading Activity
+description: Your transaction history across both pockets, what each row means, and why a missing half is stated rather than left blank.
+---
+
+**Activity** shows one pocket's movements, newest first. The public and private histories are separate lists and the toggle at the top crosses between them.
+
+## Where each half comes from
+
+| Pocket | Source | Reaches back |
+| --- | --- | --- |
+| Public | Horizon | your account's full history |
+| Private | the confidential event archive, replayed on this device | as far as the archive holds |
+
+The private half is genuinely decrypted on your machine. The addresses on a confidential transfer are public topics on chain, but the amount is known only to your device, decrypted from your own openings. Where an amount cannot be verified on this device it shows a dash rather than a guess.
+
+Viewing the public pocket does not trigger the private replay, so the public list is cheap.
+
+## What a row says
+
+| Row | Meaning |
+| --- | --- |
+| Received from *(address)* | an ordinary public payment in |
+| Sent to *(address)* | an ordinary public payment out |
+| Account funded | your account being created on the ledger |
+| Swapped | one asset exchanged for another in a single call |
+| Shielded | value moved into the private pocket |
+| Unshielded | value moved back out |
+| Received privately from *(address)* | a confidential transfer in |
+| Sent privately to *(address)* | a confidential transfer out |
+| Made spendable | received private funds folded into your spendable balance |
+| Private pocket opened | your confidential account being registered |
+
+A **swap** is the one kind that produces two rows. A swap moves value out and value in within one invocation, so each side gets its own row sharing one transaction hash. Collapsing them would have to discard an asset and an amount.
+
+Value moved by any other contract call stays **Sent** or **Received**. Pocket can see from the movements that value left or arrived, and inventing a more specific word for a call it cannot identify would be a guess.
+
+## In progress
+
+Transactions you started and Pocket is still watching sit at the top under **In progress**, with a live status.
+
+The work continues in the background whether or not the popup is open, so leaving a compose sheet does not abandon anything. A running transaction also shows as a count beside the refresh control on the home screen, so it is reachable from anywhere.
+
+Three states, and the difference between the last two matters:
+
+| State | Meaning |
+| --- | --- |
+| In progress | submitted, waiting for the ledger |
+| Completed | included and successful |
+| Failed | included and failed, or never submitted. The reason is on the row |
+| **Not confirmed** | Pocket does not know yet. It may still land. **Do not send it again** |
+
+**Not confirmed** is not a failure and is not drawn as one. It wears the wallet's "needs your attention" tone rather than the failure colour, because telling you a payment failed is the one instruction that makes you send it again, and a resend is how a payment gets made twice. [When something goes wrong](/docs/using-pocket/when-something-goes-wrong).
+
+A completed transaction appears as a settled row straight away, and retires from the watch list once the real entry arrives from the chain, so it is never shown twice.
+
+## Zero-value transfers are collapsed, not dropped
+
+Anyone can push endless "Received 0 XLM" rows at a registered confidential account. Pocket collapses zero-value transfers from addresses you have never sent to into a single count, with a **Show N zero-value** control below the list that reveals them in one tap.
+
+They are hidden, never discarded. Nothing filtered out is unreachable.
+
+## Finding something
+
+**Search** matches the asset code, the counterparty address, or the amount.
+
+**Date range** and **type** filters narrow what is loaded. The types are received, sent, moved in and moved out.
+
+Both are filters over history that has been fetched, and Activity keeps pulling older pages under them. If a filter matches nothing in what is loaded, Pocket keeps reading rather than concluding early, and says which situation you are in:
+
+| | |
+| --- | --- |
+| Nothing matches those filters | it read to the end |
+| Nothing matches those filters yet. Still reading older history | it is still going |
+
+## When a half cannot be read
+
+The two pockets are read independently so that one failing cannot take the other's list down. When one does fail, Activity says so above the rows:
+
+> The durable archive did not answer, so your private history could not be replayed. What is shown below is incomplete.
+
+This exists because a list with a half missing looks exactly like a complete list. There is no shape a partial history has that a whole one does not, so the absence has to be stated rather than left to be inferred.
+
+For the same reason, **No activity yet** is only ever shown when the history was actually read. An unreachable Horizon and an empty account are not allowed to produce the same screen.
+
+## The detail
+
+Tapping a row opens it: the exact amount at full precision, the date and time, your address, the counterparty, the transaction hash and the network fee. Each address and the hash link out to a block explorer so the on-chain fact can be checked independently of Pocket.
+
+There is no fiat value on a past transaction. Pocket keeps no historical per-transaction price, and showing a past transfer at today's rate as though it were what the transfer was worth would be inventing a number. The amount on the ledger is the fact.

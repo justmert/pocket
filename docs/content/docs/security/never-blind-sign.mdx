@@ -1,0 +1,76 @@
+---
+title: Never blind-sign
+description: Pocket refuses to sign bytes it cannot describe, and the bytes it signs are the bytes the screen described.
+---
+
+Two properties, and they are not the same property.
+
+**Describability.** If Pocket cannot say what a transaction does, it does not offer the signature.
+
+**Fidelity.** What leaves the machine is what the screen described.
+
+## Describability
+
+A wallet that signs bytes it cannot describe is asking you to approve a hash, and approving a hash is not consent.
+
+So the rule is absolute: an operation nobody has written a sentence for cannot be consented to, and the envelope is refused **whole** rather than partly described.
+
+Refusing whole is deliberate. A list where four lines are real and the fifth is a bare type name reads as a complete description, and the one line that is not is the one carrying the operation nobody reviewed.
+
+### What can be described
+
+| Operation | How it reads |
+| --- | --- |
+| `payment` | Send *(amount)* *(asset)* to *(address)* |
+| `createAccount` | Create account *(address)* funded with *(amount)* XLM |
+| `changeTrust` | Trust *(asset)* up to *(limit)*, or REMOVE the trustline for *(asset)* |
+| `setOptions` | **CHANGE ACCOUNT SECURITY SETTINGS** (signers, thresholds or home domain) |
+| `accountMerge` | **DESTROY this account** and send everything to *(address)* |
+| `pathPaymentStrictSend` | Send *(amount)* converting to at least *(amount)* for *(address)* |
+| `pathPaymentStrictReceive` | Send up to *(amount)* so *(address)* receives *(amount)* |
+
+Two of those are also flagged as alarming, so the screen carries a warning rather than listing them among ordinary lines: `setOptions` and `accountMerge` can hand the account away permanently.
+
+Adding a case to that switch means adding it to the described list, and the order of that pair is what keeps the refusal honest: **an operation is describable only once somebody has written the sentence for it.**
+
+### Why `invokeHostFunction` is refused
+
+It was on the described list once, and its whole sentence was "Invoke a smart contract". No contract id, no function name, no arguments, no value. It was also absent from the alarming set, so nothing warned either.
+
+That is the exact failure the list exists to close, on the one operation that can do anything: transfer a token balance, set an approval, upgrade a contract. Somebody reading that line has been told the operation's **type** and nothing about its effect, with Approve live beneath it.
+
+Describing it properly is not a sentence, it is a feature. The effect lives in arguments of arbitrary shape, and rendering some of them while silently dropping the rest is the same costume one layer down.
+
+So it is refused, with a sentence that explains why retrying will not help:
+
+> This transaction calls a smart contract. What a contract call actually does is carried in its arguments, and Pocket cannot yet put those into words, so it will not ask you to approve one on trust. Nothing has been sent.
+
+That wording matters. The generic refusal reads as "this envelope is broken", which a site would reasonably try to fix by re-encoding. The envelope is fine and the limitation is Pocket's.
+
+### What the earlier behaviour cost
+
+Before the described list existed, an unknown operation fell through to its bare type name and the envelope was still reported as decoded, so the approval screen rendered an enabled Approve.
+
+Driven end to end, a connected site asked to sign a claimable balance of 9,500 XLM to an address of its choosing, and the screen showed one line reading `createClaimableBalance` with the amount and the beneficiary nowhere on it.
+
+## Fidelity
+
+The second half is that the bytes match the screen.
+
+**The popup never sends transaction bytes.** A build step returns an opaque **handle**; the worker keeps the envelope it built. Confirming takes only the handle.
+
+Without that, the worker would sign any bytes handed to it, including an account merge or a change of signers, and the approval screen would be decoration.
+
+At confirm time the worker re-decodes its own retained envelope and re-asserts three things before signing: it is not a fee bump, its source is your account, and for a payment it is the single payment operation that was reviewed.
+
+**The fee on the screen is the fee on the envelope.** A Soroban envelope leaves the builder carrying only the base fee, and simulation rewrites it to include the resource fee. Simulating before the review is what makes the stated figure true. Preparing again at signing time is safe, because the SDK subtracts any resource fee already present before adding the simulated one.
+
+**A handle does not outlive its envelope.** Both expire in 180 seconds, and the handle's lifetime is derived from that constant rather than chosen separately. A handle that outlived the bytes would spend an unlock and a signature to earn a "too late" from the network, and on a private operation it would discard a proof you waited seconds for.
+
+**Every signed fact stays visible.** The amount, the recipient in full, the fee, the memo, and anything else the operation commits to, such as a bridge's destination chain or a swap's minimum received. Only the explanation moves into a tooltip, because a fact behind a hover is a blind signature.
+
+## How this is tested
+
+A browser test takes each envelope **off the wire**, or off the value handed back to the site, decodes it independently, and reconstructs what it does from the list of effects the screen rendered.
+
+The strings on the confirm screen are therefore load-bearing rather than decorative: the suite reads them, and they have to be the bytes the worker signs.

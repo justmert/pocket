@@ -1,0 +1,134 @@
+---
+title: Witness and public inputs
+description: Ordering is not a formatting detail. A permutation of two same-typed inputs is a well-formed vector that verifies a different statement.
+---
+
+A witness is the vector a circuit consumes. Building one correctly means getting three things right: which inputs, in what order, and in how many slots.
+
+<Callout type="warn" title="A permutation is a different statement">
+UltraHonk absorbs every public input into its transcript in order. Swap two same-typed inputs and you get a perfectly well-formed proof of something you did not mean.
+
+There is no error, no size difference and no shape difference. The contract reassembles the vector its own way, and verification simply fails, or worse, succeeds about the wrong claim.
+</Callout>
+
+## Three authorities, and each answers a different question
+
+| Question | Authority |
+| --- | --- |
+| Which inputs does a circuit take? | the design documents |
+| In what **order**? | the contract's own assembly |
+| In how many **slots**? | the circuit's `main` signature |
+
+All three have to agree, and where a document and the deployed code disagree, the code wins. The clearest case: `register` binds a public input for the registering address that the design document does not list. Miss it and published registration material can be replayed into duplicate-key accounts.
+
+## Slot counts
+
+Slots, not logical values. A Grumpkin point occupies **two** slots.
+
+| Circuit | Slots |
+| --- | --- |
+| `register` | 6 |
+| `withdraw` | 15 |
+| `transfer` | 24 |
+| `spender_transfer` | 24 |
+| `set_spender` | 24 |
+| `revoke_spender` | 19 |
+
+`register` carries four logical inputs (`Y`, `PVK`, `addr_f`, `acct_f`) but six slots, because two of them are points.
+
+Getting a count wrong splits the prover's output in the wrong place, since `bb.js` returns `publicInputs ‖ proof` concatenated, and produces a proof the verifier cannot read.
+
+Release gate 5 checks these counts against the circuit sources by counting `pub Field` parameters in each `main`.
+
+## The order, per circuit
+
+### register
+
+```
+y_x, y_y, pvk_x, pvk_y, addr_f, acct_f
+```
+
+`acct_f` is referenced by **no gate**. Its presence in the public-input set *is* the binding: since UltraHonk absorbs every public input into the transcript, a proof made for one account fails when the contract assembles the vector for another.
+
+Without it, the proof and payload that a legitimate registration publishes on chain could be replayed to mint duplicate-key accounts. That is why the demo's pre-audit verification keys are unusable.
+
+### withdraw
+
+```
+c_spend_x, c_spend_y, y_x, y_y, addr_f,
+k_aud_s_x, k_aud_s_y, a,
+c_spend_new_x, c_spend_new_y, sigma, b_tilde,
+r_e_x, r_e_y, b_tilde_aud_s
+```
+
+`a` is the withdrawal amount, public at this boundary.
+
+### transfer
+
+```
+c_spend_x, c_spend_y, y_x, y_y, pvk_b_x, pvk_b_y, addr_f,
+k_aud_r_x, k_aud_r_y, k_aud_s_x, k_aud_s_y,
+c_spend_new_x, c_spend_new_y, c_transfer_x, c_transfer_y,
+r_e_x, r_e_y,
+v_tilde, b_tilde, sigma,
+v_tilde_aud_r, r_tilde_aud_r, v_tilde_aud_s, b_tilde_aud_s
+```
+
+## Values the contract supplies are mirrored, never substituted
+
+The contract reassembles the public-input vector itself, so anything it already knows must be reproduced exactly rather than recomputed differently:
+
+- `C_spend`, `C_a` and `sigma_a` come from chain state
+- `Y`, `PVK` and `Y_op` come from account records
+- `addr_f` comes from the token's instance storage
+- `acct_f` and `op_i` are recomputed on chain
+- the auditor keys come from a cross-contract lookup
+- the public amount comes from the call
+
+A mismatch in any of them fails at the proof boundary with no useful diagnostic.
+
+## One table, one home
+
+Three call sites need this mapping: the wallet, the toolchain test harness and the circuit loader test.
+
+They read it from one module rather than each writing it out, because three copies of a permutation-sensitive table means the test copy can agree with the circuit while the production copy does not, and nothing notices. That is the same shape as a component test that prepares its input differently from production: it is not testing production.
+
+So the names live in exactly one module, and the count is checked against the vector before anything is proved:
+
+```
+transfer built 23 public input slots, but the circuit declares 24
+```
+
+The names are the `main` parameter names of the vendored circuits, in declaration order. Declaration order **is** the public-input order the prover emits, and it is the order the contract appends in. All three agree slot for slot.
+
+The slot **count** deliberately lives somewhere else, in the prover protocol module, because that is where a miscount splits the prover's output in the wrong place. Exporting a second count table from the witness layer would give that number two homes; a test asserts the two agree instead.
+
+## What ordering is checked by, and what it is not
+
+Release gate 5 checks **counts**, which is what it can check from a signature. It does not check ordering.
+
+Ordering is checked by a parity test that hands Pocket's own built witnesses to the real circuits through the toolchain, and rejects every permuted variant. That test needs `nargo` and the circuit sources present, so the release gate additionally fails when a test **skips itself**: a skipped test is not a passing test, and `vitest` exits successfully with any number of them.
+
+Without that rule, a machine without the toolchain would assert a property that nothing had checked, and report a pass.
+
+## Refusals at the witness boundary
+
+Each builder validates before it computes, so a bad input is named where it entered:
+
+| Check | Refuses |
+| --- | --- |
+| `sk` is a nonzero canonical field element | a zero or out-of-range spending key |
+| `sigma` is canonical and **nonzero** | a salt that was derived or hardcoded instead of sampled |
+| every point is on the curve and not the identity | an off-curve or degenerate key |
+| every amount is in `[0, 2¹²⁷)` | a value the range constraint would reject |
+| the blinding is non-negative and below `r` | corrupt local state, and the unprovable-blinding case |
+| the stored opening opens the on-chain commitment | diverged local state, before proving rather than after |
+
+The last one is the most useful in practice. It fires as:
+
+```
+the stored opening does not match the on-chain spendable commitment;
+re-sync before spending
+```
+
+which is a sentence you can act on, rather than a proof that fails at the verifier with nothing to point at.

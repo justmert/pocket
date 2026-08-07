@@ -1,0 +1,133 @@
+---
+title: Reading the chain
+description: How Pocket tells "there is nothing here" apart from "you were not answered", and why that distinction decides what a balance says.
+---
+
+In a wallet, a confident wrong number is the worst available bug. An error on screen costs a reload. A fabricated balance gets acted on.
+
+So every read in Pocket answers one of three things, never two of them at once: **here is the value**, **there is genuinely nothing here**, or **I was not answered**.
+
+## The trap this is built around
+
+The Stellar SDK's parsed accessors do this:
+
+```js
+(raw.entries ?? []).map(...)
+```
+
+So a reply that carries **no `entries` field at all**, or `entries: null`, arrives as an empty array. After the parse it is byte-identical to "this account does not exist".
+
+Downstream, that becomes a confident `0.0000000` on a funded wallet.
+
+The SDK's own types admit the shape: the raw response's `entries` is optional while the parsed response's is not. Verified against live testnet, a genuinely absent account replies with an explicit `entries: []`, so the distinction is real and is only lost in the parser.
+
+Pocket therefore reads the **raw** responses wherever the distinction decides what you are told, and refuses a shape that cannot answer the question.
+
+## Reading a balance
+
+```
+readEntry → readNative / readTrustline → balances()
+```
+
+Three checks stack up, and each catches something the others do not.
+
+<Steps>
+
+<Step>
+### The response must have an entries field
+
+Missing means the ledger did not answer the question, which raises rather than returning nothing.
+</Step>
+
+<Step>
+### The echoed key must match, byte for byte
+
+The raw entry echoes the ledger key that was looked up. XDR encoding is canonical, so a byte comparison covers the account, the asset and the entry type at once.
+</Step>
+
+<Step>
+### The decoded body must be about the same account
+
+Belt and braces on top of the key echo, and it catches an RPC that echoes the right key beside the wrong body.
+
+This is not hypothetical. Before these checks existed, a balance read returned a stranger's 12,345.6789 XLM without complaint.
+</Step>
+
+</Steps>
+
+**Only an explicit empty result renders a zero.** Every other failure propagates, or a network hiccup would show a funded user a confident zero with no spinner and no error.
+
+## What "spendable" subtracts
+
+The raw balance is not what you can send. The protocol locks two things, and a figure missing either is a number the wallet offers, you accept, and the network refuses:
+
+```
+spendable = balance − sellingLiabilities − reserve
+reserve   = (2 + subentries + sponsoring − sponsored) × 0.5 XLM
+```
+
+Selling liabilities are worth calling out: Pocket creates no offers itself, which is exactly why they were easy to overlook. The same account can hold offers made in any other wallet, and those stroops are locked just as firmly as the reserve.
+
+The reserve applies to the native balance only. A trustline balance is not reserved against, but selling liabilities apply to both.
+
+## Reading confidential state
+
+The private pocket's whole view of itself comes through `simulateTransaction`, which is a read that changes nothing. Three states have to be kept apart, because their instructions are opposite and one of them is irreversible:
+
+| State | What the wallet does |
+| --- | --- |
+| Registered | show the balance |
+| Not registered | offer to set one up, which is permanent and binds an auditor |
+| Not answered | say so, and offer nothing |
+
+Collapsing the third into the second would ask a user who already has a confidential account to permanently create another one.
+
+So the read distinguishes every case the RPC can produce:
+
+- an explicit "account not registered" contract error means genuinely absent
+- a restore preamble means the entry is dormant, which is a state the screen knows how to render rather than an error
+- any other contract error is mapped to a sentence naming what the contract said
+- **no error, no preamble and no result** raises: that is a reply that did not answer the question, and it must never collapse into "no account"
+
+An unregistered account is also checked with a typed read rather than a bare `try`. A bare catch turned an RPC outage, a timeout or a 5xx into a confident "this account does not exist on the network yet" for a funded user.
+
+## Reading TTLs
+
+Same discipline, higher stakes. A degraded RPC making a **live** confidential account read as absent would put the wallet in front of a user offering to set one up: a one-time, publicly visible transaction that binds an auditor permanently, to somebody who already has one and merely went dormant.
+
+The two instructions are opposite and one of them cannot be undone, so the TTL read asks the raw endpoint and refuses a shape that cannot answer.
+
+TTLs are reported as **dates**, never ledger numbers, and the conversion uses a measured close time per network rather than the nominal five seconds: 5.01 s on testnet, 5.57 s on mainnet, measured over 199 consecutive ledgers. The two differ by 11%, which is why it is a table rather than a constant.
+
+## Reading events
+
+Finding a transfer someone sent you means scanning contract events, and three things about that endpoint are easy to get wrong.
+
+**The floor is not a constant.** A `startLedger` even one ledger outside the RPC's retention window returns **zero events with no error**. So the widest possible request is the one that silently finds nothing. Pocket asks the RPC where its window actually starts and clamps to that, rather than computing `latest − 120,960` and assuming a number the node is free to change.
+
+**An empty page is not the end.** Scanning a wide range, the RPC returns empty pages carrying a cursor and expects you to keep asking. Stopping at the first empty page gave up before reaching any event and made a working search look like "you have received nothing". Only the absence of a cursor ends it.
+
+**The loop needs a budget.** The only other exit is a cursor the server chooses, and a server handing out fresh ones forever would spin indefinitely. The scan stops after 200 pages, which covered the entire retained window on the live deployment.
+
+The RPC does the filtering, matched on the recipient slot of the event topics, and the filter covers **two** event names rather than one. A `deposit` needs no proof and no permission from the recipient, so anyone can aim one at anyone; a scan looking only for transfers missed those credits entirely and then blamed history older than a week that was not missing.
+
+## Prices come from a different network
+
+Asset prices are read from **mainnet** Horizon, whatever network the wallet is on, because testnet has no real market and a testnet price would be noise from a handful of test trades.
+
+The request names an asset and never an account, and it is made for the assets the build is configured with rather than for what you hold, so the request set is identical for every user of a given build.
+
+A candle that cannot be read is dropped, not defaulted. A zero would draw a cliff to the axis and read as a crash that never happened.
+
+## Every request has a deadline
+
+A dependency that is **down** is easy: the socket refuses and the code sees an error. A dependency that is **slow** is the dangerous one.
+
+The Stellar SDK's HTTP client defaults to no timeout, which its fetch adapter reads as "attach no abort signal", so a server that accepts the connection and then says nothing leaves the promise pending forever. In the popup that is a spinner with no exit; in the worker it is worse, because Chrome eventually kills the worker and you are told the wallet did not respond rather than that the network is slow.
+
+| Request | Deadline |
+| --- | --- |
+| One RPC request | 30 s |
+| One archive or integration request | 15 s |
+
+The RPC bound is sized against the slowest call the wallet makes, which is simulating a proof-verifying invocation, rather than against a plain read. It exists to bound a hang, not to police latency.

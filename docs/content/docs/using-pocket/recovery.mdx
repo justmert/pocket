@@ -1,0 +1,95 @@
+---
+title: Recovery
+description: Restoring a wallet from your phrase, rebuilding private balances from history, and what each path costs you.
+---
+
+Three different situations, three different routes. This page is which one you are in.
+
+## You have your phrase and want the wallet on a new device
+
+Install Pocket, choose **I have a recovery phrase**, paste 12 or 24 words, and set a password for the new device.
+
+Your public pocket comes back complete: the phrase reproduces your Stellar keypair and the ledger holds your balance.
+
+Your private pocket comes back as a **confidential account that exists on chain with no local record of its balances**, shown as **Needs rebuilding**. Rebuild it from history, below.
+
+## You forgot your password
+
+**Reset with your phrase**, from the lock screen.
+
+This erases the wallet on this device and restores it from the phrase. It asks twice, because it is the one irreversible action in the product.
+
+The phrase you enter must derive the account this device already holds. A stranger's valid phrase is refused, so somebody holding your unlocked laptop cannot wipe your wallet with a phrase of their own.
+
+The screen states what survives before you type anything:
+
+- Your **public pocket** comes back in full from the phrase; its balance is on the ledger.
+- Your **private pocket balances do not**. Only this device holds the keys that open them.
+
+And the sentence that matters most:
+
+> If your private pocket holds funds, do not continue. Unlock normally if you can, and move them out first.
+
+## Your private balances need rebuilding
+
+Pocket replays your confidential event history, recomputes what your balances must be, and **checks the result against what the contract holds** before storing anything.
+
+That check is the whole security of the feature. An archive is a witness to history, not the authority on it. A broken or hostile archive can fail to help you; it cannot hand you a wrong balance and have it accepted.
+
+<Steps>
+
+<Step>
+### Start it
+
+From the private pocket, on an asset showing **Needs rebuilding** or **Out of step with the ledger**, choose **Rebuild**.
+
+**Settings → Rebuild from history** does the same for every configured asset in turn.
+</Step>
+
+<Step>
+### It replays
+
+Pocket derives your viewing key, reads your whole event history for that wrapper, and applies each event in emission order.
+</Step>
+
+<Step>
+### It verifies, then stores
+
+The replayed balances are re-committed and compared against the on-chain commitments. Only a match is written.
+</Step>
+
+</Steps>
+
+### What it refuses
+
+| Situation | What Pocket does |
+| --- | --- |
+| No archive configured for this build | Says rebuilding needs a durable archive, and does not offer the control |
+| The archive cannot be reached | Refuses, rather than falling back to recent history only |
+| The archive cannot serve an unbroken run of events | Refuses, and says it will not rebuild from history it knows has a gap |
+| The archive is missing the transaction details for a payment you received | Refuses, and says an archive that has re-indexed since it started keeping those details can rebuild this account |
+| The replay does not reproduce the on-chain commitments | Refuses, and says the history it was given is incomplete or wrong |
+
+The second one is the least obvious and the most important. Falling back to recent-history-only would advance the sync cursor past the gap, and the events in that gap are the only thing that can reopen the balances behind them. They age out of the RPC's window and nothing else holds them, so the loss would be permanent and silent.
+
+Refusing is the feature.
+
+### Received payments rebuild too
+
+Rebuilding a payment **you sent** needs only your own viewing key. Rebuilding one **you received** needs the commitment the sender published, and that commitment travels in the transaction rather than in the event.
+
+So the archive stores the invocation payload alongside the event, read from Horizon, which keeps full history rather than the week Soroban RPC keeps. Pocket then verifies every credit by checking that your derived amount and blinding actually open that commitment, and refuses anything that does not.
+
+Against an archive with no payload for an event, Pocket refuses that event rather than guessing. Storing the payload turns a refusal into a recovery; it never turns a refusal into a guess.
+
+[How the archive works](/docs/how-it-works/the-archive/why-it-exists).
+
+## What erasing removes
+
+**Settings → Erase this wallet** asks for your current password and removes the vault, the confidential openings, any unresolved transaction record, the stored address and every website grant.
+
+The openings go deliberately. A new vault gets a fresh random data key, so a surviving opening blob would be undecryptable forever, and re-importing the same phrase would hit that dead blob instead of a clean slate.
+
+The local address book goes too. Addresses are public on the ledger, which is why they are stored in the clear, but *who this device paid* is not, so the next wallet set up on this machine does not inherit the list.
+
+One thing survives a **reset with your phrase** that does not survive an erase: the auditor ids this account registered. The same account is coming straight back, so those are still its ids, and sweeping them would orphan a key on chain and make the next registration allocate a second one for it.

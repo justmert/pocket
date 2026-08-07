@@ -1,0 +1,74 @@
+---
+title: What Pocket owns
+description: Which parts of this system Pocket wrote and is answerable for, and which parts it consumes from upstream projects.
+---
+
+Pocket builds on cryptography several projects wrote. Knowing which line is which matters, because it decides who is answerable for what, and where you should look when you want to review something.
+
+## What Pocket wrote
+
+| Part | What it is |
+| --- | --- |
+| `extension/` | The wallet. Key derivation, the encrypted vault, witness assembly, the proving client, every chain call, the interface. |
+| `contracts/` | Three Soroban contracts: the token wrapper, the verifier, the auditor registry. |
+| `indexer/` | The durable event archive that makes confidential balances recoverable past the RPC retention window. |
+| `scripts/` | The release gates and the scheduled infrastructure check. |
+
+All four are Pocket's own scope and its own liability. The contracts are 337 lines of Rust, and what they mostly do is refuse: no admin, no setter, no path that can ever change a verification key. [What each one does](/docs/protocol/the-three-contracts).
+
+## What Pocket consumes
+
+| Part | From | How it is pinned |
+| --- | --- | --- |
+| The confidential token contract library, and the six Noir circuits | [OpenZeppelin stellar-contracts](https://github.com/OpenZeppelin/stellar-contracts) | git rev `219c560f` |
+| The UltraHonk verifier for Soroban | [NethermindEth/rs-soroban-ultrahonk](https://github.com/NethermindEth/rs-soroban-ultrahonk), through a fork | git rev `5e9b4d99` |
+| The proving backend, `bb.js` | [Aztec Barretenberg](https://github.com/AztecProtocol/barretenberg) | npm `0.87.0` |
+| The structured reference string | Aztec Ignition | sha256-pinned at build time |
+| The circuit compiler | [Noir](https://noir-lang.org) | `nargo 1.0.0-beta.11` |
+
+Both Rust dependencies are pinned to a **revision, not a branch**, so an upstream force-push cannot change what gets built. Bumping either one means reproducing the verification keys again before anything ships.
+
+### The verifier fork
+
+The UltraHonk crate comes from `brozorec/rs-soroban-ultrahonk`, which is a fork of Nethermind's repository. The fork exists to bump `soroban-sdk` from 26 to 27, and for nothing else.
+
+That is enforced rather than assumed. Release gate 4 diffs the fork against upstream `main` and fails if a single `.rs` file differs, because any Rust change would mean running verifier logic that upstream has not reviewed. [The seven gates](/docs/build/the-gate).
+
+## Why Pocket writes contracts at all
+
+OpenZeppelin's library ships no constructor for the confidential token. The four setters are free functions, and the deployer chooses the policy around them. Somebody has to make those choices, and they are permanent once made.
+
+So Pocket makes them explicitly, in three contracts it is answerable for:
+
+- **the token wrapper**, which binds one asset permanently and has no admin
+- **the verifier**, which installs six verification keys at construction and implements no path that can ever change them
+- **the auditor registry**, self-serve, with ids allocated by a counter rather than chosen by the caller
+
+Pocket deployed its own instance rather than using the upstream demo's, whose verification keys predate the audit. [Why that matters, and where each part stands](/docs/security/audit-status-and-scope).
+
+## Where to review each part
+
+The circuits, the proof system and the on-chain verifier are upstream and linked above. What is Pocket's own, and what a review of this project should read, is the client-side derivation, the witness assembly, the three contracts and the archive.
+
+<Cards>
+  <Card
+    title="Key derivation"
+    href="/docs/protocol/key-derivation"
+    description="How the confidential keys come out of your recovery phrase."
+  />
+  <Card
+    title="Witness and public inputs"
+    href="/docs/protocol/witness-and-public-inputs"
+    description="What Pocket hands the prover, and why the ordering is not negotiable."
+  />
+  <Card
+    title="The three contracts"
+    href="/docs/protocol/the-three-contracts"
+    description="337 lines of Rust, and the reasoning behind each refusal."
+  />
+  <Card
+    title="The archive"
+    href="/docs/how-it-works/the-archive/why-it-exists"
+    description="Why a wallet needs one, and why a hostile one cannot hand you a wrong balance."
+  />
+</Cards>

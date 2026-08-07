@@ -1,0 +1,103 @@
+---
+title: Send privately
+description: A confidential transfer hides the amount and publishes both addresses. This is what the flow does and what it refuses.
+---
+
+Switch to the private pocket, open the **+** menu, and choose **Send**.
+
+A private transfer goes to an ordinary Stellar address. There is no separate kind of address to collect.
+
+## What the recipient needs
+
+They need a private pocket **for the same asset**. Sending private USDC needs their USDC confidential account, not their XLM one.
+
+If they have not opened one, Pocket refuses with the reason and the alternative:
+
+> That address has no private pocket, so it cannot receive a private payment. They need to set one up first, or you can pay them from the public pocket.
+
+## What you can send
+
+Only your **spendable** balance. Value that has arrived and has not been folded across yet is not spendable, and Pocket says which is which:
+
+> That is more than your spendable balance of 12.5000000 XLM. Received funds must be made spendable first.
+
+[Why there are two balances](/docs/concepts/two-pockets).
+
+## Sending to yourself is refused
+
+Pocket declines a private transfer to your own address, and the refusal explains itself:
+
+> That is this wallet's own address. Sending privately to yourself costs a fee and moves the amount out of your spendable balance, so Pocket does not do it. To make received funds spendable, use Make spendable.
+
+The operation would work. It would just take money out of your spendable balance, put it in your receiving balance, and charge you a fee and a proof for the privilege. It is a merge run backwards.
+
+## What the review says
+
+| | |
+| --- | --- |
+| The amount | in full, exactly what gets signed |
+| The recipient | the complete address, never shortened |
+| The network fee | the real fee, after simulation |
+| What this does | the four lines below |
+
+The effects are the point of this screen:
+
+- Send *(amount)* *(asset)* privately to this address
+- **The AMOUNT is hidden. Both addresses are PUBLIC on the ledger, permanently**
+- A line naming who can read this amount: you and the recipient each have an auditor key, and yours is your own
+- Pay a network fee
+
+The second line is the one that must never be softened. [What is private](/docs/overview/privacy-truth).
+
+## What happens when you approve
+
+<Steps>
+
+<Step>
+### Pocket checks the deployment's verification key
+
+Before anything slow runs, it confirms that the contract you are about to prove against holds the verification key this build proves with, and that the token routes its proofs to the verifier it claims.
+
+A mismatch here would otherwise surface as an opaque contract error after you had waited through proving and signed.
+</Step>
+
+<Step>
+### It builds a witness and proves it
+
+On your machine, in an isolated document, against the `transfer` circuit. This takes seconds, and the screen names the phase it is in.
+
+Nothing leaves your machine during this step except nothing at all: the proof is generated locally and only the proof is published.
+</Step>
+
+<Step>
+### It simulates, signs and submits
+
+Simulation is what produces the real fee, so the figure on the review is the figure that gets signed.
+</Step>
+
+<Step>
+### It records your new balance
+
+Your remaining balance's opening is written only after the ledger accepts the transaction, and only after it is checked against the commitment the contract now holds.
+
+If that check fails, Pocket reports it and refuses to spend from a state it cannot verify, rather than storing a balance that looks right and cannot be proved against.
+</Step>
+
+</Steps>
+
+## On the recipient's side
+
+Their wallet finds the transfer by scanning for events addressed to them and checking each candidate against their own receiving accumulator. What arrives lands in their **receiving** balance, and one more signature makes it spendable.
+
+They see it as **Receiving** on the asset, with a **Make spendable** control.
+
+## What can go wrong
+
+| Situation | What happens |
+| --- | --- |
+| The recipient has no private pocket for this asset | Refused before anything is built |
+| More than your spendable balance | Refused, naming the spendable figure |
+| Your own address | Refused, pointing at Make spendable |
+| Zero or a negative amount | Refused |
+| An earlier submission still unresolved | Refused until it settles |
+| This device's records do not match the ledger | Refused. Your funds are safe; the records need rebuilding first |

@@ -1,0 +1,98 @@
+---
+title: Auditability, and whose key it is
+description: Every confidential account binds an auditor key permanently. Pocket derives yours from your own recovery phrase, so the only party who can read your amounts is you.
+---
+
+The confidential token design requires every account to bind an **auditor key** at registration. The field is immutable for the life of the account, and the transfer circuit enforces auditor ciphertexts on every operation, so they cannot be omitted or malformed.
+
+There is no opt-out. Somebody holds a decryption key for every account that exists.
+
+The design question is therefore not *whether* to have an auditor. It is *who*.
+
+## Pocket's answer: you
+
+The reference demo this technology ships with binds every user to the **operator's** key. Pocket derives the key from your own recovery phrase and registers it for you.
+
+The consequences:
+
+- The only party who can decrypt your amounts is you.
+- The compliance channel is real and populated rather than architecturally absent, which is a stronger position than a wallet that simply has no such channel.
+- The key recovers from the same 24 words, with nothing extra to back up.
+- Nobody, including Pocket, holds a key to your balances.
+
+The effects list on the setup screen states this before you sign it, along with the fact that the binding is permanent.
+
+## How the key is separated from your spending key
+
+Under self-auditing, one person holds both roles. So the separation between "can read amounts" and "can spend" cannot rest on who holds what. It has to be built into the derivation.
+
+Both keys hang off a **SEP-0053 signature**, but over *different messages*:
+
+| Key | Signed message begins |
+| --- | --- |
+| spending key `sk` | `openzeppelin/confidential-token/v1/sk` |
+| auditor key `aud_sk` | `pocket/confidential-auditor/v1/aud_sk` |
+
+Neither signature is computable from the other without the underlying Stellar secret. So an auditor tool handed `aud_sk`, or handed the auditor root it came from, has no path back to `sk`: it would have to forge a signature over a different message.
+
+The second half follows from the first. Opening a post-merge spendable balance needs the blinding `r' = Poseidon2(δ_spend_r, vk, σ)`, and `vk = Poseidon2(δ_vk, sk, addr_f)`, so it needs `sk`. An auditor key reads amounts. It cannot construct a spending witness and it cannot open a merged balance.
+
+[The full derivation](/docs/protocol/key-derivation).
+
+## One key per asset
+
+The auditor key binds the wrapper's address, and each confidential asset is a separate wrapper deployment. So private XLM and private USDC produce **different auditor keys and different registry ids**.
+
+That is deliberate rather than incidental. Two accounts sharing one auditor key, or one id, would publish a link between them on chain that a third-party auditor would never create.
+
+## The registry refuses to guess
+
+Registering the key is a separate transaction from registering the confidential account, and Pocket checks the result before it commits to anything permanent.
+
+<Steps>
+
+<Step>
+### The id is allocated, never chosen
+
+The registry hands out ids from a monotonic counter. A caller cannot pick one, because a caller-chosen id collides with whoever already took it and leaves the loser with no way to recover it.
+
+The contract's trait methods that accept a caller-chosen id refuse outright.
+</Step>
+
+<Step>
+### The allocated id is read back and persisted
+
+The id comes out of the transaction result. A retry that re-registered would orphan the first key and allocate a second, so the id is stored the moment it is known.
+
+If the id cannot be read back, Pocket refuses to continue rather than binding one it cannot verify.
+</Step>
+
+<Step>
+### The registry is checked to hold *your* key
+
+Before the id is named in the permanent confidential registration, Pocket reads the key back out of the registry and compares it against the one it derived.
+
+If they differ, it refuses: "Binding is permanent, and binding someone else's key would let them read every amount you send or receive."
+</Step>
+
+</Steps>
+
+## Rotation
+
+An auditor key can be rotated, but only by the address that registered it. An id nobody owns cannot be rotated, and one you own cannot be rotated by anyone else.
+
+Visibility is **forward only**: a rotated-in key sees nothing that happened under the old one.
+
+## The limits, stated
+
+**The binding is permanent.** The `auditor_id` on a confidential account cannot be changed once the account exists. Registering under the wrong model is not repairable, which is why the setup screen says so before you sign.
+
+**An auditor sees forward, not backward.** A key bound today reads the operations that happen after it, because each operation encrypts to the key that was bound when it was made.
+
+**A holder can cherry-pick.** You can disclose three payments and withhold a fourth, and nothing in a proof detects it. Completeness routes through your auditor, not through you. Any claim that Pocket proves a *complete* history would be false.
+
+## Selective disclosure
+
+Handing a specific counterparty a proof of one specific amount is a different feature from auditing, and it exists here as primitives: the binding and sealing arithmetic, plus the type surface.
+
+The producer and verifier wait on the two disclosure circuits, which is what makes the proof in such a bundle a real one. Until those are ported, a flow built over the primitives would hand a counterparty an unverifiable number dressed as a proven one.

@@ -1,0 +1,15 @@
+{
+  "title": "How it works",
+  "pages": [
+    "anatomy-of-a-confidential-operation",
+    "three-processes",
+    "core-layering",
+    "message-contract-and-dispatch",
+    "proving-pipeline",
+    "reading-the-chain",
+    "submitting-and-settling",
+    "integrations",
+    "the-interface",
+    "the-archive"
+  ]
+}

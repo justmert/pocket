@@ -1,0 +1,113 @@
+---
+title: The website boundary
+description: What SEP-43 exposes, the allowlist that keeps the private pocket out of reach, and why a connection is never permission to sign.
+---
+
+SEP-43 is the Stellar wallet standard: five methods a website can call on a wallet it finds in the page.
+
+Pocket implements it for the **public pocket only**, and errors are returned in the resolved object rather than thrown, so a site that forgets a `try`/`catch` still sees a refusal instead of an unhandled rejection.
+
+## The five methods
+
+| Method | Behaviour |
+| --- | --- |
+| `getNetwork` | answers without a session and while locked. It is information about the wallet, not about you |
+| `getAddress` | requires a live session for that exact origin |
+| `signTransaction` | requires a live session, **and** an individual approval |
+| `signAuthEntry` | refused |
+| `signMessage` | refused |
+
+The two refusals are not a gap to be filled later on the same terms. There is no screen that can show what an auth entry or an arbitrary message commits you to, and Pocket does not sign what it cannot show you first.
+
+## The rules, in order of how much they matter
+
+<Steps>
+
+<Step>
+### A locked wallet reveals nothing and signs nothing
+
+Checked before anything else, and `getNetwork` is the only method that answers past it.
+</Step>
+
+<Step>
+### Nothing but an explicit connection creates a session
+
+A site that is not connected is told to open Pocket and connect, rather than triggering a prompt. A page cannot cause a connection dialog to appear, so it cannot spam you into granting one.
+</Step>
+
+<Step>
+### Every signature is approved individually
+
+A session never authorises one. An approval you cannot see is a blind signature.
+</Step>
+
+<Step>
+### The private pocket is unreachable
+
+Enforced by an allowlist rather than a denylist, because a denylist fails open the moment a new confidential operation is added.
+</Step>
+
+</Steps>
+
+## The address is bound to the session
+
+A session records the address you consented to reveal, and that record **is** the consent.
+
+Answering with whatever address happens to be loaded now would mean: connect a site to wallet A, restore wallet B on the same device, and the still-live grant hands that site wallet B with no prompt.
+
+The datum is public either way, so nothing secret leaks. What leaks is the **link** between your old and new identities, to a third party, which is precisely what a wallet shipping a private pocket must not do.
+
+So a mismatch drops the connection and says so:
+
+> The wallet on this device changed since this site connected, so Pocket dropped the connection. Reconnect if you still want the site to see this account.
+
+## The allowlist
+
+Every envelope a site asks to sign is decoded before anything else happens, and each operation is checked.
+
+```
+DAPP_ALLOWED_CONTRACT_METHODS = { }
+```
+
+Empty. The public pocket signs ordinary classic operations; a site wanting a specific contract method gets it added there explicitly, after review.
+
+Anything that is not a plain contract call is refused by category: the other two host-function variants **deploy code** and **upload wasm**, neither of which has a consent screen or a reason to.
+
+An envelope that cannot be decoded at all is reported as forbidden rather than permitted. This check must never be the reason something gets through.
+
+The check sits in the request path and is structural: anything not explicitly allowed is refused, so a confidential entry point added to the contract tomorrow is out by default rather than out until somebody remembers to list it.
+
+Behind it sits the strongest reason, which depends on no code Pocket wrote: a confidential operation needs a valid proof over the account's own viewing key, and a website cannot produce one. [All three boundaries](/docs/security/trust-boundaries).
+
+## The source account must be yours
+
+An envelope sourced from another account would take your signature somewhere you never looked, so it is refused before it reaches an approval screen.
+
+Fee-bump transactions are refused for the same class of reason: a fee bump wraps somebody else's transaction, so signing one means paying for an envelope whose contents are a separate question.
+
+## Prompts are capped, and refusing is cheap
+
+One parked approval per origin, four across all origins.
+
+A second request from an origin that already has one open is **refused**, not queued, and the refusal is distinct from a rejection:
+
+| Answer | Code | Means |
+| --- | --- | --- |
+| You declined | `USER_REJECTED` | a decision you made. SEP-43 says the site must not retry |
+| Already asking | `INVALID_REQUEST` | a request that never reached you. The site should wait and ask again |
+
+Reporting a refusal you never gave would be a lie about consent, which is the thing this path exists to get right.
+
+The cap is checked **before** the promise is created, so a refused request costs no timer, no map entry and no popup call. A flood has to be cheap to turn away, or turning it away is itself the denial of service.
+
+Four rather than one, because distinct origins are not each other's problem and having two tabs open is not misuse.
+
+## Timeouts refuse
+
+A parked approval that is never answered resolves to **declined**. Somebody who walked away has not consented.
+
+## Granting a connection
+
+Granting is not wired into the interface in this build, so no origin can obtain a session and every method that needs one answers with the not-connected refusal.
+
+**Settings → Connected sites** lists live grants and removes them, and says plainly that nothing will appear there yet rather than describing a flow you cannot reach.

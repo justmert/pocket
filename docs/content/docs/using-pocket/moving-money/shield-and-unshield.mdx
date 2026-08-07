@@ -1,0 +1,76 @@
+---
+title: Shield and unshield
+description: Moving value between your public and private pocket. Both amounts are public at the boundary, and shielding takes two transactions.
+---
+
+Shielding moves value from your public pocket into your private one. Unshielding moves it back.
+
+Open the **+** menu in the private pocket and choose **Shield** or **Unshield**. Both are full compose screens with the amount as the largest thing on them, because to you this is a send, just between your own pockets.
+
+<Callout type="warn" title="The boundary is public">
+The amount you shield and the amount you unshield are both ordinary public numbers on the ledger. Only movement *inside* the private pocket is hidden.
+
+If you shield exactly 1,000 XLM and later unshield exactly 1,000 XLM, an observer can join those two numbers. The review screen marks these amounts in the pocket's "this is visible" colour, with the line **This amount is visible on the ledger**.
+</Callout>
+
+## Shielding takes two transactions
+
+A deposit credits your **receiving** balance, not your spendable one. Shielding without the follow-on step would leave you with a zero spendable balance and no explanation, so Pocket chains the second transaction and tells you before you approve.
+
+The review says:
+
+- Move *(amount)* *(asset)* from the public pocket into the private one
+- This deposit amount is **PUBLIC** on the ledger. Only later transfers hide amounts
+- **A second signature then makes it spendable**
+- Pay a network fee
+
+After you approve, the screen names the second step while it happens: *"Deposit confirmed. Making it spendable, one more transaction."*
+
+### If the second transaction does not land
+
+The deposit has already succeeded, and Pocket has already recorded it. Your funds are in the receiving balance, which is a real balance one signature away from spendable. Nothing is lost.
+
+What you do next depends on what Pocket knows:
+
+| | |
+| --- | --- |
+| The merge is known to have failed | Press **Make spendable** to finish |
+| Pocket does not yet know whether it landed | Reopen the wallet. It checks, and offers to finish if it did not |
+
+The distinction matters. A merge whose outcome is unknown may still land, and building a second one would take the sequence number the first was built against. So Pocket sends you to reopen rather than letting you press again.
+
+## Which balance shielding spends
+
+Shielding **USDC** spends your public USDC, not your XLM. The source follows the asset. Only the network fee comes out of XLM, as it does for every Stellar transaction.
+
+## Unshielding
+
+One transaction. It debits your spendable balance and pays ordinary tokens out to your own public pocket.
+
+The review says:
+
+- Move *(amount)* *(asset)* from the private pocket back to the public one
+- This withdrawal amount becomes **PUBLIC** on the ledger
+- Pay a network fee
+
+You can only unshield your **spendable** balance. If value is sitting in your receiving balance, make it spendable first.
+
+## Make spendable
+
+This is the fold from `receiving` into `spendable`, and it appears wherever you have value waiting: on the asset row as **Receiving**, in the asset's sheet, and in the private pocket's own sheet.
+
+It needs your signature and no proof. Adding two commitments you already own reveals nothing and asserts nothing, so there is nothing to prove. Its review says:
+
+- Fold everything you have received into your spendable balance
+- Amounts stay hidden. This proves nothing and reveals nothing
+- Pay a network fee
+
+It is also the cheapest operation in the private pocket, measured at 0.0009266 XLM on the live deployment, because it carries no proof for the contract to verify.
+
+## Use max, and what it holds back
+
+**Use max** on a shield reserves enough XLM for the fee before filling the field.
+
+That reserve is larger than it looks like it should be. A classic payment costs 100 stroops; a shield is a Soroban invocation and was measured at 350,412 stroops on this deployment. Reserving the classic fee would produce a "max" the account cannot actually pay for, so the compose screens hold back a Soroban-sized reserve and the worker re-checks against the real fee once simulation has produced one.
+
+[Fees and reserves](/docs/using-pocket/fees-and-reserves).

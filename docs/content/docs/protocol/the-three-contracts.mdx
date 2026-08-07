@@ -1,0 +1,136 @@
+---
+title: The three contracts
+description: A token wrapper with no admin, a verifier whose keys cannot change, and a self-serve auditor registry. 337 lines of Rust, and the reasoning behind each refusal.
+---
+
+OpenZeppelin's confidential token library ships **no constructor**. Its four setters are free functions, and the deployer chooses the policy around them.
+
+Somebody has to make those choices, and they are permanent once made. So Pocket makes them explicitly, in three contracts it is answerable for.
+
+## The token wrapper
+
+This contract **is** the private pocket for one asset. It holds real SEP-41 tokens and tracks who owns what as Pedersen commitments.
+
+Almost all behaviour comes from the library. What Pocket supplies is the constructor:
+
+```rust
+pub fn __constructor(e: &Env, token: Address, verifier: Address, auditor: Address) {
+    token_storage::set_underlying_asset(e, &token);
+    token_storage::set_verifier(e, &verifier);
+    token_storage::set_auditor(e, &auditor);
+    token_storage::set_address_as_field_element(e);
+}
+```
+
+Four decisions are made there and cannot be revisited.
+
+**No admin argument.** The library's design documents describe one and it was never implemented, and Pocket does not want one. An admin able to swap the verifier could point the wrapper at a contract that accepts forged proofs. Everything is set once, at construction, and cannot be changed afterwards because the contract exposes no setter at all.
+
+**One asset, forever.** `set_underlying_asset` is one-shot. Wrapping a second asset means deploying the contract again with a different token.
+
+**A separate confidential identity per deployment.** The last line computes and stores `addr_f`, this contract's own address as a field element, which every viewing key derived for this deployment depends on. That is why users register once per wrapper.
+
+**No hooks.** A vanilla deployment pays zero overhead for the library's compliance extension points. Adding one later means a new deployment, which means every user re-registers.
+
+## The verifier
+
+Stores one verification key per circuit type and verifies proofs on behalf of the token, which calls it cross-contract on every state-changing confidential operation.
+
+```rust
+pub fn __constructor(e: &Env, keys: Vec<Bytes>) {
+    // Register, Withdraw, Transfer, SpenderTransfer, SetSpender, RevokeSpender
+    if keys.len() != circuits.len() as u32 {
+        panic!("expected exactly six verification keys");
+    }
+    …
+}
+```
+
+All six keys, in `CircuitType` order, or the deployment fails. A deployment missing one would fail opaquely at first use of that operation rather than at construction.
+
+**The keys are immutable, and that is enforced by having no code path that changes them.** The library's trait requires two mutation methods, so the contract writes them, and both refuse unconditionally:
+
+```rust
+fn register_verification_key(e: &Env, …) {
+    panic_with_error!(e, PocketVerifierError::KeysAreImmutable)
+}
+fn update_verification_key(e: &Env, …) {
+    panic_with_error!(e, PocketVerifierError::KeysAreImmutable)
+}
+```
+
+OpenZeppelin's example gates these behind a manager role "purely for illustration", and its own documentation says a real deployment should ship keys immutably where possible.
+
+The reason is blunt: a verification key that does not correspond to the audited circuit will happily verify **forged** proofs, including proofs that mint tokens or drain accounts. The on-chain bytes are opaque and nothing in the contract can detect a wrong replacement.
+
+Changing a circuit therefore means deploying a new verifier and a new wrapper, which means every user re-registers. That is the correct cost.
+
+## The auditor registry
+
+Every confidential account binds an `auditor_id` at registration, the field is immutable for the life of the account, and every transfer emits auditor ciphertexts the circuit enforces. There is no opt-out, so somebody's key is bound to every account, permanently, at first use.
+
+OpenZeppelin's example gates registration behind a manager role. That is that deployment's choice rather than a library constraint: the trait methods have no default implementation and the module documentation says access control is expected to be gated by the implementor's scheme.
+
+A manager-gated registry would make Pocket the gatekeeper of every user's auditor key, which is exactly the posture self-auditing exists to avoid. So:
+
+**Registration is open.**
+
+```rust
+pub fn register(e: &Env, owner: Address, point: BytesN<64>) -> u32
+```
+
+**Ids are allocated, never chosen.** They come from a monotonic counter, because a caller-chosen `u32` collides with whoever already holds it and there is no way to recover a taken id. The counter lives in instance storage, so an archived instance would lose it and start reissuing ids that are already taken, which is why the contract extends its own instance TTL on every write.
+
+**The trait's caller-chosen forms are closed off**, so nobody can take an id somebody else wanted:
+
+```rust
+fn register_key(e: &Env, …) { panic_with(e, RegistryError::UseAllocatingRegister) }
+fn rotate_key(e: &Env, …)   { panic_with(e, RegistryError::UseAllocatingRegister) }
+```
+
+**Rotation is self-serve, and only by the owner.** An id nobody owns cannot be rotated, and one you own cannot be rotated by anyone else. Visibility is forward only: a rotated-in key sees nothing that happened before it.
+
+Note that a rotation between proof construction and submission invalidates the in-flight proof, because the contract reads the auditor key at verification time.
+
+**The ownership record does not decay out from under the rotation it authorises.** Soroban does not auto-extend on read, so without explicit extension the ownership record would archive after the network minimum while the auditor key itself stayed alive, because the library extends that one on every read. Rotation is the only remedy for a compromised auditor key, so letting the record that authorises it decay silently would remove the single recovery lever the design offers.
+
+The contract therefore extends the record on every touch, using the same schedule the library uses for the key, so the two decay together. A test pins those constants against the library's behaviour so an upstream divergence is caught here.
+
+Point validation is inherited from the library, which rejects the identity, non-canonical encodings and off-curve points on every write.
+
+## Verified on chain
+
+Each of these refusals was exercised against the live deployment rather than assumed:
+
+| Property | How it was checked | Result |
+| --- | --- | --- |
+| Verification keys are immutable | called `update_verification_key` | `Error(Contract, #1)` KeysAreImmutable |
+| Caller-chosen auditor ids are closed | called `register_key` with id 99 | `Error(Contract, #3)` UseAllocatingRegister |
+| Ids are allocated monotonically | `next_id` before and after | 0, then 1 |
+| The registry key is readable by the token | `get_key(0)` | returns the 64-byte point |
+
+## Why Pocket deployed its own
+
+The upstream demo has a testnet instance, and building against it would have been less work.
+
+It holds **pre-audit** verification keys. Using it would mean inheriting five known audit findings, one of which is a register replay that the `acct_f` public input exists to prevent.
+
+Pocket's deployment carries the verification keys from OpenZeppelin's post-audit revision, and their hashes are recorded in the deployment record and reproduced from circuit source by release gate 2. [Deployed addresses](/docs/reference/deployed-addresses).
+
+## Building and deploying
+
+```bash
+cd contracts
+stellar contract build          # target: wasm32v1-none
+node deploy.mjs                 # writes resources/deployment-<network>.json
+```
+
+Order matters: the verifier and the auditor registry must exist before the token wrapper, because the wrapper's constructor binds both permanently.
+
+Adding a second asset reuses the existing verifier and registry, since both are shared across wrappers, and deploys only the new wrapper:
+
+```bash
+UNDERLYING=<SAC contract id> SYMBOL=USDC node add-asset.mjs
+```
+
+The release profile turns on overflow checks and strips symbols. `experimental_spec_shaking_v2` is deliberately off, because it requires building through the Stellar CLI while Pocket builds with cargo, so the artifact is reproducible from the toolchain alone.

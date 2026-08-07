@@ -1,0 +1,123 @@
+---
+title: The proving pipeline
+description: How a witness becomes a proof, why bb.js is vendored rather than bundled, and the deadlines that stop a wedged prover from bricking the wallet.
+---
+
+Proving happens on your machine, in an offscreen document, using vendored artifacts. Nothing is fetched at proving time.
+
+## The steps
+
+<Steps>
+
+<Step>
+### Load the circuit
+
+The compiled circuit ships inside the extension package. Its bytecode arrives base64-encoded and gzipped inside the Noir artifact, so it is decoded and decompressed before the prover sees it.
+
+Circuits are cached in memory after the first load.
+</Step>
+
+<Step>
+### Solve the witness
+
+`noir_js` turns named inputs into the ordered witness the prover consumes.
+
+Solving is also a free correctness check: the circuit refuses an assignment that does not satisfy its constraints, so a bad witness fails here rather than producing a proof that fails on chain.
+</Step>
+
+<Step>
+### Decompress the witness
+
+`noir_js` returns the witness **gzipped**, the same form `nargo` writes.
+
+The low-level `bb` API takes it decompressed, and handing it the compressed bytes does not error. It traps inside the wasm as `RuntimeError: unreachable`, which says nothing at all about the cause.
+</Step>
+
+<Step>
+### Prove
+
+The solved witness is sent to the offscreen document, which runs `acirProveUltraKeccakHonk`.
+
+This is the most sensitive message in the system: for a transfer or a withdrawal it contains the spending key, the amount and the blinding. The offscreen document checks its sender for that reason, rather than resting on the fact that nothing else currently listens.
+</Step>
+
+<Step>
+### Split and check the output
+
+`bb.js` returns `publicInputs || proof` concatenated. The contract takes the two separately and would reject a proof carrying its inputs glued to the front, so they are split at the circuit's known slot count.
+
+The proof is then asserted to be exactly **14,592 bytes**.
+</Step>
+
+</Steps>
+
+## What the size check does and does not catch
+
+A poseidon2-transcript proof is the **same size** as a keccak one at `bb 0.87.0`, so this check does not prove the transcript is right.
+
+What it does catch is an accidental zero-knowledge proof, which is longer (16,224 bytes), and a public-input count that disagrees with the contract. The transcript is pinned separately, by hashing the verification keys at the release gate.
+
+## Why bb.js is vendored and never bundled
+
+The `0.87.0` browser build declares a top-level `__webpack_exports__` that collides with a bundler's own runtime, and it spawns its worker from an `import.meta.url` marked `webpackIgnore`.
+
+Bundled, that URL resolves to a hashed chunk that does not exist. `createMainWorker` then awaits readiness with no timeout and no reject path, so **proving hangs forever with no error**.
+
+So `bb.js` is copied verbatim into the package and loaded as native ESM from an absolute `chrome-extension://` URL. That URL is absolute rather than root-relative for a reason: a root-relative specifier resolves against the importing module's own URL, and under the dev server that is `http://localhost:3000`, so the import went to the dev server and the private pocket could not be set up at all in a development build.
+
+Vendoring is also what makes this legal under Manifest V3's ban on remotely hosted code. Every byte the extension executes is in the package.
+
+## What else is vendored
+
+| Artifact | Why it ships | Size |
+| --- | --- | --- |
+| `bb.js` browser build | remote code is banned, and bundling breaks it | 7.1 MB |
+| The structured reference string | `bb.js` would otherwise fetch it from a remote host at proving time | 4.0 MB |
+| The six compiled circuits | a circuit is code | 572 KB |
+
+### The reference string is sized by measurement
+
+The size is driven by the largest circuit's **proving subgroup**, which is not the gate count `bb` prints. Measured in a real browser:
+
+| Circuit | Gates | Subgroup |
+| --- | --- | --- |
+| `register` | 14,412 | 16,384 |
+| `withdraw` | 28,868 | 32,768 |
+| `transfer` | 28,926 | 32,768 |
+| `spender_transfer` | 28,926 | 32,768 |
+| `set_spender` | 28,926 | 32,768 |
+| `revoke_spender` | 28,926 | 32,768 |
+
+`bb` needs subgroup + 1 points, so 32,769. The build takes 2¹⁶ for headroom, because a circuit change that pushed past 32,768 would otherwise trap inside the wasm with an opaque failure rather than a useful error.
+
+Both halves are sha256-pinned before anything is written, and the G2 point is additionally compared limb by limb against the value compiled into the on-chain verifier. A substituted reference string fails the build rather than silently producing proofs against a different trusted setup.
+
+## Three deadlines
+
+`chrome.runtime.sendMessage` has no timeout of its own, and a wedged wasm worker is indistinguishable from a slow one. So every step is bounded:
+
+| Bound | Value | Guards |
+| --- | --- | --- |
+| Prover init | 30 s | wasm instantiation and reference-string load |
+| One proof | 120 s | the proving call itself |
+| A whole request | 165 s | the service worker's own bound, from the outside |
+
+The third exists because the offscreen document bounds each **job**, and a job that wedges the serial queue is never dequeued. A new request queues behind the wedge and its own bound never starts running, so without a bound on the worker side that request hangs forever and the private pocket shows a spinner with nothing scheduled to end it.
+
+165 seconds exceeds init plus prove, so it cannot fire on a proof that is merely slow, and stays under Chrome's five-minute cap on a single request, so Pocket's own error arrives before Chrome's silent kill.
+
+**Recovery is to destroy the document.** Its state is entirely rebuildable: the wasm re-instantiates and the reference string is bundled, so being wrong costs a few hundred milliseconds on the next proof, against a wallet that otherwise cannot prove anything again until the browser restarts.
+
+Tearing down is itself bounded, because a worker wedged badly enough to blow the prove timeout is exactly the one whose `destroy()` never resolves. Awaited without a bound, that would hang inside the serial queue and every later proof would queue behind it forever.
+
+## The queue
+
+The offscreen document runs proofs **serially**. `bb.js` worker memory is the binding constraint, so never two at once.
+
+Each job waits for the previous one regardless of outcome, and the queue depth is reportable so the interface can show backpressure rather than dropping work.
+
+## Threading
+
+The document opts into cross-origin isolation through the manifest, which lets `bb.js` take its multi-threaded path, up to eight threads.
+
+This is not load-bearing. Without isolation `bb.js` loads the single-threaded wasm and collapses to one thread, which costs speed and not function.

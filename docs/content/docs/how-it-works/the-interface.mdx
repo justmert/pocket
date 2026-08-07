@@ -1,0 +1,113 @@
+---
+title: The interface
+description: One state holder, one token file, one sentence per fact, and the components that make a confirm screen trustworthy.
+---
+
+The popup owns one thing: deciding what you are told. Keys, cryptography and transaction building live in the worker, so every sentence you act on is the interface's responsibility, and that takes as much discipline as the worker's job does.
+
+## One place reads the worker
+
+`WalletProvider` is the single place that calls the service worker and holds what it said, so no two screens can disagree about a balance or about which pocket is open.
+
+Every field it holds is either **real or null**. Nothing defaults to zero, because "not loaded yet" and "you have nothing" are different facts and only one of them is about you.
+
+That rule shows up in the failure paths rather than the happy ones:
+
+| Situation | What the provider does |
+| --- | --- |
+| A balance read fails | keeps the previous figure, sets an error beside it. The screen marks it stale rather than replacing it with a zero |
+| The yield read fails | keeps the last position, reports the failure separately. Clearing it would delete the whole section and make an outage look like a build without the feature |
+| The plural private read fails | falls back to the single-asset read **and says the list may be incomplete**, because a silently short list of balances is the same class of lie as a zero |
+| The wallet is erased | clears every cached figure, the watch list, and the local address book, keyed on the transition rather than added to the erase handler |
+
+## One file names every colour
+
+`ui/theme.ts` holds every design token in the product. Nothing else names a colour, a size, a radius, a duration or a font.
+
+The two palettes are measured rather than picked: each stop targets a CIELAB lightness and its contrast is recorded against the surface it is actually drawn on.
+
+| | Public pocket | Private pocket |
+| --- | --- | --- |
+| Surface | light, warm-white page | near-black |
+| Accent | sky blue | teal |
+
+The two accents share a hue so the pockets read as one family rather than two colours that look almost alike.
+
+One token is deliberately **not** the accent: the keyboard focus ring. A light accent on a near-white surface cannot reach the 3:1 a focus indicator needs, and every control in this interface is built with `all: unset`, so the ring is the only focus signal there is.
+
+Motion is tokenised the same way: two easings, one for anything arriving and one for anything leaving, and a named duration per job. Nothing animates on a value that is not in that file. The stylesheet reads them through custom properties rather than repeating them, because a duration declared twice will disagree with itself.
+
+## One sentence per fact
+
+Several facts are said on more than one screen, and a fact said two ways is a fact that will drift.
+
+`ui/copy.ts` holds those sentences. Erasing a wallet has two doors, one in Settings and one on the lock screen, and both read the same words from there rather than each authoring its own.
+
+The same discipline gives each shared decision a single-purpose module:
+
+| Module | Owns |
+| --- | --- |
+| `money.ts` | every dollar figure, and the rule that no price means no figure |
+| `holdings.ts` | "do you hold this asset", as a question with four answers rather than two |
+| `selectAsset.ts` | which private pocket a screen is talking about |
+| `opEntry.ts` | what a completed operation claims about your money |
+| `period.ts` | which date heading a moment falls under |
+| `explorer.ts` | where "view on chain" goes |
+
+`holdings.ts` is the clearest case. Picking one asset out of the balance list with a plain `find` and reading a miss as "you do not hold it" collapses three different facts into one: not loaded yet, the read failed, and you genuinely hold none. Only the last is about you, so the module answers with four states instead of a boolean and each screen says the one that is true.
+
+## The components that make a confirm trustworthy
+
+Every signing surface in the wallet renders the same review component, so approving a public payment and approving a private one are the same act described the same way.
+
+**Every signed fact stays visible.** The amount, the recipient in full, the fee and the memo are on the screen. Only the explanation moves into a tooltip, because a fact behind a hover is a blind signature.
+
+Four rules the review keeps:
+
+<Steps>
+
+<Step>
+### The address is never truncated
+
+Matching the first and last four characters of a Stellar address costs about an hour of brute force on an ordinary laptop, so a shortened address is not a safe thing to approve. Lists shorten; confirms do not.
+</Step>
+
+<Step>
+### The amount is shown at full precision
+
+The display elsewhere caps at four decimal places for readability. A confirm and a receipt lift the cap, because a shown value that differs from the signed value, even by a truncated tail, is a gap between what you saw and what you signed.
+</Step>
+
+<Step>
+### An absent memo is stated
+
+**None**, with the reason it matters, rather than an empty row.
+</Step>
+
+<Step>
+### Nothing moves while you read
+
+The review is frozen: no animation, no rolling figures, no transitions. The spinner and the processing dots are the one exception, because a still screen still has to say it is working.
+</Step>
+
+</Steps>
+
+## Amounts
+
+Stellar carries seven decimals, so a balance is long and the interesting part is usually at the front. The whole number is set at full size and the fraction sits under it at a smaller size in the same tabular figures, so the value is complete and still readable at a glance. Below one that inverts, because then the front carries nothing.
+
+Three details are load-bearing:
+
+**The exact figure is always in the accessibility tree.** Reading a balance out of three separate spans gives "nine thousand, point, zero zero zero", so a screen reader is given the unsplit, ungrouped value with its unit.
+
+**Hide balance defaults to on.** The masking prop falls through to the wallet's setting rather than to false. As an opt-in it was honoured on four surfaces and ignored on fourteen, and forgetting it revealed a balance somebody had asked to hide. Inverted, forgetting it over-masks, which is visible immediately and harms nobody.
+
+**A figure you just asked to see is never masked.** The amount on a confirm and on a receipt stays legible: hiding a balance is about a number sitting on a screen, not about the number in front of you.
+
+## Accessibility is asserted, not assumed
+
+Every wait in this wallet is a status message, and a sighted user learns a balance arrived because a shimmer became a number. A screen-reader user learns nothing unless the change is announced.
+
+So refusals interrupt, outcomes announce without interrupting, and a receipt with a ledger number and a hash is spoken rather than appearing in silence. The browser test tier drives entire flows using only Tab, Enter and typing, with no pointer at all, because a flow driven by clicks proves the handlers work and only a keyboard-driven one proves the flow can be finished.
+
+The interface also survives Chrome's maximum 500% zoom, which leaves the popup 160 px wide. Controls shrink rather than spill, prose is allowed to break inside a word, and the bottom bar has a compact mode, because a control that does not fit is a control that is gone.

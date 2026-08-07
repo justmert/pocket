@@ -1,0 +1,58 @@
+---
+title: Connecting a website
+description: Pocket implements SEP-43 so websites can discover it, ask for your address and ask you to sign. What a site can do, and what it can never do.
+---
+
+Pocket implements **SEP-43**, the Stellar wallet standard, so a website can find it in the page and talk to it.
+
+Everything below is about the **public pocket**. A website cannot reach your private pocket at all, and that is enforced three separate ways. [The website boundary](/docs/security/closed-dapp-surface).
+
+## What a site sees
+
+Pocket puts a provider object on the page with the five SEP-43 methods. Two of them are refused outright, always:
+
+| Method | Answer |
+| --- | --- |
+| `getNetwork` | Answers. It says which network Pocket is on, which is a fact about the wallet rather than about you, and it lets a site decide whether to bother |
+| `getAddress` | Needs a live connection for that exact origin |
+| `signTransaction` | Needs a live connection, and every signature is approved individually |
+| `signAuthEntry` | **Refused** |
+| `signMessage` | **Refused** |
+
+The last two are refused because there is no screen that could show you what an auth entry or an arbitrary message commits you to. Pocket does not sign anything it cannot show you first, so it declines rather than offering a signature nobody could read.
+
+## A connection is not permission to sign
+
+A connection grants a site two things: seeing your address, and being allowed to **ask** you to sign. It never grants a signature.
+
+There is no "remember this site" for signing, deliberately. Every signature gets its own approval screen listing what the transaction does. An approval you cannot see is a blind signature by definition, and a standing grant to sign is a blank cheque written once and cashed forever.
+
+A connection also:
+
+- is scoped to one **origin**, so `https://a.com` and `http://a.com` are different grants
+- expires after 24 hours
+- **ends when the browser closes**, because grants are held in session storage rather than on disk
+- is dropped when the wallet locks or is erased
+- is dropped if the wallet on this device changes
+
+That last one is subtler than it looks. If you connect a site to one wallet and then restore a different wallet on the same device, the still-live grant would hand that site your new address with no prompt. The addresses are public either way, so nothing secret leaks; what leaks is the **link** between your old identity and your new one, which is exactly what a wallet shipping a private pocket must not do. So Pocket drops the connection and says why.
+
+## Approving a signature
+
+When a connected site asks for a signature, Pocket opens and shows you what the transaction does, one line per operation, in plain words.
+
+The approval screen states that approving signs **this once** and does not let the site sign anything else.
+
+**A transaction Pocket cannot describe is refused rather than shown.** If an envelope contains an operation the wallet has no sentence for, you get a refusal with the reason instead of a screen with a technical label above an enabled Approve button. [Never blind-sign](/docs/security/never-blind-sign).
+
+A site with a prompt already open gets told to wait rather than queueing a second one. A page that could stack approvals could wear you down until one press landed on Approve, so the second request is refused rather than remembered.
+
+## Where connections are listed
+
+**Settings → Connected sites** lists every origin with a live grant, and removes one on tap.
+
+Granting a connection is not wired into the interface in this build, so nothing appears there yet, and the sheet says so rather than describing a flow you cannot reach. Until it is, every method that needs a session answers:
+
+> This site is not connected to Pocket. Open Pocket and connect it first.
+
+The surface fails closed: a site cannot cause a connection prompt to appear, so a page cannot spam you into granting one.

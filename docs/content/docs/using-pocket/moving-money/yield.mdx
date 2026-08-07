@@ -1,0 +1,77 @@
+---
+title: Yield
+description: Depositing into and withdrawing from a DeFindex vault, in the public pocket, and how Pocket checks an envelope it did not build.
+---
+
+Open the **+** menu in the public pocket and choose **Yield**, or use the **Deposit** and **Withdraw** controls beside the Yield heading on the home screen.
+
+Yield lives in the public pocket and cannot move to the private one. A vault has to compute a share price, which is a division, and confidential balances support addition and nothing else. This is stated in the interface too, so nobody reads its absence from the private pocket as an oversight.
+
+## The position
+
+The home screen shows your vault position and the rate the vault reports.
+
+Two figures, and they are not the same thing:
+
+| | |
+| --- | --- |
+| **Shares** | what you hold in the vault, its own unit |
+| **Underlying** | what those shares are currently worth in XLM or USDC |
+
+Pocket labels shares as shares. Calling them a balance would invite you to read them as the asset, which they are not.
+
+The rate is shown with its window and its caveat attached: the vault reports it, it covers a stated number of days, and it is variable and not guaranteed. Pocket never shows a bare percentage, because a bare percentage is a financial representation it cannot substantiate.
+
+## Depositing and withdrawing
+
+A segmented control switches between the two. The amount composer works exactly as it does on Send.
+
+**Deposit** spends the vault's underlying asset from your wallet balance.
+
+**Withdraw** redeems shares. Its maximum comes from what your shares are currently worth in the underlying, when the vault reports that figure.
+
+## You need a trustline for the vault's asset
+
+DeFindex reports a deposit or withdrawal that cannot proceed for want of a trustline as a specific error, and Pocket maps it to a sentence you can act on:
+
+> You need a trustline for this vault's asset before you can deposit or withdraw.
+
+[Assets and trustlines](/docs/using-pocket/assets-and-trustlines).
+
+## What Pocket checks before signing
+
+DeFindex builds the transaction envelope on its own servers. That means the service chooses the entry point and every argument, while the review screen is about to state an amount and a direction taken from what **you** typed.
+
+Those two are not the same thing unless somebody checks. So Pocket decodes the envelope and pins it to the operation you asked for, before offering it for signature:
+
+| Check | If it fails |
+| --- | --- |
+| It is a single contract call | The yield transaction is not the single contract call Pocket expected, so it will not sign it |
+| It targets the configured vault | The yield transaction does not target the configured vault, so Pocket will not sign it |
+| It calls `deposit` or `withdraw`, matching what you chose | The yield transaction calls *(other function)* rather than *(yours)*, so Pocket will not sign it |
+| Every address in the arguments is yours | The yield transaction names an account that is not yours, so Pocket will not sign it |
+| No quantity exceeds what you entered | The yield transaction moves more than the amount you entered, so Pocket will not sign it |
+
+The amount check is an upper bound rather than an equality, deliberately. A vault takes both a desired amount and a slippage floor, and the floor is legitimately smaller. What must never pass is a quantity **larger** than the one you typed and the screen is about to show.
+
+Arguments are walked recursively, because a DeFindex deposit carries its amounts inside a vector and its caller as a bare address. A check that looked only at the top level would miss the amounts entirely.
+
+## The expiry rebind
+
+DeFindex returns envelopes with no upper time bound. Pocket rebinds every foreign envelope to its own 180-second window before hashing or storing it.
+
+An envelope with no expiry can never be reported as expired, which would mean an unresolved record blocking every later transaction permanently, with erasing the wallet as the only exit. Rebinding removes that outcome rather than documenting it.
+
+## What it costs
+
+A vault deposit is a Soroban invocation, so its fee is measured in hundreds of thousands of stroops rather than the 100 a classic payment costs. Pocket reads the real fee off the envelope DeFindex composed and states that figure on the review, and checks you can afford it before offering the signature.
+
+[Fees and reserves](/docs/using-pocket/fees-and-reserves).
+
+## When yield is not configured
+
+A build without a vault configured says so plainly rather than showing an empty position:
+
+> Yield is not configured for this network. Nothing is at risk; there is simply no vault to deposit into.
+
+A build that has one but could not reach the service says something different, because those are different facts and only one of them is fixable by waiting.

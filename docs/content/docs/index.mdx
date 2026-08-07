@@ -1,0 +1,72 @@
+---
+title: Pocket
+description: A self-custody Stellar wallet with two pockets, one public and one private. Confidential, not anonymous.
+---
+
+Pocket is a self-custody Stellar wallet that ships as a Chrome extension. One recovery phrase gives you two pockets:
+
+- a **public pocket** holding ordinary XLM and USDC, where balances and amounts are visible on the ledger, as they always are on Stellar
+- a **private pocket** holding the same assets inside OpenZeppelin's confidential token wrapper, where **the amounts are encrypted on chain**
+
+You move value between them whenever you want. Same phrase, same wallet, one tap to switch.
+
+## What privacy means here
+
+**Pocket hides amounts.** On a private transfer the amount is encrypted on chain, readable only by you, your counterparty and the auditor key you bound. Addresses stay public, as they are on every Stellar transaction.
+
+[Exactly what stays public, with a real transfer decoded](/docs/overview/privacy-truth).
+
+## What is running today
+
+Pocket works end to end on Stellar testnet with real UltraHonk proofs that the on-chain verifier accepted. You can look up every claim on a block explorer:
+
+| What happened | Transaction |
+| --- | --- |
+| A confidential account registered, proof accepted on chain | [`60dff27f…`](https://stellar.expert/explorer/testnet/tx/60dff27fbc25f9012b8c5b52a5072a4126b30875d65bb7241b95ac73e176cfdb) |
+| A confidential transfer, with the amount hidden | [`391b5767…`](https://stellar.expert/explorer/testnet/tx/391b5767abb00a117b8f15a5639c1268776bdc60b6498181440630b26a2fa1bc) |
+
+[More on-chain evidence, and how to check it yourself](/docs/security/verify-it-yourself).
+
+## Where to go next
+
+<Cards>
+  <Card
+    title="Use Pocket"
+    href="/docs/using-pocket/install-and-unlock"
+    description="Install it, set up a private pocket, and move money. Start here if you want to hold funds."
+  />
+  <Card
+    title="Understand the design"
+    href="/docs/concepts/two-pockets"
+    description="Why there are two pockets, what a commitment is, and what the proofs prove. Start here if you are evaluating the approach."
+  />
+  <Card
+    title="Read the architecture"
+    href="/docs/how-it-works/anatomy-of-a-confidential-operation"
+    description="Follow one private transfer from tap to ledger, through every layer. Start here if you are reading the code."
+  />
+  <Card
+    title="Check the claims"
+    href="/docs/reference/whats-true-today"
+    description="Every factual claim about Pocket, in one table, with the answer as it stands right now."
+  />
+</Cards>
+
+## The four parts
+
+<Files>
+  <Folder name="extension" defaultOpen>
+    <File name="The wallet. Chrome MV3, WXT, React, TypeScript." />
+  </Folder>
+  <Folder name="contracts" defaultOpen>
+    <File name="Three Rust Soroban contracts: the token wrapper, the verifier, the auditor registry." />
+  </Folder>
+  <Folder name="indexer" defaultOpen>
+    <File name="The durable event archive. Node and SQLite." />
+  </Folder>
+  <Folder name="scripts" defaultOpen>
+    <File name="Release gates and the scheduled infrastructure check." />
+  </Folder>
+</Files>
+
+[How the four parts talk to each other](/docs/overview/architecture-map).

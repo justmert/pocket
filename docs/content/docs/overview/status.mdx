@@ -1,0 +1,45 @@
+---
+title: Status
+description: Pocket runs on Stellar testnet today, end to end, with real proofs the on-chain verifier accepted. Two upstream things gate mainnet.
+---
+
+Pocket works end to end on **Stellar testnet**, with real UltraHonk proofs generated on your own machine and accepted by the on-chain verifier. Every claim below is a transaction anyone can look up.
+
+## Proven on chain
+
+| What | Transaction | Fee charged |
+| --- | --- | --- |
+| Auditor key registered, id allocated by the registry | [`7465cc88…`](https://stellar.expert/explorer/testnet/tx/7465cc8836381d3304b7ebae1461305615e3f878ef1c9e52850244f01a5899b9) | 0.0051934 XLM |
+| Confidential account registered, proof accepted | [`60dff27f…`](https://stellar.expert/explorer/testnet/tx/60dff27fbc25f9012b8c5b52a5072a4126b30875d65bb7241b95ac73e176cfdb) | 0.0312027 XLM |
+| Received balance merged into spendable | [`792caf07…`](https://stellar.expert/explorer/testnet/tx/792caf072fa887956673ff795f1c233f920a9a084ee639b9a51c693ec6c929b0) | 0.0009266 XLM |
+| Confidential transfer, amount hidden | [`391b5767…`](https://stellar.expert/explorer/testnet/tx/391b5767abb00a117b8f15a5639c1268776bdc60b6498181440630b26a2fa1bc) | 0.0397523 XLM |
+
+The register transaction is the one that proves the whole pipeline. It ran with no mocks: a spending key derived from a SEP-0053 signer root, a witness built by Pocket's own cryptography, the real Noir circuit solving that witness, a real UltraHonk proof of 14,592 bytes, and the on-chain verifier accepting it.
+
+[How to check each of these yourself](/docs/security/verify-it-yourself).
+
+## Deployed contracts
+
+Six contracts are live on testnet: two confidential wrappers sharing one verifier and one auditor registry, plus the two Stellar Asset Contracts they wrap.
+
+[Every address, with the verification-key hashes](/docs/reference/deployed-addresses).
+
+## Mainnet
+
+Pocket is built for mainnet. The mainnet network entry already exists in the wallet's configuration, carrying the network passphrase, Horizon, the native Stellar Asset Contract, Circle's mainnet USDC issuer and the mainnet Aquarius router.
+
+The switch is closed in this build, held by three independent checks: the network setter, the manifest's host permissions, and the empty mainnet deployment list.
+
+Two upstream items gate opening it: the Soroban verifier implements only the non-zero-knowledge proof flavour, and the verifier backend has not been audited.
+
+[What has to happen, and in what order](/docs/reference/roadmap-to-mainnet).
+
+## What is checked before anything ships
+
+Seven release gates run against the artifact a user would install, not against the sources that produced it. They check seven things: the toolchain pin, that all six verification keys reproduce from circuit source, that every deployed address resolves on chain, that the pinned verifier fork carries no Rust changes, that the public-input counts match the circuits, that the package carries no source maps or loopback endpoints, and that the browser suite passes against that exact package.
+
+[The seven gates, and what each one catches](/docs/build/the-gate).
+
+## Every claim in one place
+
+Networks, assets, audit status, permissions, and what is built: [the register](/docs/reference/whats-true-today) carries all of it.

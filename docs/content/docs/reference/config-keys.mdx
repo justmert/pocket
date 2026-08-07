@@ -1,0 +1,155 @@
+---
+title: Configuration and storage keys
+description: Every environment variable, every network field, and every key the wallet writes to disk, with what each one holds.
+---
+
+A lookup table. [Configuration and environment](/docs/build/config-and-environment) explains the reasoning behind these; this page is the list.
+
+## Build-time variables
+
+Read at build time from `extension/.env`, and never committed. Absent, each one makes the wallet report the feature as unconfigured rather than failing at a fetch.
+
+| Variable | Holds | Absent means |
+| --- | --- | --- |
+| `VITE_ARCHIVE_URL` | the durable event archive's base URL | private history and rebuild-from-history report themselves unavailable, and the controls are hidden |
+| `VITE_DEFINDEX_API_KEY` | the yield service API key | yield reports "not configured for this network" |
+| `VITE_DEFINDEX_VAULT` | the vault contract to deposit into | the same |
+
+`.env` loads on every build. `.env.production` loads afterwards for a production build and overrides only what it sets.
+
+Aquarius, CCTP and the asset directory need no configuration. All three are keyless.
+
+## Network fields
+
+One entry per network in `extension/src/core/config.ts`.
+
+| Field | Type | Holds |
+| --- | --- | --- |
+| `id` | `"testnet" \| "mainnet"` | which network this entry is |
+| `passphrase` | string | the network passphrase every signature commits to |
+| `rpcUrl` | string | Soroban RPC |
+| `horizonUrl` | string | Horizon |
+| `friendbotUrl` | string, optional | the testnet faucet. Absent on mainnet by design |
+| `nativeSac` | string | XLM's Stellar Asset Contract |
+| `knownAssets` | array, optional | credit assets the public pocket surfaces when a trustline exists |
+| `confidential` | array | one entry per private asset. Empty means the private pocket is unavailable |
+| `archiveUrl` | string, optional | the archive, from the build-time variable |
+| `defindex` | object, optional | `{ baseUrl, vault?, apiKey? }` |
+| `aquarius` | object, optional | `{ apiUrl, router }` |
+
+A `knownAssets` entry is `{ code, issuer }`. The Stellar Asset Contract id is derived rather than stored, and a trustline the account does not hold is omitted rather than shown as zero.
+
+### A confidential entry
+
+| Field | Holds |
+| --- | --- |
+| `token` | the wrapper contract. Its address is baked into every key derived for it |
+| `verifier` | the UltraHonk verifier. Shared across wrappers |
+| `auditor` | the auditor key registry. Also shared |
+| `underlying` | the SEP-41 asset this wrapper holds |
+| `symbol` | the display symbol |
+
+## What the wallet writes to disk
+
+All of these live in `chrome.storage.local`, and everything sensitive among them is encrypted.
+
+| Key | Holds | Encrypted |
+| --- | --- | --- |
+| `pocket.vault` | the vault header: version, KDF parameters, salt, wrapped data key | the wrapped key is |
+| `pocket.state` | the recovery phrase, sealed under the data key | yes |
+| `pocket.settings` | `{ network, autoLockMinutes? }` | no |
+| `pocket.inflight` | a submitted transaction whose outcome is not yet known | no |
+| `pocket.staged` | the local consequence of a submission, written before it is sent | yes |
+| `pocket.openings` | the `(value, randomness)` pairs that make private balances spendable | yes |
+| `pocket.address` | this wallet's public address | no, and deliberately |
+| `pocket.dapps` | left behind by builds that stored connection grants on disk. Swept on erase | no |
+| `pocket.auditorid` | the auditor id this account registered its own key under | no |
+
+### Three of these are worth reading twice
+
+**`pocket.openings` is not a cache.** The chain stores commitments; only these pairs make one spendable. Discarding them makes funds visible on chain and permanently unspendable. That is why the extension requests unlimited storage and why the archive exists.
+
+The key carries both the wrapper and the account, so it is enumerated rather than named:
+
+```
+pocket.openings.<token>.<address>
+```
+
+The format lives in one function, because a caller that builds the string itself can drift from the one that enumerates. Both failure modes are silent: a read that misses reports no record of your balances, and an erase that misses leaves a blob no future key can open.
+
+**`pocket.address` is in the clear on purpose.** It is on the ledger the moment the account is funded, so storing it plainly reveals nothing. It exists so a user who has forgotten their password can still be checked against the wallet they are trying to erase, which is the only way to authorise that erase without the password.
+
+**`pocket.auditorid` has to be recorded** because the registry allocates the id and returns it. Losing it does not lose funds, but it orphans a registered key and the next attempt allocates another, so a retry reuses this. It is per deployment, per account, and enumerated for the same reason openings are.
+
+## What lives in RAM
+
+| Key | Where | Holds |
+| --- | --- | --- |
+| `pocket.session` | `chrome.storage.session` | the data key in base64, plus the lock deadline |
+| the connection grants | `chrome.storage.session` | which origins may see your address and ask you to sign |
+
+`chrome.storage.session` is RAM-backed, wiped on browser close, and restricted to trusted extension contexts.
+
+**The seed is deliberately absent from it.** The plaintext seed lives in service-worker memory only and is never written anywhere, not even here. What is mirrored is the one value needed to re-open the vault, so a routine worker eviction does not force the password again while a real lock still does.
+
+[The vault and locking](/docs/security/the-vault-and-locking).
+
+## What the popup writes
+
+One key, and it is in the popup's own `localStorage` rather than in extension storage:
+
+| Key | Holds |
+| --- | --- |
+| `pocket:savedAddresses` | up to 20 addresses this device has paid, most recent first |
+
+The addresses themselves are public on the ledger, which is why they are stored in the clear. **Who this device paid is not public**, and that is what the list is, so erasing the wallet clears it. It is cleared explicitly, because the worker's sweep over `chrome.storage.local` cannot reach the popup's `localStorage`.
+
+## What an erase removes
+
+In this order, and the order is load-bearing:
+
+```
+pocket.vault  pocket.state  pocket.inflight  pocket.staged
+pocket.address  pocket.dapps  every pocket.openings.*  every pocket.auditorid.*
+```
+
+Vault first, openings last. A process kill part way through leaves orphaned blobs and no vault, which a fresh install sweeps. The reverse would leave a working wallet whose openings are gone, which means funds visible on chain and permanently unspendable.
+
+Chrome documents the multi-key form but does not promise atomicity, so this is one window rather than a transaction.
+
+Auditor ids survive when the same account is coming back, and only then.
+
+## Archive environment
+
+| Variable | Default | Holds |
+| --- | --- | --- |
+| `CONTRACT_ID` | required for backfill | the wrapper to ingest |
+| `DB_PATH` | `pocket-archive.db` | the SQLite file |
+| `PORT` | `8787` | the HTTP port |
+| `RPC_URL` | testnet Soroban RPC | where events are read from |
+| `HORIZON_URL` | testnet Horizon | where transfer invocation payloads are read from |
+| `ARCHIVE_ALLOWED_ORIGIN` | `*` | the CORS origin |
+
+`HORIZON_URL` is not optional in practice. Without it, transfer payloads are not stored and every recipient rebuilding from the archive is refused.
+
+## Script environment
+
+| Variable | Default | Used by |
+| --- | --- | --- |
+| `NETWORK` | `testnet` | deploy, add-asset, infrastructure check |
+| `SOURCE` | `pocket-deploy` | the signing account for deploys and TTL extensions |
+| `UNDERLYING`, `SYMBOL` | required | `add-asset.mjs` |
+| `WARN_DAYS` | `30` | the TTL threshold the infrastructure check extends below |
+| `EXTEND` | `500000` | ledgers to extend by |
+| `NARGO`, `BB` | `/tmp/nargo-beta11`, `/tmp/bb-0.87.0` | release gate 1 and 2 |
+
+## Test environment
+
+| Variable | Holds |
+| --- | --- |
+| `POCKET_EXT_PATH` | run the suite against a different build |
+| `POCKET_TESTNET_SECRET` | a funded testnet account for the live tiers |
+| `POCKET_LIVE_E2E` | opt in to tests that submit real transactions |
+| `POCKET_TEST_ARCHIVE_URL` | the archive the suite points at |
+| `QA_AMBIENT` | `report` or `fail` |
+| `PW_WORKERS` | browser test concurrency |

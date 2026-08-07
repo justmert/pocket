@@ -1,0 +1,120 @@
+---
+title: What is true today
+description: Every factual claim about Pocket, in one table.
+---
+
+The facts a reader is most likely to need, with the answer as it stands right now.
+
+## Privacy
+
+| | |
+| --- | --- |
+| Amounts, inside the private pocket | **hidden** |
+| Addresses, on every transfer | public |
+| Shield and unshield amounts | public at the boundary |
+| Proof flavour | non-zero-knowledge |
+
+[The full leak table, and a real transfer decoded](/docs/overview/privacy-truth).
+
+## Networks and assets
+
+| | |
+| --- | --- |
+| Networks supported | Stellar **testnet** |
+| Mainnet | configured and refused in this build, gated on two upstream items |
+| Assets, public pocket | XLM, USDC, and any classic asset you add a trustline for |
+| Assets, private pocket | XLM, USDC |
+| Accounts per wallet | one |
+
+## Audit
+
+| Component | Status |
+| --- | --- |
+| Confidential token contracts and circuits (OpenZeppelin) | audited, remediation complete 27 July 2026, report not yet published |
+| Everything else, including this wallet | no external audit |
+
+[Audit status and scope](/docs/security/audit-status-and-scope).
+
+## The extension
+
+| | |
+| --- | --- |
+| Platform | Chrome, Manifest V3 |
+| Requires | the offscreen document API, available from Chrome 109 |
+| Installed size | 19 MB, of which about 11.5 MB is the proving system and its reference data |
+| Permissions | four: `storage`, `alarms`, `offscreen`, `unlimitedStorage` |
+| Host permissions | three |
+| Telemetry | none. No analytics, no crash reporting, no third-party script |
+| Runtime network fetches for assets | none. Fonts, logos, circuits and the prover all ship in the package |
+| Language | English |
+| Licence | Apache-2.0 |
+
+The three hosts:
+
+```
+https://soroban-testnet.stellar.org/*
+https://horizon-testnet.stellar.org/*
+https://horizon.stellar.org/trade_aggregations*
+```
+
+The wallet also reaches four keyless or key-configured services over ordinary cross-origin requests: the DeFindex yield API, the Aquarius swap API, Circle's attestation service, and the StellarExpert asset directory. A configured archive is a fifth.
+
+## Keys and recovery
+
+| | |
+| --- | --- |
+| Recovery phrase | 24 words, BIP-39, 256 bits of entropy |
+| Public derivation | SEP-0005, SLIP-0010 ed25519, `m/44'/148'/0'` |
+| Confidential derivation | SEP-0053 signer root, then HKDF-SHA-512 with rejection sampling |
+| Password minimum | 8 characters |
+| Vault | scrypt N=131072, r=8, p=1, then AES-256-GCM |
+| Auto-lock | default 15 minutes, adjustable 1 minute to 8 hours. No "never" |
+| Phrase re-display | yes, from Settings, behind your password |
+| Password change | not available in the interface |
+| Hardware wallet | not supported |
+| Multi-signature | not supported |
+
+**Your phrase restores your keys, not your private balances.** Private balances are rebuilt by replaying event history. [Recovery](/docs/using-pocket/recovery).
+
+## Features
+
+| | |
+| --- | --- |
+| Send and receive | both pockets |
+| Transaction history | both pockets, with search, date and type filters |
+| Prices, fiat values and charts | yes, in the public pocket. The private pocket has no chart |
+| Hide balances on screen | yes |
+| Trustlines | add and remove, with directory search |
+| Swap | XLM and USDC, through Aquarius |
+| Yield | deposit and withdraw, through DeFindex |
+| Cross-chain USDC | send and claim, through Circle CCTP |
+| Website connections | SEP-43 surface implemented. Granting a connection is not wired into the interface in this build |
+| Selective disclosure | primitives only. No producer, no verifier, no circuit |
+| Multi-account | not built |
+
+## Proofs
+
+| | |
+| --- | --- |
+| Proof system | UltraHonk, non-ZK `ultra_flavor` |
+| Transcript | keccak256 |
+| Proof size | 456 field elements, 14,592 bytes |
+| Verification key size | 1,760 bytes each, six of them |
+| Circuits | `register`, `withdraw`, `transfer`, `spender_transfer`, `set_spender`, `revoke_spender` |
+| Proving location | your machine, in an offscreen document |
+| Proving time | about 8 seconds for a register operation, measured |
+| Toolchain | `nargo 1.0.0-beta.11`, `bb 0.87.0` |
+
+## Fees, measured on chain
+
+| Operation | Fee charged |
+| --- | --- |
+| Classic payment | 0.0000100 XLM |
+| Make spendable (merge) | 0.0009266 XLM |
+| Register an auditor key | 0.0051934 XLM |
+| Create a confidential account | 0.0312027 XLM |
+| Confidential transfer | 0.0397523 XLM |
+
+Plus the network reserve: 1 XLM for an account, and 0.5 XLM per trustline while it is open.
+
+[Fees and reserves](/docs/using-pocket/fees-and-reserves).

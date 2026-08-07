@@ -1,0 +1,108 @@
+---
+title: Running an archive
+description: Backfilling from the RPC window, keeping up with the chain, and the operational choices that decide whether it stays useful.
+---
+
+The archive is a Node service over SQLite with no framework. Its whole surface is four routes and no writes, because adding a dependency to a service that has to run for years unattended is a poor trade.
+
+## Backfill
+
+```bash
+cd indexer
+npm install
+
+CONTRACT_ID=CDMXZEFOM5DN2GSHQKNOOW242RJZGCEM5LOOAPGRQE35GGHB7ALDK2Y6 \
+DB_PATH=pocket-archive.db \
+npm run backfill
+```
+
+| Variable | Default |
+| --- | --- |
+| `CONTRACT_ID` | required |
+| `DB_PATH` | `pocket-archive.db` |
+| `RPC_URL` | `https://soroban-testnet.stellar.org` |
+| `HORIZON_URL` | `https://horizon-testnet.stellar.org` |
+
+Backfill pulls the full retained RPC window into the archive, in chunks of 10,000 ledgers. It is **idempotent**, so a repeated range costs nothing but time.
+
+Run it once per confidential wrapper. Each asset is a separate contract with its own event stream.
+
+### Horizon is not optional
+
+`HORIZON_URL` is what supplies the invocation payloads that transfer events do not carry. Without it the archive ingests fine and every recipient rebuilding from it is refused, because a received transfer cannot be verified from the event alone. [Why](/docs/how-it-works/the-archive/why-it-exists).
+
+Payloads are fetched one request per transfer, in parallel, and only for transfers, so a page of 200 deposits costs nothing extra. A Horizon that is down degrades to "no payloads stored" rather than failing the range.
+
+### The retention floor moves while you backfill
+
+Fetching a payload per transfer turns a scan of the retained window into minutes, and testnet closes a ledger every five seconds. A floor read once at the start is stale before the first chunk is requested.
+
+The RPC answers a below-floor `startLedger` with an error that aborts the whole run after most of it has already been ingested, so the backfill re-reads the floor per chunk, clamps the start, and retries when the window moves underneath a request that was already valid when it was computed.
+
+When the window genuinely slides past a chunk, the run says so:
+
+```
+3809400..3819399: aged out of RPC retention during this run
+```
+
+Those events are gone from RPC and no request brings them back. The range is never claimed, so the archive keeps reporting that span incomplete rather than passing over it quietly.
+
+## Serve
+
+```bash
+DB_PATH=pocket-archive.db PORT=8787 npm start
+```
+
+| Variable | Default |
+| --- | --- |
+| `PORT` | `8787` |
+| `DB_PATH` | `pocket-archive.db` |
+| `ARCHIVE_ALLOWED_ORIGIN` | `*` |
+
+The origin default is a wildcard because a wallet is served from a `chrome-extension://` origin, which cannot be named in an allowlist ahead of time. Every event the service returns is already public on chain, so the wildcard costs no confidentiality.
+
+## Keeping up
+
+The obligation is **not** to track the chain head. RPC serves the recent tail, so the archive only has to stay at or above the seam a client sets from the retention floor.
+
+What must not happen is falling **below** it. Then a range belongs to neither source, and once those ledgers age out of RPC the gap is permanent.
+
+Run the backfill on a schedule comfortably inside the retention window. It is idempotent, so overlapping runs are free.
+
+## Point the wallet at it
+
+The wallet reads its archive URL from a build-time variable:
+
+```bash
+# extension/.env
+VITE_ARCHIVE_URL=http://127.0.0.1:8787
+```
+
+A build with no archive configured reports rebuilding as unavailable and hides the control, rather than offering a button whose only outcome is a refusal.
+
+Release gate 6 refuses a **loopback** address in a shipped package, because a loopback baked into an extension points every user at their own machine, where nothing is listening. A release sets the deployed URL instead. [Configuration](/docs/build/config-and-environment).
+
+## Two operational recommendations
+
+**Run more than one endpoint.** The archive cannot hand a wallet a wrong balance, because the wallet checks every replay against the chain. What a single archive can do is **withhold** history, and the only mitigation for that is redundancy.
+
+**Do not keep access logs.** The archive is the one place in the system where it is observable *who is asking about which account*. The events themselves are public; the query is not. An operator sees the querying IP alongside the account in the path, so the mitigations are operator-side: more than one endpoint so no single operator sees every query, and no retained logs.
+
+## Checking it
+
+```bash
+curl "http://127.0.0.1:8787/v1/health?contract_id=CDMXZEFOM5DN2GSHQKNOOW242RJZGCEM5LOOAPGRQE35GGHB7ALDK2Y6"
+```
+
+```json
+{
+  "contract_id": "CDMXZ…",
+  "latest_ledger": 4041602,
+  "ingested_through": 4041500,
+  "lag_seconds": 510
+}
+```
+
+`ingested_through` is the number that matters. It is the highest ledger reachable contiguously from the earliest range the archive holds, so a single missing ledger anywhere drops it to just below that hole. That is intended: a wallet reads it as "how far can I trust this", and one gap makes everything past it untrustworthy.
+
+The service runs its own schema migration on every open, so an archive created before a column existed is brought up to date without an operator needing to know a migration was due.

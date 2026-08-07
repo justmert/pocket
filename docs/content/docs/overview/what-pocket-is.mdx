@@ -1,0 +1,72 @@
+---
+title: What Pocket is
+description: A Chrome extension wallet that gives one Stellar account a public pocket and a private pocket from a single recovery phrase.
+---
+
+Pocket is a self-custody Stellar wallet. You hold the keys, they never leave your device, and no server belonging to this project can move your money or freeze it.
+
+What separates it from other Stellar wallets is that one recovery phrase gives you **two pockets**.
+
+## The two pockets
+
+|  | Public pocket | Private pocket |
+| --- | --- | --- |
+| Holds | ordinary XLM and USDC | the same assets inside a confidential wrapper |
+| Who sees amounts | everyone | you, your bound auditor, and anyone you disclose to |
+| Who sees addresses | everyone | **everyone, unchanged** |
+| Earns yield | yes, through DeFindex | no, and the reason is structural |
+| Bridges to other chains | yes, through Circle's CCTP | no, unshield first |
+| Swaps | yes, through Aquarius | no |
+| Connects to websites | yes, through SEP-43 | no, sessions are public-pocket only |
+
+The split is not a product preference. Confidential balances are Pedersen commitments, which are additively homomorphic and nothing more: you can add and subtract committed values without decrypting them, but you cannot multiply, discover a price, or hold the state a lending pool needs. Yield, bridging and website interaction live in the public pocket because they cannot live anywhere else.
+
+[The full argument, with what follows from it](/docs/concepts/two-pockets).
+
+## What you can do today
+
+**In the public pocket**
+
+- Send and receive XLM and USDC
+- Add and remove trustlines for any classic asset, searched from the StellarExpert directory
+- Swap between XLM and USDC through Aquarius pools
+- Deposit into and withdraw from a DeFindex yield vault
+- Bridge USDC to and from other chains through Circle's CCTP
+- Connect a website over SEP-43 and approve one signature at a time
+
+**In the private pocket**
+
+- Open a confidential account per asset, binding an auditor key derived from your own phrase
+- Shield value in from the public pocket
+- Send privately to another Pocket user, with the amount hidden
+- Make received funds spendable
+- Unshield value back out to the public pocket
+
+**Across both**
+
+- Read a merged transaction history, per pocket
+- See what your public pocket has been worth over time, priced from the Stellar DEX
+- Hide every balance on screen with one toggle
+- Rebuild private balances by replaying your event history when this device's records are gone
+
+## Where it runs
+
+Pocket is a **Chrome extension built on Manifest V3**. It uses the offscreen document API to run the proving engine, which Chrome has provided since version 109.
+
+The installed package is 19 MB. About 11.5 MB of that is the proving system and its cryptographic reference data:
+
+| Part | Size |
+| --- | --- |
+| bb.js, the proving backend | 7.0 MB |
+| The structured reference string | 4.0 MB |
+| The six compiled circuits | 511 KB |
+
+That size is the direct cost of generating proofs on your own machine instead of sending the data that needs proving to somebody else's server.
+
+The interface is English. The licence is Apache-2.0.
+
+## Nothing is collected, and that is verifiable
+
+There is no analytics, no telemetry, no crash reporting and no third-party script anywhere in the extension. This is stronger than a privacy policy, because it is an absence you can check yourself: searching the source for `analytics`, `telemetry`, `sentry`, `mixpanel`, `posthog`, `gtag` and `amplitude` returns nothing.
+
+Nothing is fetched from the internet at runtime either. The proving system, the cryptographic keys, the token logos and the fonts all ship inside the package, which is also what makes the extension legal under Manifest V3's ban on remotely hosted code.

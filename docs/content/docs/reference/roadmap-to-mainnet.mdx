@@ -1,0 +1,94 @@
+---
+title: The path to mainnet
+description: What has to be true before Pocket runs on Stellar mainnet, who each item belongs to, and what is already in place.
+---
+
+Pocket is built for mainnet. The mainnet network entry already exists and is complete except for its confidential deployments: passphrase, Horizon, the native Stellar Asset Contract, Circle's mainnet USDC issuer and the mainnet Aquarius router are all in it and all checked against the live network.
+
+This page lists what stands between that and an open switch. No dates, because two of the items belong to another project.
+
+## Upstream
+
+### A zero-knowledge flavour verifier
+
+The Soroban verifier implements the non-ZK `ultra_flavor` only. Soundness holds, so nobody can mint, overspend or forge a transfer; what the proof layer does not add is a guarantee that the proof itself reveals nothing. [What that changes, in full](/docs/concepts/what-the-proofs-prove).
+
+**Owner:** the verifier project. There is no public timeline.
+
+### An audit of the verifier backend
+
+The UltraHonk verification library for Soroban has not been audited. Its own README says so.
+
+**Owner:** the verifier project.
+
+## Pocket's own items
+
+Each of these is work Pocket does, and each is mechanical rather than open-ended.
+
+### Deploy the three contracts on mainnet
+
+The verifier, the auditor registry and one wrapper per asset. The verification keys installed at construction must be the same six that reproduce from circuit source, and the deployment must be recorded in `resources/deployment-mainnet.json` in the same shape as the testnet record.
+
+Release gate 3 reads that file and resolves every id on chain, so an unrecorded or wrong address fails the gate rather than shipping.
+
+### Decide the RPC
+
+**SDF publishes no public mainnet Soroban RPC.** It runs one for testnet and futurenet, and directs production traffic to commercial providers.
+
+Whichever provider is chosen sees every address the wallet queries and can lie about any read it answers. The code says so at the line that names one, because it is a trust decision that has to be made deliberately rather than inherited from a placeholder.
+
+### Add the host permission
+
+The manifest declares three hosts, none of them a mainnet RPC. Chrome refuses traffic to anything not declared, so this is a required step and also a second lock: until it is taken, no mainnet request can leave the extension even if the refusal in `setNetwork` were removed.
+
+### Run the archive against the mainnet wrapper
+
+The archive is what makes a private balance recoverable past the RPC's seven-day event retention. A mainnet build needs one ingesting the mainnet wrapper, reachable at the URL baked in at build time, and it must be running before the first user registers rather than after.
+
+`HORIZON_URL` has to be set on it. [Running an archive](/docs/how-it-works/the-archive/running-one).
+
+### Recalibrate the TTL watch
+
+The infrastructure check extends any contract entry with less than 30 days remaining. Testnet caps a fresh instance at about seven days; mainnet's floor is 2,073,600 ledgers, about 120 days. The thresholds are per-network for that reason and must not be calibrated on testnet.
+
+### Re-check what testnet cannot exercise
+
+Two behaviours differ by network and only one side is exercised today.
+
+Ledger close time is measured per network, 5.01 seconds on testnet against 5.57 on mainnet, an 11% difference that feeds every settlement wait. And there is no faucet on mainnet, which is why `friendbotUrl` is optional in the type rather than a URL that would fail: the funding control is absent when the field is, not present and refusing.
+
+## What is already in place
+
+- The mainnet network entry, complete except for `confidential`
+- Circle's mainnet USDC issuer, and the mainnet Aquarius router
+- The mainnet native Stellar Asset Contract
+- Mainnet Horizon, path-scoped to the one endpoint the price chart reads
+- The per-network ledger timing table
+- A deployment record format, a deployment script and an add-asset script that already take `NETWORK` as a parameter
+- Seven release gates that read the per-network deployment record
+
+## The three locks, in order of removal
+
+Opening the switch means removing all three, and the order matters because each one alone is sufficient to keep it closed.
+
+<Steps>
+
+<Step>
+### The confidential list
+
+`mainnet.confidential` is empty. Every consumer guards on that and reports the private pocket unavailable rather than reading past the end, so this cannot be removed before the contracts exist.
+</Step>
+
+<Step>
+### The host permission
+
+Add the chosen RPC host to the manifest. Until this is done, Chrome blocks the traffic.
+</Step>
+
+<Step>
+### The refusal
+
+`setNetwork` throws with the reason. It is checked twice, at the router and in the controller, because the value is persisted: an unknown network would leave every later lookup undefined, survive a restart, and leave no screen able to set it back.
+</Step>
+
+</Steps>

@@ -1,0 +1,84 @@
+---
+title: Swap
+description: Swapping between XLM and USDC through Aquarius pools, in the public pocket.
+---
+
+Open the **+** menu in the public pocket and choose **Swap**.
+
+Swapping happens in the public pocket, and it cannot happen in the private one. An automated market maker prices a trade from a ratio of its reserves, which is a division, and a Pedersen commitment supports addition and nothing else. [Why](/docs/concepts/two-pockets).
+
+## How it works
+
+Pocket routes through [Aquarius](https://aqua.network) pools on Stellar.
+
+The integration is keyless in the strongest sense: Aquarius supplies only the **route**, and Pocket builds the `swap_chained` contract call itself and signs it. No third party ever composes an envelope for your wallet to sign blind.
+
+## Composing
+
+Set an amount in, choose the asset out, and a live quote appears as you type. The quote is a read: it shows the estimated output and the route the swap would take.
+
+**The flip control** swaps the two assets, because a swap is symmetric.
+
+**Max slippage** is how far the price may move against you before the swap reverts instead of filling:
+
+| | |
+| --- | --- |
+| 0.5% | tightest, fills least often |
+| **1%** | the default |
+| 2% | widest, fills most often, can receive less |
+
+## You need a trustline for what you receive
+
+Receiving a classic asset on Stellar needs a trustline for it first. Pocket checks before offering the swap, and the reason appears above the amount rather than below it, because it is why the button is off:
+
+> You do not hold USDC yet. Add it in **Manage assets** first, then you can swap into it.
+
+**Manage assets** is a link inside that sentence. [Assets and trustlines](/docs/using-pocket/assets-and-trustlines).
+
+## What the review commits you to
+
+| | |
+| --- | --- |
+| The amount in | what leaves your account |
+| **Estimated** | what the route expects to deliver |
+| **Minimum received** | the floor the transaction enforces |
+| The network fee | the real fee, after simulation |
+
+**Minimum received** is the number that matters. It is not a hope: `out_min` is an argument to the contract call, and the swap reverts rather than filling below it. The estimate is what the route expects; the minimum is what the transaction guarantees.
+
+The effects say the same thing in words: *"You receive at least (minimum) (asset), or the swap reverts."*
+
+## What Pocket checks before signing
+
+The route comes from a third-party HTTP service, so Pocket reads the bytes rather than trusting the answer.
+
+`swap_chained` takes an account address, the route, the token in, the amount in and the minimum out. It has **no token-out argument**: the asset you receive is decided entirely by the last hop of the route, and `out_min` is a bare number denominated in whatever that token turns out to be. So the minimum bounds quantity and cannot bind identity.
+
+Pocket therefore decodes the route and checks both ends against what the screen is about to say:
+
+| Check | If it fails |
+| --- | --- |
+| The route ends in the asset you asked for | The swap route does not end in *(asset)*, so Pocket will not sign it. Get a fresh quote and try again |
+| The route starts from the asset you are spending | The swap route does not start from *(asset)*, so Pocket will not sign it |
+| The route decodes at all | The swap route could not be decoded, so Pocket will not sign it |
+
+Without that check, a route could promise USDC over an envelope that delivers any other token with a pool.
+
+The amount and the token being spent are pinned separately, because Pocket builds those arguments itself rather than taking them from the route.
+
+## Before it builds
+
+Pocket refuses a swap it can already tell will not work:
+
+- more than your balance of the asset going in
+- an asset you do not hold
+- not enough XLM left for the fee, which for a Soroban invocation is far larger than a classic payment's
+- the same asset on both sides
+- a slippage tolerance outside 0 to 100%
+- an earlier submission still unresolved
+
+## Where the swap appears afterwards
+
+In Activity, as a **swap** entry. A swap moves value out and value in within one invocation, so it produces two rows sharing one transaction hash, one for each side.
+
+Collapsing them into one row would have to discard an asset and an amount, so Pocket shows the pair.

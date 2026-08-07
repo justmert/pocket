@@ -1,0 +1,111 @@
+---
+title: Event catalogue
+description: The eight events the confidential wrapper emits, their topics, their bodies, and what each one does to a replayed balance.
+---
+
+The chain stores commitments, not openings. A wallet rebuilds a spendable private balance by replaying these events in order, so their exact shape is load-bearing.
+
+**These names and shapes come from the deployed contract, not from a document.** They were checked against a live read of Pocket's own testnet wrapper, and a live test pins them so an upstream change goes red rather than silently producing a short balance.
+
+## Why the names look like that
+
+`#[contractevent]` snake-cases the event struct's name to produce `topic[0]`. So the wire carries `register` and `spender_transfer`, never `Register` or `SpenderTransfer`.
+
+**The addresses are topics, not body fields.** A transfer publishes `["transfer", from, to]` and its body carries no `from` at all. Attribution is a pure function of the topics, never of the transaction's source account: a transfer belongs to both parties, and the submitter may be neither of them.
+
+## The eight events
+
+| `topic[0]` | Topics after the name | Body |
+| --- | --- | --- |
+| `register` | `account` | `auditor_id: u32` |
+| `deposit` | `from`, `to` | `amount: i128` |
+| `merge` | `account` | empty |
+| `withdraw` | `from`, `to` | `amount: i128`, `r_e_point`, `sigma`, `b_tilde`, `b_tilde_aud_s` |
+| `transfer` | `from`, `to` | `r_e_point`, `v_tilde`, `sigma`, `b_tilde`, `v_tilde_aud_r`, `r_tilde_aud_r`, `v_tilde_aud_s`, `b_tilde_aud_s` |
+| `spender_transfer` | `spender`, `from`, `to` | `r_e_point`, `v_tilde`, `sigma_a`, `v_tilde_aud_r`, `r_tilde_aud_r`, `v_tilde_aud_s`, `a_tilde_aud_s` |
+| `set_spender` | `account`, `spender` | `live_until_ledger: u32`, `r_e_point`, `sigma`, `b_tilde`, `v_tilde_aud_s`, `b_tilde_aud_s` |
+| `revoke_spender` | `account`, `spender` | `r_e_point`, `sigma`, `b_tilde`, `v_tilde_aud_s`, `b_tilde_aud_s` |
+
+Decoded, the body values are `Uint8Array` (32- and 64-byte field elements and points) and `bigint` (`i128` amounts). Never hex strings.
+
+### The topic arity check
+
+The archive records how many address topics each event carries and rejects anything that does not match:
+
+```
+register 1   deposit 2   merge 1           withdraw 2
+transfer 2   spender_transfer 3            set_spender 2   revoke_spender 2
+```
+
+Taking "every topic that looks like an address" instead would attribute an upstream shape change to the wrong accounts, silently. An event whose layout is not the one the archive was written against is refused by name.
+
+## What each one does to a replayed balance
+
+Two accumulators move: `spendable`, which only you can debit, and `receiving`, which anyone can add to.
+
+| Event | Effect for the account it names |
+| --- | --- |
+| `register` | resets to the initial state and sets the replay cursor |
+| `deposit` | credits `receiving` with value `amount` and randomness zero. No proof, no encryption: the amount is public at this boundary |
+| `merge` | folds `receiving` into `spendable` and resets `receiving` |
+| `withdraw` | replaces `spendable` with the checkpoint carried in the body |
+| `transfer`, sender | replaces `spendable` with the checkpoint |
+| `transfer`, recipient | credits `receiving` with the decrypted opening |
+| `spender_transfer`, recipient | credits `receiving`, exactly like a transfer |
+| `spender_transfer`, owner | nothing. The debit is against the delegation's allowance commitment, not the owner's spendable |
+| `set_spender` | replaces `spendable` with the checkpoint. Part of the balance is escrowed into an allowance |
+| `revoke_spender` | replaces `spendable` with the checkpoint. What is left of the allowance folds back |
+
+A `deposit` credits the **receiving** side, which is why shielding needs a merge before the money can be sent.
+
+A self-transfer is applied to the recipient side first and the sender side second, so a failed decryption cannot leave the sender half applied.
+
+### The checkpoint
+
+`withdraw`, `set_spender`, `revoke_spender` and the sender half of a transfer all publish the sender's new spendable balance as a **checkpoint**: an encrypted value plus a salt.
+
+```
+value      = b_tilde - Poseidon2(ENCRYPTED_BALANCE, vk, sigma)
+randomness = Poseidon2(SPEND_RANDOMNESS, vk, sigma)
+```
+
+You need your viewing key to open it. Nobody else can, and you do not need to have kept any previous state to open this one, which is why a replay can start from a checkpoint rather than from the beginning.
+
+## The two events that need the invocation
+
+`transfer` and `spender_transfer` cannot be replayed from the event body alone when you are the recipient.
+
+The reason is precise. The amount can be **derived** from your viewing key and the published fields, but not **checked**. Nothing on chain marks an event as yours, and a wrong key yields a plausible field element rather than an error. The value that settles it is `c_transfer`, the commitment the decryption must open, and `c_transfer` travels in the **invocation arguments** rather than in the event.
+
+So the archive stores an extra `payload_xdr` for those two, read from the transaction's own envelope:
+
+| Method | Invocation arguments |
+| --- | --- |
+| `confidential_transfer` | `(from, to, data)` |
+| `confidential_transfer_from` | `(spender, from, to, data)` |
+
+The last argument is taken in both cases, which is why the position is read from the end.
+
+When the payload is missing, the wallet **refuses to credit** rather than guessing. A balance that is quietly short by one unreadable event is indistinguishable from a correct one until you cannot spend.
+
+## Ordering and deduplication
+
+Events apply in emission order, because a merge and a deposit in the same ledger produce different state depending on which goes first.
+
+Canonical order is `(ledger, transaction application order, event index)`. That triple is parsed out of the transaction's TOID rather than inferred from arrival order.
+
+Dedup is by event id and happens **before** application. A hybrid source that reads recent events from the RPC and older ones from the archive can deliver the same event twice at the seam, and crediting accumulates, so a duplicate would inflate a balance.
+
+## Verification, after every sync
+
+Replay is not trusted on its own. After every sync the wallet re-commits the balance it computed and compares the point against what the contract holds.
+
+A mismatch is reported as **diverged** and every spend is refused, because a wrong opening produces a proof the chain rejects and, at worst, funds that cannot be moved. [Reading the chain](/docs/how-it-works/reading-the-chain).
+
+## Where these are implemented
+
+| | |
+| --- | --- |
+| Replay, ordering, dedup, verification | `extension/src/core/sync.ts` |
+| The live scan | `extension/src/core/inbound.ts` |
+| Archive ingestion and attribution | `indexer/src/ingest.ts` |

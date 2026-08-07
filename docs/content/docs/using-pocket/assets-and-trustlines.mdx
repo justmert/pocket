@@ -1,0 +1,71 @@
+---
+title: Assets and trustlines
+description: Holding an asset other than XLM means opening a trustline for it. Adding, removing, and finding one you can trust.
+---
+
+XLM is Stellar's native asset and needs nothing. Every other asset needs a **trustline**: a record on your account saying it is willing to hold that asset from that issuer.
+
+A trustline locks **0.5 XLM** as a reserve while it is open, and releases it when you close it.
+
+Open **Settings → Manage assets**.
+
+## Adding an asset
+
+<Steps>
+
+<Step>
+### Search the directory
+
+**Add an asset** searches the StellarExpert asset directory as you type. Results show the asset code, its issuer's home domain where the directory knows it, and how many accounts already trust it.
+</Step>
+
+<Step>
+### Check the issuer, not the code
+
+Anyone can issue an asset called `USDC`. The code alone is not identity: the **issuer** is.
+
+Pocket warns you when several results share a code, and shows the domain against each, because that is the part that distinguishes a real asset from an imitation of it.
+</Step>
+
+<Step>
+### Approve
+
+Adding a trustline is a signed transaction like any other. The review states that it lets your account hold the asset, that it locks 0.5 XLM as a reserve, that removing it later releases the reserve, and that it is visible on the ledger.
+</Step>
+
+</Steps>
+
+Only classic assets appear in the search. A contract-only token has no classic issuer and therefore no trustline to open, so listing one would be offering something that cannot be done.
+
+## Removing an asset
+
+Select an asset in **Your assets** and remove it. This closes the trustline and releases the 0.5 XLM.
+
+Stellar refuses to close a trustline with a balance still in it, so Pocket refuses first, with the figure:
+
+> You still hold 12.3400000 USDC. Send or swap all of it out before removing the trustline.
+
+## Logos are keyed on the issuer
+
+Every asset logo Pocket ships is packaged with the extension and keyed on the **issuer**, not the code. An asset from an unverified issuer misses the lookup and draws a plain letter instead of borrowing a real brand's mark.
+
+Nothing is fetched at runtime. Beyond the privacy cost of an image request per asset you hold, an issuer-controlled image URL would be a tracking pixel that reported your holdings. The extension's content security policy pins images to its own package, so a remote logo is blocked by the browser rather than merely discouraged.
+
+## Where trustlines matter elsewhere
+
+| | |
+| --- | --- |
+| **Receiving** an asset | you need a trustline before anyone can pay you in it |
+| **Swapping into** an asset | the swap reverts without one, so Pocket refuses first |
+| **Yield** | the vault's underlying asset needs one |
+| **Bridging** USDC in | you need a USDC trustline for the mint to land |
+
+Each of those screens links back here rather than leaving you to work out what to do.
+
+## What the balance list shows
+
+The home screen lists XLM plus every configured asset your account actually holds a trustline for.
+
+An asset you do not have a trustline for is **omitted**, not shown as zero. "You do not trust this asset" and "you hold zero of it" are different facts, and only one of them is about your money.
+
+An asset whose issuer has frozen your trustline shows **Not authorised**, because the issuer controls whether that balance can move and no action of yours changes it.

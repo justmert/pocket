@@ -1,0 +1,13 @@
+{
+  "title": "Security",
+  "pages": [
+    "threat-model",
+    "trust-boundaries",
+    "the-vault-and-locking",
+    "closed-dapp-surface",
+    "never-blind-sign",
+    "errors-and-what-reaches-you",
+    "verify-it-yourself",
+    "audit-status-and-scope"
+  ]
+}

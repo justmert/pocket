@@ -1,0 +1,65 @@
+---
+title: Send
+description: Sending XLM or USDC from the public pocket, and what the review screen commits you to.
+---
+
+Open the **+** menu and choose **Send**, or open an asset and send from there.
+
+## Composing
+
+The amount is the largest thing on the screen. Under it sit the recipient, an optional memo, and a slider that sets a fraction of what you can actually spend.
+
+**Use max** fills in everything you can send. That figure already has the network reserve taken out and the fee held back, so pressing it produces an amount that will land rather than one that fails at submission. [Fees and reserves](/docs/using-pocket/fees-and-reserves).
+
+**The recipient** must be a Stellar account address, starting with `G`. Pocket tells you which problem an address has rather than refusing generically:
+
+| What you typed | What Pocket says |
+| --- | --- |
+| A valid `G` address | accepted |
+| A contract address, starting with `C` | That is a contract address. Pocket can only send to an account address (G...) today |
+| Right shape, wrong checksum | That address has a bad checksum. It may have been mistyped or altered in transit |
+| Anything else | That does not look like a Stellar address |
+
+The checksum case is worth having separately: it usually means a typo or a corrupted paste, which is fixable, rather than the wrong kind of string entirely.
+
+**The memo** is optional and limited to **28 bytes**, not 28 characters. That distinction is invisible in English and decisive outside it: a 28-character English memo fits, and a 10-character emoji memo does not. If you go over, Pocket says how many bytes you used and why the limit counts bytes.
+
+## Reviewing
+
+Nothing is signed until you approve. The review shows:
+
+| | |
+| --- | --- |
+| The amount | in full precision, exactly what will be signed |
+| The recipient | the **complete** 56-character address, never shortened |
+| The network fee | the real fee, not an estimate |
+| The memo | its contents, or **None** |
+| What this does | every consequence in plain words |
+
+Two of those are deliberate and worth knowing about.
+
+**The address is never truncated here.** Matching the first four and last four characters of a Stellar address costs about an hour of brute force on an ordinary laptop, so a shortened address is not a safe thing to approve. Lists shorten addresses; confirm screens do not.
+
+**An absent memo is stated, not left blank.** The review says **None**, with a note that exchanges usually require one and a deposit without it can be lost. A missing memo is the most common way an exchange deposit disappears, so Pocket says it out loud rather than showing an empty row.
+
+## Confirming
+
+Approving signs the exact envelope the review described and submits it.
+
+The screen then shows the operation working, with a **Go to Home** control. The worker runs the confirmation to a terminal on-chain outcome whether or not you keep watching, so leaving the sheet does not abandon anything. The transaction appears under **In progress** in Activity until it lands.
+
+When it lands you get a receipt with the transaction hash, a link to view it on a block explorer, and an offer to save the recipient to a local address book for next time.
+
+## What can go wrong
+
+Pocket refuses before it builds anything, rather than letting the network refuse after you have paid a fee:
+
+| Situation | What happens |
+| --- | --- |
+| More than you can send | Refused, with your balance, the locked reserve and the fee all named |
+| An asset you do not hold | Refused: adding the asset creates a trustline for it |
+| A trustline the issuer has frozen | Refused, and the reason is that the issuer controls whether it can move |
+| Not enough XLM for the fee | Refused, saying how much is free after the reserve |
+| An earlier transaction still unresolved | Refused until that one settles. [Why](/docs/using-pocket/when-something-goes-wrong) |
+
+If a submission does not resolve, the wallet says so and tells you not to send it again. That instruction is load-bearing: a resend is how a payment gets made twice.

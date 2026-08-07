@@ -1,0 +1,117 @@
+---
+title: The message contract
+description: One typed union between the popup and the worker, one router, and the three rules that live in it and nowhere else.
+---
+
+The popup holds no keys and builds no transactions. Everything it does is a message to the service worker, and `core/messages.ts` is the single source of truth for what those messages are.
+
+## The shape
+
+`WalletRequest` is a **closed union** of 48 request types, and `ResponseMap` narrows each one to its response payload. The popup calls through a single helper typed off both, so a request and its answer cannot drift apart:
+
+```ts
+export async function call<K extends WalletRequest["type"]>(
+  msg: Extract<WalletRequest, { type: K }>,
+): Promise<ResponseMap[K]>
+```
+
+Every payload has to be structured-cloneable, because that is what crossing a `chrome.runtime` boundary allows. So **amounts cross as decimal strings** and are parsed back to bigint stroops on arrival. Never floats, in either direction.
+
+[The full list of request types](/docs/reference/message-types).
+
+## The router
+
+`core/dispatch.ts` is the only place a message becomes a controller call. Three things live there and nowhere else.
+
+### Which operations are allowed while locked
+
+Six: `status`, `create`, `import`, `unlock`, `lock`, `recoverFromMnemonic`.
+
+The rule for adding to that list is stated in the file: **the lock is not the guard.** An operation belongs there only if it would still be safe with the lock removed entirely.
+
+Each of the six carries its own authorisation:
+
+| Operation | What actually guards it |
+| --- | --- |
+| `import` | refuses outright when a vault already exists, so it can never replace a funded wallet's seed |
+| `recoverFromMnemonic` | requires the phrase, **and** checks that phrase derives the account this device already holds |
+| `create` | refuses when a vault exists |
+| `status`, `unlock`, `lock` | reveal nothing and grant nothing |
+
+`reset` is deliberately **not** on the list. It destroys a vault and its only authorisation is the current password, so the lock is the thing standing in front of it.
+
+### What counts as user activity
+
+Only real user activity postpones the idle lock. A status poll or an unrecognised message must not keep a funded wallet open forever.
+
+One absence is deliberate: `cctpAttestation` is a poll the interface repeats while waiting for Circle, not something you did, so it does not slide the deadline.
+
+### What an error is allowed to say
+
+`describeError` is an **allowlist by error name**. An error whose name is on the list reaches you verbatim. Everything else is replaced.
+
+This is not politeness. An arbitrary `Error.message` can carry an RPC URL, a stack fragment, or material from a proof witness, and none of those belong on a screen. An allowlist is the only version of that rule which cannot be forgotten.
+
+There is deliberately **no shape heuristic**. A rule like "starts with a capital and ends with a full stop" is trivially satisfied by an RPC-authored or attacker-influenced string, which is precisely what the allowlist exists to keep out. An error that should reach you gets a name on the list.
+
+[Errors and what reaches you](/docs/security/errors-and-what-reaches-you).
+
+## Validation at the boundary
+
+The type union describes what the popup is supposed to send, and it erases at runtime. Nothing downstream re-checks, so an absent password would reach the key-derivation function and an object would reach the address parser.
+
+So the router checks the shape and names the problem where it happened:
+
+| Helper | Rejects |
+| --- | --- |
+| `str` | anything that is not a string |
+| `num` | anything that is not a whole number, including a fractional one |
+| `networkId` | any network this build does not know, checked against the table itself |
+| `rangeId` | any chart range outside the closed set |
+| `opRequest` | any private operation kind outside the five |
+
+`num` insisting on integers matters more than it looks. A fractional `slippageBps` of 100.5 cleared a range check and then reached `BigInt(10_000 - 100.5)`, which throws a `RangeError`, and `RangeError` is not on the error allowlist, so a malformed message surfaced as a generic connection message instead of being named at the boundary.
+
+`networkId` matters for a different reason: the value is **assigned and then persisted**, so an unknown string would leave every later network lookup undefined and survive a restart, with no screen that could set it back.
+
+## The default case
+
+An unrecognised message type throws.
+
+Without that, a message outside the union would fall off the end of the switch, resolve to `undefined`, and the worker would answer `{ ok: true }`. Any unrelated runtime broadcast would then look like a successful operation and re-arm the idle lock.
+
+## What the worker checks before the router runs
+
+The message listener, not the router, enforces who is allowed to speak:
+
+<Steps>
+
+<Step>
+### The sender must be this extension
+
+A web page cannot reach the listener at all, since there is no `externally_connectable`, so this is defence in depth for the context that holds the keys.
+</Step>
+
+<Step>
+### It must be one of the extension's own pages
+
+A content script carries the same extension id while running inside a hostile page, so the id alone is not a boundary. An extension page is one whose URL sits under the extension's own origin, which a content script's never is.
+</Step>
+
+<Step>
+### Anything else may take the SEP-43 route and nothing else
+
+A dapp call travels the same runtime channel but is not a wallet request: it carries an origin, it never reaches the router, and it can only do what the SEP-43 handler allows. It is handled before the wallet router so the two cannot be confused.
+</Step>
+
+</Steps>
+
+## Handles, not bytes
+
+Three message pairs follow the same shape: `buildPayment` and `confirmPayment`, `buildPrivateOp` and `confirmPrivateOp`, and the integration equivalents.
+
+The build step returns an **opaque handle**. The worker keeps the envelope it built; the popup never sees or sends transaction bytes. Confirming takes only the handle.
+
+Without that, the worker would sign any bytes handed to it, including an account merge or a change of signers, and the approval screen would be decoration.
+
+A handle lives exactly as long as the envelope behind it: 180 seconds, derived from the envelope's own expiry rather than chosen separately. A handle that outlived its bytes would spend an unlock and a signature to get a "too late" error back from the network, and for a private operation it would throw away a proof you waited seconds for.

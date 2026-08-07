@@ -1,0 +1,143 @@
+---
+title: Protocol invariants
+description: The wire contract. Two moduli, sixteen domain tags, one sponge, one curve encoding. A wrong value here produces a well-formed artifact that fails silently.
+---
+
+These are not Pocket's to choose. Each one is fixed by the protocol, and getting one wrong produces a well-formed artifact that fails silently rather than an error you can follow.
+
+## Two moduli
+
+```
+r = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
+q = 0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47
+```
+
+They agree in their **top 17 hex digits** and diverge only from the 18th. A visual diff will not tell them apart.
+
+| Modulus | Is | Holds |
+| --- | --- | --- |
+| `r` | BN254 scalar field, and Grumpkin's **coordinate** field | `sk`, `vk`, `dvk`, salts, Poseidon outputs, point coordinates |
+| `q` | BN254 base field, and Grumpkin's **scalar** field, the group order | commitment **blindings**, which accumulate under the group law |
+
+Committed **values** accumulate as exact integers and are reduced by neither.
+
+Getting the blinding wrong is the expensive case: reducing mod `r` instead of `q` yields an opening off by `q − r` that no longer opens the on-chain point, and for two full-size blindings the integer sum crosses `q` about half the time.
+
+So `addModR` and `addModQ` are separate named functions, and there is no bare bigint arithmetic anywhere above the field module.
+
+One consequence used throughout: **`r < q`**, so every field element is already a valid Grumpkin scalar with no reduction, which is what lets a circuit `Field` be passed to a scalar multiplication unambiguously.
+
+## The curve
+
+Grumpkin is `y² = x³ − 17` over `F_r`, forming a 2-cycle with BN254: its base field is BN254's scalar field and its scalar field is BN254's base field. That inversion is the source of the trap above.
+
+Two generators, taken verbatim from the circuit library. They are Barretenberg's Pedersen generators, indices 0 and 1 of `DEFAULT_DOMAIN_SEPARATOR`, each the output of hash-to-curve on the domain separator plus the index, so there is no known discrete-log relation between them.
+
+```
+C = v·G + r·H
+```
+
+Unchunked. Encoded as **64 bytes uncompressed affine**, `x ‖ y`, big-endian. The identity is 64 zero bytes.
+
+The curve must be able to **represent the identity**: a freshly registered account's balance commitment *is* the identity, so a library that refuses to represent it cannot model a real wallet. Scalar multiplication by zero maps to the identity rather than erroring, because deposits legitimately commit with a blinding of zero.
+
+Coordinates must be canonical. Truncating a coordinate at or above `r` is refused at Pocket's own boundary rather than left to the contract, because a client that produces non-canonical bytes has already lost byte-uniqueness in the local state that recovery reads from.
+
+## Amount range
+
+```
+[0, 2¹²⁷)
+```
+
+Every circuit enforces it by 127-bit decomposition. It is what stops an attacker "spending" a negative amount and minting money out of the field's wrap-around.
+
+It is also a useful filter when scanning: every legitimate amount is under that bound, so a decryption that produces a near-uniform field element was somebody else's transfer.
+
+## The sponge
+
+Poseidon2, and **not** a general-purpose one. A stock Poseidon2 fails every proof, because width, rate, IV placement and padding are all fixed:
+
+| | |
+| --- | --- |
+| Width | 4 |
+| Rate | 3 |
+| Rounds | 8 full, 56 partial |
+| Initial state | `[0, 0, 0, iv]` where `iv = input_length × 2⁶⁴` |
+| Absorption | each rate-sized block is **added** to the first three lanes, not overwritten, then permuted |
+| Output | `state[0]` |
+
+An empty input still applies one permutation, matching the on-chain sponge, which always permutes before squeezing.
+
+Every derivation routes through one entry point so the **domain tag is always absorbed first**. Hashing raw, bypassing that, violates the library contract.
+
+### The two-lane squeeze
+
+The auditor channels take two outputs from one permutation:
+
+```
+lane 0  always an amount mask
+lane 1  always a balance, allowance, or per-transfer randomness mask
+```
+
+Lane 0 is reserved for amounts, so a balance checkpoint never shares a pad with an amount ciphertext. Taking lane 0 for a balance is the defect an upstream audit finding fixed, and nothing on chain notices it: it silently produces ciphertexts the auditor cannot read.
+
+## The sixteen domain tags
+
+The integer **is** the wire contract: it is the first element absorbed by every call, so a wrong value produces a well-formed ciphertext that decrypts to nothing.
+
+| Tag | Name | Used for |
+| --- | --- | --- |
+| 1 | `ADDRESS` | compressing an address to a field element |
+| 2 | `VIEWING_KEY` | `vk` from `sk` |
+| 3 | `DELEGATION_VIEWING_KEY` | per-spender delegation key |
+| 4 | `SPEND_RANDOMNESS` | the new spendable blinding |
+| 5 | `TRANSFER_BLINDING` | the transfer's blinding, from the shared secret |
+| 6 | `TRANSFER_AMOUNT` | the amount pad for the recipient |
+| 7 | `ENCRYPTED_BALANCE` | the sender's balance checkpoint |
+| 8 | `ENCRYPTED_ALLOWANCE` | an allowance ciphertext |
+| 9 | `ALLOWANCE_RANDOMNESS` | an allowance blinding |
+| 10 | `ESCROWED_DELEGATION_VIEWING_KEY` | delegation-key escrow mask |
+| 11 | `AUDITOR_SENDER` | sender channel, two lanes |
+| 12 | `AUDITOR_RECIPIENT` | recipient channel, two lanes |
+| 13 | `ECDH_SHARED_SECRET` | the shared scalar |
+| 14 | `EPHEMERAL_KEY` | the ephemeral scalar, derived off-circuit |
+| 15 | `DISCLOSURE_BIND` | off-chain disclosure nonce binding |
+| 16 | `DISCLOSURE` | off-chain disclosure ciphertext |
+
+Tags 1 to 13 are part of the on-chain wire contract. Tags 14 to 16 are not absorbed on chain but are part of the cross-client contract, because two wallets serving one account must agree on them.
+
+<Callout type="warn" title="Do not port this table from the reference demo">
+The demo's table is both **shifted and permuted** relative to the normative one. It places `DISCLOSURE` at 13, where normative has `ECDH_SHARED_SECRET`.
+
+So a naive "add one to fix the shift" maps `DISCLOSURE` onto `EPHEMERAL_KEY`, which is a different wrong answer rather than a correction.
+</Callout>
+
+## ECDH binds both coordinates
+
+```
+s = Poseidon2(δ_ecdh, S.x, S.y)
+```
+
+Never x-only. An x-only extraction is negation-invariant, so a key and its negation, which is itself a valid registration, would map to the same secret for every scalar.
+
+The derivation also **fails on the identity** rather than proceeding. With the salt public, an identity shared secret would make every ciphertext derived from it trivially decryptable.
+
+## The transcript
+
+**keccak256.**
+
+The prover must match the on-chain verifier or verification fails. A poseidon2-transcript proof is the same length as a keccak one, so nothing about the proof's shape catches a mismatch. What pins it is hashing the verification keys at the release gate.
+
+## Canonicality is checked at Pocket's own boundary
+
+Values crossing into the sponge, points crossing in from the wire, and scalars read out of events are all range-checked here rather than deferred to the contract.
+
+Deferring is not merely impolite. The host's field deserialiser silently **reduces** an out-of-range encoding, so two different byte strings can denote one value. The contract rejects that at its own boundary, and so must anything reconstructing state from it: without the check, one on-chain transfer would have unboundedly many well-formed re-encodings that all decrypt to the same credit, and a second copy under a different event id would survive deduplication and be credited twice.
+
+## One blinding range that is not an error
+
+A blinding accumulates mod `q`, and `q > r`. A blinding landing in `[r, q)` still produces the correct on-chain commitment, so every consistency check passes and the state looks healthy. But the circuit treats it as a field element, mod `r`, giving a different point, so the commitment constraint cannot be satisfied and proving fails opaquely.
+
+Pocket names that state rather than letting it fail without explanation: the balance is temporarily unspendable, it is not lost, and the next merge that folds in an incoming transfer resolves it.
+
+The probability is about 2⁻¹²⁷, so it will not happen. Omitting the check would mean an unexplainable failure on a state every other check calls healthy.

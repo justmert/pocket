@@ -1,0 +1,120 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/black.css';
+@import 'fumadocs-ui/css/preset.css';
+
+@source '../node_modules/fumadocs-ui/dist/**/*.js';
+
+/*
+ * The docs wear the wallet's own two palettes, one per theme.
+ *
+ * Every value below is a stop from extension/src/entrypoints/popup/ui/theme.ts,
+ * where the ramps were measured against the surfaces they sit on rather than
+ * picked by eye. Reusing them means the documentation and the product cannot
+ * disagree about what Pocket looks like, and the contrast is already known.
+ *
+ * Light is the PUBLIC pocket: warm off-white page, blue-tinted slate type.
+ * Dark is the PRIVATE pocket: near-black floor, near-white type.
+ *
+ * The accent differs by theme on purpose. sky[400] carries links on the dark
+ * floor at 8.5:1, and on the near-white page it cannot reach 3:1, so light mode
+ * takes sky[700], the deep stop the wallet uses for exactly this reason.
+ */
+:root {
+  /* warm.bg: the public pocket's page. Deliberately not #ffffff */
+  --color-fd-background: #fcfdfe;
+  /* cool[700]: body type, blue-tinted slate rather than neutral black. 13.66:1 */
+  --color-fd-foreground: #1a2f39;
+
+  /* the card is the page colour and lifts by its border, as it does in the wallet */
+  --color-fd-card: #fcfdfe;
+  --color-fd-card-foreground: #1a2f39;
+  --color-fd-popover: #fcfdfe;
+  --color-fd-popover-foreground: #1a2f39;
+
+  /* warm[100]: a faint step down, for hover and inline fills */
+  --color-fd-muted: #eef1f5;
+  /* cool[550]: secondary type. 7.83:1 */
+  --color-fd-muted-foreground: #3a5464;
+  --color-fd-secondary: #eef1f5;
+  --color-fd-secondary-foreground: #1a2f39;
+  /* sky[50]: hover and active state take the pocket's own tint, not a grey */
+  --color-fd-accent: #def5ff;
+  --color-fd-accent-foreground: #1a2f39;
+
+  /* warm[200]: the light hairline */
+  --color-fd-border: #dce2e8;
+
+  /* sky[700]: the deep readable blue, for links and active state on near-white */
+  --color-fd-primary: #005c8a;
+  --color-fd-primary-foreground: #fcfdfe;
+  --color-fd-ring: #005c8a;
+}
+
+.dark {
+  /* cool.bg: the page floor, the darkest plane in the product */
+  --color-fd-background: #020b0e;
+  /* paper[100]: body text. 17.1:1 */
+  --color-fd-foreground: #eeeef0;
+
+  /* cool[750]: the raised card surface */
+  --color-fd-card: #0b1a22;
+  --color-fd-card-foreground: #eeeef0;
+  --color-fd-popover: #0b1a22;
+  --color-fd-popover-foreground: #eeeef0;
+
+  /* cool[800]: one step above the card, for hover and inline fills */
+  --color-fd-muted: #11242d;
+  /* paper[150]: secondary text. 9.6:1 */
+  --color-fd-muted-foreground: #b3b3bd;
+  --color-fd-secondary: #11242d;
+  --color-fd-secondary-foreground: #eeeef0;
+  --color-fd-accent: #11242d;
+  --color-fd-accent-foreground: #eeeef0;
+
+  /* cool[625]: the hairline stop, softened so a rule reads as an edge */
+  --color-fd-border: hsl(200 38% 24% / 0.55);
+
+  /* sky[400]: the accent that carries links and active state on the dark floor */
+  --color-fd-primary: #00b4ff;
+  --color-fd-primary-foreground: #020b0e;
+  --color-fd-ring: #00b4ff;
+}
+
+@theme {
+  --font-sans: var(--font-figtree), system-ui, sans-serif;
+  --font-mono: var(--font-dm-mono), ui-monospace, monospace;
+}
+
+/*
+ * A wider column than the default. Several pages carry six-column tables and
+ * 56-character Stellar addresses, both of which wrap badly in a narrow measure.
+ */
+:root {
+  --fd-layout-width: 1440px;
+}
+
+/*
+ * Figtree ships tabular figures; the docs quote a lot of amounts, ledger
+ * numbers and byte counts, and proportional digits make two figures in adjacent
+ * table rows impossible to compare at a glance.
+ */
+table code,
+td,
+th {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/*
+ * The wallet suppresses the "fi" ligature because it drops the dot on the i and
+ * "Confirm" loses a letter shape. The same word appears throughout these pages.
+ */
+body {
+  font-variant-ligatures: no-common-ligatures;
+}
+
+/* Headings track the display face's negative tracking, as they do in the product. */
+#nd-docs-layout h1,
+#nd-docs-layout h2,
+#nd-docs-layout h3 {
+  letter-spacing: -0.02em;
+}

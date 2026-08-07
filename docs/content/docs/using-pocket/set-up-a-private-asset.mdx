@@ -1,0 +1,79 @@
+---
+title: Set up a private asset
+description: Opening a confidential account for one asset, what it costs, and what it permanently commits you to.
+---
+
+The private pocket is opened **per asset**. A wrapper contract binds exactly one underlying asset forever, so private XLM and private USDC are separate deployments with separate confidential identities. You set each one up once.
+
+## Where to start
+
+Switch to the private pocket. An asset that is not open yet shows **Not set up yet** with a **Set up** control, on the home list and inside the asset's own sheet.
+
+Before you can do this, your account needs to exist on the ledger with some XLM. An unfunded account shows **Fund this account first** instead, because the network reserve and the fee both come from XLM whichever asset you are opening.
+
+## What happens
+
+Setting up runs **two transactions**, and you review the second one.
+
+<Steps>
+
+<Step>
+### Your auditor key is registered
+
+Pocket derives an auditor key from your recovery phrase, registers it in the auditor registry, and reads back the id the registry allocated.
+
+It then reads the key back out of the registry and compares it against the one it derived. If they do not match it stops here, because the binding in the next step is permanent and binding somebody else's key would let them read every amount you ever send or receive.
+
+This transaction is submitted before the review screen appears. The review says so: *"Your auditor key is already registered on the ledger, and the fee for it is paid. This step creates the confidential account."* Its way out is labelled **Cancel** rather than **Back**, because there is no going back to a state where nothing had happened.
+</Step>
+
+<Step>
+### Your confidential account is created
+
+Pocket builds a witness, proves it against the `register` circuit on your own machine, and submits the account creation naming the auditor id from step one.
+
+This is the slow step. The screen names each phase as it starts rather than showing one unchanging spinner.
+</Step>
+
+</Steps>
+
+## What you are agreeing to
+
+The review lists every consequence before you approve:
+
+- Create a confidential account for this address
+- Bind your **own** auditor key, derived from your recovery phrase. Nobody else can read your amounts
+- This binding is permanent and cannot be changed for this account
+- Publish that this address has a private pocket. This is not reversible
+- Pay a network fee
+
+Two of those are worth reading twice.
+
+**The auditor binding is permanent.** The confidential token design requires every account to bind an auditor key, the field is immutable for the life of the account, and there is no opt-out. What Pocket controls is *whose* key: yours, derived from your own phrase. [Auditability, and whose key it is](/docs/concepts/auditability).
+
+**Opening a private pocket is public.** The transaction is visible on the ledger, so anyone can see that this address has a confidential account. What is in it stays hidden.
+
+## What it costs
+
+Measured on the live deployment:
+
+| Step | Fee charged |
+| --- | --- |
+| Registering the auditor key | 0.0051934 XLM |
+| Creating the confidential account | 0.0312027 XLM |
+
+The second is a Soroban invocation that verifies an UltraHonk proof on chain, which is why it costs three orders of magnitude more than a classic payment. [Fees and reserves](/docs/using-pocket/fees-and-reserves).
+
+## After setup
+
+The asset shows a spendable balance of zero and is ready to receive.
+
+Nothing is in it yet. To put value in, [shield from the public pocket](/docs/using-pocket/moving-money/shield-and-unshield). To receive from somebody else, give them your ordinary Stellar address: a private transfer goes to the same address as a public one.
+
+The account keeps itself reachable as long as you use it. An account that neither sends nor receives for a long stretch goes dormant, and Pocket watches for that. [Dormancy and keep-alive](/docs/using-pocket/dormancy-and-keep-alive).
+
+## Setting up the second asset
+
+Exactly the same, one asset later. Opening private USDC when private XLM is already open runs both steps again against the USDC wrapper, allocates a second auditor id, and costs the same two fees.
+
+Pocket names the asset on the screen rather than saying "the private pocket", so opening USDC while XLM is already live does not read as though your whole pocket were unset.

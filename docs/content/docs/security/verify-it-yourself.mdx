@@ -1,0 +1,187 @@
+---
+title: Verify it yourself
+description: Every claim on this site that can be checked independently, with the commands to check it.
+---
+
+Nothing here asks you to take Pocket's word for it. Each section is a claim and the way to test it.
+
+## The transactions happened
+
+Four transactions, on Stellar testnet, that anyone can look up.
+
+```bash
+curl -s https://horizon-testnet.stellar.org/transactions/60dff27fbc25f9012b8c5b52a5072a4126b30875d65bb7241b95ac73e176cfdb \
+  | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['successful'], d['ledger'], d['created_at'], d['fee_charged'])"
+```
+
+| What | Hash | Ledger | Fee charged |
+| --- | --- | --- | --- |
+| Auditor key registered | [`7465cc88…`](https://stellar.expert/explorer/testnet/tx/7465cc8836381d3304b7ebae1461305615e3f878ef1c9e52850244f01a5899b9) | 3900276 | 51,934 |
+| Confidential account registered | [`60dff27f…`](https://stellar.expert/explorer/testnet/tx/60dff27fbc25f9012b8c5b52a5072a4126b30875d65bb7241b95ac73e176cfdb) | 3900306 | 312,027 |
+| Merge | [`792caf07…`](https://stellar.expert/explorer/testnet/tx/792caf072fa887956673ff795f1c233f920a9a084ee639b9a51c693ec6c929b0) | 3900314 | 9,266 |
+| Confidential transfer | [`391b5767…`](https://stellar.expert/explorer/testnet/tx/391b5767abb00a117b8f15a5639c1268776bdc60b6498181440630b26a2fa1bc) | 3900337 | 397,523 |
+
+## The transfer hid its amount and published both addresses
+
+Decode the transfer's envelope and read the operation:
+
+```bash
+node --input-type=module -e "
+import { xdr, Address } from '@stellar/stellar-sdk/base';
+const h = '391b5767abb00a117b8f15a5639c1268776bdc60b6498181440630b26a2fa1bc';
+const r = await (await fetch('https://horizon-testnet.stellar.org/transactions/' + h)).json();
+const tx = xdr.TransactionEnvelope.fromXDR(r.envelope_xdr, 'base64').v1().tx();
+const ic = tx.operations()[0].body().invokeHostFunctionOp().hostFunction().invokeContract();
+console.log('function:', ic.functionName().toString());
+console.log('from    :', Address.fromScVal(ic.args()[0]).toString());
+console.log('to      :', Address.fromScVal(ic.args()[1]).toString());
+console.log('payload :', ic.args()[2].bytes().length, 'bytes');
+"
+```
+
+You get `confidential_transfer`, two plain `G` addresses, and a 15,356-byte opaque payload. No amount anywhere in the clear.
+
+That is the claim of this whole product in one command: **addresses public, amount not**.
+
+## The verification keys correspond to the audited circuits
+
+This is the check that matters most, because a verification key that does not correspond to the audited circuit will happily verify **forged** proofs, and nothing on chain can detect it.
+
+The chain of custody has four links, and every one is checkable.
+
+<Steps>
+
+<Step>
+### Reproduce the keys from circuit source
+
+With the pinned toolchain:
+
+```bash
+bb write_vk -b public/vendor/circuits/target/circuit_transfer.json \
+            -o /tmp/vk --scheme ultra_honk --oracle_hash keccak
+shasum -a 256 /tmp/vk
+```
+
+Each key is **1,760 bytes**.
+</Step>
+
+<Step>
+### Compare against the hashes the extension pins
+
+```bash
+cat extension/src/core/vk-hashes.json
+```
+
+```json
+{
+  "register":         "e01ba8729578e9ec4ea982801e2d806028246eeafe1a2e551e1f9cdef69a7268",
+  "withdraw":         "d800122c23d7216ead4f3d7c70c84fd39db37d4f7743659b7d6bf05674ce5c09",
+  "transfer":         "b9c6d437368efc5343d33be20b3455840b0b66ae7ad430bebc75c93a172b173c",
+  "spender_transfer": "2366fbe28a033e3adaa2fc61e508c300a5e31dce9f73e03692b678f801182038",
+  "set_spender":      "0cc48b122d7895fae17570c299c80ddc2f2f0c4c3750ab798a887cf3411df7fb",
+  "revoke_spender":   "ce95f994dbcefa4d3d89bc7c7abc12b373c780a16b1e166fad46ba05dcf17660"
+}
+```
+</Step>
+
+<Step>
+### Compare against the vendored keys the extension ships
+
+```bash
+shasum -a 256 extension/public/vendor/circuits/vks/*.vk.bin
+```
+</Step>
+
+<Step>
+### Compare against what the deployed verifier actually holds
+
+```bash
+node --input-type=module -e "
+import { rpc } from '@stellar/stellar-sdk';
+import { Account, BASE_FEE, Contract, TransactionBuilder, nativeToScVal } from '@stellar/stellar-sdk/base';
+import { createHash } from 'node:crypto';
+const s = new rpc.Server('https://soroban-testnet.stellar.org');
+const VERIFIER = 'CBERRYPR34G2MB3EOUNO3JGWOAWFVBUPINJ42JP7XVVB3AHKIPVPPWYH';
+const SRC = 'GB43MNLS6IL77FIZHOBLYILQIQP5MPQVF77O5JOAYCSWX3TUHAL6Z3F7';
+const acc = await s.getAccount(SRC);
+const names = ['register','withdraw','transfer','spender_transfer','set_spender','revoke_spender'];
+for (let i = 0; i < 6; i++) {
+  const tx = new TransactionBuilder(new Account(SRC, acc.sequenceNumber()),
+    { fee: BASE_FEE, networkPassphrase: 'Test SDF Network ; September 2015' })
+    .addOperation(new Contract(VERIFIER).call('get_verification_key', nativeToScVal(i, { type: 'u32' })))
+    .setTimeout(30).build();
+  const sim = await s.simulateTransaction(tx);
+  const bytes = Buffer.from(sim.result.retval.bytes());
+  console.log(names[i].padEnd(17), bytes.length + 'B',
+              createHash('sha256').update(bytes).digest('hex'));
+}
+"
+```
+</Step>
+
+</Steps>
+
+All four agree. Run against the live deployment, each key is 1,760 bytes and every hash matches the pinned value.
+
+Release gate 2 runs the first three links on every release. The fourth is what the wallet itself does at runtime, before it will build a proof.
+
+## The contracts refuse what they claim to refuse
+
+```bash
+stellar contract invoke --id CBERRYPR34G2MB3EOUNO3JGWOAWFVBUPINJ42JP7XVVB3AHKIPVPPWYH \
+  --network testnet -- update_verification_key --c 0 --k 00 --op <ADDRESS>
+```
+
+Answers `Error(Contract, #1)`, which is `KeysAreImmutable`.
+
+```bash
+stellar contract invoke --id CDE5JETGXV7TOUUDQPUTGLJB6TCUUIIWJJTLWFX4RNH36XABKCEPNTEV \
+  --network testnet -- register_key --id 99 --point <64 BYTES> --op <ADDRESS>
+```
+
+Answers `Error(Contract, #3)`, which is `UseAllocatingRegister`.
+
+## The contracts are the ones the record names
+
+```bash
+./scripts/deployment-ids.sh resources/deployment-testnet.json
+```
+
+lists every contract id the deployment declares, derived from the record rather than hardcoded, so a wrapper added for a new asset is covered the day it lands.
+
+Release gate 3 checks each resolves on chain, and gate 6 checks each appears in the built bundle. The second matters because confidential openings are stored under a key containing the token contract address: a build pointing at a different deployment would silently orphan every existing user's openings.
+
+## The package is what it claims
+
+```bash
+cd extension && npm run build
+```
+
+Then, against `extension/.output/chrome-mv3`:
+
+| Claim | How to check |
+| --- | --- |
+| Four permissions, three hosts | read `manifest.json` |
+| No source maps | `find . -name '*.map'` returns nothing |
+| No loopback endpoint | `grep -r '127.0.0.1\|localhost' .` returns nothing in a release build |
+| No `unsafe-eval` | read the content security policy in `manifest.json` |
+| No telemetry | `grep -rniE 'analytics\|telemetry\|sentry\|mixpanel\|posthog\|gtag\|amplitude' src/` returns nothing |
+| Fonts are packaged | the `.woff2` files are in `assets/` |
+
+Release gate 6 runs all of these against the built package rather than the sources that produced it.
+
+## The tests pass
+
+```bash
+cd extension && npm run check     # types, lint, and both test tiers
+cd indexer   && npm test
+cd contracts && cargo test
+```
+
+The browser tiers run against a real Chromium with the real built extension loaded:
+
+```bash
+cd extension && npm run test:pass
+```
+
+[The seven gates](/docs/build/the-gate) and [the test tiers](/docs/build/test-tiers).

@@ -1,0 +1,113 @@
+---
+title: Bridge USDC across chains
+description: Sending USDC from Stellar to another chain and claiming it back, through Circle's CCTP, with the decimal difference stated exactly.
+---
+
+Pocket bridges USDC using Circle's Cross-Chain Transfer Protocol. Two directions, both in the public pocket:
+
+| | |
+| --- | --- |
+| **Send to a chain** | burn USDC on Stellar, mint it on the destination |
+| **Claim from a chain** | complete a transfer that was burned elsewhere and addressed to you here |
+
+Both are in the **+** menu.
+
+## Sending to a chain
+
+<Steps>
+
+<Step>
+### Choose the destination
+
+Ethereum, Avalanche, OP Mainnet, Arbitrum, Base, Polygon, Unichain, Linea, Sei and BNB Smart Chain.
+</Step>
+
+<Step>
+### Paste the recipient address on that chain
+
+A 20-byte EVM address. Pocket verifies the EIP-55 capitalisation checksum where the address carries one.
+
+That check matters here more than anywhere else in the wallet. A mistyped recipient is not recoverable: the USDC burns on Stellar and mints to whatever address the message names on the far chain. An all-lowercase or all-uppercase address carries no checksum and is accepted as written, so the check catches a corrupted copy-paste and cannot catch a lowercase typo.
+</Step>
+
+<Step>
+### Set the amount, review, approve
+</Step>
+
+</Steps>
+
+### It takes two Stellar signatures
+
+Approving submits **two** transactions: an approval for Circle's token messenger, then the burn. The review says so.
+
+If the approval lands and the burn does not, nothing has been bridged. The allowance is set, so only the burn needs retrying.
+
+### The mint happens on the other chain, and Pocket cannot do it
+
+This is the part to read before you start. Pocket is a Stellar wallet. It signs the Stellar half. Completing the transfer needs a transaction **on the destination chain**, which means gas there, or a relayer.
+
+The review states it rather than leaving you to find out:
+
+> It is minted on *(chain)* by a separate transaction THERE, which this wallet cannot make: you need gas on that chain, or a relayer, to finish it
+
+After the burn lands, the receipt polls Circle's attestation service so you know when the transfer is ready to complete on the other side.
+
+### The last decimal cannot cross
+
+CCTP carries six decimal places. Stellar USDC has seven. So the seventh digit of an amount cannot be represented in the cross-chain message, and something has to happen to it.
+
+**Pocket rounds down and never spends it.** The approval, the burn, the headline amount and the receipt all name the same rounded figure, and the remainder stays in your account by construction rather than by claim. The review names it:
+
+> *(amount)* USDC stays in this account: CCTP carries 6 decimals and Stellar USDC has 7, so that last digit cannot cross. It is not spent.
+
+Rounding down rather than up is deliberate: this is the amount you are authorising, and it must never exceed what you asked for.
+
+### The destination is shown, decoded
+
+The review shows the recipient address, read back out of the 32 bytes Pocket recorded and will actually burn to, rather than echoed from the form. It is rendered in EIP-55 capitalisation computed from those bytes, so what you compare against the far chain's explorer is derived from what gets signed.
+
+It is never truncated.
+
+## Claiming from a chain
+
+The burn happened on another chain and was addressed to your Stellar account. This is the Stellar half, and you can do it yourself.
+
+<Steps>
+
+<Step>
+### Choose the source chain
+
+Every chain in the list above, **plus Solana**. Claiming does not touch the source chain's address format: Pocket hands Circle's service a domain and a transaction id and receives a message to submit on Stellar.
+</Step>
+
+<Step>
+### Paste the burn transaction hash from that chain
+
+Pocket checks the shape as you type. EVM transaction ids are 32 bytes of hex; Solana signatures are base58, so the pattern follows the chain you picked.
+</Step>
+
+<Step>
+### Review and approve
+
+Pocket fetches Circle's attestation for that burn and builds the mint.
+</Step>
+
+</Steps>
+
+### If it is not ready yet
+
+Circle publishes an attestation once the source chain has reached the requested finality. Until then Pocket says so, rather than building a claim against a transfer that is not ready:
+
+> This transfer is not ready to claim yet: Circle has not published its attestation. Try again shortly.
+
+### Where the money lands
+
+A claim mints to whichever Stellar account the **original burn** named, not to whoever pays for the claim. Pocket says this and does not guess at the address:
+
+> It arrives at whichever Stellar account your original burn named, which Pocket cannot read out of Circle's attestation, so check it landed afterwards
+
+The recipient sits inside Circle's attested message behind a header Pocket does not parse. Filling that field with your own address would be a guess presented as a fact, on the one line that decides where the money goes.
+
+## Why Solana is claim-only
+
+Sending composes a 32-byte mint recipient from a 20-byte EVM address. Solana addresses are base58 and are not that shape, and there is no screen in Pocket that takes one. Claiming has no such constraint, so every chain appears there.
