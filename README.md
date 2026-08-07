@@ -1,59 +1,30 @@
 # Pocket
 
-A self-custody Stellar wallet with two pockets. One public, one private.
+A self-custody Stellar wallet with two pockets, one public and one private.
+Chrome extension, Manifest V3.
 
 **Confidential, not anonymous.** Pocket hides *amounts*. It does not hide who you
-pay. Sender and recipient addresses stay on the public ledger, permanently, on
-every transfer. If you need to hide who you transact with, Pocket is the wrong
-tool and we would rather say so than let you find out later.
+pay: sender and recipient addresses stay on the public ledger, permanently, on
+every transfer. If you need your counterparty hidden, Pocket is the wrong tool.
+
+Full documentation: `cd docs && npm run dev`.
 
 ## The two pockets
 
 | | Public | Private |
 |---|---|---|
 | Holds | ordinary XLM and USDC | the same assets inside a confidential wrapper |
-| Who sees amounts | everyone | you and your bound auditor |
+| Who sees amounts | everyone | you and the auditor key you bound |
 | Who sees addresses | everyone | **everyone, unchanged** |
-| Earns yield | yes, reported (DeFindex) | no, and this is structural |
-| Bridges | yes (Circle CCTP) | no, unshield first |
-| Connects to dApps | not in this build, see below | no, sessions are public-pocket only |
+| Yield, swap, bridge | yes | no, unshield first |
+| dApp sessions | public pocket only | never |
 
-**There is no disclosure feature.** This row used to end "and anyone you
-disclose to", which describes something the wallet cannot do:
-`extension/src/core/disclosure/` holds primitives (a binding hash, a sealed
-amount, a sender-disclosability predicate) and no producer, no verifier and no
-circuit, and nothing outside its own unit test imports it. So the only parties
-who can read a private amount are the holder and the auditor bound at
-registration.
+Yield, swapping and bridging cannot move to the private pocket. A Pedersen
+commitment is additively homomorphic and nothing more: you can add and subtract
+committed values without decrypting them, but you cannot multiply, compare, or
+discover a price. Those features need the number.
 
-**What "connects to dApps" means here, precisely, and what does not work yet.**
-The provider ships and a site can discover the wallet and ask the network.
-Everything past that needs a CONNECTION, and **no surface in this build can
-grant one**: `connectDapp` exists on the worker and nothing in the popup calls
-it, so `getAddress` and `signTransaction` refuse for every origin. The
-Settings > Connected sites screen says so rather than describing a prompt that
-never appears. What follows describes the design the code implements, not a
-flow a user can reach today.
-
-A connection is granted per ORIGIN by the user, expires in 24 hours, ends when
-the browser closes (grants live in `chrome.storage.session`, never on disk), is
-dropped when the wallet locks or is erased, and is refused if the wallet on the
-device changed since the grant. Revoking one also cancels any request that
-origin has already parked.
-Signing is never covered by a connection: every signature is approved
-individually on a screen that lists what the transaction does, and a
-transaction Pocket cannot decode is refused rather than shown as a hash to
-trust. `signAuthEntry` and `signMessage` are still refused outright, because
-there is no screen that can show a user what those commit them to.
-
-The split itself is not a product preference. Confidential balances are Pedersen
-commitments, which are additively homomorphic and nothing more. You can add and
-subtract committed values without decrypting them, but you cannot multiply,
-discover a price, or hold the state a lending pool needs. Yield, bridging and
-dApp interaction belong in the public pocket because they cannot live anywhere
-else.
-
-## What leaks, stated plainly
+## What leaks
 
 Hidden: confidential balances, and confidential transfer amounts.
 
@@ -65,56 +36,52 @@ Public, permanently:
 - transaction timing, and the fee-paying account
 - the fact that an address has a confidential account at all
 
-The UI surfaces all of these rather than hiding them.
+The interface states all of these rather than hiding them.
 
 ## Status
 
-Working on **testnet**, end to end, with real proofs. Every claim below is a
-transaction anyone can look up at
+Working on **testnet**, end to end, with real proofs. Look any of these up at
 `https://stellar.expert/explorer/testnet/tx/<hash>`:
 
 | What happened | Transaction | Fee |
 |---|---|---|
 | Auditor key registered, id allocated by the registry | `7465cc8836381d3304b7ebae1461305615e3f878ef1c9e52850244f01a5899b9` | 0.0051934 XLM |
-| Confidential account registered, UltraHonk proof accepted on chain | `60dff27fbc25f9012b8c5b52a5072a4126b30875d65bb7241b95ac73e176cfdb` | 0.0312027 XLM |
+| Confidential account registered, proof accepted on chain | `60dff27fbc25f9012b8c5b52a5072a4126b30875d65bb7241b95ac73e176cfdb` | 0.0312027 XLM |
 | Received balance merged into spendable | `792caf072fa887956673ff795f1c233f920a9a084ee639b9a51c693ec6c929b0` | 0.0009266 XLM |
 | Confidential transfer, amount hidden | `391b5767abb00a117b8f15a5639c1268776bdc60b6498181440630b26a2fa1bc` | 0.0397523 XLM |
 
-The register transaction is the one that proves the pipeline: a spending key
-derived from a SEP-0053 signer root, a witness built by our own cryptography,
-the real Noir circuit solving it, a 14,592-byte UltraHonk proof, and the
-on-chain verifier accepting it. No mocks anywhere in that path.
+The register transaction proves the whole pipeline with no mocks in it: a
+spending key derived from a SEP-0053 signer root, a witness built here, the real
+Noir circuit solving it, a 14,592-byte UltraHonk proof, and the on-chain
+verifier accepting it.
 
 **Not on mainnet, deliberately.** Two things gate it and neither is ours:
 
-1. **The proofs are not zero-knowledge.** The on-chain verifier implements only
+1. **The proofs are not zero-knowledge.** The Soroban verifier implements only
    the non-ZK `ultra_flavor`. Soundness holds, so nobody can mint or overspend.
    Amount confidentiality rests on Pedersen hiding and Poseidon encryption, both
-   formally hiding, but the proof layer contributes no zero-knowledge property,
-   so leakage cannot be *ruled out*. There is no public timeline for a
-   ZK-flavour Soroban verifier.
+   formally hiding, but the proof layer adds no zero-knowledge property, so
+   leakage cannot be ruled out. No public timeline for a ZK-flavour verifier.
 2. **The UltraHonk verifier backend is unaudited.** Its own README says so. The
    confidential token contracts and circuits were audited by OpenZeppelin
-   Security with remediation complete as of 27 July 2026, but that report is not
-   yet published.
+   Security with remediation complete 27 July 2026; that report is not yet
+   published.
 
 ## Repository
 
 ```
-extension/    the wallet (Chrome MV3, WXT + React + TypeScript)
+extension/    the wallet (WXT + React + TypeScript, Chrome MV3)
 contracts/    three Rust Soroban contracts, ours to write and maintain
 indexer/      the durable event archive, conforming to INDEXER.md C1-C4
 scripts/      release gates and the scheduled infrastructure check
-docs/         the documentation site (Fumadocs). `cd docs && npm run dev`
-resources/    internal working files, gitignored, not part of the distribution
+docs/         the documentation site (Fumadocs)
+resources/    internal working files, gitignored, not distributed
 ```
 
-### Why we write contracts at all
-
-OpenZeppelin's library ships no constructor for the confidential token: the four
-setters are free functions and the deployer chooses the policy. Those choices are
-permanent once made, so we make them explicitly, in three contracts that are
-inside our audit scope and our liability:
+OpenZeppelin's confidential token library ships no constructor: the four setters
+are free functions and the deployer picks the policy. Those choices are
+permanent, so we make them explicitly, in three contracts that are inside our
+audit scope and our liability:
 
 - **the token wrapper**, which binds one asset permanently and has no admin
 - **the verifier**, which installs six verification keys at construction and
@@ -123,73 +90,56 @@ inside our audit scope and our liability:
   than chosen by the caller
 
 We deployed our own rather than using the upstream demo's testnet instance,
-because that one holds **pre-audit** verification keys: building against it
-would mean implementing five known audit findings, including a register replay.
+because that one holds **pre-audit** verification keys.
 
 ## Development
 
+```sh
+cd extension
+npm install
+npm run check      # tsc (src) + tsc (tests) + eslint + both vitest configs
+npm run build      # vendors bb.js + SRS + circuits, then builds the extension
+npm run test:pass  # builds, then Playwright against the real extension
+
+cd contracts
+stellar contract build          # wasm32v1-none
+node deploy.mjs                 # writes resources/deployment-<network>.json
+
+cd indexer
+npm test
+CONTRACT_ID=C... npm run backfill
+PORT=8787 npm start
+
+./scripts/release-gate.sh       # the seven gates, all must pass before a release
 ```
-cd extension && npm install
-npm run check          # types, lint, tests
-npm run build          # vendors bb.js + SRS + circuits, then builds
-npm run test:e2e       # loads the real extension into real Chrome
 
-cd contracts && stellar contract build     # target: wasm32v1-none
-node deploy.mjs                            # writes resources/deployment-<net>.json
+`.githooks/pre-commit` runs the extension's `check`, the indexer's types and
+tests, and `cargo fmt --check`.
 
-cd indexer && npm test
-CONTRACT_ID=C... node --experimental-strip-types src/backfill.ts
+`HORIZON_URL` matters on the indexer. The backfill reads transfer payloads from
+Horizon, and without them received payments cannot be rebuilt.
 
-DB_PATH=archive.db CONTRACT_ID=C... node --experimental-strip-types indexer/src/backfill.ts
-DB_PATH=archive.db PORT=8787 node --experimental-strip-types indexer/src/server.ts
-# HORIZON_URL defaults to testnet. The backfill reads transfer payloads from it,
-# and without them received payments cannot be rebuilt.
+### The toolchain pin is a protocol constraint
 
-./scripts/release-gate.sh                  # the seven gates
-```
-
-The proving toolchain is pinned to **nargo 1.0.0-beta.11 + bb 0.87.0**. That is
-not a preference: the Soroban verifier hardcodes bb 0.87's proof layout, and bb
-5.x cannot even read beta.11's ACIR. Upgrading is a protocol migration that
-requires the on-chain verifier to be replaced first.
+**nargo 1.0.0-beta.11 + bb 0.87.0.** The Soroban verifier hardcodes bb 0.87's
+proof layout, and bb 5.x cannot read beta.11's ACIR. Upgrading means replacing
+the on-chain verifier first, which means every user re-registers. It is a
+migration, not a dependency bump.
 
 ## Recovery
 
 Your seed recovers your **keys**. It does not recover your **money**.
 
 The chain stores commitments, not the openings that make them spendable. Only
-your wallet knows those, and it reconstructs them by replaying events. Stellar
+your own device holds those, and it rebuilds them by replaying events. Soroban
 RPC retains events for 120,960 ledgers, about seven days. Past that, without a
-durable archive, a user who loses local state can see their funds on chain and
-**cannot spend them, ever**.
+durable archive, someone who loses local state can see their funds on chain and
+never spend them. That is why `indexer/` exists.
 
-That is why `indexer/` exists, and it is wired: the private pocket shows a
-**Rebuild from history** button that replays your events from the archive and
-refuses the result unless it reproduces the commitments the contract holds. So a
-broken or hostile archive cannot hand you a wrong balance; it can only fail to
-help. Recent transfers, inside the RPC window, are credited without any archive
-at all.
-
-**Received payments rebuild too, and that took storing more than events.**
-Opening a transfer you received needs the commitment `C_transfer`: the event
-carries enough to DERIVE a candidate amount and nothing to CHECK it with, and
-nothing on chain marks an event as yours, so a wrong key yields a plausible
-number rather than an error. The contract passes `C_transfer` in the invocation
-and does not publish it in the event.
-
-It is still on chain, in the transaction. So the archive stores the invocation
-payload alongside the event for `transfer` and `spender_transfer`, read from
-Horizon, which keeps full history rather than the seven days Soroban RPC keeps.
-The wallet then verifies every credit as `commit(v, r) == C_transfer` and refuses
-anything that does not open, which is the same check the live path makes.
-
-Against an archive that has no payload for an event, the wallet refuses that
-event rather than guessing, exactly as before. Storing the payload is what turns
-a refusal into a recovery; it never turns a refusal into a guess.
-
-The wallet refuses to sync when an archive it was told about is unavailable.
-Falling back to recent-history-only would move the sync cursor past the gap and
-make those openings unrecoverable.
+The archive is outside the trust boundary. **Rebuild from history** replays your
+events and refuses the result unless it reproduces the commitments the contract
+holds, so a broken or hostile archive can fail to help and cannot hand you a
+wrong balance. Recent transfers, inside the RPC window, need no archive at all.
 
 ## Licence
 
