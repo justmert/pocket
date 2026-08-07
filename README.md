@@ -35,9 +35,11 @@ Settings > Connected sites screen says so rather than describing a prompt that
 never appears. What follows describes the design the code implements, not a
 flow a user can reach today.
 
-A connection is granted per ORIGIN by the user, expires in 24 hours, is dropped
-when the wallet locks or is erased, and is refused if the wallet on the device
-changed since the grant.
+A connection is granted per ORIGIN by the user, expires in 24 hours, ends when
+the browser closes (grants live in `chrome.storage.session`, never on disk), is
+dropped when the wallet locks or is erased, and is refused if the wallet on the
+device changed since the grant. Revoking one also cancels any request that
+origin has already parked.
 Signing is never covered by a connection: every signature is approved
 individually on a screen that lists what the transaction does, and a
 transaction Pocket cannot decode is refused rather than shown as a hash to
@@ -67,12 +69,21 @@ The UI surfaces all of these rather than hiding them.
 
 ## Status
 
-Working on **testnet**, end to end, with real proofs. See
-`resources/testnet-evidence.md` for transaction hashes.
+Working on **testnet**, end to end, with real proofs. Every claim below is a
+transaction anyone can look up at
+`https://stellar.expert/explorer/testnet/tx/<hash>`:
 
-Proven on chain: auditor key registration, confidential account registration
-with a real UltraHonk proof the on-chain verifier accepted, deposit, merge, and
-a confidential transfer.
+| What happened | Transaction | Fee |
+|---|---|---|
+| Auditor key registered, id allocated by the registry | `7465cc8836381d3304b7ebae1461305615e3f878ef1c9e52850244f01a5899b9` | 0.0051934 XLM |
+| Confidential account registered, UltraHonk proof accepted on chain | `60dff27fbc25f9012b8c5b52a5072a4126b30875d65bb7241b95ac73e176cfdb` | 0.0312027 XLM |
+| Received balance merged into spendable | `792caf072fa887956673ff795f1c233f920a9a084ee639b9a51c693ec6c929b0` | 0.0009266 XLM |
+| Confidential transfer, amount hidden | `391b5767abb00a117b8f15a5639c1268776bdc60b6498181440630b26a2fa1bc` | 0.0397523 XLM |
+
+The register transaction is the one that proves the pipeline: a spending key
+derived from a SEP-0053 signer root, a witness built by our own cryptography,
+the real Noir circuit solving it, a 14,592-byte UltraHonk proof, and the
+on-chain verifier accepting it. No mocks anywhere in that path.
 
 **Not on mainnet, deliberately.** Two things gate it and neither is ours:
 
@@ -93,15 +104,17 @@ a confidential transfer.
 extension/    the wallet (Chrome MV3, WXT + React + TypeScript)
 contracts/    three Rust Soroban contracts, ours to write and maintain
 indexer/      the durable event archive, conforming to INDEXER.md C1-C4
-scripts/      release gates
-resources/    internal working files, not part of the distribution
+scripts/      release gates and the scheduled infrastructure check
+docs/         the documentation site (Fumadocs). `cd docs && npm run dev`
+resources/    internal working files, gitignored, not part of the distribution
 ```
 
 ### Why we write contracts at all
 
 OpenZeppelin's library ships no constructor for the confidential token: the four
-setters are free functions and the deployer chooses the policy. So we write
-three thin contracts and they are inside our audit scope and our liability:
+setters are free functions and the deployer chooses the policy. Those choices are
+permanent once made, so we make them explicitly, in three contracts that are
+inside our audit scope and our liability:
 
 - **the token wrapper**, which binds one asset permanently and has no admin
 - **the verifier**, which installs six verification keys at construction and
