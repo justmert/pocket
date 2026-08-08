@@ -77,7 +77,7 @@ An envelope that cannot be decoded at all is reported as forbidden rather than p
 
 The check sits in the request path and is structural: anything not explicitly allowed is refused, so a confidential entry point added to the contract tomorrow is out by default rather than out until somebody remembers to list it.
 
-Behind it sits the strongest reason, which depends on no code Pocket wrote: a confidential operation needs a valid proof over the account's own viewing key, and a website cannot produce one. [All three boundaries](/docs/security/trust-boundaries).
+Behind it sits the strongest reason, and it is structural: Pocket's own wrapper contract accepts a confidential operation only with a valid proof over the account's own viewing key, and a website has no way to produce one. [All three boundaries](/docs/security/trust-boundaries).
 
 ## The source account must be yours
 
