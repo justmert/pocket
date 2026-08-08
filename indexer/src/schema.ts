@@ -91,6 +91,11 @@ export function open(path = "pocket-archive.db"): Database.Database {
   const db = new Database(path);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
+  // The archive is written by one ingest process PER contract (see .env.example),
+  // so two writers share one file. WAL lets them; busy_timeout is what keeps the
+  // second one from throwing SQLITE_BUSY the instant they overlap, waiting for the
+  // brief write lock instead of crashing and leaning on a service restart.
+  db.pragma("busy_timeout = 5000");
   db.exec(SCHEMA);
   // Every open, so an archive created before a column existed is brought up to
   // date without an operator having to know a migration was needed.
