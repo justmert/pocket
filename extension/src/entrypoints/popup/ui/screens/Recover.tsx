@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { call } from "../rpc";
-import { Button, ButtonStack, Field, Header, Notice, Screen, TextButton } from "../primitives";
+import { Button, ButtonStack, Field, Header, Notice, Screen } from "../primitives";
 import { space, text, type Theme } from "../theme";
 import { PHRASE_LENGTHS, phraseLengthList } from "../copy";
 
@@ -145,14 +145,12 @@ export function Recover({
           </Notice>
         )}
         <ButtonStack>
+          {/* no bottom Back control: the header already carries one (onBack
+              returns to the acknowledge step), and two back affordances on one
+              screen read as two different destinations. */}
           <Button t={t} type="submit" variant="danger" disabled={!ready} busy={busy}>
             {busy ? "Restoring" : "Erase and restore"}
           </Button>
-          {/* the quiet abandon-step control is a text link, matching the "Back"
-              affordance the onboarding create/import flows use for the same role. */}
-          <TextButton t={t} tone="sub" onClick={onCancel}>
-            Back
-          </TextButton>
         </ButtonStack>
       </form>
     </Screen>

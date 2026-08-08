@@ -409,13 +409,14 @@ export function Button({
     primary: { background: t.accentFill, color: t.onAccent, boxShadow: glow },
     soft: { background: t.accentSoft, color: t.accentOnSoft },
     quiet: { background: t.field, color: t.text },
-    // `onDanger`, NOT `onAccent`. they coincide in the public pocket, which is why
-    // this read as fine from there, and in the private pocket `onAccent` #fcfdfe on
-    // `danger` #fb6e64 is 2.74:1 against `onDanger`'s 7.48:1. every logged-out
-    // screen renders under the private theme, so the coral fill is the one always
-    // in force on Recover: the lowest-contrast text in the product was the label
-    // on the button that erases the wallet.
-    danger: { background: t.danger, color: t.onDanger, boxShadow: glow },
+    // `onAccent` (white): a deliberate choice to keep the destructive-confirm
+    // buttons white-on-fill like every other CTA. it ACCEPTS a low contrast in
+    // the private theme, where white #fcfdfe on the coral `danger` #fb6e64 is
+    // 2.74:1 (the dark `onDanger` would be 7.48:1). every logged-out screen
+    // renders under the private theme, so this coral-and-white is what shows on
+    // Recover, the button that erases the wallet. onDanger stays for the History
+    // badges, which sit on a different fill.
+    danger: { background: t.danger, color: t.onAccent, boxShadow: glow },
   };
   // one place decides scale: the block CTA fills its column at 52px on the button
   // role; the pill hugs its label at chip scale. everything else (fill, radius,
