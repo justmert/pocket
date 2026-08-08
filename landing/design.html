@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pocket, the design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body { margin: 0; background: #0d0d0f; color: #f4f3ef; font-family: Quicksand, system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+  a { color: inherit; text-decoration: none; }
+  a:hover { color: #b8ade8; }
+  ::selection { background: #fed924; color: #101012; }
+  @keyframes pk-ghost { 0%, 100% { opacity: .12 } 50% { opacity: .7 } }
+  @keyframes pk-merge { 0%, 12% { transform: translateX(0) } 46%, 66% { transform: translateX(var(--pk-mx, 14px)) } 92%, 100% { transform: translateX(0) } }
+  @keyframes pk-draw { 0% { stroke-dashoffset: 150 } 60%, 100% { stroke-dashoffset: 0 } }
+  @keyframes pk-seal { 0%, 30% { transform: scale(.4); opacity: 0 } 55% { transform: scale(1.06); opacity: 1 } 100% { transform: scale(1); opacity: 1 } }
+  @keyframes pk-tickline { 0%, 18% { transform: scale(0); opacity: 0 } 26% { transform: scale(1.3); opacity: 1 } 32%, 88% { transform: scale(1); opacity: 1 } 96%, 100% { transform: scale(0); opacity: 0 } }
+  @media (max-width: 720px) { [data-vs] [data-vs-row] { grid-template-columns: 1fr !important } }
+  @media (max-width: 760px) { [data-how-grid] { grid-template-columns: 1fr !important } [data-how-grid] > div:first-child { display: none !important } }
+</style>
+</helmet>
+
+<div style="max-width: 100%; overflow-x: clip">
+
+  <nav style="position: sticky; top: 0; z-index: 50; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 14px 32px; background: rgba(242,241,232,.9); backdrop-filter: blur(14px); border-bottom: 1px solid rgba(16,16,18,.07)">
+    <a href="index.html" style="display: flex; align-items: center; flex: none">
+      <img src="uploads/pocket-wordmark.png" alt="pocket" style="height: 26px; width: auto; display: block; transition: transform .55s cubic-bezier(.25,.8,.25,1)" />
+    </a>
+    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px clamp(10px, 1.6vw, 20px)">
+      <a href="design.html" aria-current="page" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: #101012; padding-bottom: 3px; border-bottom: 3px solid #fed924; transition: color .4s ease">The design</a>
+      <a href="security.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Security</a>
+      <a href="https://docs.pocket-wallet.app" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Docs</a>
+      <a href="https://cal.com/mertkoklu/talk" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 9px 19px; border-radius: 14px; border: 2px solid #101012; color: #101012; transition: transform .45s cubic-bezier(.25,.8,.25,1), background .45s ease" style-hover="transform: translateY(-2px); background: rgba(16,16,18,.06)">Contact us</a>
+      <a href="https://github.com/justmert/pocket" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 14px; border: 2px solid #101012; background: #101012; color: #f2f1e8; box-shadow: 3px 3px 0 #b8ade8; transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #b8ade8">Install from GitHub</a>
+    </div>
+  </nav>
+
+  <section data-screen-label="how it works" style="background: #0d0d0f; color: #f4f3ef; padding: 56px 32px 104px">
+    <div style="max-width: 1180px; margin: 0 auto">
+      <div data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); display: inline-flex; align-items: center; gap: 10px; margin-bottom: 18px; padding: 8px 16px; border-radius: 999px; border: 2px solid rgba(244,243,239,.3); font-family: Fredoka, sans-serif; font-size: 13.5px; color: rgba(244,243,239,.72)"><span style="width: 8px; height: 8px; border-radius: 999px; background: #b8ade8"></span>the design</div>
+      <h2 data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(28px, 3.6vw, 46px); line-height: 1.12; letter-spacing: -.02em; margin: 0; max-width: 22ch">How it works, and why it is built this way.</h2>
+      <p data-reveal data-delay="100" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); margin: 20px 0 0; max-width: 64ch; font-size: clamp(15px, 1.6vw, 17.5px); font-weight: 600; line-height: 1.6; color: rgba(244,243,239,.58)">Hiding a number is easy. Hiding it while making it impossible to lie about is the hard part. Here is how that works, and then why we hide the amount rather than the parties.</p>
+      <div data-reveal data-delay="160" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); display: flex; flex-wrap: wrap; gap: 14px; margin-top: clamp(26px, 3vw, 36px)">
+        <a href="#pk-how-1" style="flex: 1 1 250px; box-sizing: border-box; display: flex; align-items: center; gap: 14px; padding: 18px 20px; border: 2px solid rgba(244,243,239,.24); border-radius: 18px; transition: border-color .45s ease, transform .45s cubic-bezier(.25,.8,.25,1)" style-hover="border-color: #b8ade8; transform: translateY(-3px)">
+          <span style="flex: none; width: 12px; height: 12px; border-radius: 999px; background: #b8ade8"></span>
+          <span style="min-width: 0">
+            <span style="display: block; font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.6vw, 18px); line-height: 1.2">The mechanism</span>
+            <span style="display: block; margin-top: 5px; font-size: 13px; font-weight: 600; color: rgba(244,243,239,.5)">seven steps, from the commitment to the contract</span>
+          </span>
+        </a>
+        <a href="#pk-why" style="flex: 1 1 250px; box-sizing: border-box; display: flex; align-items: center; gap: 14px; padding: 18px 20px; border: 2px solid rgba(244,243,239,.24); border-radius: 18px; transition: border-color .45s ease, transform .45s cubic-bezier(.25,.8,.25,1)" style-hover="border-color: #fed924; transform: translateY(-3px)">
+          <span style="flex: none; width: 12px; height: 12px; border-radius: 999px; background: #fed924"></span>
+          <span style="min-width: 0">
+            <span style="display: block; font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.6vw, 18px); line-height: 1.2">The argument</span>
+            <span style="display: block; margin-top: 5px; font-size: 13px; font-weight: 600; color: rgba(244,243,239,.5)">why we hide the amount, not the parties</span>
+          </span>
+        </a>
+        <a href="#pk-compare" style="flex: 1 1 250px; box-sizing: border-box; display: flex; align-items: center; gap: 14px; padding: 18px 20px; border: 2px solid rgba(244,243,239,.24); border-radius: 18px; transition: border-color .45s ease, transform .45s cubic-bezier(.25,.8,.25,1)" style-hover="border-color: #f4f3ef; transform: translateY(-3px)">
+          <span style="flex: none; width: 12px; height: 12px; border-radius: 999px; border: 2px solid #f4f3ef"></span>
+          <span style="min-width: 0">
+            <span style="display: block; font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.6vw, 18px); line-height: 1.2">The comparison</span>
+            <span style="display: block; margin-top: 5px; font-size: 13px; font-weight: 600; color: rgba(244,243,239,.5)">against shielded pools and custody, row by row</span>
+          </span>
+        </a>
+      </div>
+
+      <div data-how-grid style="display: grid; grid-template-columns: 92px 1fr; gap: clamp(20px, 3vw, 52px); margin-top: clamp(30px, 3.6vw, 46px)">
+        <div style="position: sticky; top: 88px; align-self: start; padding-top: 8px">
+          <div style="position: relative; display: flex; flex-direction: column; gap: 0; padding-left: 2px">
+            <span style="position: absolute; left: -12px; top: 10px; bottom: 10px; width: 2px; background: rgba(244,243,239,.16)"></span>
+            <span data-how-fill style="position: absolute; left: -12px; top: 10px; width: 2px; height: 0; background: #fed924; transition: height .55s cubic-bezier(.25,.8,.25,1)"></span>
+            <a href="#pk-how-1" data-how-dot="1" style="display: flex; align-items: center; gap: 12px; padding: 9px 0; font-family: Fredoka, sans-serif; font-size: 14px; color: rgba(244,243,239,.52); transition: color .5s ease">
+              <span data-how-bar style="width: 18px; height: 2px; background: rgba(244,243,239,.25); transition: width .5s cubic-bezier(.25,.8,.25,1), background .5s ease"></span>01
+            </a>
+            <a href="#pk-how-2" data-how-dot="2" style="display: flex; align-items: center; gap: 12px; padding: 9px 0; font-family: Fredoka, sans-serif; font-size: 14px; color: rgba(244,243,239,.52); transition: color .5s ease">
+              <span data-how-bar style="width: 18px; height: 2px; background: rgba(244,243,239,.25); transition: width .5s cubic-bezier(.25,.8,.25,1), background .5s ease"></span>02
+            </a>
+            <a href="#pk-how-3" data-how-dot="3" style="display: flex; align-items: center; gap: 12px; padding: 9px 0; font-family: Fredoka, sans-serif; font-size: 14px; color: rgba(244,243,239,.52); transition: color .5s ease">
+              <span data-how-bar style="width: 18px; height: 2px; background: rgba(244,243,239,.25); transition: width .5s cubic-bezier(.25,.8,.25,1), background .5s ease"></span>03
+            </a>
+            <a href="#pk-how-4" data-how-dot="4" style="display: flex; align-items: center; gap: 12px; padding: 9px 0; font-family: Fredoka, sans-serif; font-size: 14px; color: rgba(244,243,239,.52); transition: color .5s ease">
+              <span data-how-bar style="width: 18px; height: 2px; background: rgba(244,243,239,.25); transition: width .5s cubic-bezier(.25,.8,.25,1), background .5s ease"></span>04
+            </a>
+            <a href="#pk-how-5" data-how-dot="5" style="display: flex; align-items: center; gap: 12px; padding: 9px 0; font-family: Fredoka, sans-serif; font-size: 14px; color: rgba(244,243,239,.52); transition: color .5s ease">
+              <span data-how-bar style="width: 18px; height: 2px; background: rgba(244,243,239,.25); transition: width .5s cubic-bezier(.25,.8,.25,1), background .5s ease"></span>05
+            </a>
+            <a href="#pk-how-6" data-how-dot="6" style="display: flex; align-items: center; gap: 12px; padding: 9px 0; font-family: Fredoka, sans-serif; font-size: 14px; color: rgba(244,243,239,.52); transition: color .5s ease">
+              <span data-how-bar style="width: 18px; height: 2px; background: rgba(244,243,239,.25); transition: width .5s cubic-bezier(.25,.8,.25,1), background .5s ease"></span>06
+            </a>
+            <a href="#pk-how-7" data-how-dot="7" style="display: flex; align-items: center; gap: 12px; padding: 9px 0; font-family: Fredoka, sans-serif; font-size: 14px; color: rgba(244,243,239,.52); transition: color .5s ease">
+              <span data-how-bar style="width: 18px; height: 2px; background: rgba(244,243,239,.25); transition: width .5s cubic-bezier(.25,.8,.25,1), background .5s ease"></span>07
+            </a>
+          </div>
+        </div>
+        <div style="min-width: 0">
+      <div data-how-step tabindex="-1" id="pk-how-1" data-reveal data-step-n="1" data-delay="0" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); position: relative; overflow: hidden; padding: clamp(30px, 3.4vw, 46px) 0; border-top: none">
+        <span aria-hidden="true" style="position: absolute; right: -4px; top: 50%; transform: translateY(-50%); font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(70px, 10vw, 140px); line-height: 1; color: rgba(244,243,239,.045); pointer-events: none">01</span>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 18px 22px">
+          <svg viewBox="0 0 100 68" style="width: 100px; height: 68px; flex: none; overflow: visible"><path d="M6,58 C22,58 30,10 52,10 C74,10 82,44 92,44" fill="none" stroke="rgba(244,243,239,.3)" stroke-width="1.6"></path>
+      <circle cx="52" cy="10" r="5.4" fill="#f4f3ef"></circle>
+      <circle cx="30" cy="26" r="3.6" fill="#b8ade8" style="animation: pk-ghost 3.4s ease-in-out infinite"></circle>
+      <circle cx="72" cy="24" r="3.6" fill="#b8ade8" style="animation: pk-ghost 3.4s ease-in-out .9s infinite"></circle>
+      <circle cx="86" cy="40" r="3.6" fill="#b8ade8" style="animation: pk-ghost 3.4s ease-in-out 1.8s infinite"></circle></svg>
+          <h3 style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(21px, 2.4vw, 30px); line-height: 1.15; letter-spacing: -.01em; margin: 0; flex: 1 1 260px; min-width: 0">What sits on the chain is not a number.</h3>
+        </div>
+        <p style="margin: 18px 0 0; max-width: 64ch; font-size: clamp(14.5px, 1.5vw, 16.5px); font-weight: 600; line-height: 1.65; color: rgba(244,243,239,.58)">Your private balance is stored as a Pedersen commitment: a point on a curve, computed as C = v·G + r·H, where v is your amount and r is a random blinding factor. Anyone can read C off the ledger. Nobody can work backwards from it. For any point on the chain, every possible amount has a blinding factor that would have produced exactly that point, so it rules nothing out.</p>
+
+      </div>
+      <div data-how-step tabindex="-1" id="pk-how-2" data-reveal data-step-n="2" data-delay="60" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); position: relative; overflow: hidden; padding: clamp(30px, 3.4vw, 46px) 0; border-top: 1px solid rgba(244,243,239,.14)">
+        <span aria-hidden="true" style="position: absolute; right: -4px; top: 50%; transform: translateY(-50%); font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(70px, 10vw, 140px); line-height: 1; color: rgba(244,243,239,.045); pointer-events: none">02</span>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 18px 22px">
+          <svg viewBox="0 0 100 68" style="width: 100px; height: 68px; flex: none; overflow: visible"><path d="M50,4 V64" stroke="rgba(244,243,239,.25)" stroke-width="1.6" stroke-dasharray="5 6"></path>
+      <circle cx="22" cy="34" r="10" fill="none" stroke="#f4f3ef" stroke-width="2.2"></circle>
+      <path d="M32,34 H44 M40,34 V41 M36,34 V40" stroke="#f4f3ef" stroke-width="2.2" stroke-linecap="round"></path>
+      <rect x="60" y="22" width="34" height="24" rx="7" fill="none" stroke="#fed924" stroke-width="2"></rect>
+      <text x="77" y="38" text-anchor="middle" fill="#fed924" style="font-family: Fredoka, sans-serif; font-size: 12px">v, r</text></svg>
+          <h3 style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(21px, 2.4vw, 30px); line-height: 1.15; letter-spacing: -.01em; margin: 0; flex: 1 1 260px; min-width: 0">Only you hold the pair that opens it.</h3>
+        </div>
+        <p style="margin: 18px 0 0; max-width: 64ch; font-size: clamp(14.5px, 1.5vw, 16.5px); font-weight: 600; line-height: 1.65; color: rgba(244,243,239,.58)">The (v, r) that opens a commitment never touches the chain. Your device derives it from your recovery phrase and keeps it locally. That pair is the difference between a balance being yours to spend and yours to look at.</p>
+
+      </div>
+      <div data-how-step tabindex="-1" id="pk-how-3" data-reveal data-step-n="3" data-delay="60" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); position: relative; overflow: hidden; padding: clamp(30px, 3.4vw, 46px) 0; border-top: 1px solid rgba(244,243,239,.14)">
+        <span aria-hidden="true" style="position: absolute; right: -4px; top: 50%; transform: translateY(-50%); font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(70px, 10vw, 140px); line-height: 1; color: rgba(244,243,239,.045); pointer-events: none">03</span>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 18px 22px">
+          <svg viewBox="0 0 100 68" style="width: 100px; height: 68px; flex: none; overflow: visible"><circle cx="24" cy="34" r="11" fill="none" stroke="#f4f3ef" stroke-width="2" style="--pk-mx: 12px; animation: pk-merge 4.2s cubic-bezier(.3,.8,.3,1) infinite"></circle>
+      <circle cx="64" cy="34" r="11" fill="none" stroke="#f4f3ef" stroke-width="2" style="--pk-mx: -12px; animation: pk-merge 4.2s cubic-bezier(.3,.8,.3,1) infinite"></circle>
+      <path d="M44,28 V40 M38,34 H50" stroke="rgba(244,243,239,.4)" stroke-width="2" stroke-linecap="round"></path>
+      <circle cx="90" cy="34" r="7" fill="#b8ade8" style="animation: pk-ghost 4.2s ease-in-out infinite"></circle></svg>
+          <h3 style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(21px, 2.4vw, 30px); line-height: 1.15; letter-spacing: -.01em; margin: 0; flex: 1 1 260px; min-width: 0">The contract does arithmetic it cannot read.</h3>
+        </div>
+        <p style="margin: 18px 0 0; max-width: 64ch; font-size: clamp(14.5px, 1.5vw, 16.5px); font-weight: 600; line-height: 1.65; color: rgba(244,243,239,.58)">Add two commitments and you get a commitment to the sum. So the contract credits deposits, debits transfers and folds one balance into another without ever learning a single amount. That one property is what makes the whole thing possible, and it is also why yield and swapping cannot live here: those need multiplication and comparison, and commitments only add.</p>
+
+      </div>
+      <div data-how-step tabindex="-1" id="pk-how-4" data-reveal data-step-n="4" data-delay="60" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); position: relative; overflow: hidden; padding: clamp(30px, 3.4vw, 46px) 0; border-top: 1px solid rgba(244,243,239,.14)">
+        <span aria-hidden="true" style="position: absolute; right: -4px; top: 50%; transform: translateY(-50%); font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(70px, 10vw, 140px); line-height: 1; color: rgba(244,243,239,.045); pointer-events: none">04</span>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 18px 22px">
+          <svg viewBox="0 0 100 68" style="width: 100px; height: 68px; flex: none; overflow: visible"><rect x="12" y="12" width="72" height="44" rx="11" fill="none" stroke="rgba(244,243,239,.32)" stroke-width="1.8"></rect>
+      <path d="M30,35 L42,47 L66,21" fill="none" stroke="#fed924" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="150" style="animation: pk-draw 3.6s ease-in-out infinite"></path></svg>
+          <h3 style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(21px, 2.4vw, 30px); line-height: 1.15; letter-spacing: -.01em; margin: 0; flex: 1 1 260px; min-width: 0">A proof makes cheating impossible, not just difficult.</h3>
+        </div>
+        <p style="margin: 18px 0 0; max-width: 64ch; font-size: clamp(14.5px, 1.5vw, 16.5px); font-weight: 600; line-height: 1.65; color: rgba(244,243,239,.58)">Every private transfer carries a cryptographic proof, generated from one of six circuits, that establishes all of this without revealing any of it:</p>
+        <div style="margin-top: 22px; padding: 4px 0 0">
+          <div style="display: grid; grid-template-columns: 22px 1fr; gap: 14px; align-items: start; padding: 10px 0">
+            <span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 999px; background: #fed924; color: #101012; font-size: 12px; animation: pk-tickline 5.6s ease-in-out 0.00s infinite">✓</span>
+            <span style="font-size: clamp(14px, 1.45vw, 15.5px); font-weight: 600; line-height: 1.55; color: rgba(244,243,239,.62)">the balance you are spending from is yours</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 22px 1fr; gap: 14px; align-items: start; padding: 10px 0">
+            <span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 999px; background: #fed924; color: #101012; font-size: 12px; animation: pk-tickline 5.6s ease-in-out 0.35s infinite">✓</span>
+            <span style="font-size: clamp(14px, 1.45vw, 15.5px); font-weight: 600; line-height: 1.55; color: rgba(244,243,239,.62)">the amount matches what you committed to, and your new balance is exactly the old one minus it</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 22px 1fr; gap: 14px; align-items: start; padding: 10px 0">
+            <span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 999px; background: #fed924; color: #101012; font-size: 12px; animation: pk-tickline 5.6s ease-in-out 0.70s infinite">✓</span>
+            <span style="font-size: clamp(14px, 1.45vw, 15.5px); font-weight: 600; line-height: 1.55; color: rgba(244,243,239,.62)">nothing went negative and no value was created, because amounts are held to a fixed range that closes the wrap-around trick</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 22px 1fr; gap: 14px; align-items: start; padding: 10px 0">
+            <span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 999px; background: #fed924; color: #101012; font-size: 12px; animation: pk-tickline 5.6s ease-in-out 1.05s infinite">✓</span>
+            <span style="font-size: clamp(14px, 1.45vw, 15.5px); font-weight: 600; line-height: 1.55; color: rgba(244,243,239,.62)">the recipient can actually open what they were sent</span>
+          </div>
+        </div>
+      </div>
+      <div data-how-step tabindex="-1" id="pk-how-5" data-reveal data-step-n="5" data-delay="60" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); position: relative; overflow: hidden; padding: clamp(30px, 3.4vw, 46px) 0; border-top: 1px solid rgba(244,243,239,.14)">
+        <span aria-hidden="true" style="position: absolute; right: -4px; top: 50%; transform: translateY(-50%); font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(70px, 10vw, 140px); line-height: 1; color: rgba(244,243,239,.045); pointer-events: none">05</span>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 18px 22px">
+          <svg viewBox="0 0 100 68" style="width: 100px; height: 68px; flex: none; overflow: visible"><rect x="10" y="12" width="76" height="44" rx="8" fill="none" stroke="rgba(244,243,239,.32)" stroke-width="1.8"></rect>
+      <path d="M10,24 H86" stroke="rgba(244,243,239,.32)" stroke-width="1.6"></path>
+      <circle cx="18" cy="18" r="2.2" fill="rgba(244,243,239,.35)"></circle>
+      <g style="transform-origin: 48px 41px; animation: pk-seal 3.6s ease-in-out infinite"><circle cx="48" cy="41" r="10" fill="#b8ade8"></circle></g></svg>
+          <h3 style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(21px, 2.4vw, 30px); line-height: 1.15; letter-spacing: -.01em; margin: 0; flex: 1 1 260px; min-width: 0">The proof is built on your machine.</h3>
+        </div>
+        <p style="margin: 18px 0 0; max-width: 64ch; font-size: clamp(14.5px, 1.5vw, 16.5px); font-weight: 600; line-height: 1.65; color: rgba(244,243,239,.58)">Generated locally in under half a second. The proving system and its cryptographic reference data ship inside the extension, so nothing is fetched and nothing is uploaded. There is no server of ours that could do this instead.</p>
+
+      </div>
+      <div data-how-step tabindex="-1" id="pk-how-6" data-reveal data-step-n="6" data-delay="60" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); position: relative; overflow: hidden; padding: clamp(30px, 3.4vw, 46px) 0; border-top: 1px solid rgba(244,243,239,.14)">
+        <span aria-hidden="true" style="position: absolute; right: -4px; top: 50%; transform: translateY(-50%); font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(70px, 10vw, 140px); line-height: 1; color: rgba(244,243,239,.045); pointer-events: none">06</span>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 18px 22px">
+          <svg viewBox="0 0 100 68" style="width: 100px; height: 68px; flex: none; overflow: visible"><rect x="14" y="10" width="68" height="48" rx="10" fill="none" stroke="rgba(244,243,239,.32)" stroke-width="1.8"></rect>
+      <rect x="24" y="22" width="12" height="9" rx="2.6" fill="#fed924" style="animation: pk-ghost 3.8s ease-in-out 0.00s infinite"></rect>
+      <rect x="42" y="22" width="12" height="9" rx="2.6" fill="#fed924" style="animation: pk-ghost 3.8s ease-in-out 0.28s infinite"></rect>
+      <rect x="60" y="22" width="12" height="9" rx="2.6" fill="#fed924" style="animation: pk-ghost 3.8s ease-in-out 0.56s infinite"></rect>
+      <rect x="24" y="38" width="12" height="9" rx="2.6" fill="#fed924" style="animation: pk-ghost 3.8s ease-in-out 0.84s infinite"></rect>
+      <rect x="42" y="38" width="12" height="9" rx="2.6" fill="#fed924" style="animation: pk-ghost 3.8s ease-in-out 1.12s infinite"></rect>
+      <rect x="60" y="38" width="12" height="9" rx="2.6" fill="#fed924" style="animation: pk-ghost 3.8s ease-in-out 1.40s infinite"></rect></svg>
+          <h3 style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(21px, 2.4vw, 30px); line-height: 1.15; letter-spacing: -.01em; margin: 0; flex: 1 1 260px; min-width: 0">The chain either accepts it or rejects the transaction.</h3>
+        </div>
+        <p style="margin: 18px 0 0; max-width: 64ch; font-size: clamp(14.5px, 1.5vw, 16.5px); font-weight: 600; line-height: 1.65; color: rgba(244,243,239,.58)">It arrives at a verifier contract holding six verification keys, one per circuit, written in when the contract was created and impossible to replace afterwards. No partial state, no admin override, nobody in the path.</p>
+
+      </div>
+      <div data-how-step tabindex="-1" id="pk-how-7" data-reveal data-step-n="7" data-delay="60" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); position: relative; overflow: hidden; padding: clamp(30px, 3.4vw, 46px) 0; border-top: 1px solid rgba(244,243,239,.14)">
+        <span aria-hidden="true" style="position: absolute; right: -4px; top: 50%; transform: translateY(-50%); font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(70px, 10vw, 140px); line-height: 1; color: rgba(244,243,239,.045); pointer-events: none">07</span>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 18px 22px">
+          <svg viewBox="0 0 100 68" style="width: 100px; height: 68px; flex: none; overflow: visible"><rect x="8" y="18" width="38" height="30" rx="6" fill="none" stroke="#fed924" stroke-width="2"></rect>
+      <path d="M8,22 L27,36 L46,22" fill="none" stroke="#fed924" stroke-width="2" stroke-linejoin="round"></path>
+      <rect x="52" y="18" width="38" height="30" rx="6" fill="none" stroke="#b8ade8" stroke-width="2"></rect>
+      <path d="M52,22 L71,36 L90,22" fill="none" stroke="#b8ade8" stroke-width="2" stroke-linejoin="round"></path></svg>
+          <h3 style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(21px, 2.4vw, 30px); line-height: 1.15; letter-spacing: -.01em; margin: 0; flex: 1 1 260px; min-width: 0">Your amount is encrypted to exactly the people who need it.</h3>
+        </div>
+        <p style="margin: 18px 0 0; max-width: 64ch; font-size: clamp(14.5px, 1.5vw, 16.5px); font-weight: 600; line-height: 1.65; color: rgba(244,243,239,.58)">The same transaction carries it encrypted to the recipient, so they can spend it, and to the auditor key each side has bound, so a business can produce a reviewable record. The circuit enforces both: a transfer cannot be built with either one missing or malformed.</p>
+
+      </div>
+        </div>
+      </div>
+
+
+
+      <div data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); margin-top: clamp(52px, 5.6vw, 78px); display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: clamp(18px, 2.2vw, 26px)">
+        <div style="position: relative; box-sizing: border-box; border: 2px solid #f4f3ef; border-radius: 22px; background: #101014; box-shadow: 7px 7px 0 #b8ade8; padding: clamp(30px, 3vw, 38px) clamp(22px, 2.4vw, 30px) clamp(24px, 2.6vw, 32px)">
+          <span style="position: absolute; top: -15px; left: 22px; padding: 8px 17px; border-radius: 999px; border: 2px solid #f4f3ef; background: #b8ade8; color: #1a1626; font-family: Fredoka, sans-serif; font-size: 13px">consumed</span>
+          <div style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(20px, 2.2vw, 26px); line-height: 1.15">Built on</div>
+          <p style="margin: 14px 0 0; max-width: 64ch; font-size: clamp(14px, 1.45vw, 16px); font-weight: 600; line-height: 1.65; color: rgba(244,243,239,.6)">Pedersen commitments and Poseidon2 encryption, circuits written in Noir, UltraHonk proofs, running on Stellar's Soroban. Confidential token contracts and circuits by OpenZeppelin, audited by OpenZeppelin Security. Proving system by Aztec. On-chain verifier by Nethermind.</p>
+        </div>
+        <div style="position: relative; box-sizing: border-box; border: 2px solid #f4f3ef; border-radius: 22px; background: #101014; box-shadow: 7px 7px 0 #fed924; padding: clamp(30px, 3vw, 38px) clamp(22px, 2.4vw, 30px) clamp(24px, 2.6vw, 32px)">
+          <span style="position: absolute; top: -15px; left: 22px; padding: 8px 17px; border-radius: 999px; border: 2px solid #f4f3ef; background: #fed924; color: #101012; font-family: Fredoka, sans-serif; font-size: 13px">ours</span>
+          <div style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(20px, 2.2vw, 26px); line-height: 1.15">Built by us</div>
+          <p style="margin: 14px 0 0; max-width: 64ch; font-size: clamp(14px, 1.45vw, 16px); font-weight: 600; line-height: 1.65; color: rgba(244,243,239,.6)">Everything that makes it a wallet. Key derivation, witness assembly, the encrypted vault, the archive that keeps private balances recoverable, and three Soroban contracts whose job is mostly to refuse things. The wrapper binds one asset and has no admin. The verifier installs six keys and implements no path that can change them. The auditor registry hands out ids in order rather than letting the caller pick one. We deployed our own instance rather than the reference one, whose verification keys predate the audit.</p>
+        </div>
+      </div>
+      <div data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); margin-top: clamp(70px, 7vw, 104px); padding-top: clamp(40px, 4.4vw, 60px); border-top: 2px dashed rgba(244,243,239,.2)" id="pk-why">
+        <h2 style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(26px, 3.4vw, 44px); line-height: 1.12; letter-spacing: -.02em; margin: 0; max-width: 24ch">Confidential, not anonymous. And here is exactly why.</h2>
+        <p style="margin: 20px 0 0; max-width: 64ch; font-size: clamp(15px, 1.6vw, 17.5px); font-weight: 600; line-height: 1.6; color: rgba(244,243,239,.58)">Hiding who you pay sounds like more privacy. On a public chain it costs more than it looks. Here is the trade we make instead.</p>
+      </div>
+
+      <div data-reveal data-delay="120" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); margin-top: clamp(34px, 3.8vw, 50px); border: 2px solid rgba(244,243,239,.24); border-radius: 22px; padding: clamp(24px, 2.8vw, 34px)">
+        <div style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(18px, 2vw, 25px); line-height: 1.2; max-width: 32ch">There are two ways to get privacy on a public chain.</div>
+        <p style="margin: 14px 0 0; max-width: 64ch; font-size: clamp(14.5px, 1.5vw, 16.5px); font-weight: 600; line-height: 1.62; color: rgba(244,243,239,.58)">Hide who you pay, or hide how much. Hiding who means pooling your money with strangers and withdrawing to a fresh address, so no one can connect the two. That's a mixer. Hiding how much means keeping the names on the record and encrypting the amounts. That's Pocket.</p>
+        <svg viewBox="0 0 600 132" style="display: block; width: 100%; max-width: 640px; margin: 26px auto 0; height: auto; overflow: visible">
+          <text x="300" y="12" text-anchor="middle" fill="rgba(244,243,239,.5)" style="font-family: Fredoka, sans-serif; font-size: 13px">a payment you want private</text>
+          <circle cx="300" cy="30" r="7" fill="#f4f3ef"></circle>
+          <path d="M300,37 C300,84 132,68 132,104" fill="none" stroke="rgba(244,243,239,.34)" stroke-width="2.4" stroke-dasharray="8 8" stroke-linecap="round"></path>
+          <path d="M300,37 C300,84 468,68 468,104" fill="none" stroke="#fed924" stroke-width="3" stroke-linecap="round"></path>
+          <circle cx="132" cy="110" r="7" fill="none" stroke="rgba(244,243,239,.4)" stroke-width="2.4"></circle>
+          <circle cx="468" cy="110" r="8" fill="#fed924"></circle>
+          <text x="132" y="132" text-anchor="middle" fill="rgba(244,243,239,.55)" style="font-family: Fredoka, sans-serif; font-size: 14px">hide who</text>
+          <text x="468" y="132" text-anchor="middle" fill="#fed924" style="font-family: Fredoka, sans-serif; font-size: 14px">hide how much</text>
+        </svg>
+      </div>
+
+      <div data-tracks style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: clamp(22px, 3vw, 46px); margin-top: 6px">
+        <div style="position: relative; padding-left: 26px">
+          <div style="position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px; background-image: linear-gradient(180deg, rgba(244,243,239,.4) 0 8px, transparent 8px 16px); background-size: 2px 16px"></div>
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 4px">
+            <span style="position: absolute; left: -7px; width: 16px; height: 16px; border-radius: 999px; border: 2px solid #0d0d0f; background: rgba(244,243,239,.4)"></span>
+            <span style="font-family: Fredoka, sans-serif; font-size: clamp(16px, 1.7vw, 20px); color: rgba(244,243,239,.6)">hiding who</span>
+          </div>
+          <div style="margin-bottom: 22px; font-size: 12.5px; font-weight: 700; letter-spacing: .04em; color: rgba(244,243,239,.55)">A POOL</div>
+          <div data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); position: relative; margin-bottom: 18px; border-left: 2px dashed rgba(244,243,239,.22); padding: 4px 0 4px 20px">
+            <div style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(17.5px, 1.9vw, 23px); line-height: 1.2; color: rgba(244,243,239,.92)">Hiding who is only as private as the crowd.</div>
+            <p style="margin: 12px 0 0; max-width: 64ch; font-size: clamp(14px, 1.45vw, 16px); font-weight: 600; line-height: 1.62; color: rgba(244,243,239,.56)">In a pool you're hidden because you look like everyone else in it. A thin crowd, an unusual amount, or predictable timing narrows it back down to you. Hiding how much gives every user the same guarantee from day one, with no crowd to depend on.</p>
+
+          </div>          <div data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); position: relative; margin-bottom: 18px; border-left: 2px dashed rgba(244,243,239,.22); padding: 4px 0 4px 20px">
+            <div style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(17.5px, 1.9vw, 23px); line-height: 1.2; color: rgba(244,243,239,.92)">And it needs people you have to trust.</div>
+            <p style="margin: 12px 0 0; max-width: 64ch; font-size: clamp(14px, 1.45vw, 16px); font-weight: 600; line-height: 1.62; color: rgba(244,243,239,.56)">A pool needs a gatekeeper to decide who's let in and to freeze bad actors, which means someone can freeze you. It usually needs a relayer to submit transactions for you, which means someone sees and could block your payments. Pocket has neither. You sign your own transactions, and nobody stands between you and the chain.</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px">
+              <span style="padding: 6px 13px; border-radius: 999px; border: 2px dashed rgba(244,243,239,.3); font-size: 12.5px; font-weight: 700; color: rgba(244,243,239,.5)">a crowd to hide in</span>
+              <span style="padding: 6px 13px; border-radius: 999px; border: 2px dashed rgba(244,243,239,.3); font-size: 12.5px; font-weight: 700; color: rgba(244,243,239,.5)">a gatekeeper</span>
+              <span style="padding: 6px 13px; border-radius: 999px; border: 2px dashed rgba(244,243,239,.3); font-size: 12.5px; font-weight: 700; color: rgba(244,243,239,.5)">a relayer</span>
+            </div>
+          </div>
+        </div>
+        <div style="position: relative; padding-left: 26px">
+          <div style="position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px; background: #fed924"></div>
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 4px">
+            <span style="position: absolute; left: -7px; width: 16px; height: 16px; border-radius: 999px; border: 2px solid #0d0d0f; background: #fed924"></span>
+            <span style="font-family: Fredoka, sans-serif; font-size: clamp(16px, 1.7vw, 20px); color: #f4f3ef">hiding how much</span>
+          </div>
+          <div style="margin-bottom: 22px; font-size: 12.5px; font-weight: 700; letter-spacing: .04em; color: #fed924">POCKET</div>
+          <div data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); position: relative; margin: 0 0 26px; border: 2px solid #f4f3ef; border-radius: 20px; background: #101014; box-shadow: 6px 6px 0 #fed924; padding: clamp(26px, 2.8vw, 34px) clamp(20px, 2.2vw, 26px) clamp(22px, 2.4vw, 28px)">
+            <span style="position: absolute; top: -15px; left: 20px; padding: 8px 16px; border-radius: 999px; border: 2px solid #101012; background: #fed924; color: #101012; font-family: Fredoka, sans-serif; font-size: 12.5px">the trade we make</span>
+            <div style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(17.5px, 1.9vw, 23px); line-height: 1.2; color: #f4f3ef">So we hide the number, not the name.</div>
+            <p style="margin: 12px 0 0; max-width: 64ch; font-size: clamp(14px, 1.45vw, 16px); font-weight: 600; line-height: 1.62; color: rgba(244,243,239,.56)">Think of a bank statement, not a numbered account. For payroll, a treasury, or a supplier, the sensitive thing is how much, and the counterparty has to be on the record, because you can't run a business on untraceable money. And your amounts are readable by no one but you, unless you hand over the key yourself. You are your own auditor.</p>
+
+          </div>          <div data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); position: relative; margin: 0 0 26px; border: 2px solid #f4f3ef; border-radius: 20px; background: #101014; box-shadow: 6px 6px 0 #fed924; padding: clamp(26px, 2.8vw, 34px) clamp(20px, 2.2vw, 26px) clamp(22px, 2.4vw, 28px)">
+            <span style="position: absolute; top: -15px; left: 20px; padding: 8px 16px; border-radius: 999px; border: 2px solid #101012; background: #fed924; color: #101012; font-family: Fredoka, sans-serif; font-size: 12.5px">and what we admit</span>
+            <div style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(17.5px, 1.9vw, 23px); line-height: 1.2; color: #f4f3ef">What we can't hide, we don't pretend to.</div>
+            <p style="margin: 12px 0 0; max-width: 64ch; font-size: clamp(14px, 1.45vw, 16px); font-weight: 600; line-height: 1.62; color: rgba(244,243,239,.56)">Opening a private balance is public. So is the amount you move in or out, and the account that pays the fee. We publish the full list, because privacy you can verify beats privacy you’re asked to believe.</p>
+
+          </div>
+        </div>
+      </div>
+
+      <div data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); margin-top: clamp(26px, 3vw, 38px); border-top: 2px dashed rgba(244,243,239,.2); border-bottom: 2px dashed rgba(244,243,239,.2); padding: clamp(24px, 2.8vw, 34px) 0; text-align: center">
+        <div style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(19px, 2.2vw, 27px); line-height: 1.2; max-width: 30ch; margin: 0 auto">Both go public at the edges anyway.</div>
+        <p style="margin: 14px auto 0; max-width: 64ch; font-size: clamp(14.5px, 1.5vw, 16.5px); font-weight: 600; line-height: 1.62; color: rgba(244,243,239,.58)">Money entering or leaving is a visible amount either way. So the pool takes on a crowd, a gatekeeper, and a relayer, and still doesn't hide the boundary.</p>
+      </div>
+      <div data-vs data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); margin-top: clamp(44px, 4.8vw, 64px)">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: clamp(18px, 3vw, 44px); padding-bottom: 14px; border-bottom: 2px solid rgba(244,243,239,.18)">
+          <div style="display: flex; align-items: center; gap: 10px">
+            <span style="width: 9px; height: 9px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4)"></span>
+            <span style="font-family: Fredoka, sans-serif; font-size: clamp(14px, 1.5vw, 17px); color: rgba(244,243,239,.5)">a pool</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px">
+            <span style="width: 9px; height: 9px; border-radius: 999px; background: #fed924"></span>
+            <span style="font-family: Fredoka, sans-serif; font-size: clamp(14px, 1.5vw, 17px); color: #fed924">Pocket</span>
+          </div>
+        </div>
+        <div data-vs-row style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px clamp(18px, 3vw, 44px); align-items: start; padding: clamp(20px, 2.2vw, 26px) 0">
+          <div style="grid-column: 1 / -1; font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.6vw, 19px); line-height: 1.25; color: rgba(244,243,239,.6)">How strong is it</div>
+          <div style="font-size: clamp(13.5px, 1.4vw, 15.5px); font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.56)">as strong as the crowd</div>
+          <div style="font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.65vw, 20px); line-height: 1.3; color: #f4f3ef">the same for everyone, from day one</div>
+        </div>
+        <div data-vs-row style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px clamp(18px, 3vw, 44px); align-items: start; padding: clamp(20px, 2.2vw, 26px) 0; border-top: 1px solid rgba(244,243,239,.1)">
+          <div style="grid-column: 1 / -1; font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.6vw, 19px); line-height: 1.25; color: rgba(244,243,239,.6)">Who submits for you</div>
+          <div style="font-size: clamp(13.5px, 1.4vw, 15.5px); font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.56)">a relayer</div>
+          <div style="font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.65vw, 20px); line-height: 1.3; color: #f4f3ef">you do</div>
+        </div>
+        <div data-vs-row style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px clamp(18px, 3vw, 44px); align-items: start; padding: clamp(20px, 2.2vw, 26px) 0; border-top: 1px solid rgba(244,243,239,.1)">
+          <div style="grid-column: 1 / -1; font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.6vw, 19px); line-height: 1.25; color: rgba(244,243,239,.6)">Staying compliant</div>
+          <div style="font-size: clamp(13.5px, 1.4vw, 15.5px); font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.56)">a gatekeeper who can freeze you</div>
+          <div style="font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.65vw, 20px); line-height: 1.3; color: #f4f3ef">your own auditor key, no gate</div>
+        </div>
+        <div data-vs-row style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px clamp(18px, 3vw, 44px); align-items: start; padding: clamp(20px, 2.2vw, 26px) 0; border-top: 1px solid rgba(244,243,239,.1)">
+          <div style="grid-column: 1 / -1; font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.6vw, 19px); line-height: 1.25; color: rgba(244,243,239,.6)">The edges</div>
+          <div style="font-size: clamp(13.5px, 1.4vw, 15.5px); font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.56)">public</div>
+          <div style="font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.65vw, 20px); line-height: 1.3; color: #f4f3ef">public, and we say so</div>
+        </div>
+      </div>
+
+
+      <div data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); margin-top: clamp(70px, 7vw, 104px); padding-top: clamp(40px, 4.4vw, 60px); border-top: 2px dashed rgba(244,243,239,.2)" id="pk-compare">
+        <div style="display: inline-flex; align-items: center; gap: 10px; margin-bottom: 18px; padding: 8px 16px; border-radius: 999px; border: 2px solid rgba(244,243,239,.3); font-family: Fredoka, sans-serif; font-size: 13.5px; color: rgba(244,243,239,.72)"><span style="width: 8px; height: 8px; border-radius: 999px; background: #fed924"></span>for engineers</div>
+        <h2 style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(26px, 3.4vw, 44px); line-height: 1.12; letter-spacing: -.02em; margin: 0; max-width: 26ch">Three ways to keep money private on a public chain.</h2>
+        <p style="margin: 20px 0 0; max-width: 64ch; font-size: clamp(15px, 1.6vw, 17.5px); font-weight: 600; line-height: 1.6; color: rgba(244,243,239,.58)">Confidential tokens, shielded pools, and custody are three different answers to the same question. This is the trade-off, not a scoreboard.</p>
+      </div>
+
+      <div data-reveal data-delay="120" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); margin-top: clamp(30px, 3.4vw, 44px); overflow-x: auto; padding-bottom: 6px">
+        <div style="min-width: 820px; display: grid; grid-template-columns: minmax(150px, .9fr) minmax(230px, 1.2fr) minmax(190px, 1fr) minmax(190px, 1fr); border: 2px solid rgba(244,243,239,.3); border-radius: 20px; overflow: hidden">
+          <div style="padding: 16px clamp(13px, 1.6vw, 20px); color: rgba(244,243,239,.62); font-family: Fredoka, sans-serif; font-size: clamp(13.5px, 1.4vw, 16px); line-height: 1.2; border-bottom: 2px solid rgba(244,243,239,.28)"></div>
+          <div style="padding: 16px clamp(13px, 1.6vw, 20px); background: rgba(244,243,239,.045); color: #fed924; font-family: Fredoka, sans-serif; font-size: clamp(13.5px, 1.4vw, 16px); line-height: 1.2; border-bottom: 2px solid #fed924"><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 8px; height: 8px; border-radius: 999px; background: #fed924"></span>Pocket, the confidential token</span></div>
+          <div style="padding: 16px clamp(13px, 1.6vw, 20px); color: rgba(244,243,239,.62); font-family: Fredoka, sans-serif; font-size: clamp(13.5px, 1.4vw, 16px); line-height: 1.2; border-bottom: 2px solid rgba(244,243,239,.28)">Shielded pool</div>
+          <div style="padding: 16px clamp(13px, 1.6vw, 20px); color: rgba(244,243,239,.62); font-family: Fredoka, sans-serif; font-size: clamp(13.5px, 1.4vw, 16px); line-height: 1.2; border-bottom: 2px solid rgba(244,243,239,.28)">Custodial / off-chain</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-family: Fredoka, sans-serif; font-size: clamp(13px, 1.35vw, 15px); line-height: 1.3; color: rgba(244,243,239,.8); border-bottom: 1px solid rgba(244,243,239,.12)">Model</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); background: rgba(244,243,239,.045); color: #f4f3ef; font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; border-bottom: 1px solid rgba(244,243,239,.12)">per-account encrypted balance, a Pedersen commitment C = v·G + r·H</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">a shared pool of notes + a nullifier set</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">balances held by an operator; the public ledger shows only deposits and withdrawals</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-family: Fredoka, sans-serif; font-size: clamp(13px, 1.35vw, 15px); line-height: 1.3; color: rgba(244,243,239,.8); border-bottom: 1px solid rgba(244,243,239,.12)">What it hides</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); background: rgba(244,243,239,.045); color: #f4f3ef; font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; border-bottom: 1px solid rgba(244,243,239,.12)">amounts and balances</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">amounts, plus the sender↔recipient link inside the pool</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">everything, from the public; the activity is off the ledger</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-family: Fredoka, sans-serif; font-size: clamp(13px, 1.35vw, 15px); line-height: 1.3; color: rgba(244,243,239,.8); border-bottom: 1px solid rgba(244,243,239,.12)">Counterparties</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); background: rgba(244,243,239,.045); color: #f4f3ef; font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; border-bottom: 1px solid rgba(244,243,239,.12)">on the public record, by design</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 700; line-height: 1.5; color: #f4f3ef; border-bottom: 1px solid rgba(244,243,239,.12)">hidden inside the pool</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">hidden from the public, visible to the operator</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-family: Fredoka, sans-serif; font-size: clamp(13px, 1.35vw, 15px); line-height: 1.3; color: rgba(244,243,239,.8); border-bottom: 1px solid rgba(244,243,239,.12)">Privacy model</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); background: rgba(244,243,239,.045); color: #f4f3ef; font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; border-bottom: 1px solid rgba(244,243,239,.12)">deterministic, the same for every user from day one</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">an anonymity set, varying with pool size and timing</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">the operator's private database</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-family: Fredoka, sans-serif; font-size: clamp(13px, 1.35vw, 15px); line-height: 1.3; color: rgba(244,243,239,.8); border-bottom: 1px solid rgba(244,243,239,.12)">Who holds your funds</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); background: rgba(244,243,239,.045); color: #f4f3ef; font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; border-bottom: 1px solid rgba(244,243,239,.12)">you (self-custody)</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">you (self-custody)</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">the operator</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-family: Fredoka, sans-serif; font-size: clamp(13px, 1.35vw, 15px); line-height: 1.3; color: rgba(244,243,239,.8); border-bottom: 1px solid rgba(244,243,239,.12)">Who can read your amounts</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); background: rgba(244,243,239,.045); color: #f4f3ef; font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; border-bottom: 1px solid rgba(244,243,239,.12)">only you (and an auditor key you hold yourself)</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">only you</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">the operator, always</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-family: Fredoka, sans-serif; font-size: clamp(13px, 1.35vw, 15px); line-height: 1.3; color: rgba(244,243,239,.8); border-bottom: 1px solid rgba(244,243,239,.12)">Mechanism</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); background: rgba(244,243,239,.045); color: #f4f3ef; font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; border-bottom: 1px solid rgba(244,243,239,.12)">UltraHonk proofs (Noir), Pedersen commitments + Poseidon2 encryption</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">zero-knowledge proofs (Groth16 or UltraHonk)</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">none, trust replaces proof</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-family: Fredoka, sans-serif; font-size: clamp(13px, 1.35vw, 15px); line-height: 1.3; color: rgba(244,243,239,.8); border-bottom: 1px solid rgba(244,243,239,.12)">Who submits your transaction</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); background: rgba(244,243,239,.045); color: #f4f3ef; font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 700; line-height: 1.5; border-bottom: 1px solid rgba(244,243,239,.12)">you sign and submit it yourself</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">a relayer, for private transfers</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">the operator</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-family: Fredoka, sans-serif; font-size: clamp(13px, 1.35vw, 15px); line-height: 1.3; color: rgba(244,243,239,.8); border-bottom: 1px solid rgba(244,243,239,.12)">Compliance</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); background: rgba(244,243,239,.045); color: #f4f3ef; font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 700; line-height: 1.5; border-bottom: 1px solid rgba(244,243,239,.12)">your own auditor key; no entry gate</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">operator-run allow / deny at the boundary</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">operator's KYC / AML, with full visibility</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-family: Fredoka, sans-serif; font-size: clamp(13px, 1.35vw, 15px); line-height: 1.3; color: rgba(244,243,239,.8); border-bottom: 1px solid rgba(244,243,239,.12)">Entry &amp; freeze control</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); background: rgba(244,243,239,.045); color: #f4f3ef; font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 700; line-height: 1.5; border-bottom: 1px solid rgba(244,243,239,.12)">none exists, the contracts have no admin</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">operator can gate who enters</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">operator can freeze or close your account</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-family: Fredoka, sans-serif; font-size: clamp(13px, 1.35vw, 15px); line-height: 1.3; color: rgba(244,243,239,.8); border-bottom: 1px solid rgba(244,243,239,.12)">Verifiable on chain</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); background: rgba(244,243,239,.045); color: #f4f3ef; font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; border-bottom: 1px solid rgba(244,243,239,.12)">yes, every balance is re-checked against the chain</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">yes, proofs and nullifiers are on chain</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">no, you rely on the operator's books</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-family: Fredoka, sans-serif; font-size: clamp(13px, 1.35vw, 15px); line-height: 1.3; color: rgba(244,243,239,.8); border-bottom: 1px solid rgba(244,243,239,.12)">Recovery</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); background: rgba(244,243,239,.045); color: #f4f3ef; font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; border-bottom: 1px solid rgba(244,243,239,.12)">recovery phrase + a durable archive, re-verified against the chain</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">note / indexer backup</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">the operator resets your account</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-family: Fredoka, sans-serif; font-size: clamp(13px, 1.35vw, 15px); line-height: 1.3; color: rgba(244,243,239,.8); border-bottom: 1px solid rgba(244,243,239,.12)">Standard</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); background: rgba(244,243,239,.045); color: #f4f3ef; font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; border-bottom: 1px solid rgba(244,243,239,.12)">the confidential-token standard from the Confidential Token Association (SDF, OpenZeppelin, Nethermind)</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">shielded-pool design (research and reference implementations)</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5); border-bottom: 1px solid rgba(244,243,239,.12)">proprietary to each operator</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-family: Fredoka, sans-serif; font-size: clamp(13px, 1.35vw, 15px); line-height: 1.3; color: rgba(244,243,239,.8)">Best fit</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); background: rgba(244,243,239,.045); color: #f4f3ef; font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5">accountable privacy: hide amounts, keep parties on record (payroll, treasury, suppliers)</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5)">unlinkable transfers where the counterparty must be hidden</div>
+          <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5)">users who would rather an operator hold funds and handle compliance for them</div>
+        </div>
+      </div>
+
+
+      <p data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); margin: clamp(20px, 2.4vw, 28px) 0 0; max-width: 72ch; font-size: clamp(13.5px, 1.4vw, 15.5px); font-weight: 600; line-height: 1.6; color: rgba(244,243,239,.55)">How to read it: the tinted column is ours, and the bold cells are where we think the model genuinely wins. Pick the row you actually care about.</p>
+
+    </div>
+  </section>
+
+  <footer style="background: #f2f1e8; color: #101012; padding: 72px 32px 80px">
+    <div style="max-width: 1180px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 32px">
+      <div>
+        <img src="uploads/pocket-wordmark.png" alt="pocket" style="height: 36px; width: auto; display: block" />
+        <div style="margin-top: 12px; font-family: Fredoka, sans-serif; font-size: 20px">Verifiable payments. Unreadable amounts.</div>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 12px 26px; align-items: center; font-size: 13px; font-weight: 600; color: rgba(16,16,18,.5)">
+        <a href="index.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Home</a>
+        <a href="design.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">The design</a>
+        <a href="security.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Security</a>
+        <a href="https://docs.pocket-wallet.app" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Docs</a>
+        <a href="https://github.com/justmert/pocket" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">GitHub</a>
+        <a href="https://cal.com/mertkoklu/talk" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 11px 21px; border-radius: 14px; border: 2px solid #101012; color: #101012; transition: transform .45s cubic-bezier(.25,.8,.25,1), background .45s ease" style-hover="transform: translateY(-2px); background: rgba(16,16,18,.06)">Contact us</a>
+        <a href="https://github.com/justmert/pocket" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 12px 22px; border-radius: 14px; border: 2px solid #101012; background: #101012; color: #f2f1e8; box-shadow: 3px 3px 0 #fed924; transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #fed924">Install from GitHub</a>
+      </div>
+    </div>
+  </footer>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440}}">
+class Component extends DCLogic {
+  componentDidMount() {
+    this.reveals();
+    this.howRail();
+  }
+
+  componentWillUnmount() {
+    if (this._io) this._io.disconnect();
+    if (this._sweepOff) this._sweepOff();
+    if (this._howScroll) { window.removeEventListener('scroll', this._howScroll); window.removeEventListener('resize', this._howScroll); }
+  }
+
+  renderVals() { return {}; }
+
+  reveals() {
+    let pending = Array.from(document.querySelectorAll('[data-reveal]'));
+    const show = el => {
+      if (!el || el.dataset.shown) return;
+      el.dataset.shown = '1';
+      const delay = parseInt(el.getAttribute('data-delay') || '0', 10);
+      setTimeout(() => { el.style.opacity = '1'; el.style.transform = 'none'; }, delay);
+    };
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(en => { if (en.isIntersecting) { show(en.target); io.unobserve(en.target); } });
+    }, { threshold: 0.1, rootMargin: '0px 0px -4% 0px' });
+    pending.forEach(el => io.observe(el));
+    this._io = io;
+    let queued = false;
+    const sweep = () => {
+      queued = false;
+      document.querySelectorAll('[data-reveal]').forEach(el => {
+        if (!el.dataset.shown && pending.indexOf(el) < 0) { pending.push(el); io.observe(el); }
+      });
+      pending = pending.filter(el => {
+        if (el.getBoundingClientRect().top < window.innerHeight * 0.96) { show(el); io.unobserve(el); return false; }
+        return true;
+      });
+    };
+    const onScroll = () => { if (!queued) { queued = true; requestAnimationFrame(sweep); } };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    this._sweepOff = () => { window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); };
+    sweep();
+  }
+
+  howRail() {
+    const steps = Array.from(document.querySelectorAll('[data-how-step]'));
+    const dots = Array.from(document.querySelectorAll('[data-how-dot]'));
+    if (!steps.length || !dots.length) return;
+    let active = -1;
+    const fill = document.querySelector('[data-how-fill]');
+    const set = i => {
+      if (i === active) return;
+      active = i;
+      dots.forEach((d, k) => {
+        const on = k === i, done = k < i, bar = d.querySelector('[data-how-bar]');
+        d.style.color = on ? '#f4f3ef' : done ? 'rgba(244,243,239,.7)' : 'rgba(244,243,239,.52)';
+        if (bar) { bar.style.width = on ? '34px' : '18px'; bar.style.background = on ? '#fed924' : done ? 'rgba(254,217,36,.45)' : 'rgba(244,243,239,.25)'; }
+      });
+      if (fill && dots.length > 1) {
+        const first = dots[0].getBoundingClientRect(), last = dots[dots.length - 1].getBoundingClientRect();
+        const cur = dots[i].getBoundingClientRect();
+        const span = (last.top + last.height / 2) - (first.top + first.height / 2);
+        const at = (cur.top + cur.height / 2) - (first.top + first.height / 2);
+        fill.style.height = Math.max(0, Math.round(at / span * 100)) + '%';
+      }
+    };
+    const pick = () => {
+      let best = 0, bestD = Infinity;
+      steps.forEach((el, i) => {
+        const d = Math.abs(el.getBoundingClientRect().top - window.innerHeight * 0.34);
+        if (d < bestD) { bestD = d; best = i; }
+      });
+      set(best);
+    };
+    let queued = false;
+    this._howScroll = () => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; pick(); }); } };
+    window.addEventListener('scroll', this._howScroll, { passive: true });
+    window.addEventListener('resize', this._howScroll);
+    pick();
+  }
+}
+</script>
+</body>
+</html>
