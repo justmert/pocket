@@ -22,8 +22,8 @@ The facts a reader is most likely to need, with the answer as it stands right no
 | --- | --- |
 | Networks supported | Stellar **testnet** |
 | Mainnet | configured and refused in this build, gated on two upstream items |
-| Assets, public pocket | XLM, USDC, and any classic asset you add a trustline for |
-| Assets, private pocket | XLM, USDC |
+| Assets, public pocket | any classic Stellar asset you hold a trustline for. XLM and USDC are surfaced by default |
+| Assets, private pocket | one wrapper per asset, each its own deployment. XLM and USDC are deployed on testnet today |
 | Accounts per wallet | one |
 
 ## Audit
@@ -85,7 +85,7 @@ The wallet also reaches four keyless or key-configured services over ordinary cr
 | Prices, fiat values and charts | yes, in the public pocket. The private pocket has no chart |
 | Hide balances on screen | yes |
 | Trustlines | add and remove, with directory search |
-| Swap | XLM and USDC, through Aquarius |
+| Swap | native XLM and every classic asset in config, through Aquarius |
 | Yield | deposit and withdraw, through DeFindex |
 | Cross-chain USDC | send and claim, through Circle CCTP |
 | Website connections | SEP-43 surface implemented. Granting a connection is not wired into the interface in this build |

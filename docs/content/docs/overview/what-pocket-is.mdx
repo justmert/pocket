@@ -11,7 +11,7 @@ What separates it from other Stellar wallets is that one recovery phrase gives y
 
 |  | Public pocket | Private pocket |
 | --- | --- | --- |
-| Holds | ordinary XLM and USDC | the same assets inside a confidential wrapper |
+| Holds | any classic Stellar asset you hold a trustline for | the same assets, inside a confidential wrapper, one per asset |
 | Who sees amounts | everyone | you, your bound auditor, and anyone you disclose to |
 | Who sees addresses | everyone | **everyone, unchanged** |
 | Earns yield | yes, through DeFindex | no, and the reason is structural |
@@ -27,9 +27,9 @@ The split is not a product preference. Confidential balances are Pedersen commit
 
 **In the public pocket**
 
-- Send and receive XLM and USDC
+- Send and receive any classic Stellar asset you hold a trustline for
 - Add and remove trustlines for any classic asset, searched from the StellarExpert directory
-- Swap between XLM and USDC through Aquarius pools
+- Swap between the assets the wallet supports, through Aquarius pools
 - Deposit into and withdraw from a DeFindex yield vault
 - Bridge USDC to and from other chains through Circle's CCTP
 - Connect a website over SEP-43 and approve one signature at a time

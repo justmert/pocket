@@ -5,8 +5,10 @@ description: A self-custody Stellar wallet with two pockets, one public and one 
 
 Pocket is a self-custody Stellar wallet that ships as a Chrome extension. One recovery phrase gives you two pockets:
 
-- a **public pocket** holding ordinary XLM and USDC, where balances and amounts are visible on the ledger, as they always are on Stellar
+- a **public pocket** holding ordinary Stellar assets, where balances and amounts are visible on the ledger, as they always are on Stellar
 - a **private pocket** holding the same assets inside OpenZeppelin's confidential token wrapper, where **the amounts are encrypted on chain**
+
+XLM and USDC are what is deployed on testnet today. The private pocket is one wrapper per asset, so the list grows by deploying, not by rewriting the wallet.
 
 You move value between them whenever you want. Same phrase, same wallet, one tap to switch.
 
