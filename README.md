@@ -7,7 +7,26 @@ Chrome extension, Manifest V3.
 pay: sender and recipient addresses stay on the public ledger, permanently, on
 every transfer. If you need your counterparty hidden, Pocket is the wrong tool.
 
-Full documentation: `cd docs && npm run dev`.
+Full documentation: [docs.pocket-wallet.app](https://docs.pocket-wallet.app).
+
+## Install
+
+Pocket is not on the Chrome Web Store yet, so it installs as an unpacked
+extension. About a minute, in Chrome or any Chromium browser (Brave, Edge, Arc):
+
+1. Download the latest build from
+   **[the releases page](https://github.com/justmert/pocket/releases/latest)**
+   (the `pocket-v*-chrome.zip` asset) and unzip it.
+2. Open `chrome://extensions`.
+3. Turn on **Developer mode**, top-right.
+4. Click **Load unpacked** and pick the unzipped `chrome-mv3` folder.
+
+Keep the folder: deleting it removes the extension. To update, download the
+newest release and click the reload icon on the extension's card. Pocket runs on
+Stellar **testnet**, so do not use mainnet funds.
+
+Prefer to build it yourself? `git clone`, then `npm run dev` (see Development
+below) hot-loads it into a browser.
 
 ## The two pockets
 
