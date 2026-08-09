@@ -153,7 +153,9 @@ export async function fetchInvocationPayload(
 
 export async function ingestRange(
   db: Database.Database,
-  server: rpc.Server,
+  // Only getEvents is used here, so any getEvents-shaped client works: a plain
+  // rpc.Server, or the failover wrapper (rpc.ts) the backfill runner passes.
+  server: Pick<rpc.Server, "getEvents">,
   contractId: string,
   fromLedger: number,
   toLedger: number,

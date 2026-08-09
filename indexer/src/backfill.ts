@@ -7,11 +7,10 @@
 // hybrid client sets from the RPC retention floor. If it falls below, a gap
 // opens that NEITHER source covers, and once those ledgers age out of RPC it is
 // permanent. That is the failure mode this service exists to prevent.
-import { rpc } from "@stellar/stellar-sdk";
 import { open } from "./schema.ts";
 import { ingestRange } from "./ingest.ts";
+import { ResilientRpc, resolveRpcUrls } from "./rpc.ts";
 
-const RPC_URL = process.env.RPC_URL ?? "https://soroban-testnet.stellar.org";
 // Horizon, for the invocation payloads that transfer events do not carry.
 // Full history, unlike Soroban RPC, which is the entire reason the archive
 // can answer about a transfer that RPC has long since dropped.
@@ -27,7 +26,10 @@ if (!CONTRACT) {
 }
 
 const db = open(DB_PATH);
-const server = new rpc.Server(RPC_URL);
+// Ordered endpoints with automatic failover on a transient fault, so one
+// provider's bad minute cannot open a permanent gap. See rpc.ts.
+const server = ResilientRpc.fromUrls(resolveRpcUrls());
+process.stdout.write(`RPC endpoints: ${server.endpoints().join(", ")}\n`);
 
 const health = await server.getHealth();
 const oldest = health.oldestLedger;
