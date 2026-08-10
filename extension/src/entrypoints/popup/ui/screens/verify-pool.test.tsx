@@ -75,10 +75,13 @@ describe("the chips offered on the backup check", () => {
 });
 
 describe("the step as it actually renders", () => {
-  // The helper above can be perfect and unused: swapping the component back to
-  // `asked.map(n => words[n])` leaves every test above green while the step
-  // goes straight back to six arrangements. This drives the real component.
-  it("puts more chips on screen than there are blanks", async () => {
+  // The owner's call: the confirm shows the whole phrase (dots + three blanks)
+  // and offers exactly the three answer words as chips, matching the common
+  // seed-confirm pattern rather than padding the pool with decoys. This is a
+  // deliberate trade -- three chips for three blanks is 3! = 6 orderings -- and
+  // this test pins that intended shape so a future change back to decoys is a
+  // visible decision, not a silent drift.
+  it("offers exactly the three words being asked for, and no decoys", async () => {
     const { renderToStaticMarkup } = await import("react-dom/server");
     const { Verify } = await import("./Onboarding");
     const { theme } = await import("../theme");
@@ -91,9 +94,9 @@ describe("the step as it actually renders", () => {
         onDone={() => undefined}
       />,
     );
-    // Every chip is a button carrying one word from the phrase.
+    // Every chip is a button carrying one word from the phrase; there are three.
     const chips = PHRASE.filter((w) => html.includes(`>${w}</button>`));
-    expect(chips.length, "the pool offered only the answers").toBeGreaterThan(3);
+    expect(chips.length).toBe(3);
   });
 
   it("marks each blank with the position it is asking for", async () => {

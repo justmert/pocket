@@ -4657,14 +4657,23 @@ export class WalletController {
   /** An auditor's registered key. Absent means the transfer cannot be built. */
   private async auditorKeyFor(auditorId: number, cfg: { auditor: string }): Promise<Point> {
     const { address } = requireSession();
-    const source = await this.server().getAccount(address);
-    const key = await readAuditorKey(
-      this.server(),
-      auditorId,
-      cfg.auditor,
-      source,
-      NETWORKS[this.network].passphrase,
-    );
+    const read = async () =>
+      readAuditorKey(
+        this.server(),
+        auditorId,
+        cfg.auditor,
+        await this.server().getAccount(address),
+        NETWORKS[this.network].passphrase,
+      );
+    // A key registered moments ago (the account's OWN, during first setup) can
+    // read back null while the RPC's view catches up. Retry before deciding it is
+    // truly absent; a genuinely unregistered auditor still returns null after
+    // these, so the error below still surfaces for the real case.
+    let key = await read();
+    for (let attempt = 1; !key && attempt <= 3; attempt++) {
+      await new Promise<void>((r) => setTimeout(r, 500 * attempt));
+      key = await read();
+    }
     if (!key) {
       throw new PrivatePocketError(
         `Auditor #${auditorId} has no registered key, so this operation cannot be proved.`,

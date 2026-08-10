@@ -29,7 +29,17 @@ export function useFundTestnet() {
     setError(null);
     try {
       await call({ type: "fundTestnet" });
-      // the worker has already waited for the account to exist; this read finds it.
+      // The worker waits for the account to EXIST, but the reserve can still read
+      // back a beat late, leaving the native line without a `total` -- which is the
+      // exact cue home uses to keep showing this prompt (`needsFunding`). Poll
+      // balances until the native line carries a total before refreshing, so home
+      // reliably flips out of the prompt instead of staying on a stale, total-less
+      // balance. Bounded, so a genuine failure is not an infinite wait.
+      for (let i = 0; i < 6; i++) {
+        const bals = await call({ type: "balances" });
+        if (bals.find((b) => b.id === "native")?.total !== undefined) break;
+        await new Promise((r) => setTimeout(r, 800));
+      }
       await w.refresh();
       return null;
     } catch (e) {

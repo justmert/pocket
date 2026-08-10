@@ -611,20 +611,13 @@ export function Verify({
   // phrase is already in this component's parent, so nothing crosses the trust
   // boundary and nothing is asked of the worker.
   const [asked] = useState(() => pickThree(words.length));
-  // The pool held ONLY the three correct words, so the step asked the user to
-  // put three chips in an order rather than to know anything: 3! = 6
-  // arrangements, unlimited retries, and the answer visible on screen. Someone
-  // who had written nothing down was through it in a few taps, and this is the
-  // only gate asserting the phrase was written down at all, and the only caller
-  // of `clearOnboardingUnfinished`.
-  //
-  // Decoys come from the SAME phrase, so every chip is plausible and no
-  // dictionary is needed. Nine chips choosing three in order is 504
-  // arrangements rather than 6, which makes guessing impractical without
-  // locking out someone who really did write it down. Retries stay unlimited
-  // for exactly that reason: a limit here would strand a user who has the paper
-  // in front of them and mistyped.
-  const [pool] = useState(() => shuffle(withDecoys(words, asked)));
+  // The pool is exactly the three correct words, shuffled: the step asks the user
+  // to place those three into their blanks, in order (owner's call, matching the
+  // familiar seed-confirm pattern). It is the only gate asserting the phrase was
+  // written down, and the only caller of `clearOnboardingUnfinished`. Retries stay
+  // unlimited so a user with the paper in front of them who mistypes is not locked
+  // out.
+  const [pool] = useState(() => shuffle(asked.map((n) => words[n])));
   // per blank (in `asked` order), the POOL INDEX placed there, or null. indices,
   // not words, so a phrase that repeats a word still tracks each chip separately.
   const [placed, setPlaced] = useState<(number | null)[]>(() => asked.map(() => null));
@@ -658,9 +651,9 @@ export function Verify({
         Select the missing words in the correct order.
       </p>
 
-      {/* only the three positions being proved, labelled by their number in the
-          phrase, filled by tapping the chips below in order. the rest of the phrase
-          is not shown: this asks the user to recall the three, not read them off. */}
+      {/* the whole phrase with its positions kept: the words you are not proving are
+          shown as dots for context, and the three blanks are filled by tapping the
+          chips below, in order. */}
       <div
         style={{
           display: "grid",
@@ -669,9 +662,11 @@ export function Verify({
           marginBottom: space.lg,
         }}
       >
-        {asked.map((n, blankIdx) => {
-          const filled = placed[blankIdx] !== null ? pool[placed[blankIdx]!] : null;
-          const active = blankIdx === nextBlank;
+        {words.map((word, n) => {
+          const blankIdx = asked.indexOf(n);
+          const isBlank = blankIdx !== -1;
+          const filled = isBlank && placed[blankIdx] !== null ? pool[placed[blankIdx]!] : null;
+          const active = isBlank && blankIdx === nextBlank;
           return (
             <div
               key={n}
@@ -679,8 +674,7 @@ export function Verify({
               // can tell WHICH position each blank is asking for. Without it the
               // helper has to guess an order, which is how it came to type into
               // fields that no longer existed.
-              data-testid="verify-blank"
-              data-position={n + 1}
+              {...(isBlank ? { "data-testid": "verify-blank", "data-position": n + 1 } : {})}
               onClick={filled != null ? () => tapBlank(blankIdx) : undefined}
               style={{
                 display: "flex",
@@ -690,7 +684,7 @@ export function Verify({
                 padding: "0 10px",
                 borderRadius: radius.md,
                 border: `1px solid ${active ? t.accent : t.line}`,
-                background: t.field,
+                background: isBlank ? t.field : "transparent",
                 cursor: filled != null ? "pointer" : "default",
                 overflow: "hidden",
               }}
@@ -700,25 +694,34 @@ export function Verify({
               >
                 {n + 1}.
               </span>
-              {filled != null && (
+              {isBlank ? (
+                filled != null ? (
+                  <span
+                    style={{
+                      ...text.rowSub,
+                      fontFamily: fonts.mono,
+                      // only the 500 cut of DM Mono ships (`main.tsx` imports
+                      // `dm-mono/500.css` and nothing else), so 600 made chrome
+                      // SYNTHESISE a bold: it smears the glyphs of the face that
+                      // was chosen because "a slip between two glyphs loses
+                      // money", on the recovery-phrase screen. the same reset is
+                      // already written out in `Address.tsx`.
+                      fontWeight: 500,
+                      color: t.accent,
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {filled}
+                  </span>
+                ) : null
+              ) : (
                 <span
-                  style={{
-                    ...text.rowSub,
-                    fontFamily: fonts.mono,
-                    // only the 500 cut of DM Mono ships (`main.tsx` imports
-                    // `dm-mono/500.css` and nothing else), so 600 made chrome
-                    // SYNTHESISE a bold: it smears the glyphs of the face that
-                    // was chosen because "a slip between two glyphs loses money",
-                    // on the recovery-phrase screen. the same reset is already
-                    // written out in `Address.tsx`.
-                    fontWeight: 500,
-                    color: t.accent,
-                    minWidth: 0,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
+                  aria-hidden
+                  style={{ color: t.faint, letterSpacing: 1.5, overflow: "hidden" }}
                 >
-                  {filled}
+                  {"•".repeat(Math.min(Math.max(word.length, 3), 7))}
                 </span>
               )}
             </div>

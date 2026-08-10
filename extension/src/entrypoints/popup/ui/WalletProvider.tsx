@@ -539,6 +539,29 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setBackgroundOps((prev) => [{ ...op, id, status: "processing", at: Date.now() }, ...prev]);
     return id;
   }, []);
+  // After an op LANDS, the RPC's view of balances, the yield position and the
+  // private pockets can lag the confirmation by a beat, so a single immediate
+  // refresh often reads the pre-op state and home looks unchanged until the user
+  // pulls to refresh (observed after a yield deposit and a friendbot funding).
+  // Refresh now and again over the next few seconds so it catches up on its own.
+  // Fire and forget: these are cheap reads and refresh owns its own errors.
+  const refreshAfterOp = useCallback(() => {
+    void refresh();
+    setTimeout(() => void refresh(), 2000);
+    setTimeout(() => void refresh(), 5000);
+  }, [refresh]);
+  // Landing on Home from another tab pulls fresh data, so a change made on another
+  // screen (or another window) shows without a manual refresh. Keyed only on the
+  // tab, and via a ref for refresh so it does not re-run when refresh's identity
+  // changes; it skips the first render (the initial load already fetched), firing
+  // once per real transition INTO home.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const prevTab = useRef<Tab>("home");
+  useEffect(() => {
+    if (tab === "home" && prevTab.current !== "home") void refreshRef.current();
+    prevTab.current = tab;
+  }, [tab]);
   const completeOp = useCallback(
     (id: string, result: { hash: string; ledger?: number }) => {
       setBackgroundOps((prev) =>
@@ -547,11 +570,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         ),
       );
       // the money moved: pull fresh balances and history so the completed row can
-      // reconcile against the chain and this watch record retire. safe to run
-      // detached; refresh owns its own errors.
-      void refresh();
+      // reconcile against the chain and this watch record retire.
+      refreshAfterOp();
     },
-    [refresh],
+    [refreshAfterOp],
   );
   const failOp = useCallback(async (id: string, error: string): Promise<OpVerdict> => {
     // Record it as failed FIRST, so the row stops spinning even if the question
