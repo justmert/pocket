@@ -41,6 +41,30 @@
   @keyframes pk-tickline { 0%, 18% { transform: scale(0); opacity: 0 } 26% { transform: scale(1.3); opacity: 1 } 32%, 88% { transform: scale(1); opacity: 1 } 96%, 100% { transform: scale(0); opacity: 0 } }
   @media (max-width: 720px) { [data-vs] [data-vs-row] { grid-template-columns: 1fr !important } }
   @media (max-width: 760px) { [data-how-grid] { grid-template-columns: 1fr !important } [data-how-grid] > div:first-child { display: none !important } }
+
+  @media (max-width: 700px) {
+    nav { padding: 15px 18px !important; gap: 12px !important; background: #f2f1e8 !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; border-bottom: 1px solid rgba(16,16,18,.12) !important }
+    nav img { height: 27px !important }
+    [data-nav-links] { flex-wrap: nowrap !important; gap: 17px !important }
+    [data-nav-links] a { font-size: 15.5px !important }
+    [data-nav-contact], [data-nav-cta] { display: none !important }
+  }
+  @media (max-width: 600px) {
+    section, header, footer { padding-left: 18px !important; padding-right: 18px !important }
+    footer { padding-top: 54px !important; padding-bottom: 58px !important }
+    [data-footer-inner] { flex-direction: column !important; align-items: stretch !important; gap: 30px !important }
+    [data-footer-links] { gap: 16px 22px !important }
+    [data-foot-cta] { flex: 1 1 44% !important; justify-content: center !important; display: inline-flex !important; text-align: center; margin-top: 12px }
+    [data-foot-cta] + [data-foot-cta] { margin-top: -6px !important }
+  }
+  @media (max-width: 720px) {
+    [data-vs] { display: none !important }
+    [data-vs-m] { display: flex !important }
+    [data-tbl-m] { display: flex !important }
+    [data-table-scroll], [data-scroll-hint] { display: none !important }
+  }
+  @media (max-width: 700px) { [data-fork-t] { font-size: 25px !important } }
+  @media (max-width: 600px) { section { padding-top: 40px !important; padding-bottom: 72px !important } }
 </style>
 </helmet>
 
@@ -50,12 +74,12 @@
     <a href="index.html" style="display: flex; align-items: center; flex: none">
       <img src="uploads/pocket-wordmark.png" alt="pocket" style="height: 26px; width: auto; display: block; transition: transform .55s cubic-bezier(.25,.8,.25,1)" />
     </a>
-    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px clamp(10px, 1.6vw, 20px)">
+    <div data-nav-links style="display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px clamp(10px, 1.6vw, 20px)">
       <a href="design.html" aria-current="page" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: #101012; padding-bottom: 3px; border-bottom: 3px solid #fed924; transition: color .4s ease">The design</a>
       <a href="security.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Security</a>
       <a href="https://docs.pocket-wallet.app" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Docs</a>
-      <a href="https://cal.com/mertkoklu/talk" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 9px 19px; border-radius: 14px; border: 2px solid #101012; color: #101012; transition: transform .45s cubic-bezier(.25,.8,.25,1), background .45s ease" style-hover="transform: translateY(-2px); background: rgba(16,16,18,.06)">Contact us</a>
-      <a href="https://github.com/justmert/pocket/releases/latest" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 14px; border: 2px solid #101012; background: #101012; color: #f2f1e8; box-shadow: 3px 3px 0 #b8ade8; transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #b8ade8">Install from GitHub</a>
+      <a data-nav-contact href="https://cal.com/mertkoklu/talk" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 9px 19px; border-radius: 14px; border: 2px solid #101012; color: #101012; transition: transform .45s cubic-bezier(.25,.8,.25,1), background .45s ease" style-hover="transform: translateY(-2px); background: rgba(16,16,18,.06)">Contact us</a>
+      <a data-nav-cta href="https://github.com/justmert/pocket/releases/latest" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 14px; border: 2px solid #101012; background: #101012; color: #f2f1e8; box-shadow: 3px 3px 0 #b8ade8; transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #b8ade8">Install from GitHub</a>
     </div>
   </nav>
 
@@ -247,14 +271,14 @@
         <div style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(18px, 2vw, 25px); line-height: 1.2; max-width: 32ch">There are two ways to get privacy on a public chain.</div>
         <p style="margin: 14px 0 0; max-width: 64ch; font-size: clamp(14.5px, 1.5vw, 16.5px); font-weight: 600; line-height: 1.62; color: rgba(244,243,239,.58)">Hide who you pay, or hide how much. Hiding who means pooling your money with strangers and withdrawing to a fresh address, so no one can connect the two. That's a mixer. Hiding how much means keeping the names on the record and encrypting the amounts. That's Pocket.</p>
         <svg viewBox="0 0 600 132" style="display: block; width: 100%; max-width: 640px; margin: 26px auto 0; height: auto; overflow: visible">
-          <text x="300" y="12" text-anchor="middle" fill="rgba(244,243,239,.5)" style="font-family: Fredoka, sans-serif; font-size: 13px">a payment you want private</text>
+          <text data-fork-t x="300" y="12" text-anchor="middle" fill="rgba(244,243,239,.5)" style="font-family: Fredoka, sans-serif; font-size: 13px">a payment you want private</text>
           <circle cx="300" cy="30" r="7" fill="#f4f3ef"></circle>
           <path d="M300,37 C300,84 132,68 132,104" fill="none" stroke="rgba(244,243,239,.34)" stroke-width="2.4" stroke-dasharray="8 8" stroke-linecap="round"></path>
           <path d="M300,37 C300,84 468,68 468,104" fill="none" stroke="#fed924" stroke-width="3" stroke-linecap="round"></path>
           <circle cx="132" cy="110" r="7" fill="none" stroke="rgba(244,243,239,.4)" stroke-width="2.4"></circle>
           <circle cx="468" cy="110" r="8" fill="#fed924"></circle>
-          <text x="132" y="132" text-anchor="middle" fill="rgba(244,243,239,.55)" style="font-family: Fredoka, sans-serif; font-size: 14px">hide who</text>
-          <text x="468" y="132" text-anchor="middle" fill="#fed924" style="font-family: Fredoka, sans-serif; font-size: 14px">hide how much</text>
+          <text data-fork-t x="132" y="132" text-anchor="middle" fill="rgba(244,243,239,.55)" style="font-family: Fredoka, sans-serif; font-size: 14px">hide who</text>
+          <text data-fork-t x="468" y="132" text-anchor="middle" fill="#fed924" style="font-family: Fredoka, sans-serif; font-size: 14px">hide how much</text>
         </svg>
       </div>
 
@@ -306,7 +330,7 @@
         <p style="margin: 14px auto 0; max-width: 64ch; font-size: clamp(14.5px, 1.5vw, 16.5px); font-weight: 600; line-height: 1.62; color: rgba(244,243,239,.58)">Money entering or leaving is a visible amount either way. So the pool takes on a crowd, a gatekeeper, and a relayer, and still doesn't hide the boundary.</p>
       </div>
       <div data-vs data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); margin-top: clamp(44px, 4.8vw, 64px)">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: clamp(18px, 3vw, 44px); padding-bottom: 14px; border-bottom: 2px solid rgba(244,243,239,.18)">
+        <div data-vs-head style="display: grid; grid-template-columns: 1fr 1fr; gap: clamp(18px, 3vw, 44px); padding-bottom: 14px; border-bottom: 2px solid rgba(244,243,239,.18)">
           <div style="display: flex; align-items: center; gap: 10px">
             <span style="width: 9px; height: 9px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4)"></span>
             <span style="font-family: Fredoka, sans-serif; font-size: clamp(14px, 1.5vw, 17px); color: rgba(244,243,239,.5)">a pool</span>
@@ -318,23 +342,94 @@
         </div>
         <div data-vs-row style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px clamp(18px, 3vw, 44px); align-items: start; padding: clamp(20px, 2.2vw, 26px) 0">
           <div style="grid-column: 1 / -1; font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.6vw, 19px); line-height: 1.25; color: rgba(244,243,239,.6)">How strong is it</div>
-          <div style="font-size: clamp(13.5px, 1.4vw, 15.5px); font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.56)">as strong as the crowd</div>
-          <div style="font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.65vw, 20px); line-height: 1.3; color: #f4f3ef">the same for everyone, from day one</div>
+          <div style="font-size: clamp(13.5px, 1.4vw, 15.5px); font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.56)"><span data-vs-tag style="display: none; margin-bottom: 5px; font-family: Fredoka, sans-serif; font-size: 12px; color: rgba(244,243,239,.45)">a pool</span>as strong as the crowd</div>
+          <div style="font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.65vw, 20px); line-height: 1.3; color: #f4f3ef"><span data-vs-tag style="display: none; margin-bottom: 5px; font-family: Fredoka, sans-serif; font-size: 12px; color: #fed924">Pocket</span>the same for everyone, from day one</div>
         </div>
         <div data-vs-row style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px clamp(18px, 3vw, 44px); align-items: start; padding: clamp(20px, 2.2vw, 26px) 0; border-top: 1px solid rgba(244,243,239,.1)">
           <div style="grid-column: 1 / -1; font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.6vw, 19px); line-height: 1.25; color: rgba(244,243,239,.6)">Who submits for you</div>
-          <div style="font-size: clamp(13.5px, 1.4vw, 15.5px); font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.56)">a relayer</div>
-          <div style="font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.65vw, 20px); line-height: 1.3; color: #f4f3ef">you do</div>
+          <div style="font-size: clamp(13.5px, 1.4vw, 15.5px); font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.56)"><span data-vs-tag style="display: none; margin-bottom: 5px; font-family: Fredoka, sans-serif; font-size: 12px; color: rgba(244,243,239,.45)">a pool</span>a relayer</div>
+          <div style="font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.65vw, 20px); line-height: 1.3; color: #f4f3ef"><span data-vs-tag style="display: none; margin-bottom: 5px; font-family: Fredoka, sans-serif; font-size: 12px; color: #fed924">Pocket</span>you do</div>
         </div>
         <div data-vs-row style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px clamp(18px, 3vw, 44px); align-items: start; padding: clamp(20px, 2.2vw, 26px) 0; border-top: 1px solid rgba(244,243,239,.1)">
           <div style="grid-column: 1 / -1; font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.6vw, 19px); line-height: 1.25; color: rgba(244,243,239,.6)">Staying compliant</div>
-          <div style="font-size: clamp(13.5px, 1.4vw, 15.5px); font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.56)">a gatekeeper who can freeze you</div>
-          <div style="font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.65vw, 20px); line-height: 1.3; color: #f4f3ef">your own auditor key, no gate</div>
+          <div style="font-size: clamp(13.5px, 1.4vw, 15.5px); font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.56)"><span data-vs-tag style="display: none; margin-bottom: 5px; font-family: Fredoka, sans-serif; font-size: 12px; color: rgba(244,243,239,.45)">a pool</span>a gatekeeper who can freeze you</div>
+          <div style="font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.65vw, 20px); line-height: 1.3; color: #f4f3ef"><span data-vs-tag style="display: none; margin-bottom: 5px; font-family: Fredoka, sans-serif; font-size: 12px; color: #fed924">Pocket</span>your own auditor key, no gate</div>
         </div>
         <div data-vs-row style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px clamp(18px, 3vw, 44px); align-items: start; padding: clamp(20px, 2.2vw, 26px) 0; border-top: 1px solid rgba(244,243,239,.1)">
           <div style="grid-column: 1 / -1; font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.6vw, 19px); line-height: 1.25; color: rgba(244,243,239,.6)">The edges</div>
-          <div style="font-size: clamp(13.5px, 1.4vw, 15.5px); font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.56)">public</div>
-          <div style="font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.65vw, 20px); line-height: 1.3; color: #f4f3ef">public, and we say so</div>
+          <div style="font-size: clamp(13.5px, 1.4vw, 15.5px); font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.56)"><span data-vs-tag style="display: none; margin-bottom: 5px; font-family: Fredoka, sans-serif; font-size: 12px; color: rgba(244,243,239,.45)">a pool</span>public</div>
+          <div style="font-family: Fredoka, sans-serif; font-size: clamp(15px, 1.65vw, 20px); line-height: 1.3; color: #f4f3ef"><span data-vs-tag style="display: none; margin-bottom: 5px; font-family: Fredoka, sans-serif; font-size: 12px; color: #fed924">Pocket</span>public, and we say so</div>
+        </div>
+      
+      </div>
+<div data-vs-m style="display: none; flex-direction: column; gap: 14px; margin-top: clamp(30px, 4vw, 44px)">
+        <div data-reveal data-delay="0" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">How strong is it</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">a pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">as strong as the crowd</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">the same for everyone, from day one</div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal data-delay="50" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">Who submits for you</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">a pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">a relayer</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">you do</div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal data-delay="100" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">Staying compliant</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">a pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">a gatekeeper who can freeze you</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">your own auditor key, no gate</div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal data-delay="150" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">The edges</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">a pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">public</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">public, and we say so</div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -345,7 +440,8 @@
         <p style="margin: 20px 0 0; max-width: 64ch; font-size: clamp(15px, 1.6vw, 17.5px); font-weight: 600; line-height: 1.6; color: rgba(244,243,239,.58)">Confidential tokens, shielded pools, and custody are three different answers to the same question. This is the trade-off, not a scoreboard.</p>
       </div>
 
-      <div data-reveal data-delay="120" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); margin-top: clamp(30px, 3.4vw, 44px); overflow-x: auto; padding-bottom: 6px">
+      <div data-scroll-hint style="display: none; margin-top: clamp(30px, 3.4vw, 44px); font-family: Fredoka, sans-serif; font-size: 13px; color: rgba(244,243,239,.45)">scroll sideways to compare →</div>
+      <div data-reveal data-delay="120" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); margin-top: clamp(30px, 3.4vw, 44px); overflow-x: auto; padding-bottom: 6px" data-table-scroll>
         <div style="min-width: 820px; display: grid; grid-template-columns: minmax(150px, .9fr) minmax(230px, 1.2fr) minmax(190px, 1fr) minmax(190px, 1fr); border: 2px solid rgba(244,243,239,.3); border-radius: 20px; overflow: hidden">
           <div style="padding: 16px clamp(13px, 1.6vw, 20px); color: rgba(244,243,239,.62); font-family: Fredoka, sans-serif; font-size: clamp(13.5px, 1.4vw, 16px); line-height: 1.2; border-bottom: 2px solid rgba(244,243,239,.28)"></div>
           <div style="padding: 16px clamp(13px, 1.6vw, 20px); background: rgba(244,243,239,.045); color: #fed924; font-family: Fredoka, sans-serif; font-size: clamp(13.5px, 1.4vw, 16px); line-height: 1.2; border-bottom: 2px solid #fed924"><span style="display: inline-flex; align-items: center; gap: 8px"><span style="width: 8px; height: 8px; border-radius: 999px; background: #fed924"></span>Pocket, the confidential token</span></div>
@@ -408,6 +504,345 @@
           <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5)">unlinkable transfers where the counterparty must be hidden</div>
           <div style="padding: 15px clamp(13px, 1.6vw, 20px); font-size: clamp(13px, 1.35vw, 14.5px); font-weight: 600; line-height: 1.5; color: rgba(244,243,239,.5)">users who would rather an operator hold funds and handle compliance for them</div>
         </div>
+      
+      </div>
+      <div data-tbl-m style="display: none; flex-direction: column; gap: 14px; margin-top: 10px">
+        <div data-reveal data-delay="0" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">Model</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">per-account encrypted balance, a Pedersen commitment C = v·G + r·H</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Shielded pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">a shared pool of notes + a nullifier set</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 10px; height: 10px; margin-top: 8px; border: 2px solid rgba(244,243,239,.3); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Custodial / off-chain</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">balances held by an operator; the public ledger shows only deposits and withdrawals</div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal data-delay="50" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">What it hides</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">amounts and balances</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Shielded pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">amounts, plus the sender↔recipient link inside the pool</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 10px; height: 10px; margin-top: 8px; border: 2px solid rgba(244,243,239,.3); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Custodial / off-chain</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">everything, from the public; the activity is off the ledger</div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal data-delay="100" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">Counterparties</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">on the public record, by design</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Shielded pool</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">hidden inside the pool</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 10px; height: 10px; margin-top: 8px; border: 2px solid rgba(244,243,239,.3); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Custodial / off-chain</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">hidden from the public, visible to the operator</div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal data-delay="150" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">Privacy model</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">deterministic, the same for every user from day one</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Shielded pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">an anonymity set, varying with pool size and timing</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 10px; height: 10px; margin-top: 8px; border: 2px solid rgba(244,243,239,.3); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Custodial / off-chain</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">the operator's private database</div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal data-delay="200" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">Who holds your funds</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">you (self-custody)</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Shielded pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">you (self-custody)</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 10px; height: 10px; margin-top: 8px; border: 2px solid rgba(244,243,239,.3); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Custodial / off-chain</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">the operator</div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal data-delay="250" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">Who can read your amounts</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">only you (and an auditor key you hold yourself)</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Shielded pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">only you</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 10px; height: 10px; margin-top: 8px; border: 2px solid rgba(244,243,239,.3); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Custodial / off-chain</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">the operator, always</div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal data-delay="250" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">Mechanism</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">UltraHonk proofs (Noir), Pedersen commitments + Poseidon2 encryption</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Shielded pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">zero-knowledge proofs (Groth16 or UltraHonk)</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 10px; height: 10px; margin-top: 8px; border: 2px solid rgba(244,243,239,.3); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Custodial / off-chain</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">none, trust replaces proof</div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal data-delay="250" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">Who submits your transaction</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">you sign and submit it yourself</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Shielded pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">a relayer, for private transfers</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 10px; height: 10px; margin-top: 8px; border: 2px solid rgba(244,243,239,.3); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Custodial / off-chain</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">the operator</div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal data-delay="250" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">Compliance</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">your own auditor key; no entry gate</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Shielded pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">operator-run allow / deny at the boundary</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 10px; height: 10px; margin-top: 8px; border: 2px solid rgba(244,243,239,.3); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Custodial / off-chain</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">operator's KYC / AML, with full visibility</div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal data-delay="250" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">Entry &amp; freeze control</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">none exists, the contracts have no admin</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Shielded pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">operator can gate who enters</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 10px; height: 10px; margin-top: 8px; border: 2px solid rgba(244,243,239,.3); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Custodial / off-chain</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">operator can freeze or close your account</div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal data-delay="250" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">Verifiable on chain</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">yes, every balance is re-checked against the chain</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Shielded pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">yes, proofs and nullifiers are on chain</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 10px; height: 10px; margin-top: 8px; border: 2px solid rgba(244,243,239,.3); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Custodial / off-chain</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">no, you rely on the operator's books</div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal data-delay="250" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">Recovery</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">recovery phrase + a durable archive, re-verified against the chain</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Shielded pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">note / indexer backup</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 10px; height: 10px; margin-top: 8px; border: 2px solid rgba(244,243,239,.3); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Custodial / off-chain</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">the operator resets your account</div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal data-delay="250" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">Standard</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">the confidential-token standard from the Confidential Token Association (SDF, OpenZeppelin, Nethermind)</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Shielded pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">shielded-pool design (research and reference implementations)</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 10px; height: 10px; margin-top: 8px; border: 2px solid rgba(244,243,239,.3); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Custodial / off-chain</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">proprietary to each operator</div>
+            </div>
+          </div>
+        </div>
+        <div data-reveal data-delay="250" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); border: 1px solid rgba(244,243,239,.14); border-radius: 16px; padding: 16px 16px 18px">
+          <div style="font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.25; color: rgba(244,243,239,.62)">Best fit</div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; background: #fed924"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: #fed924">Pocket</div>
+              <div style="margin-top: 3px; font-family: Fredoka, sans-serif; font-size: 16.5px; line-height: 1.3; color: #f4f3ef">accountable privacy: hide amounts, keep parties on record (payroll, treasury, suppliers)</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 11px; height: 11px; margin-top: 7px; border-radius: 999px; border: 2px solid rgba(244,243,239,.4); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Shielded pool</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">unlinkable transfers where the counterparty must be hidden</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: flex-start; gap: 11px; margin-top: 13px; padding-top: 13px; border-top: 1px dashed rgba(244,243,239,.15)">
+            <span style="flex: none; width: 10px; height: 10px; margin-top: 8px; border: 2px solid rgba(244,243,239,.3); box-sizing: border-box"></span>
+            <div style="min-width: 0">
+              <div style="font-family: Fredoka, sans-serif; font-size: 12.5px; color: rgba(244,243,239,.42)">Custodial / off-chain</div>
+              <div style="margin-top: 3px; font-size: 14.5px; font-weight: 600; line-height: 1.45; color: rgba(244,243,239,.5)">users who would rather an operator hold funds and handle compliance for them</div>
+            </div>
+          </div>
+        </div>
       </div>
 
 
@@ -417,19 +852,19 @@
   </section>
 
   <footer style="background: #f2f1e8; color: #101012; padding: 72px 32px 80px">
-    <div style="max-width: 1180px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 32px">
+    <div data-footer-inner style="max-width: 1180px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 32px">
       <div>
         <img src="uploads/pocket-wordmark.png" alt="pocket" style="height: 36px; width: auto; display: block" />
         <div style="margin-top: 12px; font-family: Fredoka, sans-serif; font-size: 20px">Verifiable payments. Unreadable amounts.</div>
       </div>
-      <div style="display: flex; flex-wrap: wrap; gap: 12px 26px; align-items: center; font-size: 13px; font-weight: 600; color: rgba(16,16,18,.5)">
+      <div data-footer-links style="display: flex; flex-wrap: wrap; gap: 12px 26px; align-items: center; font-size: 13px; font-weight: 600; color: rgba(16,16,18,.5)">
         <a href="index.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Home</a>
         <a href="design.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">The design</a>
         <a href="security.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Security</a>
         <a href="https://docs.pocket-wallet.app" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Docs</a>
         <a href="https://github.com/justmert/pocket" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">GitHub</a>
-        <a href="https://cal.com/mertkoklu/talk" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 11px 21px; border-radius: 14px; border: 2px solid #101012; color: #101012; transition: transform .45s cubic-bezier(.25,.8,.25,1), background .45s ease" style-hover="transform: translateY(-2px); background: rgba(16,16,18,.06)">Contact us</a>
-        <a href="https://github.com/justmert/pocket/releases/latest" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 12px 22px; border-radius: 14px; border: 2px solid #101012; background: #101012; color: #f2f1e8; box-shadow: 3px 3px 0 #fed924; transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #fed924">Install from GitHub</a>
+        <a data-foot-cta href="https://cal.com/mertkoklu/talk" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 11px 21px; border-radius: 14px; border: 2px solid #101012; color: #101012; transition: transform .45s cubic-bezier(.25,.8,.25,1), background .45s ease" style-hover="transform: translateY(-2px); background: rgba(16,16,18,.06)">Contact us</a>
+        <a data-foot-cta href="https://github.com/justmert/pocket/releases/latest" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 12px 22px; border-radius: 14px; border: 2px solid #101012; background: #101012; color: #f2f1e8; box-shadow: 3px 3px 0 #fed924; transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #fed924">Install from GitHub</a>
       </div>
     </div>
   </footer>

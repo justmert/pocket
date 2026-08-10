@@ -34,7 +34,7 @@
   a { color: inherit; text-decoration: none; }
   a:hover { color: #6b5fb0; }
   ::selection { background: #fed924; color: #101012; }
-  @media (max-width: 900px) { #pk-badge { display: none } }
+  @media (max-width: 1060px) { #pk-badge { display: none !important } }
   @keyframes pk-rule { from { background-position: 0 0, 0 0 } to { background-position: 32px 0, 32px 0 } }
   @keyframes pk-ghost { 0%, 100% { opacity: .12 } 50% { opacity: .7 } }
   @keyframes pk-merge { 0%, 12% { transform: translateX(0) } 46%, 66% { transform: translateX(var(--pk-mx, 14px)) } 92%, 100% { transform: translateX(0) } }
@@ -91,6 +91,42 @@
     from { -webkit-mask-position: -55% 0; mask-position: -55% 0; }
     to   { -webkit-mask-position: 155% 0; mask-position: 155% 0; }
   }
+
+  @media (max-width: 700px) {
+    nav { padding: 15px 18px !important; gap: 12px !important; background: #f2f1e8 !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; border-bottom: 1px solid rgba(16,16,18,.12) !important }
+    nav img { height: 27px !important }
+    [data-nav-links] { flex-wrap: nowrap !important; gap: 17px !important }
+    [data-nav-links] a { font-size: 15.5px !important }
+    [data-nav-contact], [data-nav-cta] { display: none !important }
+  }
+  @media (max-width: 600px) {
+    section, header, footer { padding-left: 18px !important; padding-right: 18px !important }
+    footer { padding-top: 54px !important; padding-bottom: 58px !important }
+  }
+  @media (max-width: 820px) {
+    #pk-fan { height: auto !important; display: flex; flex-direction: column; gap: 16px }
+    #pk-card-pub, #pk-priv-card { position: static !important; width: 100% !important; height: auto !important; min-height: 172px; transform: none !important }
+    #pk-card-pub { padding-right: clamp(24px, 2.6vw, 36px) !important }
+  }
+  @media (max-width: 700px) {
+    [data-chips] { flex-wrap: wrap !important; overflow-x: visible !important; gap: 10px !important }
+    [data-chips] > span { flex: 0 1 auto !important; padding: 12px 17px !important; font-size: 15px !important }
+    [data-send-grid] > div:first-child { order: 2 }
+    [data-seal-row] { flex-wrap: nowrap !important; gap: 14px !important; padding: 20px 2px !important }
+    [data-seal-row] > span:first-child { min-width: 0 !important; font-size: 16.5px !important; line-height: 1.3 }
+    [data-seal-row] > span:last-child { flex: none !important }
+    [data-footer-inner] { flex-direction: column !important; align-items: stretch !important; gap: 30px !important }
+    [data-footer-links] { gap: 16px 22px !important }
+    [data-foot-cta] { flex: 1 1 44% !important; justify-content: center !important; display: inline-flex !important; text-align: center; margin-top: 12px }
+    [data-foot-cta] + [data-foot-cta] { margin-top: -6px !important }
+  }
+  @media (max-width: 600px) {
+    header { padding-top: 44px !important; padding-bottom: 66px !important }
+    [data-screen-label] { padding-top: 64px !important; padding-bottom: 70px !important }
+    [data-screen-label="marquee"] { padding: 20px 0 !important }
+    [data-screen-label="design link"], [data-screen-label="security link"], [data-screen-label="docs link"] { padding-top: 42px !important; padding-bottom: 42px !important }
+    [data-hero-pill] { padding: 11px 18px !important }
+  }
 </style>
 </helmet>
 
@@ -101,12 +137,12 @@
     <a href="index.html" style="display: flex; align-items: center; flex: none">
       <img src="uploads/pocket-wordmark.png" alt="pocket" style="height: 26px; width: auto; display: block; transition: transform .55s cubic-bezier(.25,.8,.25,1)" />
     </a>
-    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px clamp(10px, 1.6vw, 20px)">
+    <div data-nav-links style="display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px clamp(10px, 1.6vw, 20px)">
       <a href="design.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">The design</a>
       <a href="security.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Security</a>
       <a href="https://docs.pocket-wallet.app" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Docs</a>
-      <a href="https://cal.com/mertkoklu/talk" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 9px 19px; border-radius: 14px; border: 2px solid #101012; color: #101012; transition: transform .45s cubic-bezier(.25,.8,.25,1), background .45s ease" style-hover="transform: translateY(-2px); background: rgba(16,16,18,.06)">Contact us</a>
-      <a href="https://github.com/justmert/pocket/releases/latest" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 14px; border: 2px solid #101012; background: #101012; color: #f2f1e8; box-shadow: 3px 3px 0 #b8ade8; transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #b8ade8">Install from GitHub</a>
+      <a data-nav-contact href="https://cal.com/mertkoklu/talk" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 9px 19px; border-radius: 14px; border: 2px solid #101012; color: #101012; transition: transform .45s cubic-bezier(.25,.8,.25,1), background .45s ease" style-hover="transform: translateY(-2px); background: rgba(16,16,18,.06)">Contact us</a>
+      <a data-nav-cta href="https://github.com/justmert/pocket/releases/latest" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 14px; border: 2px solid #101012; background: #101012; color: #f2f1e8; box-shadow: 3px 3px 0 #b8ade8; transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #b8ade8">Install from GitHub</a>
     </div>
   </nav>
 
@@ -122,7 +158,7 @@
                 <div id="pk-sh-p" style="position: absolute; inset: 0; pointer-events: none; -webkit-mask-image: linear-gradient(104deg, rgba(0,0,0,0) 0 50%, #000 50% 54%, rgba(0,0,0,0) 54% 100%); mask-image: linear-gradient(104deg, rgba(0,0,0,0) 0 50%, #000 50% 54%, rgba(0,0,0,0) 54% 100%); -webkit-mask-size: 200% 100%; mask-size: 200% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; animation: pk-band 5s linear infinite"></div>
       </div>
       <h1 data-reveal style="opacity: 0; transform: translateY(8px); transition: opacity 1.4s ease, transform 1.4s cubic-bezier(.25,.8,.25,1); font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(30px, 4.2vw, 52px); line-height: 1.1; letter-spacing: -.015em; max-width: 860px; margin: 26px auto 0; text-wrap: pretty">Your balance is <span data-hl style="background-image: linear-gradient(#b8ade8, #b8ade8); background-repeat: no-repeat; background-position: 0 88%; background-size: 0% 42%; padding: 0 6px; margin: 0 -6px; transition: background-size 1.1s cubic-bezier(.25,.85,.25,1)">nobody’s business</span>.<br />So we built <span data-hl style="background-image: linear-gradient(#fed924, #fed924); background-repeat: no-repeat; background-position: 0 88%; background-size: 0% 42%; padding: 0 6px; margin: 0 -6px; transition: background-size 1.1s cubic-bezier(.25,.85,.25,1)">one that keeps quiet</span>.</h1>
-      <div data-reveal data-delay="120" style="opacity: 0; transform: translateY(8px); transition: opacity 1.4s ease, transform 1.4s cubic-bezier(.25,.8,.25,1); font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(20px, 2.6vw, 31px); line-height: 1.25; margin: 26px auto 0"><span style="display: inline-flex; align-items: center; gap: 14px; padding: 13px 26px; border: 2px solid #101012; border-radius: 16px; box-shadow: 4px 4px 0 #b8ade8; font-size: clamp(16px, 1.9vw, 22px); font-weight: 500"><span style="width: 10px; height: 10px; border-radius: 999px; background: #fed924; border: 1.5px solid #101012"></span>Stellar's first noncustodial private wallet</span></div>
+      <div data-reveal data-delay="120" style="opacity: 0; transform: translateY(8px); transition: opacity 1.4s ease, transform 1.4s cubic-bezier(.25,.8,.25,1); font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(20px, 2.6vw, 31px); line-height: 1.25; margin: 26px auto 0"><span data-hero-pill style="display: inline-flex; align-items: center; gap: 14px; padding: 13px 26px; border: 2px solid #101012; border-radius: 16px; box-shadow: 4px 4px 0 #b8ade8; font-size: clamp(16px, 1.9vw, 22px); font-weight: 500"><span style="width: 10px; height: 10px; border-radius: 999px; background: #fed924; border: 1.5px solid #101012"></span>Stellar's first noncustodial private wallet</span></div>
       <div data-reveal data-delay="220" style="opacity: 0; transform: translateY(8px); transition: opacity 1.4s ease, transform 1.4s cubic-bezier(.25,.8,.25,1); display: flex; flex-wrap: wrap; align-items: stretch; justify-content: center; gap: 14px; margin-top: 36px">
         <a href="https://github.com/justmert/pocket/releases/latest" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(15px, 1.6vw, 17px); display: inline-flex; align-items: center; justify-content: center; padding: 14px 26px; border-radius: 16px; border: 2px solid #101012; background: #101012; color: #f2f1e8; box-shadow: 5px 5px 0 #b8ade8; transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 3px 3px 0 #b8ade8">Install from GitHub</a>
         <a href="https://docs.pocket-wallet.app" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(15px, 1.6vw, 17px); display: inline-flex; align-items: center; justify-content: center; padding: 14px 26px; border-radius: 16px; border: 2px solid #101012; background: transparent; color: #101012; box-shadow: none; transition: transform .4s cubic-bezier(.25,.8,.25,1), background .4s ease" style-hover="transform: translateY(-2px); background: rgba(16,16,18,.06)">Read the docs</a>
@@ -174,23 +210,23 @@
     <div style="max-width: 1180px; margin: 0 auto">
       <h2 data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); font-family: Fredoka, sans-serif; font-weight: 500; font-size: clamp(28px, 3.6vw, 46px); line-height: 1.14; letter-spacing: -.02em; margin: 0 0 52px; max-width: 26ch">Pocket seals the numbers. Everything that makes a payment legitimate stays in the open.</h2>
       <div style="display: grid; gap: 0; border-bottom: 1px solid rgba(244,243,239,.16)">
-        <div data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 22px clamp(6px, 1vw, 12px); border-top: 1px solid rgba(244,243,239,.16)">
+        <div data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 22px clamp(6px, 1vw, 12px); border-top: 1px solid rgba(244,243,239,.16)" data-seal-row>
           <span style="font-family: Fredoka, sans-serif; font-size: clamp(18px, 2vw, 24px)">how much you paid someone</span>
           <span style="display: inline-flex; align-items: center; gap: 9px; padding: 8px 17px 8px 13px; border-radius: 999px; background: #b8ade8; border: 2px solid #f4f3ef; box-shadow: 3px 3px 0 rgba(244,243,239,.28); color: #1a1626; font-family: Fredoka, sans-serif; font-size: 14.5px; line-height: 1"><svg viewBox="0 0 14 16" style="width: 12px; height: 14px; flex: none"><rect x="1.2" y="6.6" width="11.6" height="8.2" rx="2.4" fill="currentColor"></rect><path d="M3.9,6.6 V4.4 a3.1,3.1 0 0 1 6.2,0 V6.6" fill="none" stroke="currentColor" stroke-width="1.5" style="transform-origin: 10px 6.6px; animation: pk-shut 5.2s ease-in-out 0.0s infinite"></path></svg>sealed</span>
         </div>
-        <div data-reveal data-delay="80" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 22px clamp(6px, 1vw, 12px); border-top: 1px solid rgba(244,243,239,.16)">
+        <div data-reveal data-delay="80" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 22px clamp(6px, 1vw, 12px); border-top: 1px solid rgba(244,243,239,.16)" data-seal-row>
           <span style="font-family: Fredoka, sans-serif; font-size: clamp(18px, 2vw, 24px)">how much you hold in your private pocket</span>
           <span style="display: inline-flex; align-items: center; gap: 9px; padding: 8px 17px 8px 13px; border-radius: 999px; background: #b8ade8; border: 2px solid #f4f3ef; box-shadow: 3px 3px 0 rgba(244,243,239,.28); color: #1a1626; font-family: Fredoka, sans-serif; font-size: 14.5px; line-height: 1"><svg viewBox="0 0 14 16" style="width: 12px; height: 14px; flex: none"><rect x="1.2" y="6.6" width="11.6" height="8.2" rx="2.4" fill="currentColor"></rect><path d="M3.9,6.6 V4.4 a3.1,3.1 0 0 1 6.2,0 V6.6" fill="none" stroke="currentColor" stroke-width="1.5" style="transform-origin: 10px 6.6px; animation: pk-shut 5.2s ease-in-out 0.7s infinite"></path></svg>sealed</span>
         </div>
-        <div data-reveal data-delay="160" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 22px clamp(6px, 1vw, 12px); border-top: 1px solid rgba(244,243,239,.16)">
+        <div data-reveal data-delay="160" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 22px clamp(6px, 1vw, 12px); border-top: 1px solid rgba(244,243,239,.16)" data-seal-row>
           <span style="font-family: Fredoka, sans-serif; font-size: clamp(18px, 2vw, 24px)">your wallet address</span>
           <span style="display: inline-flex; align-items: center; gap: 9px; padding: 8px 17px 8px 13px; border-radius: 999px; background: #fed924; border: 2px solid #f4f3ef; box-shadow: 3px 3px 0 rgba(244,243,239,.28); color: #101012; font-family: Fredoka, sans-serif; font-size: 14.5px; line-height: 1"><svg viewBox="0 0 14 16" style="width: 12px; height: 14px; flex: none"><rect x="1.2" y="6.6" width="11.6" height="8.2" rx="2.4" fill="currentColor"></rect><path d="M3.9,6.6 V4.4 a3.1,3.1 0 0 1 6.2,-0.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="transform-origin: 3.9px 6.6px; animation: pk-swing 5.2s ease-in-out 1.4s infinite"></path></svg>in the open</span>
         </div>
-        <div data-reveal data-delay="220" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 22px clamp(6px, 1vw, 12px); border-top: 1px solid rgba(244,243,239,.16)">
+        <div data-reveal data-delay="220" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 22px clamp(6px, 1vw, 12px); border-top: 1px solid rgba(244,243,239,.16)" data-seal-row>
           <span style="font-family: Fredoka, sans-serif; font-size: clamp(18px, 2vw, 24px)">who you paid</span>
           <span style="display: inline-flex; align-items: center; gap: 9px; padding: 8px 17px 8px 13px; border-radius: 999px; background: #fed924; border: 2px solid #f4f3ef; box-shadow: 3px 3px 0 rgba(244,243,239,.28); color: #101012; font-family: Fredoka, sans-serif; font-size: 14.5px; line-height: 1"><svg viewBox="0 0 14 16" style="width: 12px; height: 14px; flex: none"><rect x="1.2" y="6.6" width="11.6" height="8.2" rx="2.4" fill="currentColor"></rect><path d="M3.9,6.6 V4.4 a3.1,3.1 0 0 1 6.2,-0.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="transform-origin: 3.9px 6.6px; animation: pk-swing 5.2s ease-in-out 2.1s infinite"></path></svg>in the open</span>
         </div>
-        <div data-reveal data-delay="340" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 22px clamp(6px, 1vw, 12px); border-top: 1px solid rgba(244,243,239,.16)">
+        <div data-reveal data-delay="340" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 22px clamp(6px, 1vw, 12px); border-top: 1px solid rgba(244,243,239,.16)" data-seal-row>
           <span style="font-family: Fredoka, sans-serif; font-size: clamp(18px, 2vw, 24px)">money moving in or out of it</span>
           <span style="display: inline-flex; align-items: center; gap: 9px; padding: 8px 17px 8px 13px; border-radius: 999px; background: #fed924; border: 2px solid #f4f3ef; box-shadow: 3px 3px 0 rgba(244,243,239,.28); color: #101012; font-family: Fredoka, sans-serif; font-size: 14.5px; line-height: 1"><svg viewBox="0 0 14 16" style="width: 12px; height: 14px; flex: none"><rect x="1.2" y="6.6" width="11.6" height="8.2" rx="2.4" fill="currentColor"></rect><path d="M3.9,6.6 V4.4 a3.1,3.1 0 0 1 6.2,-0.6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="transform-origin: 3.9px 6.6px; animation: pk-swing 5.2s ease-in-out 2.8s infinite"></path></svg>in the open</span>
         </div>
@@ -219,7 +255,7 @@
           <div style="margin-top: 10px; font-size: clamp(13.5px, 1.4vw, 15px); font-weight: 600; line-height: 1.5; color: rgba(16,16,18,.5)">Send it to Ethereum, Base, Solana and nine more, and claim it coming back. Burned on one chain and minted on the other, not swapped for something else.</div>
         </div>
       </div>
-      <div data-reveal data-delay="200" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); display: flex; flex-wrap: nowrap; overflow-x: auto; gap: clamp(8px, 1vw, 14px); margin-top: clamp(26px, 3vw, 36px); padding-bottom: 6px">
+      <div data-reveal data-delay="200" style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); display: flex; flex-wrap: nowrap; overflow-x: auto; gap: clamp(8px, 1vw, 14px); margin-top: clamp(26px, 3vw, 36px); padding-bottom: 6px" data-chips>
           <span style="display: inline-flex; align-items: center; justify-content: center; flex: 1 1 auto; min-width: 0; white-space: nowrap; padding: 10px clamp(8px, 1.1vw, 14px); border-radius: 999px; border: 2px solid #101012; background: #f7f6ef; box-shadow: 3px 3px 0 #101012; font-family: Fredoka, sans-serif; font-size: clamp(11.5px, 1.15vw, 14.5px); transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease, background .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #101012; background: #fed924">Send and receive</span>
           <span style="display: inline-flex; align-items: center; justify-content: center; flex: 1 1 auto; min-width: 0; white-space: nowrap; padding: 10px clamp(8px, 1.1vw, 14px); border-radius: 999px; border: 2px solid #101012; background: #f7f6ef; box-shadow: 3px 3px 0 #101012; font-family: Fredoka, sans-serif; font-size: clamp(11.5px, 1.15vw, 14.5px); transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease, background .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #101012; background: #fed924">Asset management</span>
           <span style="display: inline-flex; align-items: center; justify-content: center; flex: 1 1 auto; min-width: 0; white-space: nowrap; padding: 10px clamp(8px, 1.1vw, 14px); border-radius: 999px; border: 2px solid #101012; background: #f7f6ef; box-shadow: 3px 3px 0 #101012; font-family: Fredoka, sans-serif; font-size: clamp(11.5px, 1.15vw, 14.5px); transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease, background .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #101012; background: #fed924">Transaction history</span>
@@ -343,7 +379,7 @@
   </section>
 
   <section data-screen-label="send privately" style="background: #0d0d0f; color: #f4f3ef; padding: 104px 32px 108px">
-    <div style="max-width: 1020px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 44px clamp(32px, 4vw, 64px); align-items: center">
+    <div data-send-grid  style="max-width: 1020px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 44px clamp(32px, 4vw, 64px); align-items: center">
       <div data-reveal style="opacity: 0; transform: translateY(10px); transition: opacity 1.2s ease, transform 1.2s cubic-bezier(.25,.8,.25,1); display: flex; justify-content: flex-end">
         <div data-flow="send" style="width: 340px; max-width: 100%; box-sizing: border-box; border-radius: 20px; background: #15151a; border: 2px solid #f4f3ef; color: #f4f3ef; padding: 18px; box-shadow: 7px 7px 0 #b8ade8">
           <div style="display: flex; align-items: center; justify-content: space-between; height: 26px">
@@ -917,19 +953,19 @@
   </section>
 
   <footer style="background: #f2f1e8; color: #101012; padding: 72px 32px 80px">
-    <div style="max-width: 1180px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 32px">
+    <div data-footer-inner style="max-width: 1180px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 32px">
       <div>
         <img src="uploads/pocket-wordmark.png" alt="pocket" style="height: 36px; width: auto; display: block" />
         <div style="margin-top: 12px; font-family: Fredoka, sans-serif; font-size: 20px">Verifiable payments. Unreadable amounts.</div>
       </div>
-      <div style="display: flex; flex-wrap: wrap; gap: 12px 26px; align-items: center; font-size: 13px; font-weight: 600; color: rgba(16,16,18,.5)">
+      <div data-footer-links style="display: flex; flex-wrap: wrap; gap: 12px 26px; align-items: center; font-size: 13px; font-weight: 600; color: rgba(16,16,18,.5)">
         <a href="index.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Home</a>
         <a href="design.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">The design</a>
         <a href="security.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Security</a>
         <a href="https://docs.pocket-wallet.app" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Docs</a>
         <a href="https://github.com/justmert/pocket" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">GitHub</a>
-        <a href="https://cal.com/mertkoklu/talk" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 11px 21px; border-radius: 14px; border: 2px solid #101012; color: #101012; transition: transform .45s cubic-bezier(.25,.8,.25,1), background .45s ease" style-hover="transform: translateY(-2px); background: rgba(16,16,18,.06)">Contact us</a>
-        <a href="https://github.com/justmert/pocket/releases/latest" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 12px 22px; border-radius: 14px; border: 2px solid #101012; background: #101012; color: #f2f1e8; box-shadow: 3px 3px 0 #fed924; transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #fed924">Install from GitHub</a>
+        <a data-foot-cta href="https://cal.com/mertkoklu/talk" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 11px 21px; border-radius: 14px; border: 2px solid #101012; color: #101012; transition: transform .45s cubic-bezier(.25,.8,.25,1), background .45s ease" style-hover="transform: translateY(-2px); background: rgba(16,16,18,.06)">Contact us</a>
+        <a data-foot-cta href="https://github.com/justmert/pocket/releases/latest" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 12px 22px; border-radius: 14px; border: 2px solid #101012; background: #101012; color: #f2f1e8; box-shadow: 3px 3px 0 #fed924; transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #fed924">Install from GitHub</a>
       </div>
     </div>
   </footer>
@@ -1663,10 +1699,10 @@ class Component extends DCLogic {
     const vis = document.querySelector('[data-screen-label="what is sealed"]');
     if (vis) vis.querySelectorAll('[data-reveal]').forEach(r => {
       if (r.tagName === 'H2') return;
-      ease(r, 'background .45s ease, padding-left .5s cubic-bezier(.25,.8,.25,1)');
+      ease(r, 'background .45s ease, transform .5s cubic-bezier(.25,.8,.25,1)');
       r.style.borderRadius = '0px';
-      on(r, () => { r.style.background = 'rgba(244,243,239,.05)'; r.style.paddingLeft = '12px'; },
-            () => { r.style.background = 'transparent'; r.style.paddingLeft = '0px'; });
+      on(r, () => { r.style.background = 'rgba(244,243,239,.05)'; r.style.transform = 'translateX(10px)'; },
+            () => { r.style.background = 'transparent'; r.style.transform = 'none'; });
     });
 
     // proof facts: value picks up the accent

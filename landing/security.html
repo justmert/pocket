@@ -43,6 +43,26 @@
     [data-sec-row] [data-sec-gap] { display: none !important }
     [data-sec-spine] { left: 24px !important }
   }
+
+  @media (max-width: 700px) {
+    nav { padding: 15px 18px !important; gap: 12px !important; background: #f2f1e8 !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; border-bottom: 1px solid rgba(16,16,18,.12) !important }
+    nav img { height: 27px !important }
+    [data-nav-links] { flex-wrap: nowrap !important; gap: 17px !important }
+    [data-nav-links] a { font-size: 15.5px !important }
+    [data-nav-contact], [data-nav-cta] { display: none !important }
+  }
+  @media (max-width: 600px) {
+    section, header, footer { padding-left: 18px !important; padding-right: 18px !important }
+    footer { padding-top: 54px !important; padding-bottom: 58px !important }
+    [data-footer-inner] { flex-direction: column !important; align-items: stretch !important; gap: 30px !important }
+    [data-footer-links] { gap: 16px 22px !important }
+    [data-foot-cta] { flex: 1 1 44% !important; justify-content: center !important; display: inline-flex !important; text-align: center; margin-top: 12px }
+    [data-foot-cta] + [data-foot-cta] { margin-top: -6px !important }
+  }
+  @media (max-width: 600px) {
+    section { padding-top: 52px !important; padding-bottom: 74px !important }
+    [data-sec-row] { padding-top: 20px !important; padding-bottom: 20px !important }
+  }
 </style>
 </helmet>
 
@@ -52,12 +72,12 @@
     <a href="index.html" style="display: flex; align-items: center; flex: none">
       <img src="uploads/pocket-wordmark.png" alt="pocket" style="height: 26px; width: auto; display: block; transition: transform .55s cubic-bezier(.25,.8,.25,1)" />
     </a>
-    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px clamp(10px, 1.6vw, 20px)">
+    <div data-nav-links style="display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px clamp(10px, 1.6vw, 20px)">
       <a href="design.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">The design</a>
       <a href="security.html" aria-current="page" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: #101012; padding-bottom: 3px; border-bottom: 3px solid #b8ade8; transition: color .4s ease">Security</a>
       <a href="https://docs.pocket-wallet.app" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Docs</a>
-      <a href="https://cal.com/mertkoklu/talk" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 9px 19px; border-radius: 14px; border: 2px solid #101012; color: #101012; transition: transform .45s cubic-bezier(.25,.8,.25,1), background .45s ease" style-hover="transform: translateY(-2px); background: rgba(16,16,18,.06)">Contact us</a>
-      <a href="https://github.com/justmert/pocket/releases/latest" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 14px; border: 2px solid #101012; background: #101012; color: #f2f1e8; box-shadow: 3px 3px 0 #b8ade8; transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #b8ade8">Install from GitHub</a>
+      <a data-nav-contact href="https://cal.com/mertkoklu/talk" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 9px 19px; border-radius: 14px; border: 2px solid #101012; color: #101012; transition: transform .45s cubic-bezier(.25,.8,.25,1), background .45s ease" style-hover="transform: translateY(-2px); background: rgba(16,16,18,.06)">Contact us</a>
+      <a data-nav-cta href="https://github.com/justmert/pocket/releases/latest" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 10px 20px; border-radius: 14px; border: 2px solid #101012; background: #101012; color: #f2f1e8; box-shadow: 3px 3px 0 #b8ade8; transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #b8ade8">Install from GitHub</a>
     </div>
   </nav>
 
@@ -207,19 +227,19 @@
   </section>
 
   <footer style="background: #f2f1e8; color: #101012; padding: 72px 32px 80px">
-    <div style="max-width: 1180px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 32px">
+    <div data-footer-inner style="max-width: 1180px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 32px">
       <div>
         <img src="uploads/pocket-wordmark.png" alt="pocket" style="height: 36px; width: auto; display: block" />
         <div style="margin-top: 12px; font-family: Fredoka, sans-serif; font-size: 20px">Verifiable payments. Unreadable amounts.</div>
       </div>
-      <div style="display: flex; flex-wrap: wrap; gap: 12px 26px; align-items: center; font-size: 13px; font-weight: 600; color: rgba(16,16,18,.5)">
+      <div data-footer-links style="display: flex; flex-wrap: wrap; gap: 12px 26px; align-items: center; font-size: 13px; font-weight: 600; color: rgba(16,16,18,.5)">
         <a href="index.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Home</a>
         <a href="design.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">The design</a>
         <a href="security.html" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Security</a>
         <a href="https://docs.pocket-wallet.app" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">Docs</a>
         <a href="https://github.com/justmert/pocket" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 15px; color: rgba(16,16,18,.82); transition: color .4s ease" style-hover="color: #101012">GitHub</a>
-        <a href="https://cal.com/mertkoklu/talk" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 11px 21px; border-radius: 14px; border: 2px solid #101012; color: #101012; transition: transform .45s cubic-bezier(.25,.8,.25,1), background .45s ease" style-hover="transform: translateY(-2px); background: rgba(16,16,18,.06)">Contact us</a>
-        <a href="https://github.com/justmert/pocket/releases/latest" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 12px 22px; border-radius: 14px; border: 2px solid #101012; background: #101012; color: #f2f1e8; box-shadow: 3px 3px 0 #fed924; transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #fed924">Install from GitHub</a>
+        <a data-foot-cta href="https://cal.com/mertkoklu/talk" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 11px 21px; border-radius: 14px; border: 2px solid #101012; color: #101012; transition: transform .45s cubic-bezier(.25,.8,.25,1), background .45s ease" style-hover="transform: translateY(-2px); background: rgba(16,16,18,.06)">Contact us</a>
+        <a data-foot-cta href="https://github.com/justmert/pocket/releases/latest" target="_blank" rel="noopener" style="font-family: Fredoka, sans-serif; font-weight: 500; font-size: 14px; padding: 12px 22px; border-radius: 14px; border: 2px solid #101012; background: #101012; color: #f2f1e8; box-shadow: 3px 3px 0 #fed924; transition: transform .4s cubic-bezier(.25,.8,.25,1), box-shadow .4s ease" style-hover="transform: translate(2px, 2px); box-shadow: 1px 1px 0 #fed924">Install from GitHub</a>
       </div>
     </div>
   </footer>
