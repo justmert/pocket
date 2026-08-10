@@ -7,7 +7,7 @@ Chrome extension, Manifest V3.
 pay: sender and recipient addresses stay on the public ledger, permanently, on
 every transfer. If you need your counterparty hidden, Pocket is the wrong tool.
 
-Full documentation: [docs.pocket-wallet.app](https://docs.pocket-wallet.app).
+[pocketwallet.app](https://pocketwallet.app) &middot; [Documentation](https://docs.pocketwallet.app)
 
 ## Install
 
@@ -32,7 +32,7 @@ below) hot-loads it into a browser.
 
 | | Public | Private |
 |---|---|---|
-| Holds | ordinary XLM and USDC | the same assets inside a confidential wrapper |
+| Holds | any classic Stellar asset you hold a trustline for | the same assets, inside a confidential wrapper, one per asset |
 | Who sees amounts | everyone | you and the auditor key you bound |
 | Who sees addresses | everyone | **everyone, unchanged** |
 | Yield, swap, bridge | yes | no, unshield first |
@@ -162,4 +162,5 @@ wrong balance. Recent transfers, inside the RPC window, need no archive at all.
 
 ## Licence
 
-Apache-2.0. Third-party notices in `THIRD_PARTY_NOTICES.md`.
+Apache-2.0, in [`LICENSE`](LICENSE). Third-party notices in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

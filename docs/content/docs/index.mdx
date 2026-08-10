@@ -12,6 +12,32 @@ XLM and USDC are what is deployed on testnet today. The private pocket is one wr
 
 You move value between them whenever you want. Same phrase, same wallet, one tap to switch.
 
+## Install it
+
+Pocket is not on the Chrome Web Store yet, so it installs as an unpacked extension. About a minute, in Chrome or any Chromium browser, version 109 or later.
+
+<Steps>
+
+<Step>
+### Download the latest build
+
+Take the `pocket-v*-chrome.zip` asset from **[the releases page](https://github.com/justmert/pocket/releases/latest)** and unzip it.
+</Step>
+
+<Step>
+### Open `chrome://extensions` and turn on Developer mode
+</Step>
+
+<Step>
+### Choose Load unpacked, and select the unzipped `chrome-mv3` folder
+</Step>
+
+</Steps>
+
+Keep the folder, because deleting it removes the extension. Pocket runs on Stellar **testnet** only and this build refuses mainnet, so nothing real is at stake while you try it.
+
+[The full walkthrough, including creating or restoring a wallet](/docs/using-pocket/install-and-unlock), or [build it from source](/docs/build/build-and-run).
+
 ## What privacy means here
 
 **Pocket hides amounts.** On a private transfer the amount is encrypted on chain, readable only by you, your counterparty and the auditor key you bound. Addresses stay public, as they are on every Stellar transaction.
@@ -35,7 +61,7 @@ Pocket works end to end on Stellar testnet with real UltraHonk proofs that the o
   <Card
     title="Use Pocket"
     href="/docs/using-pocket/install-and-unlock"
-    description="Install it, set up a private pocket, and move money. Start here if you want to hold funds."
+    description="Set up a private pocket and move money. Start here if you want to hold funds."
   />
   <Card
     title="Understand the design"

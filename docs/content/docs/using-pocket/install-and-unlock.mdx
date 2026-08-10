@@ -1,11 +1,45 @@
 ---
 title: Install and unlock
-description: Build the extension, load it into Chrome, create or restore a wallet, and understand what the password does.
+description: Install the extension, create or restore a wallet, and understand what the password does.
 ---
 
-## Build and load it
+Pocket is not on the Chrome Web Store yet, so it installs as an unpacked extension. It takes about a minute, in Chrome or any Chromium browser such as Brave, Edge or Arc. You need version 109 or later.
 
-Pocket builds from source into an unpacked Chrome extension.
+## Install it
+
+<Steps>
+
+<Step>
+### Download the latest build
+
+From [the releases page](https://github.com/justmert/pocket/releases/latest), take the `pocket-v*-chrome.zip` asset and unzip it.
+</Step>
+
+<Step>
+### Open `chrome://extensions`
+</Step>
+
+<Step>
+### Turn on Developer mode
+
+Top right of that page.
+</Step>
+
+<Step>
+### Choose Load unpacked, and select the unzipped `chrome-mv3` folder
+</Step>
+
+<Step>
+### Pin Pocket to the toolbar
+
+So you can reach it in one click.
+</Step>
+
+</Steps>
+
+**Keep the folder.** Deleting it removes the extension. To update, download the newer release and press the reload icon on Pocket's card in `chrome://extensions`.
+
+## Or build it yourself
 
 ```bash
 cd extension
@@ -13,31 +47,9 @@ npm install
 npm run build
 ```
 
-That produces `extension/.output/chrome-mv3`. The build vendors the proving backend, the trusted-setup data and the compiled circuits into the package first, so it needs no network access at runtime.
+That produces `extension/.output/chrome-mv3`, which loads exactly as above. The build vendors the proving backend, the cryptographic reference data and the compiled circuits into the package first, so the extension needs no network access at runtime.
 
-Load it into Chrome:
-
-<Steps>
-
-<Step>
-Open `chrome://extensions`.
-</Step>
-
-<Step>
-Turn on **Developer mode**, top right.
-</Step>
-
-<Step>
-Choose **Load unpacked** and select `extension/.output/chrome-mv3`.
-</Step>
-
-<Step>
-Pin Pocket to the toolbar so you can reach it in one click.
-</Step>
-
-</Steps>
-
-`npm run zip` produces a packaged `.zip` of the same build.
+`npm run zip` produces a packaged `.zip` of the same build. [Build and run in full](/docs/build/build-and-run).
 
 ## First run happens in a tab
 

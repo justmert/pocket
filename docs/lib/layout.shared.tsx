@@ -17,6 +17,22 @@ export function baseOptions(): BaseLayoutProps {
       ),
       url: '/docs',
     },
+    // These docs live on their own subdomain, so the way back to the product
+    // and the way to a build both have to be in the header.
+    links: [
+      {
+        text: 'pocketwallet.app',
+        url: 'https://pocketwallet.app',
+        external: true,
+      },
+      {
+        text: 'Download',
+        url: 'https://github.com/justmert/pocket/releases/latest',
+        external: true,
+      },
+    ],
+    // Renders the repository icon in the header, beside the theme switch.
+    githubUrl: 'https://github.com/justmert/pocket',
     // Light is the wallet's public pocket, dark is its private one, so the
     // switch moves between two palettes the product already ships.
     themeSwitch: { enabled: true, mode: 'light-dark' },

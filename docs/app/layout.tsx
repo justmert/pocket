@@ -21,7 +21,7 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://docs.pocket-wallet.app'),
+  metadataBase: new URL('https://docs.pocketwallet.app'),
   title: {
     default: 'Pocket',
     template: '%s · Pocket',
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
     siteName: 'Pocket',
     title: 'Pocket',
     description: 'Verifiable payments. Unreadable amounts.',
-    url: 'https://docs.pocket-wallet.app',
+    url: 'https://docs.pocketwallet.app',
     images: ['/og.png'],
   },
   twitter: {
