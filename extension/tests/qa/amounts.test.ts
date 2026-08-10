@@ -1540,6 +1540,10 @@ const JUDGED_HARMLESS: { fragment: string; why: string }[] = [
     fragment: "maxTime: Number(prepared.timeBounds?.maxTime ?? 0),",
     why: "the envelope's own last valid moment, epoch seconds, handed to the auditor-registration marker so a lost outcome can be settled later; the SDK types timeBounds as string|number and every consumer of it compares seconds",
   },
+  {
+    fragment: "const endTime = Math.floor(Date.now() / step) * step;",
+    why: "aligns a price CHART query window's end down to the resolution boundary; `step` is a time resolution in ms and this is timestamp bucketing, never a balance. the balance itself stays bigint stroops from the ledger to the screen",
+  },
 ];
 
 describe("the source of the value path, read rather than assumed", () => {

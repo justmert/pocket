@@ -78,6 +78,12 @@ const ALLOWED_HOSTS = [
   // write; the directory serves permissive CORS, so it needs no host permission.
   "api.stellar.expert",
   "stellar.org",
+  // Pocket's own durable event archive (the indexer). The wallet reads
+  // confidential event history from it to rebuild the openings that make a
+  // private balance spendable; a keyless read, never a key or a write. This is
+  // VITE_ARCHIVE_URL, http://127.0.0.1:8787 in a local build (loopback, skipped
+  // above) and this host in the shipped .env.production build.
+  "archive.pocketwallet.app",
   "www.w3.org", // svg namespace, not a request
 ];
 
