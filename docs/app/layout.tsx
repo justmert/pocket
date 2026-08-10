@@ -21,12 +21,27 @@ const dmMono = DM_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://docs.pocket-wallet.app'),
   title: {
     default: 'Pocket',
     template: '%s · Pocket',
   },
   description:
     'A self-custody Stellar wallet with two pockets: one public, one private. Confidential, not anonymous.',
+  openGraph: {
+    type: 'website',
+    siteName: 'Pocket',
+    title: 'Pocket',
+    description: 'Verifiable payments. Unreadable amounts.',
+    url: 'https://docs.pocket-wallet.app',
+    images: ['/og.png'],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Pocket',
+    description: 'Verifiable payments. Unreadable amounts.',
+    images: ['/og.png'],
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
