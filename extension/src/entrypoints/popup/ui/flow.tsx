@@ -392,6 +392,7 @@ function EffectsTip({ t, effects }: { t: Theme; effects: string[] }) {
 export function WalletReview({
   t,
   heading,
+  lede,
   mark,
   amount,
   code = "XLM",
@@ -411,6 +412,12 @@ export function WalletReview({
 }: {
   t: Theme;
   heading?: string;
+  /**
+   * one plain sentence under the title saying what this operation IS, for a step
+   * whose surface names it ("Make spendable") without ever saying what it does.
+   * muted, so it reads as orientation and never competes with a signed fact.
+   */
+  lede?: string;
   /** the asset glyph, drawn in an accent disc above the operation name. */
   mark?: ReactNode;
   amount?: string;
@@ -462,6 +469,12 @@ export function WalletReview({
           )}
         </div>
       )}
+
+      {/* the plain-language line: what this operation does, in one sentence, for
+          the steps whose title is a verb ("Make spendable") and whose body was
+          otherwise a fee and a button with nothing saying what was being agreed
+          to. muted and above the facts, so it orients without competing. */}
+      {lede && <p style={{ ...text.rowSub, color: t.sub, margin: 0 }}>{lede}</p>}
 
       {/* the recipient, in full: an address is never truncated at a confirm, but
           it is set compact so 56 characters do not fill two tall lines. */}
@@ -575,6 +588,7 @@ export function WalletReview({
 export function ReviewPanel({
   t,
   heading,
+  lede,
   mark,
   amount,
   code = "XLM",
@@ -606,6 +620,8 @@ export function ReviewPanel({
    * nothing between them.
    */
   heading?: string;
+  /** one plain sentence saying what the operation does; see `WalletReview`. */
+  lede?: string;
   /** the asset glyph for the accent disc above the operation name. */
   mark?: ReactNode;
   amount?: string;
@@ -665,6 +681,7 @@ export function ReviewPanel({
       <WalletReview
         t={t}
         heading={heading}
+        lede={lede}
         mark={mark}
         amount={amount}
         code={code}

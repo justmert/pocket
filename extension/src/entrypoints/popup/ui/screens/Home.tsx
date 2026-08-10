@@ -1049,7 +1049,7 @@ export function Home() {
         <div
           style={{
             display: "flex",
-            alignItems: "baseline",
+            alignItems: "center",
             justifyContent: "space-between",
             gap: space.sm,
           }}
@@ -1058,10 +1058,14 @@ export function Home() {
           {y.apy?.figure && (
             <span
               style={{
-                ...text.rowSub,
+                ...text.caption,
                 fontWeight: 600,
                 color: t.positive,
                 whiteSpace: "nowrap",
+                background: t.field,
+                padding: "3px 10px",
+                borderRadius: radius.pill,
+                flex: "0 0 auto",
               }}
             >
               {apyChip(y.apy)}

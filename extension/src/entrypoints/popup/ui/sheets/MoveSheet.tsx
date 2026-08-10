@@ -250,6 +250,16 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
         {stage === "review" && summary && (
           <ReviewPanel
             t={t}
+            // the title is a bare verb ("Make spendable") and the body was a fee
+            // and a button: this one sentence says what is actually being agreed
+            // to, in plain terms, so the step is not a caption over an amount.
+            lede={
+              summary.kind === "merge"
+                ? "Combine the private amounts you have received into a single balance you can send. Nothing leaves your account."
+                : summary.kind === "register"
+                  ? "Publish your auditor key so this account can hold private balances. This is a one-time setup."
+                  : undefined
+            }
             amount={summary.amount}
             treatment={
               summary.kind === "shield" || summary.kind === "unshield" ? "exposed" : "plain"

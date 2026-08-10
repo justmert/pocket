@@ -634,6 +634,36 @@ export function History() {
             </div>
           ) : (
             <>
+              {/* the archive-lag line sits at the TOP, under the search and above
+                  every row, so it is read before the list rather than found
+                  beneath it. a partial history looks complete, so its
+                  incompleteness is said above the rows, not left to be inferred. */}
+              {unread.length > 0 && (
+                <div style={{ marginBottom: space.md }}>
+                  <Notice t={t} tone="exposed" bare>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {unread.map((u) => u.reason).join(" ")}
+                      {/* the lag line is honest but terse; the tip says WHY in one
+                          sentence, so a user does not read "may not be listed" as
+                          "was lost". only shown when that line is actually present. */}
+                      {unread.some((u) => /not be listed yet/i.test(u.reason)) && (
+                        <InfoTip t={t} label="Why recent activity may be missing" size={16}>
+                          Your private history is rebuilt from an archive that runs a little behind
+                          the network, so a transfer you just made can take about a minute to show
+                          up here.
+                        </InfoTip>
+                      )}
+                    </span>
+                  </Notice>
+                </div>
+              )}
               {inProgress.length > 0 && (
                 <div
                   style={{
@@ -672,41 +702,6 @@ export function History() {
                 </div>
               )}
 
-              {/* a list with a half missing still LOOKS complete: there is no
-                  shape a partial history has that a whole one does not. so it
-                  is said above the rows rather than left to be inferred from an
-                  absence, which is by definition invisible. */}
-              {/* NOT gated on `shown.length > 0` any more. the filtered-empty
-                  state was the one case this sentence was written for and the one
-                  case it could not reach: the screen said "No matches." while
-                  knowing it could not read the half of the history those
-                  transactions live in. */}
-              {unread.length > 0 && (
-                <div style={{ marginBottom: space.md }}>
-                  <Notice t={t} tone="exposed" bare>
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      {unread.map((u) => u.reason).join(" ")}
-                      {/* the lag line is honest but terse; the tip says WHY in one
-                          sentence, so a user does not read "may not be listed" as
-                          "was lost". only shown when that line is actually present. */}
-                      {unread.some((u) => /not be listed yet/i.test(u.reason)) && (
-                        <InfoTip t={t} label="Why recent activity may be missing" size={16}>
-                          Your private history is rebuilt from an archive that runs a little behind
-                          the network, so a transfer you just made can take about a minute to show
-                          up here.
-                        </InfoTip>
-                      )}
-                    </span>
-                  </Notice>
-                </div>
-              )}
               {shown.length > 0 && <List t={t} entries={shown} now={now} onOpen={setSelected} />}
 
               {/* zero-value transfers from addresses this account has never sent

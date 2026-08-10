@@ -269,6 +269,14 @@ export function RebuildSheet({ open, onClose }: { open: boolean; onClose: () => 
 
   return (
     <Sheet t={t} open={open} onClose={onClose} title="Rebuild from history">
+      {/* the sheet was a title and a button: this says what the button does, in
+          plain terms, so "Rebuild" is a decision rather than a guess. calm intro
+          copy, matching PhraseSheet's setup step, not a boxed alert. */}
+      <div style={{ ...text.body, color: t.sub, lineHeight: 1.5, marginBottom: space.md }}>
+        Replays your private transaction history from the archive to restore this device's
+        record of what you hold. Use it if a private balance looks wrong or missing. Nothing is
+        sent and no funds move.
+      </div>
       {error && (
         <Notice t={t} tone="danger">
           {error}
