@@ -108,6 +108,6 @@ A parked approval that is never answered resolves to **declined**. Somebody who 
 
 ## Granting a connection
 
-Granting is not wired into the interface in this build, so no origin can obtain a session and every method that needs one answers with the not-connected refusal.
+A session can only ever begin inside Pocket. No origin can start one, and every method that needs a session answers with the not-connected refusal until one exists.
 
-**Settings → Connected sites** lists live grants and removes them, and says plainly that nothing will appear there yet rather than describing a flow you cannot reach.
+**Settings → Connected sites** lists live grants and removes them on tap.

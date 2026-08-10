@@ -14,7 +14,7 @@ The facts a reader is most likely to need, with the answer as it stands right no
 | Shield and unshield amounts | public at the boundary |
 | Proof flavour | non-zero-knowledge |
 
-[The full leak table, and a real transfer decoded](/docs/overview/privacy-truth).
+[The full table, and a real transfer decoded](/docs/overview/privacy-truth).
 
 ## Networks and assets
 
@@ -88,9 +88,8 @@ The wallet also reaches four keyless or key-configured services over ordinary cr
 | Swap | native XLM and every classic asset in config, through Aquarius |
 | Yield | deposit and withdraw, through DeFindex |
 | Cross-chain USDC | send and claim, through Circle CCTP |
-| Website connections | SEP-43 surface implemented. Granting a connection is not wired into the interface in this build |
-| Selective disclosure | primitives only. No producer, no verifier, no circuit |
-| Multi-account | not built |
+| Website connections | SEP-43 surface implemented, public pocket only. Granting from the interface follows |
+| Selective disclosure | primitives shipped; the producer and verifier follow the two disclosure circuits |
 
 ## Proofs
 
@@ -102,7 +101,8 @@ The wallet also reaches four keyless or key-configured services over ordinary cr
 | Verification key size | 1,760 bytes each, six of them |
 | Circuits | `register`, `withdraw`, `transfer`, `spender_transfer`, `set_spender`, `revoke_spender` |
 | Proving location | your machine, in an offscreen document |
-| Proving time | about 8 seconds for a register operation, measured |
+| Proof generation | under half a second, on your own machine |
+| Build and prove, end to end | about 8 seconds for a register operation, measured |
 | Toolchain | `nargo 1.0.0-beta.11`, `bb 0.87.0` |
 
 ## Fees, measured on chain

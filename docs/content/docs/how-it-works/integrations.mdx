@@ -61,9 +61,9 @@ The quantity check is an upper bound, not an equality, because a vault legitimat
 
 Two more details:
 
-**The response is read as a shape, then as a value.** The balance endpoint returns i128 subunits as strings, and the API declares no schema for that path at all, so there was nothing to check a cast against. A shape check alone let any string through to the screen, where it is printed as a balance, so the value is pattern-checked too and an unreadable one is refused rather than defaulted to zero.
+**The response is read as a shape, then as a value.** The balance endpoint returns i128 subunits as strings, and the API declares no schema for that path at all, so there was nothing to check a cast against. A shape check alone would let any string reach the screen, where it is printed as a balance, so the value is pattern-checked too and an unreadable one is refused rather than defaulted to zero.
 
-**The reported rate arrives already in percent.** Every APY field in the specification says so, with examples like 19.41. Multiplying by 100 rendered a real 19.41% vault as 1941.00%.
+**The reported rate arrives already in percent.** Every APY field in the specification says so, with examples like 19.41. Multiplying by 100 would render a real 19.41% vault as 1941.00%.
 
 ## CCTP: two chains, two decimal scales
 
@@ -90,7 +90,7 @@ Two integrations need build-time configuration. When it is missing, the wallet s
 | Not configured | a permanent property of the build, so retrying can never help |
 | Configured, service unreachable | a fact about right now |
 
-Those are different sentences, because only one of them is worth waiting on. A catch that turned the second into the first removed the whole Yield section from the screen during an outage, which made a working build look like one that never had the feature.
+Those are different sentences, because only one of them is worth waiting on. Collapsing the second into the first would remove the whole Yield section during an outage, making a working build look like one that never had the feature.
 
 ## Every build path checks the balance it spends
 

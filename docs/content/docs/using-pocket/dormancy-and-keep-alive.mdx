@@ -25,9 +25,7 @@ So the schedule is randomised by up to a day, and real activity is always prefer
 
 ### It only works while unlocked
 
-The bump is a signed transaction, so a locked wallet cannot make one. A browser that stays closed for a month cannot either.
-
-Pocket states this rather than promising otherwise. Nothing about dormancy loses money, and the recovery is a fee.
+The bump is a signed transaction, so it needs an unlocked wallet and an open browser. Nothing about dormancy loses money: an archived account is reactivated by a fee.
 
 ## Each asset has its own clock
 
@@ -54,7 +52,7 @@ The minimum a fresh persistent entry gets is a network parameter, and the two ne
 | Testnet | 120,960 ledgers | 7 days |
 | Mainnet | 2,073,600 ledgers | 133 days |
 
-Nothing about dormancy should ever be calibrated against the testnet figure, because the mainnet one is far more forgiving and a schedule tuned for testnet is merely conservative there.
+The schedule is tuned against the tighter testnet figure, so it is comfortably conservative on mainnet.
 
 ## The contracts have TTLs too
 

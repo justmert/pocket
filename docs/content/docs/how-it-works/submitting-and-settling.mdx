@@ -146,7 +146,7 @@ Every resolution kind is idempotent under the chain check, which is what makes r
 
 A mismatch throws, and must: a wrong opening is indistinguishable from a lost one later, so the record stays put and you are brought back to it rather than told everything is fine.
 
-An unanswered poll stays `pending`. Unresolved is the honest report and it is recoverable on the next poll that gets through.
+An unanswered poll stays `pending`. Unresolved is the accurate report, and the next poll that gets through resolves it.
 
 ## Retrying, and what may be retried
 

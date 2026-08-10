@@ -26,7 +26,7 @@ That is deliberate. A parse is a lossy, versioned interpretation, and an archive
 | `topics_xdr`, `data_xdr` | verbatim |
 | `payload_xdr` | the invocation payload. Set for `transfer` and `spender_transfer`, null otherwise |
 
-`payload_xdr` is also null for a transfer whose transaction could not be fetched, and null is the honest answer: the wallet refuses that event rather than crediting an unverifiable amount.
+`payload_xdr` is also null for a transfer whose transaction could not be fetched. Null is the accurate answer: the wallet refuses that event instead of crediting an amount it cannot verify.
 
 ### attribution
 

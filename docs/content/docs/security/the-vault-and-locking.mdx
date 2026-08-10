@@ -53,7 +53,7 @@ So structural damage is checked **before** the tag is ever tested, and reported 
 | The key-derivation parameters are integers | a damaged vault |
 | The derived key length is 32 | a damaged vault |
 
-The exact-length checks matter more than a lower bound. Both writers produce exactly 48 bytes, so any other length is damage rather than a shorter key. A range check let every truncation from 33 to 47 bytes through to the tag test, where it failed and was reported as a wrong password.
+The exact-length checks matter more than a lower bound. Both writers produce exactly 48 bytes, so any other length is damage rather than a shorter key. A range check would pass every truncation from 33 to 47 bytes through to the tag test, where it fails and reads as a wrong password.
 
 The base64 checks matter for the same reason. Without them an undecodable salt escapes as a raw decoder error, which carries no name on the error allowlist, so a vault that will never open again is reported as a connection problem.
 

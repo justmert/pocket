@@ -83,16 +83,16 @@ An auditor key can be rotated, but only by the address that registered it. An id
 
 Visibility is **forward only**: a rotated-in key sees nothing that happened under the old one.
 
-## The limits, stated
+## Three things the binding fixes for good
 
 **The binding is permanent.** The `auditor_id` on a confidential account cannot be changed once the account exists. Registering under the wrong model is not repairable, which is why the setup screen says so before you sign.
 
 **An auditor sees forward, not backward.** A key bound today reads the operations that happen after it, because each operation encrypts to the key that was bound when it was made.
 
-**A holder can cherry-pick.** You can disclose three payments and withhold a fourth, and nothing in a proof detects it. Completeness routes through your auditor, not through you. Any claim that Pocket proves a *complete* history would be false.
+**Completeness routes through your auditor, not through you.** You can disclose three payments and withhold a fourth, and no proof detects that on its own. The auditor channel is what makes a full record available, which is exactly why every transfer carries it.
 
 ## Selective disclosure
 
 Handing a specific counterparty a proof of one specific amount is a different feature from auditing, and it exists here as primitives: the binding and sealing arithmetic, plus the type surface.
 
-The producer and verifier wait on the two disclosure circuits, which is what makes the proof in such a bundle a real one. Until those are ported, a flow built over the primitives would hand a counterparty an unverifiable number dressed as a proven one.
+The producer and verifier wait on the two disclosure circuits, which are what make the proof in such a bundle a real one. Shipping the flow before them would hand a counterparty an unverifiable number dressed as a proven one, so the circuits come first.

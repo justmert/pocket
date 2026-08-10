@@ -35,9 +35,9 @@ Adding a case to that switch means adding it to the described list, and the orde
 
 ### Why `invokeHostFunction` is refused
 
-It was on the described list once, and its whole sentence was "Invoke a smart contract". No contract id, no function name, no arguments, no value. It was also absent from the alarming set, so nothing warned either.
+The only sentence anyone could write for it in general is "Invoke a smart contract": no contract id, no function name, no arguments, no value.
 
-That is the exact failure the list exists to close, on the one operation that can do anything: transfer a token balance, set an approval, upgrade a contract. Somebody reading that line has been told the operation's **type** and nothing about its effect, with Approve live beneath it.
+That is a caption, not a description, on the one operation that can do anything: transfer a token balance, set an approval, upgrade a contract. A reader told the operation's **type** and nothing about its effect, with Approve live beneath it, has not consented to anything.
 
 Describing it properly is not a sentence, it is a feature. The effect lives in arguments of arbitrary shape, and rendering some of them while silently dropping the rest is the same costume one layer down.
 
@@ -46,12 +46,6 @@ So it is refused, with a sentence that explains why retrying will not help:
 > This transaction calls a smart contract. What a contract call actually does is carried in its arguments, and Pocket cannot yet put those into words, so it will not ask you to approve one on trust. Nothing has been sent.
 
 That wording matters. The generic refusal reads as "this envelope is broken", which a site would reasonably try to fix by re-encoding. The envelope is fine and the limitation is Pocket's.
-
-### What the earlier behaviour cost
-
-Before the described list existed, an unknown operation fell through to its bare type name and the envelope was still reported as decoded, so the approval screen rendered an enabled Approve.
-
-Driven end to end, a connected site asked to sign a claimable balance of 9,500 XLM to an address of its choosing, and the screen showed one line reading `createClaimableBalance` with the amount and the beneficiary nowhere on it.
 
 ## Fidelity
 

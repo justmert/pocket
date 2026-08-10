@@ -8,13 +8,11 @@ Pocket is a self-custody Stellar wallet that ships as a Chrome extension. One re
 - a **public pocket** holding ordinary Stellar assets, where balances and amounts are visible on the ledger, as they always are on Stellar
 - a **private pocket** holding the same assets inside OpenZeppelin's confidential token wrapper, where **the amounts are encrypted on chain**
 
-XLM and USDC are what is deployed on testnet today. The private pocket is one wrapper per asset, so the list grows by deploying, not by rewriting the wallet.
-
 You move value between them whenever you want. Same phrase, same wallet, one tap to switch.
 
 ## Install it
 
-Pocket is not on the Chrome Web Store yet, so it installs as an unpacked extension. About a minute, in Chrome or any Chromium browser, version 109 or later.
+About a minute, in Chrome or any Chromium browser, version 109 or later. Pocket installs as an unpacked extension, since it is not on the Chrome Web Store yet.
 
 <Steps>
 
@@ -25,11 +23,15 @@ Take the `pocket-v*-chrome.zip` asset from **[the releases page](https://github.
 </Step>
 
 <Step>
-### Open `chrome://extensions` and turn on Developer mode
+### Open Chrome's extensions page
+
+Go to `chrome://extensions` and turn on **Developer mode**, top right.
 </Step>
 
 <Step>
-### Choose Load unpacked, and select the unzipped `chrome-mv3` folder
+### Load the folder
+
+Choose **Load unpacked**, and select the unzipped `chrome-mv3` folder.
 </Step>
 
 </Steps>

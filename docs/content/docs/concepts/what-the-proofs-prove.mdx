@@ -18,7 +18,7 @@ Every state-changing operation in the private pocket carries an UltraHonk proof 
 
 Pocket's wallet uses the first three. The other three belong to the delegation feature of the underlying contract, and their verification keys are installed so the deployment is complete.
 
-Two operations carry **no** proof at all, and that is correct rather than a gap. A deposit is authorised, not proved: the amount is public and the arithmetic is checkable by anyone. A merge adds two commitments you already own, which reveals nothing and asserts nothing that needs proving.
+Two operations carry **no** proof, by design. A deposit is authorised rather than proved: the amount is public and the arithmetic is checkable by anyone. A merge adds two commitments you already own, which reveals nothing and asserts nothing that needs proving.
 
 ## What a transfer proof asserts
 
@@ -69,11 +69,12 @@ The transcript is **keccak256**. The prover and the on-chain verifier have to ag
 
 ## How long it takes
 
-Proving runs on your own machine, in an isolated document, and it takes seconds rather than milliseconds. Measured on this build:
+Proving runs on your own machine, in an isolated document. Measured on this build:
 
 | Stage | Measured |
 | --- | --- |
-| Building and proving a register operation | about 8 seconds |
+| Generating the proof | under half a second |
+| A register operation end to end, reading the ledger and building the witness included | about 8 seconds |
 | Signing, submitting and waiting for the ledger | about 3.7 seconds |
 
 The popup stays responsive throughout. During a real register proof it painted 1,006 frames across 8.4 seconds, with a single worst frame gap of 91.6 ms. That is the whole reason proving lives in a separate document: on the popup's own thread it would stall the interface for the entire multi-second proof.

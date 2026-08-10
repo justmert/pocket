@@ -12,14 +12,14 @@ What separates it from other Stellar wallets is that one recovery phrase gives y
 |  | Public pocket | Private pocket |
 | --- | --- | --- |
 | Holds | any classic Stellar asset you hold a trustline for | the same assets, inside a confidential wrapper, one per asset |
-| Who sees amounts | everyone | you, your bound auditor, and anyone you disclose to |
+| Who sees amounts | everyone | you, and the auditor key you bound |
 | Who sees addresses | everyone | **everyone, unchanged** |
-| Earns yield | yes, through DeFindex | no, and the reason is structural |
+| Earns yield | yes, through DeFindex | no, unshield first |
 | Bridges to other chains | yes, through Circle's CCTP | no, unshield first |
-| Swaps | yes, through Aquarius | no |
+| Swaps | yes, through Aquarius | no, unshield first |
 | Connects to websites | yes, through SEP-43 | no, sessions are public-pocket only |
 
-The split is not a product preference. Confidential balances are Pedersen commitments, which are additively homomorphic and nothing more: you can add and subtract committed values without decrypting them, but you cannot multiply, discover a price, or hold the state a lending pool needs. Yield, bridging and website interaction live in the public pocket because they cannot live anywhere else.
+The split follows from the mathematics rather than from a product decision. Confidential balances are Pedersen commitments, which are additively homomorphic and nothing more: you can add and subtract committed values without decrypting them, but you cannot multiply, discover a price, or hold the state a lending pool needs. Yield, bridging and website interaction live in the public pocket because they cannot live anywhere else.
 
 [The full argument, with what follows from it](/docs/concepts/two-pockets).
 

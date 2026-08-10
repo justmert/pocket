@@ -42,21 +42,21 @@ Approving submits **two** transactions: an approval for Circle's token messenger
 
 If the approval lands and the burn does not, nothing has been bridged. The allowance is set, so only the burn needs retrying.
 
-### The mint happens on the other chain, and Pocket cannot do it
+### The mint happens on the destination chain
 
-This is the part to read before you start. Pocket is a Stellar wallet. It signs the Stellar half. Completing the transfer needs a transaction **on the destination chain**, which means gas there, or a relayer.
+Pocket signs the Stellar half. Completing the transfer takes a transaction **on the destination chain**, which means gas there, or a relayer.
 
-The review states it rather than leaving you to find out:
+The review says so before you approve, not after:
 
 > It is minted on *(chain)* by a separate transaction THERE, which this wallet cannot make: you need gas on that chain, or a relayer, to finish it
 
 After the burn lands, the receipt polls Circle's attestation service so you know when the transfer is ready to complete on the other side.
 
-### The last decimal cannot cross
+### The seventh decimal stays with you
 
-CCTP carries six decimal places. Stellar USDC has seven. So the seventh digit of an amount cannot be represented in the cross-chain message, and something has to happen to it.
+CCTP carries six decimal places and Stellar USDC has seven, so the seventh digit has nowhere to go in the cross-chain message.
 
-**Pocket rounds down and never spends it.** The approval, the burn, the headline amount and the receipt all name the same rounded figure, and the remainder stays in your account by construction rather than by claim. The review names it:
+**Pocket rounds down and leaves the remainder in your account.** The approval, the burn, the headline amount and the receipt all name the same figure, so the two can never disagree. The review names the remainder too:
 
 > *(amount)* USDC stays in this account: CCTP carries 6 decimals and Stellar USDC has 7, so that last digit cannot cross. It is not spent.
 

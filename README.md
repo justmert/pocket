@@ -1,18 +1,20 @@
 # Pocket
 
+[![release](https://img.shields.io/github/v/release/justmert/pocket)](https://github.com/justmert/pocket/releases/latest)
+[![licence](https://img.shields.io/github/license/justmert/pocket)](LICENSE)
+
 A self-custody Stellar wallet with two pockets, one public and one private.
 Chrome extension, Manifest V3.
 
-**Confidential, not anonymous.** Pocket hides *amounts*. It does not hide who you
-pay: sender and recipient addresses stay on the public ledger, permanently, on
-every transfer. If you need your counterparty hidden, Pocket is the wrong tool.
+**Confidential, not anonymous.** Pocket hides *amounts*. Sender and recipient
+addresses stay on the public ledger, as they do on every Stellar transaction.
 
 [pocketwallet.app](https://pocketwallet.app) &middot; [Documentation](https://docs.pocketwallet.app)
 
 ## Install
 
-Pocket is not on the Chrome Web Store yet, so it installs as an unpacked
-extension. About a minute, in Chrome or any Chromium browser (Brave, Edge, Arc):
+About a minute, in Chrome or any Chromium browser (Brave, Edge, Arc). Pocket
+installs as an unpacked extension, since it is not on the Chrome Web Store yet:
 
 1. Download the latest build from
    **[the releases page](https://github.com/justmert/pocket/releases/latest)**
@@ -34,28 +36,27 @@ below) hot-loads it into a browser.
 |---|---|---|
 | Holds | any classic Stellar asset you hold a trustline for | the same assets, inside a confidential wrapper, one per asset |
 | Who sees amounts | everyone | you and the auditor key you bound |
-| Who sees addresses | everyone | **everyone, unchanged** |
+| Who sees addresses | everyone | everyone, unchanged |
 | Yield, swap, bridge | yes | no, unshield first |
 | dApp sessions | public pocket only | never |
 
-Yield, swapping and bridging cannot move to the private pocket. A Pedersen
-commitment is additively homomorphic and nothing more: you can add and subtract
-committed values without decrypting them, but you cannot multiply, compare, or
-discover a price. Those features need the number.
+Yield, swapping and bridging live in the public pocket by mathematics rather
+than by choice. A Pedersen commitment is additively homomorphic and nothing
+more: you can add and subtract committed values without decrypting them, but you
+cannot multiply, compare, or discover a price. Those features need the number.
 
-## What leaks
+## What is hidden, and what is not
 
-Hidden: confidential balances, and confidential transfer amounts.
+Hidden: confidential balances, and the amount of every confidential transfer.
 
-Public, permanently:
+Public, as on any Stellar transaction:
 
-- sender and recipient addresses on every confidential transfer
-- deposit amounts at the shield boundary
-- withdrawal amounts at the unshield boundary
+- sender and recipient addresses
+- the amounts at the shield and unshield boundaries
 - transaction timing, and the fee-paying account
-- the fact that an address has a confidential account at all
+- the fact that an address has a confidential account
 
-The interface states all of these rather than hiding them.
+The interface names every one of these on the screen where it matters.
 
 ## Status
 
@@ -74,17 +75,18 @@ spending key derived from a SEP-0053 signer root, a witness built here, the real
 Noir circuit solving it, a 14,592-byte UltraHonk proof, and the on-chain
 verifier accepting it.
 
-**Not on mainnet, deliberately.** Two things gate it and neither is ours:
+**Mainnet is configured and refused in this build.** Two upstream items gate it,
+and both belong to the verifier project:
 
 1. **The proofs are not zero-knowledge.** The Soroban verifier implements only
-   the non-ZK `ultra_flavor`. Soundness holds, so nobody can mint or overspend.
-   Amount confidentiality rests on Pedersen hiding and Poseidon encryption, both
-   formally hiding, but the proof layer adds no zero-knowledge property, so
-   leakage cannot be ruled out. No public timeline for a ZK-flavour verifier.
-2. **The UltraHonk verifier backend is unaudited.** Its own README says so. The
-   confidential token contracts and circuits were audited by OpenZeppelin
-   Security with remediation complete 27 July 2026; that report is not yet
-   published.
+   the non-ZK `ultra_flavor`. Soundness holds, so nobody can mint or overspend;
+   amount confidentiality rests on Pedersen hiding and Poseidon encryption, both
+   formally hiding on their own.
+2. **The UltraHonk verifier backend is unaudited.** Its own README says so.
+
+The confidential token contracts and circuits were audited by OpenZeppelin
+Security with remediation complete 27 July 2026; that report is not yet
+published.
 
 ## Repository
 
@@ -116,6 +118,7 @@ because that one holds **pre-audit** verification keys.
 ```sh
 cd extension
 npm install
+npm run dev        # vendors, then hot-loads the extension into a browser
 npm run check      # tsc (src) + tsc (tests) + eslint + both vitest configs
 npm run build      # vendors bb.js + SRS + circuits, then builds the extension
 npm run test:pass  # builds, then Playwright against the real extension

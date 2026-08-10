@@ -52,7 +52,7 @@ When a submission does not resolve, the wallet's own sentence is:
 
 > It has not confirmed yet. It may still land, so do not resend: check the hash before trying again.
 
-Before the submission outcomes were named on the allowlist, that message was replaced with "Try again, and check your connection."
+Without those outcome names on the allowlist, that sentence would be replaced by "Try again, and check your connection."
 
 **"Try again" is the one instruction that spends twice.** It is the worst possible sentence to show one moment after a payment may actually have succeeded.
 
@@ -66,7 +66,7 @@ An archive returning an event Pocket cannot decode produces a message naming the
 
 > The archive returned an event Pocket could not read, so it stopped rather than rebuild a balance from history it does not understand. Your funds are safe on chain. This is a fault in the archive, not in this wallet, and retrying will not change it until that archive re-indexes the contract.
 
-The same discipline covers the diverged screen. Crediting inbound transfers wraps its whole body in a catch that replaces any foreign message, because without it an RPC's own "Request failed with status code 429" appeared on the screen telling somebody their balances did not match the ledger.
+The same discipline covers the diverged screen. Crediting inbound transfers wraps its whole body in a catch that replaces any foreign message, because otherwise an RPC's own "Request failed with status code 429" would appear on the screen that tells you your balances do not match the ledger.
 
 ## Nothing sensitive reaches a log either
 
@@ -85,4 +85,4 @@ Pocket separates these everywhere they occur, because the right action differs:
 | Not configured | a permanent property of the build. Retrying can never help |
 | Configured, unreachable | a fact about right now. Retrying can help |
 
-A catch that collapsed the second into the first removed an entire feature from the screen during an outage, which made a working build look like one that never had it.
+Collapsing the second into the first would remove an entire feature from the screen during an outage, making a working build look like one that never had it.

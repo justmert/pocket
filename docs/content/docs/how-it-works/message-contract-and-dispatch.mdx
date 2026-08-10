@@ -70,7 +70,7 @@ So the router checks the shape and names the problem where it happened:
 | `rangeId` | any chart range outside the closed set |
 | `opRequest` | any private operation kind outside the five |
 
-`num` insisting on integers matters more than it looks. A fractional `slippageBps` of 100.5 cleared a range check and then reached `BigInt(10_000 - 100.5)`, which throws a `RangeError`, and `RangeError` is not on the error allowlist, so a malformed message surfaced as a generic connection message instead of being named at the boundary.
+`num` insisting on integers matters more than it looks. A fractional `slippageBps` of 100.5 clears a plain range check and then reaches `BigInt(10_000 - 100.5)`, which throws a `RangeError`. That name is not on the error allowlist, so without the integer check a malformed message would reach you as a generic connection message instead of being named at the boundary.
 
 `networkId` matters for a different reason: the value is **assigned and then persisted**, so an unknown string would leave every later network lookup undefined and survive a restart, with no screen that could set it back.
 

@@ -36,7 +36,7 @@ Two upstream items gate opening it: the Soroban verifier implements only the non
 
 ## What is checked before anything ships
 
-Seven release gates run against the artifact a user would install, not against the sources that produced it. They check seven things: the toolchain pin, that all six verification keys reproduce from circuit source, that every deployed address resolves on chain, that the pinned verifier fork carries no Rust changes, that the public-input counts match the circuits, that the package carries no source maps or loopback endpoints, and that the browser suite passes against that exact package.
+Seven release gates run against the artifact a user would install, not against the sources that produced it. They check the toolchain pin, that all six verification keys reproduce from circuit source, that every deployed address resolves on chain, that the pinned verifier fork carries no Rust changes, that the public-input counts match the circuits, that the package carries no source maps or loopback endpoints, and that the browser suite passes against that exact package.
 
 [The seven gates, and what each one catches](/docs/build/the-gate).
 
