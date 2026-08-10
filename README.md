@@ -23,7 +23,7 @@ extension. About a minute, in Chrome or any Chromium browser (Brave, Edge, Arc):
 
 Keep the folder: deleting it removes the extension. To update, download the
 newest release and click the reload icon on the extension's card. Pocket runs on
-Stellar **testnet**, so do not use mainnet funds.
+Stellar **testnet** only; this build refuses mainnet, so nothing real is at stake.
 
 Prefer to build it yourself? `git clone`, then `npm run dev` (see Development
 below) hot-loads it into a browser.

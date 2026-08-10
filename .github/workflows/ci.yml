@@ -25,6 +25,10 @@ jobs:
       # extension is an npm workspace: the lockfile is at the repo root, so install
       # there (which provisions the workspace) and run its check via --prefix.
       - run: npm ci
+      # `check` runs circuits.test.ts, which asserts against the vendored circuit
+      # artifacts; those are gitignored and produced by the vendor step, so CI must
+      # run it before checking (the pre-commit hook relied on a prior local build).
+      - run: npm --prefix extension run vendor
       - run: npm --prefix extension run check
 
   indexer:
