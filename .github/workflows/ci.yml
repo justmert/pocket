@@ -25,13 +25,13 @@ jobs:
       # extension is an npm workspace: the lockfile is at the repo root, so install
       # there (which provisions the workspace) and run its check via --prefix.
       - run: npm ci
-      # `check` includes circuits.test.ts, which reads the compiled circuit
-      # artifacts. Those are the audited OpenZeppelin circuits, vendored from the
-      # pinned upstream at build time and NOT committed here (committing them would
-      # invite a tampering question). The test skips itself when they are absent,
-      # so a bare CI checkout stays green; the local build and the release gate run
-      # it with the circuits vendored. bb.js and SRS are not needed by `check`.
-      - run: npm --prefix extension run check
+      # `check:ci` is the self-contained gate: tsc (src + tests) + eslint + the src
+      # unit tests. It deliberately drops the `tests/` suites that `check` also runs
+      # -- those are the full-environment tier and need a built .output, the
+      # indexer's better-sqlite3, and internal files under resources/ (gitignored,
+      # not in a public checkout), so they run in the local release gate, not here.
+      # circuits.test.ts skips itself when the vendored circuits are absent.
+      - run: npm --prefix extension run check:ci
 
   indexer:
     runs-on: ubuntu-latest
