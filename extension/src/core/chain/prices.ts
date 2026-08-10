@@ -139,11 +139,22 @@ export async function priceSeries(symbol: string, range: RangeId): Promise<Price
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS) return hit.series;
 
+  // An EXPLICIT, resolution-aligned window. Without start/end Horizon windows the
+  // request implicitly, and at the 15-minute resolution the 1D range uses that
+  // came back empty while the hourly ranges (1W upward) did not. `end` is aligned
+  // down to the resolution so the newest bucket is whole; `start` is `points`
+  // buckets before it, so `(end - start)` divides evenly by resolution, which
+  // trade_aggregations requires.
+  const step = spec.resolution;
+  const endTime = Math.floor(Date.now() / step) * step;
+  const startTime = endTime - spec.points * step;
   const params = new URLSearchParams({
     ...pair.base,
     counter_asset_type: "credit_alphanum4",
     counter_asset_code: USDC.code,
     counter_asset_issuer: USDC.issuer,
+    start_time: String(startTime),
+    end_time: String(endTime),
     resolution: String(spec.resolution),
     limit: String(spec.points),
     order: "desc",

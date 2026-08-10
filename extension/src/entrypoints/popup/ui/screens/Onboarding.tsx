@@ -577,11 +577,6 @@ function Backup({
               machine can read it, and the label said only "Copy the phrase". */}
           {copy === "done" ? "Copied" : "Copy to clipboard"}
         </Button>
-        {copy === "done" && (
-          <div style={{ ...text.caption, color: t.sub, textAlign: "center" }}>
-            Other applications on this machine can read the clipboard.
-          </div>
-        )}
         <Button t={t} disabled={!shown} onClick={() => setChecking(true)}>
           I have written it down
         </Button>
@@ -663,9 +658,9 @@ export function Verify({
         Select the missing words in the correct order.
       </p>
 
-      {/* the whole phrase with its positions kept: the words you are not proving are
-          shown as dots for context, and the three blanks are filled by tapping the
-          chips below, in order. */}
+      {/* only the three positions being proved, labelled by their number in the
+          phrase, filled by tapping the chips below in order. the rest of the phrase
+          is not shown: this asks the user to recall the three, not read them off. */}
       <div
         style={{
           display: "grid",
@@ -674,11 +669,9 @@ export function Verify({
           marginBottom: space.lg,
         }}
       >
-        {words.map((word, n) => {
-          const blankIdx = asked.indexOf(n);
-          const isBlank = blankIdx !== -1;
-          const filled = isBlank && placed[blankIdx] !== null ? pool[placed[blankIdx]!] : null;
-          const active = isBlank && blankIdx === nextBlank;
+        {asked.map((n, blankIdx) => {
+          const filled = placed[blankIdx] !== null ? pool[placed[blankIdx]!] : null;
+          const active = blankIdx === nextBlank;
           return (
             <div
               key={n}
@@ -686,7 +679,8 @@ export function Verify({
               // can tell WHICH position each blank is asking for. Without it the
               // helper has to guess an order, which is how it came to type into
               // fields that no longer existed.
-              {...(isBlank ? { "data-testid": "verify-blank", "data-position": n + 1 } : {})}
+              data-testid="verify-blank"
+              data-position={n + 1}
               onClick={filled != null ? () => tapBlank(blankIdx) : undefined}
               style={{
                 display: "flex",
@@ -696,7 +690,7 @@ export function Verify({
                 padding: "0 10px",
                 borderRadius: radius.md,
                 border: `1px solid ${active ? t.accent : t.line}`,
-                background: isBlank ? t.field : "transparent",
+                background: t.field,
                 cursor: filled != null ? "pointer" : "default",
                 overflow: "hidden",
               }}
@@ -706,34 +700,25 @@ export function Verify({
               >
                 {n + 1}.
               </span>
-              {isBlank ? (
-                filled != null ? (
-                  <span
-                    style={{
-                      ...text.rowSub,
-                      fontFamily: fonts.mono,
-                      // only the 500 cut of DM Mono ships (`main.tsx` imports
-                      // `dm-mono/500.css` and nothing else), so 600 made chrome
-                      // SYNTHESISE a bold: it smears the glyphs of the face that
-                      // was chosen because "a slip between two glyphs loses
-                      // money", on the recovery-phrase screen. the same reset is
-                      // already written out in `Address.tsx`.
-                      fontWeight: 500,
-                      color: t.accent,
-                      minWidth: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {filled}
-                  </span>
-                ) : null
-              ) : (
+              {filled != null && (
                 <span
-                  aria-hidden
-                  style={{ color: t.faint, letterSpacing: 1.5, overflow: "hidden" }}
+                  style={{
+                    ...text.rowSub,
+                    fontFamily: fonts.mono,
+                    // only the 500 cut of DM Mono ships (`main.tsx` imports
+                    // `dm-mono/500.css` and nothing else), so 600 made chrome
+                    // SYNTHESISE a bold: it smears the glyphs of the face that
+                    // was chosen because "a slip between two glyphs loses money",
+                    // on the recovery-phrase screen. the same reset is already
+                    // written out in `Address.tsx`.
+                    fontWeight: 500,
+                    color: t.accent,
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
                 >
-                  {"•".repeat(Math.min(Math.max(word.length, 3), 7))}
+                  {filled}
                 </span>
               )}
             </div>

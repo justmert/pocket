@@ -5018,8 +5018,17 @@ export class WalletController {
     state: { spendable: Opening; receiving: Opening; syncedThrough: number },
     hadRecord = true,
   ): Promise<void> {
-    const account = await this.readOwnAccount(address, cfg);
-    const check = verifyAgainstChain(state, account);
+    // The read can race the ledger the submission just landed in: the chain has
+    // agreed, but the RPC's view of the contract entry can lag a moment, and a
+    // stale read makes the freshly-updated local state look divergent. Re-read a
+    // few times before deciding it truly does not match. A REAL divergence still
+    // fails here, because a retry does not resolve it -- this only removes the
+    // false alarm from propagation timing.
+    let check = verifyAgainstChain(state, await this.readOwnAccount(address, cfg));
+    for (let attempt = 1; !check.ok && attempt <= 3; attempt++) {
+      await new Promise<void>((r) => setTimeout(r, 500 * attempt));
+      check = verifyAgainstChain(state, await this.readOwnAccount(address, cfg));
+    }
     if (!check.ok) {
       // Two different situations, and telling them apart is the difference
       // between a user who should investigate and one who simply needs their
