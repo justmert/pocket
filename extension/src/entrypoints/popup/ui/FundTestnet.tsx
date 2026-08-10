@@ -57,9 +57,9 @@ export function FundTestnetCard({ t }: { t: Theme }) {
       tone="accent"
       style={{ padding: `${space.sm}px ${space.md}px`, background: t.promptBg }}
     >
-      {/* ONE row, like the private set-up prompt: icon, a quiet title that ellipsises
-          if it must, and a pill that keeps its width. tighter vertical padding keeps it
-          at about an asset row's height rather than a tall, inconsistent block. */}
+      {/* ONE row: icon, a quiet title, and a pill that keeps its width. the title
+          wraps to a second line rather than ellipsising, because "Fund this testnet
+          ac..." reads as broken; the pill stays put and the row centres on it. */}
       <div style={{ display: "flex", alignItems: "center", gap: space.sm, flexWrap: "nowrap" }}>
         <IconDisc t={t} size={32}>
           <Coins size={18} />
@@ -73,10 +73,8 @@ export function FundTestnetCard({ t }: { t: Theme }) {
             ...text.rowTitle,
             fontSize: 14,
             fontWeight: 500,
+            lineHeight: 1.3,
             color: t.text,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
           }}
         >
           Fund this testnet account

@@ -50,6 +50,13 @@ export function Progress({
         {subtitle && (
           <span style={{ ...text.body, fontWeight: 600, color: t.sub }}>{subtitle}</span>
         )}
+        {/* the proving phase (up to ~165s) runs BEFORE anything is submitted, so
+            unlike a submitted transaction it cannot be picked up in the background:
+            discarding the popup mid-proof loses the work and the private account is
+            not created. Chrome offers no way to hold a popup open, so say it. */}
+        <span style={{ ...text.caption, color: t.faint, maxWidth: 280, marginTop: 2 }}>
+          Keep this window open until it finishes.
+        </span>
       </div>
 
       {onGoHome && (

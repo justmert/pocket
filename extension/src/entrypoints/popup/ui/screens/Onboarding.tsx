@@ -477,7 +477,11 @@ function Backup({
           aria-hidden={!shown}
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(88px, 1fr))",
+            // 3 columns, not 4: the longest BIP-39 words ("innocent", "install")
+            // plus their ordinal do not fit an 88px cell at the phrase font, and a
+            // wrapped word is a transcription trap. widening to ~104px settles on
+            // three columns that hold every word on one line.
+            gridTemplateColumns: "repeat(auto-fit, minmax(104px, 1fr))",
             gap: space.xs,
             background: t.field,
             padding: space.md,
@@ -502,6 +506,7 @@ function Backup({
                 color: t.text,
                 display: "flex",
                 gap: 6,
+                whiteSpace: "nowrap",
               }}
             >
               <span style={{ color: t.faint, userSelect: "none" }}>{i + 1}.</span> {word}{" "}

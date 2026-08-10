@@ -262,14 +262,11 @@ export function MoveSheet({ open, onClose }: { open: boolean; onClose: () => voi
                 ? "Your auditor key is already registered and paid for."
                 : undefined
             }
-            // "Leave this for now", the string `ux/decisions.md` D2 chose and
-            // wrote its reasoning for: this step appears AFTER its first
-            // transaction is already on the ledger, so "Back" describes a return
-            // that is not available and "Cancel" describes an undo that is not
-            // either. it had been replaced with the exact word D2 refused, with no
-            // comment and no decisions entry, and `flow.tsx` still documents why
-            // the prop exists.
-            cancelLabel={summary.kind === "register" ? "Leave this for now" : "Back"}
+            // "Cancel" by the owner's call. D2 had chosen "Leave this for now"
+            // because this step follows a first transaction (the auditor key) that
+            // is already on the ledger, so leaving undoes nothing and "Cancel" can
+            // read as an undo. Kept as a note so the tradeoff stays visible.
+            cancelLabel={summary.kind === "register" ? "Cancel" : "Back"}
             error={error}
             unresolved={unresolved}
             busy={busy}
