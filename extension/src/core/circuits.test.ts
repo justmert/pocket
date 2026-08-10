@@ -3,7 +3,7 @@
 // fetch is stubbed to read the same files the extension ships, so this
 // exercises the actual decode path rather than a fixture of it.
 import { describe, it, expect, vi, beforeAll } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildRegisterWitness } from "./witness/register";
 import { circuitInputs } from "./witness/inputs";
@@ -12,6 +12,14 @@ import { addressToField } from "./crypto/address";
 import type { Bytes } from "./vault/envelope";
 
 const PUBLIC = resolve(import.meta.dirname, "../../public");
+
+// The compiled circuits are the audited OpenZeppelin artifacts, vendored from the
+// pinned upstream at build time and NOT committed to this repo (shipping our own
+// copy would invite a "did they alter it?" question). So these format checks run
+// where the build has vendored them (local dev, the release gate) and skip on a
+// bare checkout where they are absent (CI). The release gate is where circuit
+// authenticity is verified against the pinned source.
+const HAS_CIRCUITS = existsSync(resolve(PUBLIC, "vendor/circuits/target/circuit_register.json"));
 
 beforeAll(() => {
   // Serve extension-relative URLs from the package directory.
@@ -39,7 +47,7 @@ async function registerInputs(): Promise<Record<string, bigint>> {
   return circuitInputs(buildRegisterWitness({ sk, addrF, acctF }));
 }
 
-describe("the ACIR handed to the prover", () => {
+describe.skipIf(!HAS_CIRCUITS)("the ACIR handed to the prover", () => {
   it("is decompressed, not the base64-gzipped form the artifact stores", async () => {
     const acir = await new BundledCircuits().acir("register");
     expect(acir[0], "gzip magic must be gone").not.toBe(0x1f);
@@ -51,7 +59,7 @@ describe("the ACIR handed to the prover", () => {
   });
 });
 
-describe("the witness handed to the prover", () => {
+describe.skipIf(!HAS_CIRCUITS)("the witness handed to the prover", () => {
   it("is decompressed, not the gzipped form noir_js returns", async () => {
     // The failure this pins is silent and expensive. bb's low-level API does
     // not reject a gzipped witness: it traps inside the wasm with

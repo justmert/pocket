@@ -25,10 +25,12 @@ jobs:
       # extension is an npm workspace: the lockfile is at the repo root, so install
       # there (which provisions the workspace) and run its check via --prefix.
       - run: npm ci
-      # `check` runs circuits.test.ts, which asserts against the vendored circuit
-      # artifacts; those are gitignored and produced by the vendor step, so CI must
-      # run it before checking (the pre-commit hook relied on a prior local build).
-      - run: npm --prefix extension run vendor
+      # `check` includes circuits.test.ts, which reads the compiled circuit
+      # artifacts. Those are the audited OpenZeppelin circuits, vendored from the
+      # pinned upstream at build time and NOT committed here (committing them would
+      # invite a tampering question). The test skips itself when they are absent,
+      # so a bare CI checkout stays green; the local build and the release gate run
+      # it with the circuits vendored. bb.js and SRS are not needed by `check`.
       - run: npm --prefix extension run check
 
   indexer:
