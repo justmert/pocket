@@ -26,7 +26,7 @@
 #
 # Testnet caps a fresh instance at min_persistent_ttl = 120,960 ledgers, about
 # SEVEN DAYS. Our own deployment sat at exactly that until this script's check
-# caught it. Mainnet's floor is 2,073,600 ledgers, about 120 days, so never
+# caught it. Mainnet's floor is 2,073,600 ledgers, about 133 days, so never
 # calibrate this on testnet.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -122,5 +122,54 @@ while read -r key id; do
     echo "  OK       $key: $days days remaining"
   fi
 done <<< "$IDS"
+
+# Archive (indexer) freshness. The failure that silently broke on 2026-08-10.
+#
+# The loop above watches whether the CONTRACTS stay alive. This watches whether
+# the ARCHIVE that makes a private balance recoverable stays CURRENT. Same
+# user-visible symptom ("rebuild from history" refuses), different cause, and
+# this one has no auto-restore. The ingest runs off a systemd timer; when that
+# unit was left pointing at `npm run ingest` after the runner moved to
+# backfill.ts, `node src/ingest.ts` became a no-op that exits 0, so
+# ingested_through froze while every /v1/health read still answered 200. Four
+# days on it was 78,779 ledgers behind and the only signal was a user whose
+# rebuild would not complete. A scheduled check is exactly what was missing.
+#
+# Compared to the chain TIP, never to the archive's own latest_ledger: a frozen
+# archive keeps answering a stale latest_ledger that agrees with its stale
+# ingested_through, so only the tip catches a stall. And the tokens come from
+# confidentialAssets, the same field the TTL loop had to be widened to, so a
+# second wrapper cannot go unwatched here either.
+ARCHIVE_URL=${ARCHIVE_URL:-https://archive.pocketwallet.app}
+# ~1 day. Normal lag is minutes (ingest every 5m); a day behind is a stall, with
+# days of headroom still left before ingested_through ages out of RPC retention
+# (~7 days on testnet) and the gap turns permanent.
+ARCHIVE_MAX_BEHIND=${ARCHIVE_MAX_BEHIND:-17280}
+while read -r sym id; do
+  [ -n "$sym" ] || continue
+  through=$(curl -s -m 20 "$ARCHIVE_URL/v1/health?contract_id=$id" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin).get('ingested_through') or 0)" 2>/dev/null \
+    || echo "")
+  if ! printf '%s' "$through" | grep -qE '^[0-9]+$' || [ "$through" -eq 0 ]; then
+    echo "  UNKNOWN  archive $sym ($id): no ingested_through from $ARCHIVE_URL"
+    fail=1
+    continue
+  fi
+  behind=$(( latest - through ))
+  if [ "$behind" -gt "$ARCHIVE_MAX_BEHIND" ]; then
+    echo "  STALE    archive $sym: ingested_through $through is $behind ledgers behind tip $latest"
+    fail=1
+  else
+    echo "  OK       archive $sym: $behind ledgers behind tip"
+  fi
+done <<< "$(python3 - "$DEPLOYMENT" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+for a in d.get("confidentialAssets", []):
+    t = a.get("token")
+    if t:
+        print(a.get("symbol", "?"), t)
+PY
+)"
 
 exit $fail
