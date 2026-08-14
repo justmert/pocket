@@ -49,7 +49,7 @@ export default defineConfig({
     ],
     name: "Pocket",
     description:
-      "A self-custody Stellar wallet with two pockets: one public, one private. Confidential, not anonymous.",
+      "Self-custody Confidential Stellar wallet. One recovery phrase, two balances: one public, one private that hides your amounts.",
     permissions: [
       "storage",
       // idle auto-lock survives service-worker restarts only via alarms
