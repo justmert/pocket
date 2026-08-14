@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pocket — Privacy Policy</title>
+<link href="/vendor/fonts.css" rel="stylesheet">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon-48.png" sizes="48x48" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="description" content="How Pocket handles your data: it does not. A self-custody Stellar wallet with no server, no analytics, and no data collection.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Pocket">
+<meta property="og:title" content="Pocket — Privacy Policy">
+<meta property="og:description" content="Self-custody. No server, no analytics, no data collection. Your keys never leave your device.">
+<meta property="og:url" content="https://pocketwallet.app/privacy.html">
+<meta property="og:image" content="https://pocketwallet.app/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Pocket — Privacy Policy">
+<meta name="twitter:description" content="Self-custody. No server, no analytics, no data collection.">
+<meta name="twitter:image" content="https://pocketwallet.app/og.png">
+<style>
+  :root {
+    --bg: #0d0d0f;
+    --surface: #141418;
+    --border: rgba(244, 243, 239, .12);
+    --text: #f4f3ef;
+    --muted: #a3a29d;
+    --lilac: #b8ade8;
+    --yellow: #fed924;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Quicksand, system-ui, sans-serif;
+    font-size: 17px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: var(--lilac); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ::selection { background: var(--yellow); color: #101012; }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 22px 24px;
+    border-bottom: 1px solid var(--border);
+    max-width: 860px;
+    margin: 0 auto;
+  }
+  .wordmark {
+    font-family: Fredoka, Quicksand, sans-serif;
+    font-weight: 600;
+    font-size: 26px;
+    letter-spacing: -.01em;
+    color: var(--text);
+  }
+  header .back { color: var(--muted); font-size: 15px; font-weight: 500; }
+  header .back:hover { color: var(--lilac); }
+
+  main { max-width: 720px; margin: 0 auto; padding: 44px 24px 80px; }
+  h1 {
+    font-family: Fredoka, Quicksand, sans-serif;
+    font-weight: 600;
+    font-size: clamp(34px, 6vw, 46px);
+    line-height: 1.1;
+    margin: 8px 0 6px;
+    text-wrap: balance;
+  }
+  .updated { color: var(--muted); font-size: 15px; margin: 0 0 28px; }
+
+  .tldr {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 22px 24px;
+    margin: 0 0 40px;
+  }
+  .tldr p { margin: 0; }
+  .tldr strong { color: var(--yellow); font-weight: 600; }
+
+  h2 {
+    font-family: Fredoka, Quicksand, sans-serif;
+    font-weight: 600;
+    font-size: 22px;
+    margin: 40px 0 10px;
+    color: var(--text);
+  }
+  p { margin: 0 0 16px; }
+  ul { margin: 0 0 16px; padding-left: 22px; }
+  li { margin: 0 0 9px; }
+  .muted { color: var(--muted); }
+
+  footer {
+    border-top: 1px solid var(--border);
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 30px 24px 60px;
+    color: var(--muted);
+    font-size: 15px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    align-items: center;
+  }
+  footer .sep { color: var(--border); }
+  footer .copy { margin-left: auto; }
+
+  @media (max-width: 560px) {
+    body { font-size: 16px; }
+    header { padding: 18px 18px; }
+    main { padding: 32px 18px 64px; }
+    footer { padding: 26px 18px 50px; }
+    footer .copy { margin-left: 0; flex-basis: 100%; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="wordmark">pocket</a>
+  <a href="/" class="back">pocketwallet.app</a>
+</header>
+
+<main>
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated: 14 August 2026</p>
+
+  <div class="tldr">
+    <p>Pocket is a self-custody wallet. <strong>We do not run a server that receives your data, we do not collect or store your personal information, and we never see your recovery phrase or your keys.</strong> There are no analytics, no trackers, no ads, and nothing is ever sold.</p>
+  </div>
+
+  <h2>What stays on your device</h2>
+  <p>Your recovery phrase, your private keys, the encrypted vault, your private-pocket openings (the secrets that make a confidential balance spendable), and your settings live only in your browser's local extension storage. They are never transmitted to us or to anyone else. If you lose this device, only your recovery phrase can restore your funds, and we cannot recover it for you.</p>
+
+  <h2>What leaves your device, and to whom</h2>
+  <p>A wallet has to talk to the network. To function, Pocket sends requests to public Stellar infrastructure and a small number of keyless services:</p>
+  <ul>
+    <li>Stellar Soroban RPC and Horizon on the test network, to read your balances and history and to submit transactions you have signed.</li>
+    <li>Stellar Horizon on the public network, read-only, for an asset's price history used to draw a chart.</li>
+    <li>The Pocket archive (archive.pocketwallet.app), a read-only public record of confidential-token events, used to rebuild your private balances on a new device.</li>
+    <li>Optional feature providers, only when you use the feature: DeFindex (yield), Aquarius (swap routing), Circle (bridge attestations), and StellarExpert (asset directory).</li>
+  </ul>
+  <p>These requests carry your public Stellar address and public on-chain data. They never carry your recovery phrase, your private keys, or your private-pocket secrets. Each of these services is operated by a third party under its own privacy terms.</p>
+
+  <h2>What is and is not private</h2>
+  <p>Pocket is confidential, not anonymous. On a public blockchain, your account address and the fact that it transacted are visible to anyone. Pocket's private pocket hides the amounts of confidential balances and transfers. It does not hide addresses.</p>
+
+  <h2>Cookies and analytics</h2>
+  <p>None. The extension sets no cookies and includes no analytics or tracking of any kind.</p>
+
+  <h2>Security</h2>
+  <p>Your vault is encrypted with a key derived from the password you set, and it is stored only on your device. Pocket locks itself when it is idle and when the browser closes, so the keys are dropped from memory rather than left available. Private-pocket operations are proven with zero-knowledge proofs generated locally and verified by on-chain contracts.</p>
+
+  <h2>Data retention</h2>
+  <p>Because Pocket stores data only on your device, that data is retained until you remove it. Locking the wallet clears the keys from memory. Uninstalling the extension, or clearing its storage, removes the local vault and your private-pocket openings from the device. Since we never receive this data, we hold nothing to retain or delete on any server.</p>
+
+  <h2>Your choices and control</h2>
+  <p>You are in control of your data at all times. You can lock the wallet, disconnect any website you have connected, and uninstall the extension to remove all local data. Because we do not hold your data, there is no account to close and nothing for us to delete on your behalf. Keep your recovery phrase safe: it is the only way to restore your funds, and no one, including us, can recover it for you.</p>
+
+  <h2>Permissions</h2>
+  <p>The permissions Pocket requests (local storage, alarms, an offscreen document used for proving, and network access to the hosts above) are used solely to operate the wallet. They are described in the Chrome Web Store listing.</p>
+
+  <h2>This is a test build</h2>
+  <p>This version runs on the Stellar test network only. It is for trying Pocket with test assets.</p>
+
+  <h2>Children</h2>
+  <p>Pocket is not directed at children and does not knowingly collect data from anyone.</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes, the updated version will be posted on this page.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about this policy: <a href="mailto:kklumert@outlook.com">kklumert@outlook.com</a></p>
+</main>
+
+<footer>
+  <a href="/">Home</a>
+  <span class="sep">/</span>
+  <a href="https://docs.pocketwallet.app">Docs</a>
+  <span class="sep">/</span>
+  <a href="mailto:kklumert@outlook.com">Contact</a>
+  <span class="copy">Pocket, a self-custody Stellar wallet.</span>
+</footer>
+</body>
+</html>
